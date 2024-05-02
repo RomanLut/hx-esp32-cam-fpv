@@ -709,7 +709,7 @@ int run(char* argv[])
             else 
             {
                 int value = config.camera.gainceiling;
-                ImGui::SliderInt("GainCeiling", &value, 2, 128);
+                ImGui::SliderInt("GainCeiling", &value, 0, 6);
                 config.camera.gainceiling = (uint8_t)value;
             }
 
