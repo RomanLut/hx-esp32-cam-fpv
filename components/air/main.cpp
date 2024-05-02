@@ -90,7 +90,7 @@ static int s_uart_verbose = 1;
 
 static bool s_air_record = false;
 
-static bool s_shouldRestart = false;
+static bool s_shouldRestartRecording = false;
 
 //=============================================================================================
 //=============================================================================================
@@ -555,9 +555,9 @@ static void sd_write_proc(void*)
                     break;
                 }
 
-                if ( s_shouldRestart ) 
+                if ( s_shouldRestartRecording ) 
                 {
-                    s_shouldRestart = false;
+                    s_shouldRestartRecording = false;
                     done = true;
                 }
 
@@ -829,7 +829,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
         }
 
-        s_shouldRestart = true;
+        s_shouldRestartRecording = true;
     }
 
 #define APPLY(n1, n2, type) \
