@@ -114,9 +114,9 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
         bool aec2 = true; //enable aec DSP (better processing?)
         int8_t ae_level = 1;//-2 - 2, for aec=true
         uint16_t aec_value = 204;//0 - 1200 ISO, for aec=false
-        bool agc = false;  //automatic gain control
+        bool agc = true;  //automatic gain control
         uint8_t agc_gain = 0;//0 - 30, for agc=false
-        uint8_t gainceiling = 3;//2 - 128, for agc=true
+        uint8_t gainceiling = 2;//2 - 128, for agc=true
         bool bpc = true;
         bool wpc = true;
         bool raw_gma = true;
