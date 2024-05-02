@@ -61,6 +61,7 @@ static uint8_t s_osdUpdateCounter = 0;
 static int s_quality = 20;
 static float s_quality_framesize_K1 = 1;
 static float s_quality_framesize_K2 = 1;
+static float s_quality_framesize_K3 = 1;
 static int s_max_frame_size = 0;
 
 static int64_t s_video_last_sent_tp = esp_timer_get_time();
@@ -746,7 +747,8 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
 //=============================================================================================
 //=============================================================================================
-static void handle_ground2air_config_packetEx(Ground2Air_Config_Packet& src, bool forceCameraSettings)
+//process settings not related to camera sensor setup
+static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
     s_recv_ground2air_packet = true;
@@ -777,26 +779,6 @@ static void handle_ground2air_config_packetEx(Ground2Air_Config_Packet& src, boo
         s_restart_time = esp_timer_get_time() + 2000000;
     }
 
-    if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
-    {
-        LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
-        sensor_t* s = esp_camera_sensor_get();
-        switch (src.camera.resolution)
-        {
-            case Resolution::QVGA: s->set_framesize(s, FRAMESIZE_QVGA); break;
-            case Resolution::CIF: s->set_framesize(s, FRAMESIZE_CIF); break;
-            case Resolution::HVGA: s->set_framesize(s, FRAMESIZE_HVGA); break;
-            case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
-            case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); 
-      //s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);
-            break;
-            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
-            case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
-            case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
-        }
-
-        s_shouldRestart = true;
-    }
     if (dst.camera.fps_limit != src.camera.fps_limit)
     {
         if (src.camera.fps_limit == 0)
@@ -818,6 +800,38 @@ static void handle_ground2air_config_packetEx(Ground2Air_Config_Packet& src, boo
         }
     }
 
+    dst = src;
+}
+
+//=============================================================================================
+//=============================================================================================
+//process settings related to camera sensor setup
+IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
+{
+    Ground2Air_Config_Packet& src = s_ground2air_config_packet;
+    Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
+
+    if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
+    {
+        LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
+        sensor_t* s = esp_camera_sensor_get();
+        switch (src.camera.resolution)
+        {
+            case Resolution::QVGA: s->set_framesize(s, FRAMESIZE_QVGA); break;
+            case Resolution::CIF: s->set_framesize(s, FRAMESIZE_CIF); break;
+            case Resolution::HVGA: s->set_framesize(s, FRAMESIZE_HVGA); break;
+            case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
+            case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); 
+      //s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);
+            break;
+            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
+            case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
+            case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
+        }
+
+        s_shouldRestart = true;
+    }
+
 #define APPLY(n1, n2, type) \
     if (forceCameraSettings || (dst.camera.n1 != src.camera.n1)) \
     { \
@@ -837,6 +851,12 @@ static void handle_ground2air_config_packetEx(Ground2Air_Config_Packet& src, boo
             sensor_t* s = esp_camera_sensor_get(); 
             s->set_quality(s, 20); 
         }
+    }
+
+    if ( dst.camera.agc != src.camera.agc)
+    {
+        //reapply agc gain if agc changed
+        forceCameraSettings = true;
     }
 
     APPLY(brightness, brightness, int);
@@ -871,7 +891,9 @@ static void handle_ground2air_config_packetEx(Ground2Air_Config_Packet& src, boo
 //===========================================================================================
 static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
-    handle_ground2air_config_packetEx(src, false);
+    //ahdnle settings not reated to camera sensor setup.
+    //camera sensor settings are prcessed in camera_data_available() callback
+    handle_ground2air_config_packetEx1(src);
 }
 
 //===========================================================================================
@@ -1066,12 +1088,13 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( video_full_frame_size == 0 ) return;
     if (s_ground2air_config_packet.camera.fps_limit == 0) return;
 
+    //K1 - wifi bandwidth
     //data rate available with current wifi rate
     int rateBandwidth = getBandwidthForRate(s_wlan_rate);
     //decrease available data rate using FEC codec parameters
     int FECbandwidth = rateBandwidth * s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
 
-    //1.2mb/sec is practical limit which works
+    //1.2mb/sec is practical maximum limit which works
     if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
     
     int frameSize = FECbandwidth / s_ground2air_config_packet.camera.fps_limit * 7 / 10;  //assume only  70% of total bandwidth is available in practice
@@ -1084,11 +1107,29 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_quality_framesize_K1 < 0.05f ) s_quality_framesize_K1 = 0.05f;
     if ( s_quality_framesize_K1 > 1.0f ) s_quality_framesize_K1 = 1.0f;
 
-
+    //k2 - max frame size
     int safe_frame_size = 40*1024 * 30 / s_ground2air_config_packet.camera.fps_limit;
     s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
     if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
     if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
+
+    //K3 - wifi queue
+    if ( s_stats.wlan_error_count > 0 )
+    {
+        s_quality_framesize_K3 -= 0.01f;  
+    }
+
+    if ( s_max_wlan_outgoing_queue_usage > 70 )
+    {
+        s_quality_framesize_K3 -= (s_max_wlan_outgoing_queue_usage - 70) / 30000.0f;
+    }
+    else
+    {
+        s_quality_framesize_K3 += ( 70 - s_max_wlan_outgoing_queue_usage ) / 10000.0f;
+    }
+
+    if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
+    else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
 }
 
 //=============================================================================================
@@ -1097,7 +1138,7 @@ IRAM_ATTR void applyAdaptiveQuality()
 {
     if ( s_ground2air_config_packet.camera.quality != 0 ) return;
 
-    s_quality = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 ));
+    s_quality = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
 
     sensor_t* s = esp_camera_sensor_get(); 
     s->set_quality(s, s_quality); 
@@ -1250,6 +1291,8 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             recalculateFrameSizeQualityK(s_video_full_frame_size);
             applyAdaptiveQuality();
             s_video_full_frame_size = 0;
+
+            handle_ground2air_config_packetEx2(false);
 
             if ( g_osd.isChanged() || (s_osdUpdateCounter == 15))
             {
@@ -1527,7 +1570,8 @@ extern "C" void app_main()
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
 
-    handle_ground2air_config_packetEx( s_ground2air_config_packet, true );
+    handle_ground2air_config_packetEx1( s_ground2air_config_packet);
+    handle_ground2air_config_packetEx2( true);
     set_ground2air_config_packet_handler(handle_ground2air_config_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
@@ -1538,11 +1582,11 @@ extern "C" void app_main()
         {
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
             s_stats_last_tp = millis();
-            LOG("WLAN S: %d, R: %d, E: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, Q: %d s: %d\n",
+            LOG("WLAN S: %d, R: %d, E: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
                 s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage,
                 (int)(s_stats.video_frames)* 1000 / dt, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                 s_stats.in_telemetry_data, s_stats.out_telemetry_data,
-                (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), 
+                (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
                 s_quality, s_max_frame_size); 
             print_cpu_usage();
 

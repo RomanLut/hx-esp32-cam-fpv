@@ -27,12 +27,13 @@
 extern SemaphoreHandle_t s_wlan_incoming_mux;
 extern SemaphoreHandle_t s_wlan_outgoing_mux;
 extern Ground2Air_Data_Packet s_ground2air_data_packet;
-extern Ground2Air_Config_Packet s_ground2air_config_packet;  
+extern Ground2Air_Config_Packet s_ground2air_config_packet;
+extern Ground2Air_Config_Packet s_ground2air_config_packet2;
 extern TaskHandle_t s_wifi_tx_task;
 extern TaskHandle_t s_wifi_rx_task;
 
 constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 60000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 50000;
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));
 
