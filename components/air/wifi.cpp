@@ -6,12 +6,20 @@
 #include "lwip/inet.h"
 static const char * TAG="wifi_task";
 
+#define TX_COMPLETION_CB
+
+#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 Ground2Air_Data_Packet s_ground2air_data_packet;
 Ground2Air_Config_Packet s_ground2air_config_packet;  
+Ground2Air_Config_Packet s_ground2air_config_packet2;  
 
 SemaphoreHandle_t s_wlan_incoming_mux = xSemaphoreCreateBinary();
 SemaphoreHandle_t s_wlan_outgoing_mux = xSemaphoreCreateBinary();
+
+#ifdef TX_COMPLETION_CB
+SemaphoreHandle_t s_wifi_tx_done_semaphore = xSemaphoreCreateBinary();
+#endif
 
 TaskHandle_t s_wifi_tx_task = nullptr;
 TaskHandle_t s_wifi_rx_task = nullptr;
@@ -95,7 +103,7 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
   //SPI RAM is too slow, can not handle more then 2Mb/s bandwidth
   //s_wlan_outgoing_queue.init(new uint8_t[wlan_outgoing_queue_size], wlan_outgoing_queue_size);
   s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL ),wlan_outgoing_queue_size );
-
+  //s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_SPIRAM ),wlan_outgoing_queue_size );
 
   s_wlan_incoming_queue.init(new uint8_t[wlan_incoming_queue_size], wlan_incoming_queue_size);
 
@@ -128,7 +136,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                 while (packet.ptr)
                 {
 #ifdef TX_COMPLETION_CB                    
-                    //xSemaphoreTake(s_wifi_tx_done_semaphore, 0); //clear the notif
+                    xSemaphoreTake(s_wifi_tx_done_semaphore, 0); //clear the notif
 #endif
 
                     esp_err_t res = esp_wifi_80211_tx(ESP_WIFI_IF, packet.ptr, WLAN_IEEE_HEADER_SIZE + packet.size, false);
@@ -141,11 +149,12 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                         xSemaphoreGive(s_wlan_outgoing_mux);
 
 #ifdef TX_COMPLETION_CB
-                        //xSemaphoreTake(s_wifi_tx_done_semaphore, portMAX_DELAY); //wait for the tx_done notification
+                        xSemaphoreTake(s_wifi_tx_done_semaphore, portMAX_DELAY); //wait for the tx_done notification
 #endif
                     }
                     else if (res == ESP_ERR_NO_MEM) //No TX buffers available, need to poll.
                     {
+                        //s_stats.wlan_error_count++;
                         spins++;
                         if (spins > 1000)
                             vTaskDelay(1);
@@ -154,7 +163,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                     }
                     else //other errors
                     {
-                       // LOG("Wlan err: %d\n", res);
+                        //ESP_LOGE(TAG,"Wlan err: %d\n", res);
                         s_stats.wlan_error_count++;
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
@@ -233,6 +242,12 @@ IRAM_ATTR static void wifi_rx_proc(void *)
     }
 }
 
+#ifdef TX_COMPLETION_CB
+IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus)
+{
+    xSemaphoreGive(s_wifi_tx_done_semaphore);
+}
+#endif 
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type))
 {
@@ -258,8 +273,10 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     //this reduces throughput for some reason
+    //update: do nto see any bad effect. Contrary, without completion cb, wifi_tx() tentds to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
 #ifdef TX_COMPLETION_CB
     ESP_ERROR_CHECK(esp_wifi_set_tx_done_cb(wifi_tx_done));
+    xSemaphoreGive(s_wifi_tx_done_semaphore);
 #endif
 
     ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
