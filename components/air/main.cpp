@@ -815,20 +815,19 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     {
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
         sensor_t* s = esp_camera_sensor_get();
+
         switch (src.camera.resolution)
         {
             case Resolution::QVGA: s->set_framesize(s, FRAMESIZE_QVGA); break;
             case Resolution::CIF: s->set_framesize(s, FRAMESIZE_CIF); break;
             case Resolution::HVGA: s->set_framesize(s, FRAMESIZE_HVGA); break;
             case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
-            case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); 
-      //s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);
-            break;
+            case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); break;
             case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
             case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
+            case Resolution::SVGA16: s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);
         }
-
         s_shouldRestartRecording = true;
     }
 
@@ -859,12 +858,30 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         forceCameraSettings = true;
     }
 
+    if ( dst.camera.aec != src.camera.aec)
+    {
+        //reapply aec value if aec changed
+        forceCameraSettings = true;
+    }
+
     APPLY(brightness, brightness, int);
     APPLY(contrast, contrast, int);
     APPLY(saturation, saturation, int);
     APPLY(sharpness, sharpness, int);
     APPLY(denoise, denoise, int);
+#ifdef SENSOR_OV5640
+    //gainceiling for ov5640 is range 0...3ff
+    if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling)) 
+    { 
+        LOG("Camera gainceiling from %d to %d\n", (int)dst.camera.gainceiling, (int)src.camera.gainceiling); 
+        sensor_t* s = esp_camera_sensor_get(); 
+        //s->set_gainceiling(s, (gainceiling_t)(2 << src.camera.gainceiling));
+        //do not limit gainceiling on OV5640. Contrary to OV2640, it does good images with large gain ceiling, without enormous noise in dark scenes.
+        s->set_gainceiling(s, (gainceiling_t)(0x3ff));
+    }
+#else
     APPLY(gainceiling, gainceiling, gainceiling_t);
+#endif
     APPLY(awb, whitebal, int);
     APPLY(awb_gain, awb_gain, int);
     APPLY(wb_mode, wb_mode, int);
@@ -1333,9 +1350,13 @@ static void init_camera()
     config.pin_sccb_scl = SIOC_GPIO_NUM;
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
-    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/7 = 11,428 and we use clk2x
+#ifdef SENSOR_OV5640    
+    config.xclk_freq_hz = 26000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
+#else
+    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/7 = 11,428Mhz and we use clk2x
+#endif    
     config.pixel_format = PIXFORMAT_JPEG;
-    config.frame_size = FRAMESIZE_VGA;
+    config.frame_size = FRAMESIZE_SVGA;
     config.jpeg_quality = 8;
     config.fb_count = 2;
     config.grab_mode = CAMERA_GRAB_LATEST;

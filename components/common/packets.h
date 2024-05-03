@@ -81,6 +81,7 @@ enum class Resolution : uint8_t
     XGA,    //1024x768
     SXGA,   //1280x1024
     UXGA,   //1600x1200
+    SVGA16  //800x456
 };
 
 struct Ground2Air_Config_Packet : Ground2Air_Header
@@ -99,7 +100,7 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
     struct Camera
     {
         Resolution resolution = Resolution::SVGA;
-        uint8_t fps_limit = 30;
+        uint8_t fps_limit = 31;
         uint8_t quality = 0;//0 - 63  0-auto
         int8_t brightness = 0;//-2 - 2
         int8_t contrast = 0;//-2 - 2
@@ -116,7 +117,7 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
         uint16_t aec_value = 204;//0 - 1200 ISO, for aec=false
         bool agc = true;  //automatic gain control
         uint8_t agc_gain = 0;//30 - 6, for agc=false
-        uint8_t gainceiling = 0;//0 - 6, for agc=true
+        uint8_t gainceiling = 0;//0 - 6, for agc=true. 0=2x, 1=4x, 2=8x,3=16x,4=32x,5=64x,6=128x
         bool bpc = true;
         bool wpc = true;
         bool raw_gma = true;
