@@ -59,6 +59,7 @@ static size_t s_video_full_frame_size = 0;
 static uint8_t s_osdUpdateCounter = 0;
 
 static int s_quality = 20;
+static int s_quality_counter = 0;
 static float s_quality_framesize_K1 = 1;
 static float s_quality_framesize_K2 = 1;
 static float s_quality_framesize_K3 = 1;
@@ -748,7 +749,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
-static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
+IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
     s_recv_ground2air_packet = true;
@@ -826,7 +827,24 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
             case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
-            case Resolution::SVGA16: s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);
+
+            case Resolution::SVGA16:
+#ifdef SENSOR_OV5640
+                //s->set_res_raw(s, 0, 0, 2623, 1951, 32, 16, 2844, 1968, 800, 600, true, true);  //attempt for 800x600
+                //s->set_res_raw(s, 0, 240, 2623, 1711, 32, 16, 2844, 1488, 800, 450, true, true); //attempt for 800x450
+
+                //s->set_pll(s, false, 26, 1, 1, false, 3, true, 4);  - root2x and pre_div are swapped due to incompatible signatures!
+                //s->set_pll(s, false, 25, 1, false, 1, 3, true, 4); 
+
+                //waning: LOGxxx should be commented out in ov5640.c otherwise there will be stack overflow in camtask
+                s->set_framesize(s, FRAMESIZE_P_HD); //800x450
+#else
+                //s->set_framesize(s, FRAMESIZE_P_HD);  800x448 13 fps
+                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                
+#endif
+            break;
+
         }
         s_shouldRestartRecording = true;
     }
@@ -842,6 +860,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     if ( src.camera.quality != 0 )
     {
         APPLY(quality, quality, int);
+        s_quality = src.camera.quality;
     }
     else
     {
@@ -906,7 +925,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
-static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
+IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
     //ahdnle settings not reated to camera sensor setup.
     //camera sensor settings are prcessed in camera_data_available() callback
@@ -915,7 +934,7 @@ static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 
 //===========================================================================================
 //===========================================================================================
-static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
+IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
 #ifdef UART_MAVLINK
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
@@ -1037,7 +1056,11 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.SDFreeSpaceGB16 = SDFreeSpaceGB16;
     packet.SDTotalSpaceGB16 = SDTotalSpaceGB16;
     packet.curr_quality = s_quality;
-    packet.unused = 0;
+#ifdef SENSOR_OV5640    
+    packet.isOV5640 = 1;
+#else
+    packet.isOV5640 = 0;
+#endif    
 
     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
     
@@ -1098,6 +1121,13 @@ IRAM_ATTR int getBandwidthForRate(WIFI_Rate rate)
 //=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
+#ifdef SENSOR_OV5640
+    //quality changes kill framerate on ov5640. Limit changes.
+    s_quality_counter++;
+    if ( s_quality_counter < 30 ) return;
+    s_quality_counter = 0;
+#endif
+
     if ( video_full_frame_size > s_max_frame_size )
     {
         s_max_frame_size = video_full_frame_size;
@@ -1155,12 +1185,15 @@ IRAM_ATTR void applyAdaptiveQuality()
 {
     if ( s_ground2air_config_packet.camera.quality != 0 ) return;
 
-    s_quality = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
+    int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
 
-    sensor_t* s = esp_camera_sensor_get(); 
-    s->set_quality(s, s_quality); 
+    if (s_quality != quality1)
+    {
+        s_quality = quality1;
+        sensor_t* s = esp_camera_sensor_get(); 
+        s->set_quality(s, s_quality); 
+    }
 }
-
 
 //=============================================================================================
 //=============================================================================================

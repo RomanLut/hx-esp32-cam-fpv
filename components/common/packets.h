@@ -189,7 +189,7 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
     uint16_t SDFreeSpaceGB16 : 12;
     uint16_t SDTotalSpaceGB16 : 12;
     uint16_t curr_quality : 7;
-    uint16_t unused : 1;
+    uint16_t isOV5640 : 1;
 
     OSDBuffer buffer;
 };
