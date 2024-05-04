@@ -58,6 +58,8 @@ static bool s_video_frame_started = false;
 static size_t s_video_full_frame_size = 0;
 static uint8_t s_osdUpdateCounter = 0;
 
+static int s_actual_capture_fps = 0;
+
 static int s_quality = 20;
 static int s_quality_counter = 0;
 static float s_quality_framesize_K1 = 1;
@@ -1146,7 +1148,8 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
         s_max_frame_size = video_full_frame_size;
     }
     if ( video_full_frame_size == 0 ) return;
-    if (s_ground2air_config_packet.camera.fps_limit == 0) return;
+
+    int fps = s_actual_capture_fps > 10 ? s_actual_capture_fps : 10;
 
     //K1 - wifi bandwidth
     //data rate available with current wifi rate
@@ -1157,7 +1160,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     //1.2mb/sec is practical maximum limit which works
     if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
     
-    int frameSize = FECbandwidth / s_ground2air_config_packet.camera.fps_limit * 7 / 10;  //assume only  70% of total bandwidth is available in practice
+    int frameSize = FECbandwidth / fps * 7 / 10;  //assume only  70% of total bandwidth is available in practice
     if ( frameSize < 1 ) frameSize = 1;
 
     float k = frameSize * 1.0f / video_full_frame_size;
@@ -1168,7 +1171,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_quality_framesize_K1 > 1.0f ) s_quality_framesize_K1 = 1.0f;
 
     //k2 - max frame size
-    int safe_frame_size = 40*1024 * 30 / s_ground2air_config_packet.camera.fps_limit;
+    int safe_frame_size = 40*1024 * 30 / fps;
     s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
     if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
     if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
@@ -1647,11 +1650,12 @@ extern "C" void app_main()
         int dt = millis() - s_stats_last_tp;
         if (s_uart_verbose > 0 && (dt >= 1000))
         {
+            s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
             s_stats_last_tp = millis();
             LOG("WLAN S: %d, R: %d, E: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
                 s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage,
-                (int)(s_stats.video_frames)* 1000 / dt, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
+                s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                 s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                 (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
                 s_quality, s_max_frame_size); 
