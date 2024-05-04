@@ -823,10 +823,17 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::CIF: s->set_framesize(s, FRAMESIZE_CIF); break;
             case Resolution::HVGA: s->set_framesize(s, FRAMESIZE_HVGA); break;
             case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
+
+            case Resolution::VGA16:
+#ifdef SENSOR_OV5640
+                s->set_framesize(s, FRAMESIZE_P_HD); //640x360
+#else
+                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                
+#endif
+            break;
+
             case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); break;
-            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
-            case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
-            case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
 
             case Resolution::SVGA16:
 #ifdef SENSOR_OV5640
@@ -837,12 +844,18 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
                 //s->set_pll(s, false, 25, 1, false, 1, 3, true, 4); 
 
                 //waning: LOGxxx should be commented out in ov5640.c otherwise there will be stack overflow in camtask
-                s->set_framesize(s, FRAMESIZE_P_HD); //800x450
+                s->set_framesize(s, FRAMESIZE_P_HD); //800x456
 #else
                 //s->set_framesize(s, FRAMESIZE_P_HD);  800x448 13 fps
                 s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
                 
 #endif
+
+            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
+            case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
+            case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
+            case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
+
             break;
 
         }

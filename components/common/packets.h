@@ -77,11 +77,13 @@ enum class Resolution : uint8_t
     CIF,    //400x296
     HVGA,   //480x320
     VGA,    //640x480
+    VGA16,    //640x360
     SVGA,   //800x600
+    SVGA16,  //800x456
     XGA,    //1024x768
     SXGA,   //1280x1024
+    HD,   //1280x720
     UXGA,   //1600x1200
-    SVGA16  //800x456
 };
 
 struct Ground2Air_Config_Packet : Ground2Air_Header
