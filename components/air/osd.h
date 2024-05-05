@@ -20,12 +20,13 @@ private:
 
     struct OSDBuffer buffer;
     bool changed;
-    int64_t delayedUpdate;
+    int lockCounter;  //lock osd buffer after clear() untill the next draw() to prevent sending incomplete screen
 
 public:
     OSD();
     IRAM_ATTR void* getBuffer();
-    bool isChanged();
+    IRAM_ATTR bool isChanged();
+    IRAM_ATTR bool isLocked();  //do not request buffer while locked
     void clear();
     void commit();
     void writeString(unsigned int row, unsigned int col, int isExtChar, uint8_t* str, int len);

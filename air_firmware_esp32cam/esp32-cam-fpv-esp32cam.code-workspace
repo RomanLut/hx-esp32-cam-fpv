@@ -15,7 +15,11 @@
 			"string_view": "cpp",
 			"initializer_list": "cpp",
 			"utility": "cpp",
-			"*.tcc": "cpp"
+			"*.tcc": "cpp",
+			"system_error": "cpp",
+			"deque": "cpp",
+			"unordered_map": "cpp",
+			"vector": "cpp"
 		}
 	}
 }

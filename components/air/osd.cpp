@@ -1,4 +1,5 @@
 #include <cstring>
+#include <cstring>
 #include "esp_timer.h"
 
 #include "osd.h"
@@ -9,8 +10,9 @@ OSD g_osd;
 //==============================================================
 OSD::OSD()
 {
-    this->delayedUpdate = 0;
     this->clear();
+    this->changed = true;
+    this->lockCounter = 0;
 }
 
 //==============================================================
@@ -18,16 +20,15 @@ OSD::OSD()
 void OSD::clear()
 {
     memset( &this->buffer, 0, OSD_BUFFER_SIZE );
-    
-    this->delayedUpdate = esp_timer_get_time() + 1000000;
+    this->lockCounter = 30; //lock for 30 seconds max (30 fps update)
 }
 
 //==============================================================
 //==============================================================
 void OSD::commit()
 {
-    this->delayedUpdate = 0;
     this->changed = true;
+    this->lockCounter = 0;
 }
 
 
@@ -39,14 +40,16 @@ void OSD::writeString(unsigned int row, unsigned int col, int isExtChar, uint8_t
 
     uint8_t flag = isExtChar ? 0xff : 0;
     
+    uint8_t* pScreenLowRow = &(this->buffer.screenLow[row][0]);
+    uint8_t* pScreenHighRow = &(this->buffer.screenHigh[row][0]);
     while ( (len > 0) && (col < OSD_COLS) )
     {
-        this->buffer.screenLow[row][col] = *str++;
+        pScreenLowRow[col] = *str++;
 
         int col8 = col >> 3;
         int sh = col & 0x7;
         uint8_t m = 1 << sh;
-        this->buffer.screenHigh[row][col8] = (this->buffer.screenHigh[row][col8] & ~m) | (m & flag);
+        pScreenHighRow[col8] = (pScreenHighRow[col8] & ~m) | (m & flag);
 
         len--;
         col++;
@@ -64,15 +67,6 @@ void* OSD::getBuffer()
 //==============================================================
 bool OSD::isChanged()
 {
-    if ( this->delayedUpdate !=0 )
-    {
-        if ( esp_timer_get_time() >= this->delayedUpdate )
-        {
-            this->delayedUpdate = 0;
-            this->changed = true;
-        }
-    }
-
     /*
     for ( int i = 0; i < 10; i++)
     {
@@ -84,4 +78,13 @@ bool OSD::isChanged()
     bool res = this->changed;
     this->changed = false;
     return res;
+}
+
+//==============================================================
+//==============================================================
+bool OSD::isLocked()
+{
+    if ( this->lockCounter == 0 ) return false;
+    this->lockCounter--;
+    return true;
 }
