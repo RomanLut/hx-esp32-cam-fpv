@@ -392,7 +392,7 @@ void MSP::loop()
   if ( now > this->lastPing )
   {
     this->sendPing();
-    this->lastPing = now + MSP_PING_TIMEOUT_MS;
+    this->lastPing = now + MSP_PING_TIMEOUT_US;
   }
 }
 
