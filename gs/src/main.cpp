@@ -161,6 +161,8 @@ bool s_SDSlow = false;
 bool s_SDError = false;
 bool s_isOV5640 = false;
 
+bool s_test_bidi = false;
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
@@ -202,9 +204,6 @@ static void comms_thread_proc()
     };
 
     RX_Data rx_data;
-
-
-    
 
 
     while (true)
@@ -277,10 +276,18 @@ static void comms_thread_proc()
                 in_tlm_size += n;
             }
 
+            if ( s_test_bidi )
+            {
+                if ((Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(50)) 
+                {
+                    s_tlm_size = GROUND2AIR_DATA_MAX_PAYLOAD_SIZE;
+                }
+            }
+
             if ( 
                 (s_tlm_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
                 ( 
-                    ( s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp >= std::chrono::milliseconds(100)) 
+                    ( (s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(50)) 
                 )
             )
             {
@@ -795,6 +802,8 @@ int run(char* argv[])
                 //ImGui::SameLine();
 
                 ImGui::Checkbox("Stats", &s_groundstation_config.stats);
+                ImGui::SameLine();            
+                ImGui::Checkbox("Test bidi", &s_test_bidi);
 
                 if (ImGui::Button("Air Record"))
                 {

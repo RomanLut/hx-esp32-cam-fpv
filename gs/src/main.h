@@ -1,6 +1,6 @@
 #pragma once
 
-//#define USE_MAVLINK
+#define USE_MAVLINK
 
 //When enabled, it will output a 4Hz pulse (50ms ON, 200ms OFF) on GPIO 17. This can be used to blink a LED pointing inside the camera.
 //This is used with a photodiode on the screen to measure with an oscilloscope the delay between the GPIO 17 pulse and the pixels on screen
