@@ -1360,7 +1360,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
             handle_ground2air_config_packetEx2(false);
 
-            if ( g_osd.isChanged() || (s_osdUpdateCounter == 15))
+            if ( (g_osd.isChanged() || (s_osdUpdateCounter == 15)) && !g_osd.isLocked() )
             {
                 send_air2ground_osd_packet();
                 s_osdUpdateCounter = 0;

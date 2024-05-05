@@ -6,7 +6,7 @@
 
 #ifdef UART_MSP_OSD
 
-#define MSP_PING_TIMEOUT_MS           125000
+#define MSP_PING_TIMEOUT_US           125000
 
 #define JUMBO_FRAME_MIN_SIZE  255
 
@@ -16,6 +16,9 @@
 #define SYM_FROM_MWC    '>'
 #define SYM_TO_MWC      '<'
 #define SYM_UNSUPPORTED '!'
+
+#include "safe_printf.h"
+#define LOG(...) do { if (true) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 MSP g_msp;
 
@@ -43,7 +46,7 @@ void MSP::dispatchMessage(uint8_t expected_checksum)
   }
   else
   {
-    //console.log('code: ' + this.code + ' - crc failed');
+    //LOG("code: %d - crc failed\n", this->code);
     //this.packet_error++;
     //$('span.packet-error').html(this.packet_error);
   }
@@ -62,7 +65,7 @@ void MSP::decode()
   if ( rs > 1024) rs = 1024;
   //Note: if uart_read_bytes() can not read specified number of bytes, it returns error.
   int len = uart_read_bytes(UART_MSP_OSD, data,rs, 0);
-  //ESP_ERROR_CHECK(len);  REVIEW: sometimes returns error ?
+  //ESP_ERROR_CHECK(len);  sometimes returns error
   if (len <= 0) return;
   
   for (int i = 0; i < len; i++)
@@ -318,6 +321,7 @@ void MSP::processMessage()
     int row = 0;
     int col = 0;
     bool isExtChar = false;
+
     while ( len > 0 )
     {
       switch (decoderState)
