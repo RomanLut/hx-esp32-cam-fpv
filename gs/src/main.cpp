@@ -54,9 +54,12 @@ const char* resolutionName[] =
     "400x296",
     "480x320",
     "640x480",
+    "640x360",
     "800x600",
+    "800x456",
     "1024x768",
     "1280x1024",
+    "1280x720",
     "1600x1200"
 };
 
@@ -156,6 +159,7 @@ bool s_air_record = false;
 bool s_SDDetected = false;
 bool s_SDSlow = false;
 bool s_SDError = false;
+bool s_isOV5640 = false;
 
 Stats s_frame_stats;
 Stats s_frameParts_stats;
@@ -522,6 +526,7 @@ static void comms_thread_proc()
                 s_SDDetected = air2ground_osd_packet.SDDetected != 0;
                 s_SDError = air2ground_osd_packet.SDError != 0;
                 s_SDSlow = air2ground_osd_packet.SDSlow != 0;
+                s_isOV5640 = air2ground_osd_packet.isOV5640 != 0;
 
                 g_osd.update( &air2ground_osd_packet.buffer );
             }
@@ -677,7 +682,7 @@ int run(char* argv[])
             }
             {
                 int value = (int)config.camera.resolution;
-                ImGui::SliderInt("Resolution", &value, 0, 7);
+                ImGui::SliderInt("Resolution", &value, 0, 10);
                 config.camera.resolution = (Resolution)value;
             }
             {
@@ -699,6 +704,10 @@ int run(char* argv[])
                 ImGui::SameLine();            
                 ImGui::Checkbox("AEC DSP", &config.camera.aec2);
             }
+            ImGui::SameLine();            
+            ImGui::Checkbox("VFLIP", &config.camera.vflip);
+            ImGui::SameLine();            
+            ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
 
             if ( !config.camera.agc )
             {
@@ -727,17 +736,36 @@ int run(char* argv[])
             }
 
             {
+                int value = config.camera.brightness;
+                ImGui::SliderInt("Brightness", &value, -2, 2);
+                config.camera.brightness = (int8_t)value;
+            }
+
+            {
+                int value = config.camera.contrast;
+                ImGui::SliderInt("Contrast", &value, -2, 2);
+                config.camera.contrast = (int8_t)value;
+            }
+
+            {
+                int value = config.camera.saturation;
+                ImGui::SliderInt("Saturation", &value, -2, 2);
+                config.camera.saturation = (int8_t)value;
+            }
+
+            {
                 int value = config.camera.sharpness;
                 ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
                 config.camera.sharpness = (int8_t)value;
             }
-/*            
+
+            if ( s_isOV5640 )
             {
                 int value = config.camera.denoise;
                 ImGui::SliderInt("Denoise", &value, 0, 8);
                 config.camera.denoise = (int8_t)value;
             }
-*/            
+
             {
                 int ch = s_groundstation_config.wifi_channel;
                 ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
@@ -831,9 +859,10 @@ int run(char* argv[])
             }
             
             ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
-            ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB", 
+            ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
                 s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
-                s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f);
+                s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
+                s_isOV5640 ? "OV5640" : "OV2640");
         }
         ImGui::End();
 
