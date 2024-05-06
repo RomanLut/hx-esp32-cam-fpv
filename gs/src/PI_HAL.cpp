@@ -1,3 +1,5 @@
+#include "main.h"
+
 #include "PI_HAL.h"
 #include "Log.h"
 
@@ -434,7 +436,6 @@ void PI_HAL::shutdown_display()
 bool PI_HAL::update_display()
 {
     SDL_Event event;
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     while (SDL_PollEvent(&event))
     {
@@ -476,13 +477,17 @@ bool PI_HAL::update_display()
         func();
     }
 
-    ImGui::GetWindowDrawList()->AddImage((ImTextureID)g_VideoTexture,ImVec2(0,0),ImVec2(m_impl->width,m_impl->height));
+    int x1, y1, x2, y2;
+    calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
+
+    ImGui::GetWindowDrawList()->AddImage((ImTextureID)g_VideoTexture,ImVec2(x1,y1),ImVec2(x2,y2));
 
     ImGui::End();
+    
     // Rendering
     ImGui::Render();
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
-    glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+    glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     SDL_GL_SwapWindow(m_impl->window);

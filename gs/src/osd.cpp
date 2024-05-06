@@ -1,5 +1,6 @@
 #include "osd.h"
 #include "imgui.h"
+#include "main.h"
 
 
 //======================================================
@@ -20,7 +21,11 @@ void OSD::init()
 //======================================================
 void OSD::draw()
 {
-    ImVec2 screenSize = ImGui::GetIO().DisplaySize;
+     ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    int x1, y1, x2, y2;
+    calculateLetterBoxAndBorder(displaySize.x, displaySize.y, x1, y1, x2, y2);
+
+    ImVec2 screenSize(x2-x1+1,y2-y1+1);
 
     float fxs = screenSize.x / OSD_COLS;
     float fys = screenSize.y / OSD_ROWS;
@@ -28,8 +33,8 @@ void OSD::draw()
     int ixs = (int) fxs;
     int iys = (int) fys;
 
-    int mx = ((int)screenSize.x - OSD_COLS * ixs) / 2;
-    int my = ((int)screenSize.y - OSD_ROWS * iys) / 2;
+    int mx = ((int)screenSize.x - OSD_COLS * ixs) / 2 + x1;
+    int my = ((int)screenSize.y - OSD_ROWS * iys) / 2 + y1;
 
     int y = my;
     for ( int row = 0; row < OSD_ROWS; row++ )

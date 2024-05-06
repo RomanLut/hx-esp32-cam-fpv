@@ -21,6 +21,7 @@ public:
     ImVec2 get_video_resolution() const;
     bool unlock_output();
 
+    bool isAspect16x9();
 
     struct Impl;
 
@@ -31,5 +32,7 @@ private:
     bool m_exit = false;
     ImVec2 m_resolution;
     uint32_t m_texture;
+    uint32_t videoWidth;
     std::unique_ptr<Impl> m_impl;
 };
+

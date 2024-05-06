@@ -1,5 +1,20 @@
 #pragma once
 
+#include <iostream>
+#include <string>
+#include <deque>
+#include <mutex>
+#include <algorithm>
+#include <cstdio>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include "Log.h"
+
+
 #define USE_MAVLINK
 
 //When enabled, it will output a 4Hz pulse (50ms ON, 200ms OFF) on GPIO 17. This can be used to blink a LED pointing inside the camera.
@@ -37,3 +52,29 @@ do { \
 #define GLCHK(X) X
 #define SDLCHK(X) X
 #endif
+
+//===================================================================================
+//===================================================================================
+enum class ScreenAspectRatio : int
+{
+    STRETCH = 0,
+    ASPECT4X3 = 1,
+    ASPECT16x9 = 2
+};
+
+//===================================================================================
+//===================================================================================
+struct TGroundstationConfig
+{
+    int socket_fd;
+    bool record;
+    FILE * record_file=nullptr;
+    std::mutex record_mutex;
+    int wifi_channel;
+    ScreenAspectRatio screenAspectRatio;
+    bool stats;
+};
+
+extern TGroundstationConfig s_groundstation_config;
+
+extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
