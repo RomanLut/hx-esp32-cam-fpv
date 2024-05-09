@@ -98,7 +98,7 @@ unsigned int key_left[] = {KEY_LEFT | DOWN, KEY_LEFT | UP, 0};
 unsigned int key_right[] = {KEY_RIGHT | DOWN, KEY_RIGHT | UP, 0};
 unsigned int key_up[] = {KEY_UP | DOWN, KEY_UP | UP, 0};
 unsigned int key_down[] = {KEY_DOWN | DOWN, KEY_DOWN | UP, 0};
-unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENER | UP, 0};
+unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENTER | UP, 0};
 
 // Ctrl+R
 //unsigned int key_ctrl_r[] = {KEY_LEFTCTRL | DOWN, KEY_R | DOWN, KEY_R | UP, KEY_LEFTCTRL | UP, 0};
@@ -108,7 +108,7 @@ Mapping mappings[] =
   {
   {5, key_left},
   {6, key_right},
-  {13, key_top},
+  {13, key_up},
   {19, key_down},
   {26, key_enter},
   {20, key_r},
