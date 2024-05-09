@@ -1,27 +1,17 @@
+#include "main.h"
+
 #include "Comms.h"
-#include <iostream>
-#include <string>
-#include <deque>
-#include <mutex>
-#include <algorithm>
-#include <cstdio>
-#include <sys/select.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include "Clock.h"
 #include "IHAL.h"
 #include "PI_HAL.h"
 #include "imgui.h"
 #include "osd.h"
-#include "Log.h"
 #include "Video_Decoder.h" 
 #include "crc.h"
 #include "packets.h"
 #include <thread>
 #include "imgui_impl_opengl3.h"
-#include "main.h"
+#include "util.h"
 
 #include "stats.h"
 
@@ -130,15 +120,7 @@ static uint32_t s_test_latency_gpio_value = 0;
 static Clock::time_point s_test_latency_gpio_last_tp = Clock::now();
 #endif
 
-struct
-{
-    int socket_fd;
-    bool record;
-    FILE * record_file=nullptr;
-    std::mutex record_mutex;
-    int wifi_channel;
-    bool stats;
-} s_groundstation_config;
+TGroundstationConfig s_groundstation_config;
 
 mINI::INIStructure ini;
 mINI::INIFile s_iniFile("gs.ini");
@@ -169,6 +151,8 @@ Stats s_dataSize_stats;
 
 OSD g_osd;
 
+//===================================================================================
+//===================================================================================
 static void comms_thread_proc()
 {
     Clock::time_point last_stats_tp = Clock::now();
@@ -202,9 +186,6 @@ static void comms_thread_proc()
     };
 
     RX_Data rx_data;
-
-
-    
 
 
     while (true)
@@ -280,7 +261,7 @@ static void comms_thread_proc()
             if ( 
                 (s_tlm_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
                 ( 
-                    ( s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp >= std::chrono::milliseconds(100)) 
+                    ( (s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(50)) 
                 )
             )
             {
@@ -543,14 +524,54 @@ static void comms_thread_proc()
     }
 }
 
+//===================================================================================
+//===================================================================================
 static inline ImVec2 operator+(const ImVec2& lhs, const ImVec2& rhs)
 {
     return ImVec2(lhs.x + rhs.x, lhs.y + rhs.y);
 }
+
+//===================================================================================
+//===================================================================================
 static inline ImVec2 ImRotate(const ImVec2& v, float cos_a, float sin_a)
 {
     return ImVec2(v.x * cos_a - v.y * sin_a, v.x * sin_a + v.y * cos_a);
 }
+
+//===================================================================================
+//===================================================================================
+void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& x2, int& y2)
+{
+    bool videoAspect16x9 = s_decoder.isAspect16x9();
+    
+    if ( 
+        (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) || 
+        (videoAspect16x9 == (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16x9)) 
+    )
+    {
+        //no scale or stretch
+        x1 = 0; y1 = 0; x2 = width; y2 = height;
+    }
+    else if ( videoAspect16x9 )
+    {
+        //16x9 on 4x3 screen
+        //16/9   16/12
+        //screen = 12 image 9
+        int h1 = height * 9 / 12;
+        x1 = 0; y1 = (height - h1) / 2; x2 = width; y2 = y1 + h1;
+    }
+    else
+    {
+        //4x3 on 16x9 screen
+        //12/9   16/9   
+        //screen = 16 image 12
+        int w1 = width * 12 / 16;
+        x1 = (width - w1) / 2; y1 = 0; x2 = x1 + w1; y2 = height;
+    }
+}
+
+//===================================================================================
+//===================================================================================
 void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, float uvAngle)
 {
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -577,6 +598,8 @@ void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, f
     draw_list->AddImageQuad(tex_id, pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
 }
 
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -767,6 +790,17 @@ int run(char* argv[])
             }
 
             {
+                int ch = (int)s_groundstation_config.screenAspectRatio;
+                ImGui::SliderInt("Letterbox", &ch, 0, 2);
+                if ( ch != (int)s_groundstation_config.screenAspectRatio)
+                {
+                    s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
+                    ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
+                    s_iniFile.write(ini);
+                }
+            }
+
+            {
                 int ch = s_groundstation_config.wifi_channel;
                 ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                 if ( ch != s_groundstation_config.wifi_channel)
@@ -906,6 +940,8 @@ int run(char* argv[])
 }
 
 #ifdef USE_MAVLINK
+//===================================================================================
+//===================================================================================
 bool init_uart()
 {
     fdUART = open("/dev/serial0", O_RDWR);
@@ -971,6 +1007,7 @@ int main(int argc, const char* argv[])
     //config.camera.quality = 30;
 
     s_groundstation_config.stats = false;
+
     {
         std::string& temp = ini["gs"]["wifi_channel"];
         int channel = atoi(temp.c_str());
@@ -984,6 +1021,11 @@ int main(int argc, const char* argv[])
             s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
             config.wifi_channel = DEFAULT_WIFI_CHANNEL;
         }
+    }
+
+    {
+        std::string& temp = ini["gs"]["screen_aspect_ratio"];
+        s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 2 );
     }
 
     for(int i=1;i<argc;++i){
