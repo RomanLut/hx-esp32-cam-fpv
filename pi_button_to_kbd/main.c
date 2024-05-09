@@ -92,18 +92,27 @@ typedef struct _Mapping
   } Mapping;
 
 // Here are the mappings for specific keys...
-// Space bar
-unsigned int key_space[] = {KEY_SPACE | DOWN, KEY_SPACE | UP, 0};
+unsigned int key_r[] = {KEY_R | DOWN, KEY_R | UP, 0};
+unsigned int key_g[] = {KEY_G | DOWN, KEY_G | UP, 0};
+unsigned int key_left[] = {KEY_LEFT | DOWN, KEY_LEFT | UP, 0};
+unsigned int key_right[] = {KEY_RIGHT | DOWN, KEY_RIGHT | UP, 0};
+unsigned int key_up[] = {KEY_UP | DOWN, KEY_UP | UP, 0};
+unsigned int key_down[] = {KEY_DOWN | DOWN, KEY_DOWN | UP, 0};
+unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENER | UP, 0};
 
 // Ctrl+R
-unsigned int key_ctrl_r[] = {KEY_LEFTCTRL | DOWN, 
-               KEY_R | DOWN, KEY_R | UP, KEY_LEFTCTRL | UP, 0};
+//unsigned int key_ctrl_r[] = {KEY_LEFTCTRL | DOWN, KEY_R | DOWN, KEY_R | UP, KEY_LEFTCTRL | UP, 0};
 
 // ...and here is the mapping from pins to keystrokes.
 Mapping mappings[] = 
   {
-  {20, key_space},
-  {21, key_ctrl_r},
+  {5, key_left},
+  {6, key_right},
+  {13, key_top},
+  {19, key_down},
+  {26, key_enter},
+  {20, key_r},
+  {21, key_g},
   // Add more here if required...
   {0, NULL}
   };
