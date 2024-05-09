@@ -46,7 +46,7 @@
 #include "osd.h"
 #include "msp.h"
 
- static int s_stats_last_tp = -10000;
+static int s_stats_last_tp = -10000;
 
 
 /////////////////////////////////////////////////////////////////////////
@@ -81,6 +81,15 @@ static bool SDError = false;
 static uint16_t SDTotalSpaceGB16 = 0;
 static uint16_t SDFreeSpaceGB16 = 0;
 
+#ifdef UART_MAVLINK
+
+//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
+//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
+constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
+
+static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
+static int s_mavlinkOutBufferCount = 0;
+#endif
 /////////////////////////////////////////////////////////////////////////
 
 static int s_uart_verbose = 1;
@@ -109,21 +118,28 @@ void initialize_status_led()
     gpio_config(&io_conf);
     gpio_set_level(STATUS_LED_PIN, STATUS_LED_OFF);
 #endif    
+}
 
+//=============================================================================================
+//=============================================================================================
+void initialize_flash_led()
+{
 #ifdef FLASH_LED_PIN
+    gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = 1ULL << FLASH_LED_PIN;
     io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
-#endif    
+#endif
 }
 
 //=============================================================================================
 //=============================================================================================
 void initialize_rec_button()
 {
+#ifdef REC_BUTTON_PIN
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
@@ -131,18 +147,25 @@ void initialize_rec_button()
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&io_conf);
+#endif
 }
 
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR uint64_t micros()
 {
     return esp_timer_get_time();
 }
 
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR uint64_t millis()
 {
     return esp_timer_get_time() / 1000ULL;
 }
 
+//=============================================================================================
+//=============================================================================================
 void set_status_led(bool enabled)
 {
 #ifdef STATUS_LED_PIN
@@ -152,11 +175,11 @@ void set_status_led(bool enabled)
 #ifdef FLASH_LED_PIN
     if ( enabled) 
     {
-        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
+        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLUP_ONLY);    //SD D1, needed in 4-line mode only
     }
     else
     {
-        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLDOWN_ONLY);    // D1, needed in 4-line mode only
+        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLDOWN_ONLY);    //SD D1, needed in 4-line mode only
     }
 #endif    
 }
@@ -211,7 +234,11 @@ void update_status_led_file_server()
 //=============================================================================================
 bool getButtonState()
 {
+#ifdef REC_BUTTON_PIN
     return gpio_get_level((gpio_num_t)REC_BUTTON_PIN) == 0;
+#endif
+
+    return false;
 }
 
 //=============================================================================================
@@ -1003,41 +1030,60 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
     }
 }
 
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
-constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
-
 #ifdef UART_MAVLINK
 //=============================================================================================
 //=============================================================================================
 IRAM_ATTR void send_air2ground_data_packet()
 {
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
-    int ds = MAX_TELEMETRY_PAYLOAD_SIZE;
+    int avail = MAX_TELEMETRY_PAYLOAD_SIZE - s_mavlinkOutBufferCount;
+    if ( avail > 0 )
+    {
+        size_t rs;
+        ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MAVLINK, &rs) );
+        if ( rs > avail ) rs = avail;
 
-    if(!packet_data){
+        if ( rs > 0 )
+        {
+            int len = uart_read_bytes(UART_MAVLINK, &(s_mavlink_out_buffer[s_mavlinkOutBufferCount]),rs, 0);
+            if ( len < 0 )
+            {
+                LOG("MAVLNK COM error\n");
+            }
+            else
+            {
+                s_mavlinkOutBufferCount += len;
+            }
+        }
+    }
+
+    if ( s_mavlinkOutBufferCount < MAX_TELEMETRY_PAYLOAD_SIZE ) return; //todo: or agregationtime
+
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    if(!packet_data)
+    {
         LOG("no data buf!\n");
-        return ;
+        return;
     }
 
     Air2Ground_Data_Packet& packet = *(Air2Ground_Data_Packet*)packet_data;
     packet.type = Air2Ground_Header::Type::Telemetry;
-    packet.size = ds + sizeof(Air2Ground_Data_Packet);
+    packet.size = s_mavlinkOutBufferCount + sizeof(Air2Ground_Data_Packet);
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
     packet.crc = 0;
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_Data_Packet));
 
-    s_stats.out_telemetry_data += ds;
-
-    //MAX_TELEMETRY_PAYLOAD_SIZE is available in buffer. It was checked before.
-    //if uart_read_bytes() can not read specified number of bytes, it returns error.
-    //ESP_ERROR_CHECK( uart_read_bytes(UART_MAVLINK, packet_data + sizeof(Air2Ground_Data_Packet), MAX_TELEMETRY_PAYLOAD_SIZE, 0));
+    memcpy( packet_data + sizeof(Air2Ground_Data_Packet), s_mavlink_out_buffer, s_mavlinkOutBufferCount );
 
     if (!s_fec_encoder.flush_encode_packet(true))
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+    }
+    else
+    {
+        s_stats.out_telemetry_data += s_mavlinkOutBufferCount;
+        s_mavlinkOutBufferCount = 0;
     }
 }
 #endif
@@ -1369,6 +1415,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             {
                 s_osdUpdateCounter++;
             }
+
+#ifdef UART_MAVLINK
+            send_air2ground_data_packet();
+#endif            
+
         }
     }
 
@@ -1508,6 +1559,7 @@ extern "C" void app_main()
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
 
     initialize_status_led();
+    initialize_flash_led();
     initialize_rec_button();
 
 #ifdef DVR_SUPPORT
@@ -1543,7 +1595,7 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config0) );
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 256, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 256, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, TXD0_PIN, RXD0_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 #endif
 
@@ -1598,6 +1650,24 @@ extern "C" void app_main()
     }
 #endif
 
+#ifdef INIT_UART_1
+
+    uart_config_t uart_config1 = {
+        .baud_rate = UART1_BAUDRATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 122,
+        .source_clk = UART_SCLK_APB
+    };  
+    // Configure UART parameters
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, TXD1_PIN, RXD1_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+#endif
+
 //initialize UART2 after SD
 #ifdef INIT_UART_2
 
@@ -1612,26 +1682,9 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, MAX_TELEMETRY_PAYLOAD_SIZE + 1024, 256, 0, NULL, 0));
+    //ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));  //crashes esp32s3 ???
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, 256, 256, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
-#endif
-
-#ifdef INIT_UART_1
-
-    uart_config_t uart_config1 = {
-        .baud_rate = UART1_BAUDRATE,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB
-    };  
-    // Configure UART parameters
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, MAX_TELEMETRY_PAYLOAD_SIZE + 1024, 256, 0, NULL, 0));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, TXD1_PIN, RXD1_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
 #endif
 
@@ -1673,6 +1726,7 @@ extern "C" void app_main()
 
         checkButton();
 
+/*
 #ifdef UART_MAVLINK
         xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
@@ -1681,13 +1735,13 @@ extern "C" void app_main()
             while ( true )
             {
                 size_t rs = 0;
-                ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MAVLINK, &rs) );
 
-                //LOG("%d\n", rs);
+                LOG("%d\n", rs);
 
-                if (rs >= MAX_TELEMETRY_PAYLOAD_SIZE) //TODO: or rs>0 and >agregation time
+                //if (rs >= MAX_TELEMETRY_PAYLOAD_SIZE) //TODO: or rs>0 and >agregation time
+                if (rs >= 1) //TODO: or rs>0 and >agregation time
                 {
-                    send_air2ground_data_packet();
+                    if (!send_air2ground_data_packet()) break;
                 }
                 else
                 {
@@ -1698,6 +1752,7 @@ extern "C" void app_main()
 
         xSemaphoreGive(s_serial_mux);
 #endif
+*/
 
 #ifdef UART_MSP_OSD
     g_msp.loop();
