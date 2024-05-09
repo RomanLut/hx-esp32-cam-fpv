@@ -1,0 +1,7 @@
+make
+make install
+
+sudo crontab -e
+add line:
+/usr/bin/pi-button-to-kbd
+
