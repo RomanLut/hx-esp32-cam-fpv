@@ -131,6 +131,7 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
   * Performance options -> GPU Memory: 128
   * Advanced options -> Compositor -> Disable
+  * [Raspberry Pi Zero 2W] Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS
   
 Save and reboot.
 
