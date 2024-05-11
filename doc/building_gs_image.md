@@ -9,8 +9,7 @@ Drivers for AR9271 wifi card are included in OS image and works without addition
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/
 
-* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in serices.
-https://www.raspberrypi.com/software/
+* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
 
 * Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool)
 
@@ -18,11 +17,11 @@ https://www.raspberrypi.com/software/
 
 * Update to latest kernel and reboot:
 
-```sudo apt-get update```
+  ```sudo apt-get update```
 
-```sudo apt-get upgrade -y```
+  ```sudo apt-get upgrade -y```
 
-```sudo reboot```
+  ```sudo reboot```
 
 * Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
@@ -30,69 +29,79 @@ https://www.raspberrypi.com/software/
   * Display Options -> Resolution -> 1280x720x60Hz
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
   * Performance options -> GPU Memory: 128
-  * 
+  
 Save and reboot.
 
-* Remove black border from screen: ```sudo nano /boot/config.txt``` Uncomment ```#disable_overscan=1```. Exit and save (Ctrl+X).
+* Remove black border from screen:
+
+  ```sudo nano /boot/config.txt```
+
+  Uncomment:
+
+  ```#disable_overscan=1```
+
+  Exit and save (Ctrl+X).
 
 * Install required packages: 
 
-```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
+  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
 
 * Install and compile SDL library. We have to build library to run application without desktop.
  
-```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
+  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
-```tar zxf SDL2-2.0.18.tar.gz```
+  ```tar zxf SDL2-2.0.18.tar.gz```
 
-```rm SDL2-2.0.18.tar.gz```
+  ```rm SDL2-2.0.18.tar.gz```
 
-```cd SDL2-2.0.18```
+  ```cd SDL2-2.0.18```
 
-```./autogen.sh```
+  ```./autogen.sh```
 
-```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
+  ```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
 
-```make -j4```
+  ```make -j4```
 
-```sudo make install```
+  ```sudo make install```
 
 * Install rtl8812au driver:
 
-```cd /home/pi/```
+  ```cd /home/pi/```
 
-```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone https://github.com/svpcom/rtl8812au/```
 
-```cd rtl8812au```
+  ```cd rtl8812au```
 
-```sudo ./dkms-install.sh```
+  ```sudo ./dkms-install.sh```
 
 * Build ground station software:
 
-```cd /home/pi/```
+  ```cd /home/pi/```
 
-```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
-```cd esp32-cam-fpv```
+  ```cd esp32-cam-fpv```
 
-```cd gs```
+  ```cd gs```
 
-```make -j4```
+  ```make -j4```
 
 * Check that everything works:
 
-```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
+  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
 
-(exit using SPACE)
+  (exit using SPACE)
   
 
 * Add ground station software to autolaunch:
 
-```sudo nano /etc/rc.local```
+  ```sudo nano /etc/rc.local```
 
-Add a line before before ```exit 0```, exit and save (Ctrl+X):
+  Add a line before before ```exit 0```
 
-```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
+  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
+
+  Exit and save (Ctrl+X):
 
 * Reboot, check if everything works:
 
@@ -107,17 +116,17 @@ Development image is based on desktop environment.
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 
-* Write to SD card using Raspberry PI Imager. In tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet.
-https://www.raspberrypi.com/software/
+* Write to SD card using Raspberry PI Imager https://www.raspberrypi.com/software/
 
-* Boot image. Default credentials: ```user: pi``` ```password: raspberry```
+* Boot image. 
 
 * Update to latest kernel and reboot:
-```sudo apt-get update```
 
-```sudo apt-get upgrade -y```
+  ```sudo apt-get update```
 
-```sudo reboot```
+  ```sudo apt-get upgrade -y```
+
+  ```sudo reboot```
 
 * Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
@@ -125,64 +134,69 @@ https://www.raspberrypi.com/software/
   * Display Options -> Resolution -> 1280x720x60Hz
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
   * Performance options -> GPU Memory: 128
-  * 
+  
 Save and reboot.
 
-* Remove black border from screen: ```sudo nano /boot/config.txt``` Uncomment ```#disable_overscan=1```. Exit and save (Ctrl+X).
+* Remove black border from screen:
+
+  ```sudo nano /boot/config.txt```
+
+  Uncomment:
+
+  ```#disable_overscan=1```
+
+  Exit and save (Ctrl+X).
 
 * Install required packages: 
 
-```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng mc```
+  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
 
-* Install and compile SDL library. We have to build library to run application without desktop.
+* Install and compile SDL library.
  
-```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
+  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
-```tar zxf SDL2-2.0.18.tar.gz```
+  ```tar zxf SDL2-2.0.18.tar.gz```
 
-```rm SDL2-2.0.18.tar.gz```
+  ```rm SDL2-2.0.18.tar.gz```
 
-```cd SDL2-2.0.18```
+  ```cd SDL2-2.0.18```
 
-```./autogen.sh```
+  ```./autogen.sh```
 
-```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
+  ```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
 
-```make -j4```
+  ```make -j4```
 
-```sudo make install```
+  ```sudo make install```
 
 * Install rtl8812au driver:
 
-```cd /home/pi/```
+  ```cd /home/pi/```
 
-```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone https://github.com/svpcom/rtl8812au/```
 
-```cd rtl8812au```
+  ```cd rtl8812au```
 
-```sudo ./dkms-install.sh```
+  ```sudo ./dkms-install.sh```
 
 * Build ground station software:
 
-```cd /home/pi/```
+  ```cd /home/pi/```
 
-```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
-```cd esp32-cam-fpv```
+  ```cd esp32-cam-fpv```
 
-```cd gs```
+  ```cd gs```
 
-```make -j4```
+  ```make -j4```
 
-* Add ground station software to autolaunch:
+* Check that everything works:
 
-```sudo nano /etc/rc.local```
+  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
 
-Add a line before before ```exit 0```:
-
-```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
-
-
+  (exit using SPACE)
+  
 
 # References
 
@@ -190,8 +204,9 @@ Add a line before before ```exit 0```:
 
 * Build esp32-cam-fpv origical docs: https://github.com/jeanlemotan/esp32-cam-fpv/blob/main/README.md
 
+* AddX11 app to autostart: https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup/method-2-autostart
 
-
+* Visual Studio Code Remote development https://www.youtube.com/watch?v=Lt65Z30JcrI
 
 
 
