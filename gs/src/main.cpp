@@ -993,10 +993,10 @@ int main(int argc, const char* argv[])
     s_iniFile.read(ini);
 
     Comms::RX_Descriptor rx_descriptor;
-    rx_descriptor.interfaces = {"wlan0mon"};
+    rx_descriptor.interfaces = {"wlan1mon"};
 
     Comms::TX_Descriptor tx_descriptor;
-    tx_descriptor.interface = "wlan0mon";
+    tx_descriptor.interface = "wlan1mon";
 
     s_hal.reset(new PI_HAL());
 
