@@ -198,7 +198,7 @@ Save and reboot.
 
 * Visual Studio Code Remote development https://www.youtube.com/watch?v=Lt65Z30JcrI
 
-
+* Pair bluetooth device from command prompt: https://bluedot.readthedocs.io/en/latest/pairpipi.html#using-the-command-line
 
 
 
