@@ -4,6 +4,8 @@ This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in
 
 Image can be prepared on Raspberry PI 4B and used on Raspberry PI Zero 2W, except rtl8812au driver installation. Driver, compiled on RPI2W does not work on PRI4 and vice versa. You have to repeat driver installation steps. Once compiled on both boards, image works on both.
 
+On Raspberry Pi Zero 2W, you have to use ```make -j1``` instead of ```make -j4``` everywhere due to low memory.
+
 Drivers for AR9271 wifi card are included in OS image and works without additional setup.
 
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
@@ -164,6 +166,8 @@ Save and reboot.
   ```git clone https://github.com/svpcom/rtl8812au/```
 
   ```cd rtl8812au```
+
+  [Raspberry Pi Zero 2W] ```nano dkms.conf```  - Change line: ```MAKE="'make' -j$PROCS_NUM KVER=${kernelver} KSRC=/lib/modules/${kernelver}/build"``` -> ```MAKE="'make' -j1 KSRC=/lib/modules/${kernelver}/build"``` to decrease memory usage. Save save and exit (Ctrl+X).
 
   ```sudo ./dkms-install.sh```
 
