@@ -118,34 +118,21 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 
 * Write to SD card using Raspberry PI Imager https://www.raspberrypi.com/software/
 
-* Boot image. 
+* Boot image. Finish confgiuration wizard: change password, connect to wifi, check "Screen has black border" checkbox, **make sure to update software**. Reboot.
 
-* Update to latest kernel and reboot:
+* Open terminal. Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
-  ```sudo apt-get update```
+* Disable screen blanking: Preferences -> Raspberry Pi Configuration -> Display -> Screen blanking: Disabled
 
-  ```sudo apt-get upgrade -y```
-
-  ```sudo reboot```
-
-* Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
+* Change screen resolution: Preferences -> Screen configuration -> 1280x720
 
 * start ```sudo raspi-config``` and change the following options:
   * Display Options -> Resolution -> 1280x720x60Hz
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
   * Performance options -> GPU Memory: 128
+  * Advanced options -> Compositor -> Disable
   
 Save and reboot.
-
-* Remove black border from screen:
-
-  ```sudo nano /boot/config.txt```
-
-  Uncomment:
-
-  ```#disable_overscan=1```
-
-  Exit and save (Ctrl+X).
 
 * Install required packages: 
 
