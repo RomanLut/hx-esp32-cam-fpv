@@ -17,6 +17,8 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 
 * Either use connected usb keyboard or ssh connect using putty. Find out ip address: ```ifconfig```
 
+  If still not connected to internet, run ''sudo raspi-config''' and setup wifi network: System Options -> Wireless LAN.
+
 * Update to latest kernel and reboot:
 
   ```sudo apt-get update```
