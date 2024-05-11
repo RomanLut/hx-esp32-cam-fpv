@@ -71,6 +71,8 @@ Save and reboot.
 
   ```cd /home/pi/```
 
+  ```git config --global http.postBuffer 128000000``` (For Raspberry PI Zero 2W)
+  
   ```git clone https://github.com/svpcom/rtl8812au/```
 
   ```cd rtl8812au```
@@ -114,7 +116,7 @@ Save and reboot.
 
 # Building ground station development image
 
-Development image is based on desktop environment. 
+Development image is based on desktop environment. Raspberry Pi 4B 2-4GB is recommented for development. 
 
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
@@ -164,10 +166,10 @@ Save and reboot.
   ```cd /home/pi/```
 
   ```git clone https://github.com/svpcom/rtl8812au/```
+ 
+  ```git config --global http.postBuffer 128000000``` (For Raspberry PI Zero 2W)
 
   ```cd rtl8812au```
-
-  [Raspberry Pi Zero 2W] ```nano dkms.conf```  - Change line: ```MAKE="'make' -j$PROCS_NUM KVER=${kernelver} KSRC=/lib/modules/${kernelver}/build"``` -> ```MAKE="'make' -j1 KSRC=/lib/modules/${kernelver}/build"``` to decrease memory usage. Save save and exit (Ctrl+X).
 
   ```sudo ./dkms-install.sh```
 
