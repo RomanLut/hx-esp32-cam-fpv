@@ -4,7 +4,7 @@ This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in
 
 Image can be prepared on Raspberry PI 4B and used on Raspberry PI Zero 2W, except rtl8812au driver installation. Driver, compiled on RPI2W does not work on PRI4 and vice versa. You have to repeat driver installation steps. Once compiled on both boards, image works on both.
 
-*On Raspberry Pi Zero 2W, due to low memory, set GPU Memory to 16 before building anything. You may need to use ```make -j1``` instead of ```make -j4```. Set GPU Memory to 128 after last step.*
+*On Raspberry Pi Zero 2W, due to low memory, you may want to set GPU Memory to 16 before building anything. You may need to use ```make -j1``` instead of ```make -j4```. Set GPU Memory to 64 after last step.*
 
 Drivers for AR9271 wifi card are included in OS image and works without additional setup.
 
@@ -30,7 +30,6 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 * start ```sudo raspi-config``` and change the following options:
   * Display Options -> Resolution -> 1280x720x60Hz
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
-  * Performance options -> GPU Memory: 128
   
 Save and reboot.
 
@@ -131,7 +130,6 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 * start ```sudo raspi-config``` and change the following options:
   * Display Options -> Resolution -> 1280x720x60Hz
   * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
-  * Performance options -> GPU Memory: 128
   * Advanced options -> Compositor -> Disable
   * [Raspberry Pi Zero 2W] Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS
   
