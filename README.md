@@ -56,15 +56,15 @@ https://user-images.githubusercontent.com/10252034/116135308-43c08c00-a6d1-11eb-
 
 Do not expect a lot from this system. It all starts with a cheap camera (ov2640) comparable to 2005 smartphone cameras. With such camera you have to accept bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
 
-Secondly, esp32 is not capable of video encoding, which means that video stream is sent as sequence of JPEG images, wasting bitrate which could be used to repsesent more details otherwise. 
+Secondly, esp32 is not capable of video encoding, which means that video stream is sent as sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
 
 Image looks Ok on 7” screen, but not more.
 
 Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, esp32-cam-fpv competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It loose even against good analog system. Compared to analog AIO camera, esp32-cam-fpv offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
 
-esp32-fpv definitely looses againg all commecially available digital FPV system.
+**esp32-cam-fpv** definitely looses againg all commecially available digital FPV system.
 
-The only questionable benefit over other open-source systems (OpenHD/Ruby/OpenIPC) is extremely low air unit price.
+The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense), low power consumption (less then 300mA at 5V).
 
 TODO: s3sense + ov5640 performance?
 
@@ -72,18 +72,52 @@ TODO: s3sense + ov5640 performance?
 
 ## Air Unit
 
+[/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
+
 **esp32cam**
+
+esp32cam does not have enogh free pins. Two configurations are available:
+
+Mavlink + REC button
+
+![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
+
+Mavlink + Displayport MSP OSD
+
+![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
+
+Replace flash LED with small indication LED (Blue LED + 100Ohm resistor):
+
+![alt text](doc/images/esp32cam_flash_led.png "esp32cam_flash_led.png")
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external 2dbi dipole usage. 
 
 **es32s3sense**
 
+![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
+
 Module comes with moderate flexible antenna which should be replaced with 2dbi dipole to maximize range.
 
+## Current consumption
+
+Both board consume less then 300mA.
 
 **TODO**
 
 ## Ground Station
+
+[/doc/building_gs_image.md](/doc/building_gs_image.md)
+
+![alt text](doc/images/gs.jpg "gs")
+
+![alt text](doc/images/gs_glasses.jpg "gs_glasses")
+
+![alt text](doc/images/gs_drawing1.jpg "gs_drawing1")
+
+![alt text](doc/images/gs_drawing2.jpg "gs_drawing2")
+
+![alt text](doc/images/gs_pinout.png "gs_pinout")
+
 
 **TODO**
 
@@ -113,9 +147,6 @@ ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is 
 
 Both esp32cam and esp32s3sense come this narrow lenses which definitely should be replaced with wide angle 120 lenses to be used on UAV.
 
-
-**TODO**
-
 # Wifi channel
 
 Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with AR9271 and esp32s3sense stock antenna.
@@ -127,6 +158,10 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 ## Adaptive quality
 
 **todo**
+
+## Range 
+
+1km at 24MBit, 600m at 36MBit.
 
 ## Latency
 

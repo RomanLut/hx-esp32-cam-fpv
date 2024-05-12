@@ -6,7 +6,7 @@ Image can be prepared on Raspberry PI 4B and used on Raspberry PI Zero 2W, excep
 
 *On Raspberry Pi Zero 2W, due to low memory, you may want to set GPU Memory to 16 before building anything. You may need to use ```make -j1``` instead of ```make -j4```. Set GPU Memory to 64 after last step.*
 
-Drivers for AR9271 wifi card are included in OS image and works without additional setup.
+Driver for AR9271 wifi card are included in the OS image and works without additional setup.
 
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/
@@ -17,9 +17,9 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 
 * Either use connected usb keyboard or ssh connect using putty. Find out ip address: ```ifconfig```
 
-  If still not connected to internet, run ''sudo raspi-config''' and setup wifi network: System Options -> Wireless LAN.
+  If still not connected to internet, run ''sudo raspi-config''' and setup wifi network: **System Options -> Wireless LAN.**
 
-* Update to latest kernel and reboot:
+* Update to the latest kernel and reboot:
 
   ```sudo apt-get update```
 
@@ -73,7 +73,7 @@ Save and reboot.
 
   ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
   
-  ```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
 
   ```cd rtl8812au```
 
@@ -211,7 +211,7 @@ Save and reboot.
 
   ```cd /home/pi/```
 
-  ```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
  
   ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
 
