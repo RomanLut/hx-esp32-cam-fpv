@@ -1,4 +1,4 @@
-# Building ground station image
+# Building groundstation image
 
 This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in-beetween models should also work. Raspberry Pi Zero 0W and 1 are not supported (too low performance).
 
