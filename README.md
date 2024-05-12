@@ -7,7 +7,7 @@ Open source digital FPV system based on esp32cam.
 - 640x480(4:3), 640x360(16:9), 800x600(4:3), 800x456(16:9) 30FPS 
 - 1280x1024(4:3), 1280:720(16:9) 13fps on ov2640, 30fps on ov5640 with esp32s3
 - up to 1km at 24mBit (line of sight)
-- latency 20-50ms
+- latency 10-30ms
 - bidirectional Mavlink stream for RC and telemetry ~11kb/sec
 - Displayport MSP OSD
 - on-board and groundstation video recording
@@ -127,6 +127,12 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 ## Adaptive quality
 
 **todo**
+
+##Latency
+
+Latency is in range 10-30ms, for 640...1280 resolutions with both cameras (1280 30fps for ov5640). From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission. 
+
+
 
 
 # Unsuccessfull attempts
