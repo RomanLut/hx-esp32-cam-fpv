@@ -88,13 +88,15 @@ Mavlink + Displayport MSP OSD
 
 Replace flash LED with small indication LED (Blue LED + 100Ohm resistor):
 
-![alt text](doc/images/esp32cam_flash_led.png "esp32cam_flash_led.png")
+![alt text](doc/images/esp32cam_flash_led.jpg "esp32cam_flash_led.png")
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external 2dbi dipole usage. 
 
 **es32s3sense**
 
 ![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
+
+![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell")
 
 Module comes with moderate flexible antenna which should be replaced with 2dbi dipole to maximize range.
 
