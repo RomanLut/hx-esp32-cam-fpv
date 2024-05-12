@@ -28,11 +28,11 @@ Open source digital FPV system based on esp32cam.
 The goal of this fork is to develop fpv system for small inav-based plane.
 
 # Theory
-ESP32 is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (ESP32) or 20MHz (esp32s3) and passed directly to the wifi module and written to the SD card if the DVR is enabled.
+ESP32 is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (ESP32) or 20MHz (ESP32S3) and passed directly to the wifi and written to the SD card (if the DVR is enabled).
 
 The **ESP camera** component has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
 
-The wifi data is send using packet injection which is possible on ESP32 platform. Data is sent with error correction encoding (FEC) wich allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissiona are done by air unit.
+The wifi data is send using packet injection which is possible on ESP32 platform. Data is sent with error correction encoding (FEC) wich allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
 
 The air unit can also record the video straight from the camera to a sd card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
 
@@ -164,6 +164,10 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 ## Wifi rate
 
 ** TODO**
+
+## DVR
+
+ **todo**
 
 ## Adaptive quality
 
