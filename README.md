@@ -98,6 +98,14 @@ With pcb antenna, 50m transmission distance can barely be achieved. A jumper has
 
 ![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell")
 
+![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
+
+![alt text](doc/images/esp32s3sense_shell2.jpg "esp32s3sense_shell2")
+
+![alt text](doc/images/esp32s3sense_shell3.jpg "esp32s3sense_shell3")
+
+![alt text](doc/images/esp32s3sense_shell_plane.jpg "esp32s3sense_plane")
+
 Module comes with moderate flexible antenna which should be replaced with 2dbi dipole to maximize range.
 
 ## Current consumption
@@ -177,6 +185,8 @@ Raspberry Pi Zero 2W GS with 60Hz TV:
 
 ## Attempt to use internal Rapsberry Pi Wifi card in monitor mode
 
+![alt text](doc/images/gs_internal_wifi.jpg "gs internal wifi")
+
 NEXMON drivers offer monitor and packet injection for internal wifi card of Raspberry Pi. Original idea was to build exremely cheap ground station based on Raspberry Pi with inernal antena replaced by dipople.
 
 Unfortunatelly this attempts was unsuccessfull.
@@ -193,6 +203,8 @@ Lesons learned:
 
 
 ## Using sensors with long flex cables
+
+![alt text](doc/images/long_flex_cable.jpg "long flex cable")
 
 esp32cam can not rotate camera image and thus should be mounted vertically (vertical image flip is possible). Such form factor is not the best for small plane.
 
