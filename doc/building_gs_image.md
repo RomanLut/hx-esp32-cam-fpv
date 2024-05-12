@@ -71,7 +71,7 @@ Save and reboot.
 
   ```cd /home/pi/```
 
-  ```git config --global http.postBuffer 200000000``` (For Raspberry PI Zero 2W)
+  ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
   
   ```git clone https://github.com/svpcom/rtl8812au/```
 
@@ -167,7 +167,7 @@ Save and reboot.
 
   ```git clone https://github.com/svpcom/rtl8812au/```
  
-  ```git config --global http.postBuffer 200000000``` (For Raspberry PI Zero 2W)
+  ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
 
   ```cd rtl8812au```
 
