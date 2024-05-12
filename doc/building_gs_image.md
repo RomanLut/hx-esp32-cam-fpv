@@ -96,7 +96,14 @@ Save and reboot.
   ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
 
   (exit using SPACE)
-  
+
+* [Optional] Currently debug user interface is available only; a mouse is required if you want to change any settings. This means you have to use USB hub on Raspberry Pi Zero 2W. Alternativelly it is possible to pair bluetooth mouse:
+  * ```bluetoothctl```
+  * ```scan on```
+  * put mouse into pairing mode, find out address
+  * ```pair 12:23:34:45:56:67```
+  * ```quit```
+  * ```sudo reboot```
 
 * Add ground station software to autolaunch:
 
