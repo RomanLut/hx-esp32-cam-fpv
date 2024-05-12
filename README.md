@@ -99,6 +99,8 @@ The sweet spot settings for this camera seems to be 800x600 resolution with jpeg
 
 Another option is 640x480 and 640x356, which can have better JPEG compression level set per frame, but lucks pixel details and thus have not benefit over 800x600.
 
+Any resolution lower then 640x356, despite high frame rate (60fps and 320x240), is useless in my opinion due to luck of details.
+
 ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
 
 **TODO: check ov5640 1280x720 performance**
