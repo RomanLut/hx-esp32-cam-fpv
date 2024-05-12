@@ -3,8 +3,7 @@ make install
 
 sudo crontab -e
 add line:
-/usr/bin/pi-button-to-kbd
-
+@reboot /usr/bin/pi-button-to-kbd
 
 add to config.txt on boot partition:
 gpio=5,6,13,19,20,21,26=pu
