@@ -13,3 +13,9 @@
 * Connect esp32cam to USB
 
 * Select *PlatformIO: Upload* on bottom toolbar.
+
+# Over the Air update
+
+esp32cam - hold REC button to enter OTA mode
+
+**todo**
