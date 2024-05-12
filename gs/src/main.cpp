@@ -708,6 +708,15 @@ int run(char* argv[])
                 ImGui::SliderInt("Resolution", &value, 0, 10);
                 config.camera.resolution = (Resolution)value;
             }
+            if ( ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
+            {
+                config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
+            }
+            if ( ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
+            {
+                config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
+            }
+
             {
                 int value = (int)config.camera.fps_limit;
                 ImGui::SliderInt("FPS Limit", &value, 0, 100);
@@ -782,13 +791,14 @@ int run(char* argv[])
                 config.camera.sharpness = (int8_t)value;
             }
 
+/* does nothing ?
             if ( s_isOV5640 )
             {
                 int value = config.camera.denoise;
                 ImGui::SliderInt("Denoise", &value, 0, 8);
                 config.camera.denoise = (int8_t)value;
             }
-
+*/
             {
                 int ch = (int)s_groundstation_config.screenAspectRatio;
                 ImGui::SliderInt("Letterbox", &ch, 0, 2);
@@ -830,13 +840,13 @@ int run(char* argv[])
 
                 ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
-                if (ImGui::Button("Air Record"))
+                if (ImGui::Button("Air Record") || ImGui::IsKeyPressed(ImGuiKey_R))
                 {
                     config.air_record_btn++;
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Button("GS Record"))
+                if (ImGui::Button("GS Record") || ImGui::IsKeyPressed(ImGuiKey_G))
                 {
                     s_groundstation_config.record = !s_groundstation_config.record;
 
@@ -882,7 +892,7 @@ int run(char* argv[])
             } 
 
             ImGui::SameLine();
-            if (ImGui::Button("Exit"))
+            if (ImGui::Button("Exit") || ImGui::IsKeyPressed(ImGuiKey_Space) || ImGui::IsKeyPressed(ImGuiKey_Escape))
             {
                 if(s_groundstation_config.record){
                     std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
@@ -932,8 +942,6 @@ int run(char* argv[])
         Clock::duration dt = now - last_tp;
         last_tp = now;
         io.DeltaTime = std::chrono::duration_cast<std::chrono::duration<float> >(dt).count();
-
-         if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Space))) break;
     }
 
     return 0;
