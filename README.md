@@ -60,7 +60,7 @@ Secondly, esp32 is not capable of video encoding, which means that video stream 
 
 Image looks Ok on 7” screen, but not more.
 
-Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, esp32-cam-fpv competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It loose even against good analog system. Compared to analog AIO camera, esp32-cam-fpv offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, jerky framerate.
+Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, esp32-cam-fpv competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It loose even against good analog system. Compared to analog AIO camera, esp32-cam-fpv offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
 
 esp32-fpv definitely looses againg all commecially available digital FPV system.
 
@@ -97,7 +97,11 @@ Esp32cam and esp32s3sence boards come with the OV2640 camera by default.
 
 The sweet spot settings for this camera seems to be 800x600 resolution with jpeg quality varying in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 mode 800x456 is implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
-Another option is 640x480 and 640x356, which can have better 
+Another option is 640x480 and 640x356, which can have better JPEG compression level set per frame, but lucks pixel details and thus have not benefit over 800x600.
+
+ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
+
+**TODO: check ov5640 1280x720 performance**
 
 ## Lenses 
 
