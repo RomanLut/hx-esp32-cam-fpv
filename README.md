@@ -91,9 +91,9 @@ Module comes with moderate flexible antenna which should be replaced with 2dbi d
 
 ## Resolution
 
-**OV2640 camera**
+**OV2640**
 
-Esp32cam and esp32s3sence boards come with the OV2640 camera by default. 
+**esp32cam** and **esp32s3sence** boards come with the **OV2640** sensor by default. 
 
 The sweet spot settings for this camera seems to be 800x600 resolution with jpeg quality varying in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 mode 800x456 is implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
@@ -103,9 +103,16 @@ Any resolution lower then 640x356, despite high frame rate (60fps and 320x240), 
 
 ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
 
+**OV5640**
+
+**OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by esp32s3 only thans to 2x maximum DMA speed).
+
 **TODO: check ov5640 1280x720 performance**
 
 ## Lenses 
+
+Both esp32cam and esp32s3sense come this narrow lenses which definitely should be replaced with wide angle 120 lenses to be used on UAV.
+
 
 **TODO**
 
@@ -121,6 +128,35 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 **todo**
 
+
+# Unsuccessfull attempts
+
+## Attempt to use internal Rapsberry Pi Wifi card in monitor mode
+
+NEXMON drivers offer monitor and packet injection for internal wifi card of Raspberry Pi. Original idea was to build exremely cheap ground station based on Raspberry Pi with inernal antena replaced by dipople.
+
+Unfortunatelly this attempts was unsuccessfull.
+
+NEXMON drivers do support monitor mode and are used in Kali Linux builds for Rapsberry Pi. Unfortunatelly, to many packets are missed while listening for high-bandwidth stream. Packet injection barely works; few packets can be send which  might be enough for wifi death, but not for sending data stream. Attapts to use packet injection crash the driver. Attempts to send packet leads to lossing 70% of incoming packets.
+
+Even with external 2dbi dipole soldered properly, sensitivity is very bad. RSSI shows values 20db less compared to rtl8812au card. In experimental single directional fpv system I was able to achieve ~20m transmission distance.
+
+Additionally, the re is a bug in driver: if wifi hotspot which was associated last time is not available on boot, driver crashes on boot and wifi adaper is not available (bas surpise on the field!).
+
+Lesons learned: 
+- a wifi card with a good sensitivity and proper drivers with monitor mode and packet injection support is a key factor for successfull open source digital FPV system. So far only rtl8812au matches this creiteria and is recommended choise.
+- you should aim for the best reception possible on ground; gs should not be cheap. Air unit should be cheap - it can crash of fly away; GS is not.
+
+
+## Using sensors with long flex cables
+
+esp32cam can not rotate camera image and thus should be mounted vertically (vertical image flip is possible). Such form factor is not the best for small plane.
+
+Sensors can be bought with flex cables of various length.
+
+Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Flex cable wires cary high frequency (10Mhz) digital signals which produce a lot of RF noise. GPS sensor mounted in less then 7cm from esp32cam was jammed completely. Micro plane does not have a lot of space to separate GPS sensor from esp32cam. Even moved to the end of the wing (15cm) it still barely found any satellites. esp32cam and flex cable shielding improved situation a little bit, but not enough to trust GPS sensor and try a range testing. 
+
+esp32cam with long flex cable has been replaced with compact esp32s3sense board.
 
 
 # FAQ
