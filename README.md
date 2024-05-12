@@ -110,8 +110,6 @@ Both board consume less then 300mA.
 
 [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
-![alt text](doc/images/gs.jpg "gs")
-
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
 ![alt text](doc/images/gs_drawing1.jpg "gs_drawing1")
@@ -119,6 +117,8 @@ Both board consume less then 300mA.
 ![alt text](doc/images/gs_drawing2.jpg "gs_drawing2")
 
 ![alt text](doc/images/gs_pinout.png "gs_pinout")
+
+![alt text](doc/images/gs.jpg "gs")
 
 
 **TODO**
