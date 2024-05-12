@@ -10,7 +10,7 @@ Open source digital FPV system based on esp32cam.
 - latency 20-50ms
 - bidirectional Mavlink stream for RC and telemetry ~11kb/sec
 - Displayport MSP OSD
-- on-board and grounstation video recording
+- on-board and groundstation video recording
 
 **Air units variants:**
 - esp32cam board with ov2640 camera
