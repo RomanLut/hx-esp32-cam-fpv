@@ -8,7 +8,7 @@ Open source digital FPV system based on esp32cam.
 - 1280x1024(4:3), 1280:720(16:9) 13fps on ov2640, 30fps on ov5640 with esp32s3
 - up to 1km at 24mBit (line of sight)
 - latency 10-30ms
-- bidirectional Mavlink stream for RC and telemetry ~11kb/sec
+- bidirectional Mavlink stream for RC and telemetry 115200KBit
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
@@ -38,7 +38,7 @@ The air unit can also record the video straight from the camera to a sd card. Th
 
 There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of sd cards. The quality of air unit recording is the same as on GS (no recompression is done).
 
-the size of JPEG images vary a lot dependiong on number of details in view. Adaptive quality adjustment is implemented. Quality is calulate to achieve frame sizes which fit available bandwidth.
+The size of JPEG images vary a lot dependiong on number of details in view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
 
 The receiver is a Raspberry PI Zero 2W ... Pi4  with Realtek 8812au or AR9271 adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
 
@@ -46,7 +46,7 @@ The JPEG decoding is done with turbojpeg to lower latency and - based on the res
 
 It's then uploaded to texture and shown on screen.
 
-The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional serial port for telemetry (FEC encoded).
+The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional stream for telemetry (FEC encoded).
 
 Here is a video shot at 30 FPS at 800x600 (video converted from the source mjpeg):
 
@@ -64,7 +64,7 @@ Let’s say honest: we expect at least HD resolution from a digital fpv system. 
 
 **esp32-cam-fpv** definitely looses againg all commecially available digital FPV system.
 
-The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense), low power consumption (less then 300mA at 5V).
+The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense), low latency, low power consumption (less then 300mA at 5V).
 
 TODO: s3sense + ov5640 performance?
 
@@ -166,6 +166,8 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 ** TODO**
 
 ## DVR
+
+Class 10 SD Card is required. Maimum size is 32MB. Should be formatted to FAT32.
 
  **todo**
 
