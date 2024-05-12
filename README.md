@@ -72,18 +72,52 @@ TODO: s3sense + ov5640 performance?
 
 ## Air Unit
 
+[/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
+
 **esp32cam**
+
+esp32cam does not have enogh free pins. Two configurations are available:
+
+Mavlink + REC button
+
+![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
+
+Mavlink + Displayport MSP OSD
+
+![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
+
+Replace flash LED with small indication LED (Blue LED + 100Ohm resistor):
+
+![alt text](doc/images/esp32cam_flash_led.png "esp32cam_flash_led.png")
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external 2dbi dipole usage. 
 
 **es32s3sense**
 
+![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
+
 Module comes with moderate flexible antenna which should be replaced with 2dbi dipole to maximize range.
 
+## Current consumption
+
+Both board consume less then 300mA.
 
 **TODO**
 
 ## Ground Station
+
+[/doc/building_gs_image.md](/doc/building_gs_image.md)
+
+![alt text](doc/images/gs.jpg "gs")
+
+![alt text](doc/images/gs_glasses.jpg "gs_glasses")
+
+![alt text](doc/images/gs_drawing1.jpg "gs_drawing1")
+
+![alt text](doc/images/gs_drawing2.jpg "gs_drawing2")
+
+![alt text](doc/images/gs_pinout.png "gs_pinout")
+
 
 **TODO**
 
