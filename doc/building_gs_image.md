@@ -13,7 +13,7 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 
 * Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
 
-* Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool)
+* Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool). Default credentials for prebilt image: ```pi``` ```1234```.
 
 * Either use connected usb keyboard or ssh connect using putty. Find out ip address: ```ifconfig```
 
@@ -145,6 +145,19 @@ Save and reboot.
 
   ```sudo reboot```
 
+# Updating groundstation image
+
+Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to ap using internal wifi card.
+
+To update groundstation software, pull updates from '''release''' branch:
+
+  ```cd esp32-cam-fpv```
+  
+  ```cd gs```
+  
+  ```git pull```
+  
+  ```make```
 
 
 # Building ground station development image
