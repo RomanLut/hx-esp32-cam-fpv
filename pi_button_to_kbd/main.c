@@ -59,7 +59,7 @@
 //   bounce, but short enough to allow reasonably rapid keypresses. Some
 //   trial-and-error might be required, to find an optimal value for a 
 //   particular type of switch.
-#define BOUNCE_MSEC 300 
+#define BOUNCE_MSEC 100 
 
 // MAX_PINS is the largest number of GPIO pins we will monitor. Using a fixed
 //   value makes the memory management less messy.

@@ -79,6 +79,32 @@ Save and reboot.
 
   ```sudo ./dkms-install.sh```
 
+* Adding GPIO keys support:
+ 
+  ```sudo nano /boot/config.txt```
+  
+  Add a line: ```gpio=5,6,13,19,20,21,26=pu```
+  
+  Save and exit (Ctrl+X)
+  
+  ```cd /home/pi/```
+  
+  ```cd esp32-cam-fpv```
+  
+  ```cd pi_button_to_kbd```
+  
+  ```make```
+  
+  ```sudo make install```
+  
+  ```crontab -e```
+  
+  Add a line:
+  
+  ```@reboot sudo /usr/bin/pi-button-to-kbd```
+
+  Save and exit (Ctrl+X)
+
 * Build ground station software:
 
   ```cd /home/pi/```
@@ -179,6 +205,32 @@ Save and reboot.
   ```cd rtl8812au```
 
   ```sudo ./dkms-install.sh```
+
+* Adding GPIO keys support:
+ 
+  ```sudo nano /boot/config.txt```
+  
+  Add a line: ```gpio=5,6,13,19,20,21,26=pu```
+  
+  Save and exit (Ctrl+X)
+  
+  ```cd /home/pi/```
+  
+  ```cd esp32-cam-fpv```
+  
+  ```cd pi_button_to_kbd```
+  
+  ```make```
+  
+  ```sudo make install```
+  
+  ```crontab -e```
+  
+  Add a line:
+  
+  ```@reboot sudo /usr/bin/pi-button-to-kbd```
+
+  Save and exit (Ctrl+X)
 
 * Build ground station software:
 
