@@ -128,12 +128,11 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 **todo**
 
-##Latency
+## Latency
 
 Latency is in range 10-30ms, for 640...1280 resolutions with both cameras (1280 30fps for ov5640). From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission. 
 
-
-
+![alt text](doc/images/latency.jpg "latency")
 
 # Unsuccessfull attempts
 
