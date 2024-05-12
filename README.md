@@ -64,7 +64,7 @@ Let’s say honest: we expect at least HD resolution from a digital fpv system. 
 
 **esp32-cam-fpv** definitely looses againg all commecially available digital FPV system.
 
-The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense).
+The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense), low power consumption (less then 300mA at 5V).
 
 TODO: s3sense + ov5640 performance?
 
@@ -147,9 +147,6 @@ ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is 
 
 Both esp32cam and esp32s3sense come this narrow lenses which definitely should be replaced with wide angle 120 lenses to be used on UAV.
 
-
-**TODO**
-
 # Wifi channel
 
 Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with AR9271 and esp32s3sense stock antenna.
@@ -161,6 +158,10 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 ## Adaptive quality
 
 **todo**
+
+## Range 
+
+1km at 24MBit, 600m at 36MBit.
 
 ## Latency
 
