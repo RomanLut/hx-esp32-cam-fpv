@@ -117,7 +117,7 @@ Save and reboot.
 
 * Reboot, check if everything works:
 
-  ```sudo reboot``
+  ```sudo reboot```
 
 
 
