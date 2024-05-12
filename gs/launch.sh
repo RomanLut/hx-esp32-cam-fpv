@@ -1,4 +1,4 @@
-if ! iw dev wlan1 info &> /dev/null; then
+if ! iw dev wlan1 info > /dev/null; then
     echo "wlan1 interface not found, exiting script."
     exit 1
 fi
