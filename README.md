@@ -1,7 +1,7 @@
 # **WORK IN PROGRESS!!!!**
 
 # esp32-cam-fpv
-Digital,low latency FPV System based on ESP32.
+Open source digital FPV system based on esp32cam.
 
 ## Features:
 - 640x480(4:3), 640x360(16:9), 800x600(4:3), 800x456(16:9) 30FPS 
@@ -18,7 +18,7 @@ Digital,low latency FPV System based on ESP32.
 - esp32s3sense with ov5640 camera
 
 **Ground station:**
-- Raspberry Pi Zero 2W ... Raspberry Pi 4B with rtl8812au or AR9270 wifi card
+- Raspberry Pi Zero 2W ... Raspberry Pi 4B with rtl8812au or AR9271 wifi card
 
 
 ## Original project
@@ -34,12 +34,13 @@ The **ESP camera** component has been modified to send the data as it's received
 
 The wifi data is send using packet injection which is possible on ESP32 platform. Data is sent with error correction encoding (FEC) wich allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissiona are done by air unit.
 
-
 The air unit can also record the video straight from the camera to a sd card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
 
-There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of sd cards.
+There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of sd cards. The quality of air unit recording is the same as on GS (no recompression is done).
 
-The receiver is a Raspberry PI Zero 2W ... Pi4  with Realtek 8812au or AR9270 adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
+the size of JPEG images vary a lot dependiong on number of details in view. Adaptive quality adjustment is implemented. Quality is calulate to achieve frame sizes which fit available bandwidth.
+
+The receiver is a Raspberry PI Zero 2W ... Pi4  with Realtek 8812au or AR9271 adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
 
 The JPEG decoding is done with turbojpeg to lower latency and - based on the resolution - can take between 1 and 7 milliseconds.
 
@@ -51,15 +52,75 @@ Here is a video shot at 30 FPS at 800x600 (video converted from the source mjpeg
 
 https://user-images.githubusercontent.com/10252034/116135308-43c08c00-a6d1-11eb-99b9-9dbb106b6489.mp4
 
+# Is it worth building?
+
+Do not expect a lot from this system. It all starts with a cheap camera (ov2640) comparable to 2005 smartphone cameras. With such camera you have to accept bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
+
+Secondly, esp32 is not capable of video encoding, which means that video stream is sent as sequence of JPEG images, wasting bitrate which could be used to repsesent more details otherwise. 
+
+Image looks Ok on 7” screen, but not more.
+
+Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, esp32-cam-fpv competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It loose even against good analog system. Compared to analog AIO camera, esp32-cam-fpv offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, jerky framerate.
+
+esp32-fpv definitely looses againg all commecially available digital FPV system.
+
+The only questionable benefit over other open-source systems (OpenHD/Ruby/OpenIPC) is extremely low air unit price.
+
+TODO: s3sense + ov5640 performance?
+
 # Building
 
 ## Air Unit
+
+**esp32cam**
+
+With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external 2dbi dipole usage. 
+
+**es32s3sense**
+
+Module comes with moderate flexible antenna which should be replaced with 2dbi dipole to maximize range.
+
 
 **TODO**
 
 ## Ground Station
 
 **TODO**
+
+# Considerations
+
+## Resolution
+
+**OV2640 camera**
+
+Esp32cam and esp32s3sence boards come with the OV2640 camera by default. 
+
+The sweet spot settings for this camera seems to be 800x600 resolution with jpeg quality varying in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 mode 800x456 is implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
+
+Another option is 640x480 and 640x356, which can have better 
+
+## Lenses 
+
+**TODO**
+
+# Wifi channel
+
+Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with AR9271 and esp32s3sense stock antenna.
+
+## Wifi rate
+
+** TODO**
+
+## Adaptive quality
+
+**todo**
+
+
+
+# FAQ
+
+* Can original raspberry pi zero W be used as GS? 
+  No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
 
 
