@@ -30,8 +30,8 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 * Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
 * start ```sudo raspi-config``` and change the following options:
-  * Display Options -> Resolution -> 1280x720x60Hz
-  * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
+  * **Display Options -> Resolution -> 1280x720x60Hz**
+  * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
   
 Save and reboot.
 
@@ -178,10 +178,10 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 * Change screen resolution: Preferences -> Screen configuration -> 1280x720
 
 * start ```sudo raspi-config``` and change the following options:
-  * Display Options -> Resolution -> 1280x720x60Hz
-  * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
-  * Advanced options -> Compositor -> Disable
-  * [Raspberry Pi Zero 2W] Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS
+  * **Display Options -> Resolution -> 1280x720x60Hz**
+  * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
+  * **Advanced options -> Compositor -> Disable**
+  * [Raspberry Pi Zero 2W] **Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS**
   
 Save and reboot.
 
