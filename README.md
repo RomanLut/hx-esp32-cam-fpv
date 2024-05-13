@@ -28,17 +28,17 @@ Open source digital FPV system based on esp32cam.
 The goal of this fork is to develop fpv system for small inav-based plane.
 
 # Theory
-ESP32 is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (ESP32) or 20MHz (ESP32S3) and passed directly to the wifi and written to the SD card (if the DVR is enabled).
+**ESP32** is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3**) and passed directly to the wifi and written to the SD card (if the DVR is enabled).
 
-The **ESP camera** component has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
+The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
 
-The wifi data is send using packet injection which is possible on ESP32 platform. Data is sent with error correction encoding (FEC) wich allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
+The wifi data is sent using packet injection which is possible on **ESP32** platform. Data is sent with forward error correction encoding (FEC) which allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
 
-The air unit can also record the video straight from the camera to a sd card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
+The air unit can also record the video straight from the camera to a SD card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
 
-There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of sd cards. The quality of air unit recording is the same as on GS (no recompression is done).
+There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The quality of air unit recording is the same as on GS (no recompression is done).
 
-The size of JPEG images vary a lot dependiong on number of details in view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
+The size of JPEG images vary a lot depending on number of details in the view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
 
 The receiver is a Raspberry PI Zero 2W ... Pi4  with Realtek 8812au or AR9271 adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
 
@@ -56,13 +56,13 @@ https://user-images.githubusercontent.com/10252034/116135308-43c08c00-a6d1-11eb-
 
 Do not expect a lot from this system. It all starts with a cheap camera (ov2640) comparable to 2005 smartphone cameras. With such camera you have to accept bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
 
-Secondly, esp32 is not capable of video encoding, which means that video stream is sent as sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
+Secondly, esp32 is not capable of video encoding, which means that video stream is sent as a sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
 
 Image looks Ok on 7” screen, but not more.
 
-Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, esp32-cam-fpv competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It loose even against good analog system. Compared to analog AIO camera, esp32-cam-fpv offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
+Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against good analog system. Compared to analog AIO camera, **esp32-cam-fpv** offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
 
-**esp32-cam-fpv** definitely looses againg all commecially available digital FPV system.
+**esp32-cam-fpv** definitely looses againg all commecially available digital FPV systems.
 
 The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extremely low air unit price, tiny size (esp32s3sense), low latency, low power consumption (less then 300mA at 5V).
 
@@ -223,7 +223,8 @@ esp32cam with long flex cable has been replaced with compact esp32s3sense board.
 
 # FAQ
 
-* Can original raspberry pi zero W be used as GS? 
+* Can original raspberry pi zero W be used as GS?
+  
   No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
 
