@@ -18,7 +18,7 @@ void OSDMenu::draw()
     {
         if (ImGui::IsKeyPressed(ImGuiKey_Enter))
         {
-            this->m_visible = true;
+            this->visible = true;
         }
         else
         {
