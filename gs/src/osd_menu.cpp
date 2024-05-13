@@ -14,7 +14,17 @@ OSDMenu::OSDMenu()
 //=======================================================
 void OSDMenu::draw()
 {
-    if (!this->visible) return;
+    if (!this->visible) 
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Enter))
+        {
+            this->m_visible = true;
+        }
+        else
+        {
+            return;
+        }
+    }
 
 /*
     ImGui::Begin(buf);
