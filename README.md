@@ -148,6 +148,14 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
 **TODO**
 
+# Displayport MSP OSD
+
+ Set Avatar, 115200 Displayport MSP OSD in inav.
+
+# Mavlink
+
+ Can be used for RC and for downlink telemetry. Setup 115200 UART.
+
 # Considerations
 
 ## Resolution
