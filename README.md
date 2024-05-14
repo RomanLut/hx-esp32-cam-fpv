@@ -16,17 +16,17 @@ Open source digital FPV system based on esp32cam.
 - 1280x1024(4:3), 1280:720(16:9) 13fps on ov2640, 30fps on ov5640 with esp32s3
 - up to 1km at 24mBit (line of sight)
 - latency 10-30ms
-- bidirectional Mavlink stream for RC and telemetry 115200KBit
+- bidirectional Mavlink stream for RC and telemetry 115200 Kbps
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
 **Air units variants:**
-- esp32cam board with ov2640 camera
-- esp32s3sense with ov2640 camera
-- esp32s3sense with ov5640 camera
+- **esp32cam** with **ov2640** camera
+- **esp32s3sense** with **ov2640** camera
+- **esp32s3sense** with **ov5640** camera
 
 **Ground station:**
-- Raspberry Pi Zero 2W ... Raspberry Pi 4B with rtl8812au or AR9271 wifi card
+- **Raspberry Pi Zero 2W**(reecommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
 
 
 ## Original project
