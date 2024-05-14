@@ -762,6 +762,7 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     ImGui::Spacing();
 
     bool saveAndExit = false;
+    bool bExit = false;
 
     for ( int i = 0; i < 13; i++ )
     {
@@ -773,6 +774,10 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
             {
                 s_groundstation_config.wifi_channel = i+1;
                 saveAndExit = true;
+            }
+            else
+            {
+                bExit = true;
             }
         }
     }
@@ -787,7 +792,7 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
         this->menuId = OSDMenuId::Restart;
     }
 
-    if ( this->exitKeyPressed())
+    if ( bExit || this->exitKeyPressed() )
     {
         this->menuId = OSDMenuId::Main;
         this->selectedItem = 1;
