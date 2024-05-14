@@ -603,6 +603,30 @@ void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, f
 
 //===================================================================================
 //===================================================================================
+void toggleGSRecording()
+{
+    s_groundstation_config.record = !s_groundstation_config.record;
+
+    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+    if(s_groundstation_config.record)
+    {
+        auto time=std::time({});
+        char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
+        std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
+        s_groundstation_config.record_file=fopen(filename,"wb+");
+
+        LOGI("start record:{}",std::string(filename));
+    }
+    else
+    {
+        fflush(s_groundstation_config.record_file);
+        fclose(s_groundstation_config.record_file);
+        s_groundstation_config.record_file=nullptr;
+    }
+}
+
+//===================================================================================
+//===================================================================================
 void exitApp()
 {
     if (s_groundstation_config.record)
@@ -896,32 +920,15 @@ int run(char* argv[])
 
                     ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
-                    if ( ImGui::Button("Air Record") || ( !ignoreKeys &&   ImGui::IsKeyPressed(ImGuiKey_R)))
+                    if ( ImGui::Button("Air Record") )
                     {
                         config.air_record_btn++;
                     }
 
                     ImGui::SameLine();
-                    if (ImGui::Button("GS Record") || ( !ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G)))
+                    if (ImGui::Button("GS Record"))
                     {
-                        s_groundstation_config.record = !s_groundstation_config.record;
-
-                        std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                        if(s_groundstation_config.record)
-                        {
-                            auto time=std::time({});
-                            char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
-                            std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
-                            s_groundstation_config.record_file=fopen(filename,"wb+");
-
-                            LOGI("start record:{}",std::string(filename));
-                        }
-                        else
-                        {
-                            fflush(s_groundstation_config.record_file);
-                            fclose(s_groundstation_config.record_file);
-                            s_groundstation_config.record_file=nullptr;
-                        }
+                        toggleGSRecording();
                     }
                 }
 
@@ -948,10 +955,30 @@ int run(char* argv[])
             ImGui::End();
         } //debug window
         
-        if ( ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle)
-        )
+        if ( ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle))
         {
             s_debugWindowVisisble = !s_debugWindowVisisble;
+        }
+
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
+        {
+            config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
+            saveGround2AirConfig(config);
+        }
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
+        {
+            config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
+            saveGround2AirConfig(config);
+        }
+
+        if ( ImGui::Button("Air Record") || ( !ignoreKeys &&   ImGui::IsKeyPressed(ImGuiKey_R)))
+        {
+            config.air_record_btn++;
+        }
+
+        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
+        {
+            toggleGSRecording();
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
