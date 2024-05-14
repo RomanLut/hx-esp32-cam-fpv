@@ -1,7 +1,8 @@
-# **WORK IN PROGRESS!!!!**
-
 # esp32-cam-fpv
 Open source digital FPV system based on esp32cam.
+- [x] Fully functional video link
+- [x] Mavlink RC
+- [x] OSD Menu
 
 ## Features:
 - 640x480(4:3), 640x360(16:9), 800x600(4:3), 800x456(16:9) 30FPS 
@@ -71,6 +72,9 @@ The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extr
 TODO: s3sense + ov5640 performance?
 
 # Building
+
+> [!NOTE]
+> Please use **release** branch. **master** can be unstable.
 
 ## Air Unit
 
@@ -149,15 +153,21 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
 # Displayport MSP OSD
 
- Set Avatar, 115200 Displayport MSP OSD in inav.
+ Configure Displayport MSP OSD 115200, Avatar in INav/Betaflight/Ardupilot.
+ 
+ ![alt text](doc/images/displayport_osd.jpg "displayport_osd")
 
 # Mavlink
 
- Can be used for RC and for downlink telemetry. Setup 115200 UART.
+ Can be used for RC and for downlink telemetry. Setup 115200 UART. 
+ 
+ This is transparent bidirectional stream sent with FEC encoding.
 
 # OSD Menu
 
 ![alt text](doc/images/osd_menu.jpg "osd_menu")
+
+OSD Menu can be navigated with **GPIO Joystick**, keyboard or mouse.
 
 Key                                                    | Function
 ------------------------------------------------------ | -------------
