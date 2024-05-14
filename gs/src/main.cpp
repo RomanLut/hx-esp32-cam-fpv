@@ -6,6 +6,7 @@
 #include "PI_HAL.h"
 #include "imgui.h"
 #include "osd.h"
+#include "osd_menu.h"
 #include "Video_Decoder.h" 
 #include "crc.h"
 #include "packets.h"
@@ -680,6 +681,9 @@ int run(char* argv[])
         ImGui::End();
         ImGui::PopStyleVar(2);
 
+        //------------ osd menu
+        g_osdMenu.draw(config);
+
         //------------ debug window
         char buf[256];
         sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %s %d%% AQ:%d %s/%s###HAL", 
@@ -701,12 +705,20 @@ int run(char* argv[])
             {
                 static int value = (int)config.wifi_rate;
                 ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
-                config.wifi_rate = (WIFI_Rate)value;
+                if (config.wifi_rate != (WIFI_Rate)value) 
+                {
+                    config.wifi_rate = (WIFI_Rate)value;
+                    saveGround2AirConfig(config);
+                }
             }
             {
                 int value = (int)config.camera.resolution;
                 ImGui::SliderInt("Resolution", &value, 0, 10);
-                config.camera.resolution = (Resolution)value;
+                if ( config.camera.resolution != (Resolution)value )
+                {
+                    config.camera.resolution = (Resolution)value;
+                    saveGround2AirConfig(config);
+                }
             }
             if ( ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
             {
@@ -737,7 +749,14 @@ int run(char* argv[])
                 ImGui::Checkbox("AEC DSP", &config.camera.aec2);
             }
             ImGui::SameLine();            
-            ImGui::Checkbox("VFLIP", &config.camera.vflip);
+            {
+                bool prev = config.camera.vflip;
+                ImGui::Checkbox("VFLIP", &config.camera.vflip);
+                if ( prev != config.camera.vflip )
+                {
+                    saveGround2AirConfig(config);
+                }
+            }
             ImGui::SameLine();            
             ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
 
@@ -758,7 +777,11 @@ int run(char* argv[])
             {
                 int value = config.camera.ae_level;
                 ImGui::SliderInt("AEC Level", &value, -2, 2);
-                config.camera.ae_level = (int8_t)value;
+                if ( config.camera.ae_level != (int8_t)value)
+                {
+                    config.camera.ae_level = (int8_t)value;
+                    saveGround2AirConfig(config);
+                }
             }
             else 
             {
@@ -770,25 +793,41 @@ int run(char* argv[])
             {
                 int value = config.camera.brightness;
                 ImGui::SliderInt("Brightness", &value, -2, 2);
-                config.camera.brightness = (int8_t)value;
+                if (config.camera.brightness != (int8_t)value)
+                {
+                    config.camera.brightness = (int8_t)value;
+                    saveGround2AirConfig(config);
+                }
             }
 
             {
                 int value = config.camera.contrast;
                 ImGui::SliderInt("Contrast", &value, -2, 2);
-                config.camera.contrast = (int8_t)value;
+                if (config.camera.contrast != (int8_t)value)
+                {
+                    config.camera.contrast = (int8_t)value;
+                    saveGround2AirConfig(config);
+                }
             }
 
             {
                 int value = config.camera.saturation;
                 ImGui::SliderInt("Saturation", &value, -2, 2);
-                config.camera.saturation = (int8_t)value;
+                if (config.camera.saturation != (int8_t)value)
+                {
+                    config.camera.saturation = (int8_t)value;
+                    saveGround2AirConfig(config);
+                }
             }
 
             {
                 int value = config.camera.sharpness;
                 ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
-                config.camera.sharpness = (int8_t)value;
+                if (config.camera.sharpness != (int8_t)value)
+                {
+                    config.camera.sharpness = (int8_t)value;
+                    saveGround2AirConfig(config);
+                }
             }
 
 /* does nothing ?
@@ -805,8 +844,7 @@ int run(char* argv[])
                 if ( ch != (int)s_groundstation_config.screenAspectRatio)
                 {
                     s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
-                    ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
-                    s_iniFile.write(ini);
+                    saveGroundStationConfig();
                 }
             }
 
@@ -815,8 +853,7 @@ int run(char* argv[])
                 ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                 if ( ch != s_groundstation_config.wifi_channel)
                 {
-                    ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
-                    s_iniFile.write(ini);
+                    saveGroundStationConfig();
                     bRestartRequired = true;
                 }
             }
@@ -912,6 +949,7 @@ int run(char* argv[])
 
         std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
         s_ground2air_config_packet = config;
+
     };
 
     s_hal->add_render_callback(f);
@@ -994,6 +1032,30 @@ bool init_uart()
 
 //===================================================================================
 //===================================================================================
+void saveGroundStationConfig()
+{
+    ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
+    ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
+    s_iniFile.write(ini);
+}
+
+//===================================================================================
+//===================================================================================
+void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
+{
+    ini["gs"]["brightness"] = std::to_string(config.camera.brightness);
+    ini["gs"]["contrast"] = std::to_string(config.camera.contrast);
+    ini["gs"]["saturation"] = std::to_string(config.camera.saturation);
+    ini["gs"]["ae_level"] = std::to_string(config.camera.ae_level);
+    ini["gs"]["sharpness"] = std::to_string(config.camera.sharpness);
+    ini["gs"]["vflip"] = std::to_string(config.camera.vflip ? 1 : 0);
+    ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
+    ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
+    s_iniFile.write(ini);
+}
+
+//===================================================================================
+//===================================================================================
 int main(int argc, const char* argv[])
 {
     init_crc8_table();
@@ -1033,7 +1095,47 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["screen_aspect_ratio"];
-        s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 2 );
+        if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 2 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["brightness"];
+        if (temp != "") s_ground2air_config_packet.camera.brightness = clamp( atoi(temp.c_str()), -2, 2 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["contrast"];
+        if (temp != "") s_ground2air_config_packet.camera.contrast = clamp( atoi(temp.c_str()), -2, 2 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["saturation"];
+        if (temp != "") s_ground2air_config_packet.camera.saturation = clamp( atoi(temp.c_str()), -2, 2 ); 
+    }
+
+    {
+        std::string& temp = ini["gs"]["ae_level"] ;
+        if (temp != "") s_ground2air_config_packet.camera.ae_level = clamp( atoi(temp.c_str()), -2, 2 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["sharpness"] ;
+        if (temp != "") s_ground2air_config_packet.camera.sharpness = clamp( atoi(temp.c_str()), -3, 3 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["vflip"];
+        if (temp != "") s_ground2air_config_packet.camera.vflip = atoi(temp.c_str()) != 0;
+    }
+
+    {
+        std::string& temp = ini["gs"]["resolution"];
+        if (temp != "") s_ground2air_config_packet.camera.resolution = (Resolution) clamp( atoi(temp.c_str()), (int)Resolution::VGA, (int)Resolution::HD );
+    }
+
+    {
+        std::string& temp = ini["gs"]["wifi_rate"];
+        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_G_36M_ODFM );
     }
 
     for(int i=1;i<argc;++i){
