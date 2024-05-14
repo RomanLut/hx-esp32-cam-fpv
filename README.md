@@ -145,7 +145,6 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
 ![alt text](doc/images/gs.jpg "gs")
 
-
 **TODO**
 
 # Displayport MSP OSD
@@ -155,6 +154,48 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 # Mavlink
 
  Can be used for RC and for downlink telemetry. Setup 115200 UART.
+
+# OSD Menu
+
+![alt text](doc/images/osd_menu.jpg "osd_menu")
+
+Key                                                    | Function
+------------------------------------------------------ | -------------
+Joystick Center, Enter, Right Click                    | Open OSD menu
+Joystick Right, * REC, Esc, Right Click, R, G          | Close OSD Menu
+Joystick Center, Joytsick Right, Enter, Left Click     | Select menu item
+Joystick Up, Arrow Up                                  | Select previous menu item
+Joystick Down, Arrow Down                              | Select next menu item
+Joystick Left, Arrow Left, ESC                         | Exit to previous menu
+
+# Debug interface
+
+![alt text](doc/images/debug_menu.jpg "debugmenu")
+
+Toggle Debug interface with **D** or **Middle Click**.
+
+# Joystick button mapping
+
+GPIO Joystick and buttons are mapped to keys.
+
+Key                   | Function
+--------------------- | -------------
+Joystick Center       | Enter
+Joystick Left         | Arrow Left
+Joystick Right        | Arrow Right
+Joystick Up           | Arrow Up
+Joystick Down         | Arrow Down
+AIR REC               | r
+GROUND REC            | g
+
+
+# Other keys
+
+Key                   | Function
+--------------------- | -------------
+Space                 | Exit application
+ESC                   | Close OSD menu or exit application
+
 
 # Considerations
 
@@ -178,9 +219,13 @@ ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is 
 
 **TODO: check ov5640 1280x720 36MBit performance**
 
-## Lenses 
+## Lens 
 
-Both esp32cam and esp32s3sense come this narrow lenses which definitely should be replaced with wide angle 120 lenses to be used on UAV.
+![alt text](doc/images/ov2640_lens.jpg "ov2640 lens")
+
+Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 lens to be used on UAV.
+
+Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
 # Wifi channel
 
