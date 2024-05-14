@@ -1,24 +1,32 @@
-# **WORK IN PROGRESS!!!!**
-
 # esp32-cam-fpv
 Open source digital FPV system based on esp32cam.
+- [x] Fully functional video link
+- [x] Mavlink RC
+- [x] Displayport MSP OSD
+- [x] GPIO Joystick
+- [x] OSD Menu
+- [x] documentation
+- [ ] test ov5640 sensor
+- [ ] release prebuilt images and firmware
+- [ ] better diagnostic tools, investigate frame droping
+- [ ] write proper format .mpg on air and ground
 
 ## Features:
 - 640x480(4:3), 640x360(16:9), 800x600(4:3), 800x456(16:9) 30FPS 
 - 1280x1024(4:3), 1280:720(16:9) 13fps on ov2640, 30fps on ov5640 with esp32s3
 - up to 1km at 24mBit (line of sight)
 - latency 10-30ms
-- bidirectional Mavlink stream for RC and telemetry 115200KBit
+- bidirectional Mavlink stream for RC and telemetry 115200 Kbps
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
 **Air units variants:**
-- esp32cam board with ov2640 camera
-- esp32s3sense with ov2640 camera
-- esp32s3sense with ov5640 camera
+- **esp32cam** with **ov2640** camera
+- **esp32s3sense** with **ov2640** camera
+- **esp32s3sense** with **ov5640** camera
 
 **Ground station:**
-- Raspberry Pi Zero 2W ... Raspberry Pi 4B with rtl8812au or AR9271 wifi card
+- **Raspberry Pi Zero 2W**(reecommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
 
 
 ## Original project
@@ -71,6 +79,9 @@ The only benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: extr
 TODO: s3sense + ov5640 performance?
 
 # Building
+
+> [!NOTE]
+> Please use **release** branch. **master** can be unstable.
 
 ## Air Unit
 
@@ -145,16 +156,63 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
 ![alt text](doc/images/gs.jpg "gs")
 
-
 **TODO**
 
 # Displayport MSP OSD
 
- Set Avatar, 115200 Displayport MSP OSD in inav.
+ Configure Displayport MSP OSD 115200, Avatar in INav/Betaflight/Ardupilot.
+ 
+ ![alt text](doc/images/displayport_osd.jpg "displayport_osd")
 
 # Mavlink
 
- Can be used for RC and for downlink telemetry. Setup 115200 UART.
+ Can be used for RC and for downlink telemetry. Setup 115200 UART. 
+ 
+ This is transparent bidirectional stream sent with FEC encoding.
+
+# OSD Menu
+
+![alt text](doc/images/osd_menu.jpg "osd_menu")
+
+OSD Menu can be navigated with **GPIO Joystick**, keyboard or mouse.
+
+Key                                                    | Function
+------------------------------------------------------ | -------------
+Joystick Center, Enter, Right Click                    | Open OSD menu
+Joystick Right, * REC, Esc, Right Click, R, G          | Close OSD Menu
+Joystick Center, Joytsick Right, Enter, Left Click     | Select menu item
+Joystick Up, Arrow Up                                  | Select previous menu item
+Joystick Down, Arrow Down                              | Select next menu item
+Joystick Left, Arrow Left, ESC                         | Exit to previous menu
+
+# Debug interface
+
+![alt text](doc/images/debug_menu.jpg "debugmenu")
+
+Toggle Debug interface with **D** or **Middle Click**.
+
+# Joystick button mapping
+
+GPIO Joystick and buttons are mapped to keys.
+
+Key                   | Function
+--------------------- | -------------
+Joystick Center       | Enter
+Joystick Left         | Arrow Left
+Joystick Right        | Arrow Right
+Joystick Up           | Arrow Up
+Joystick Down         | Arrow Down
+AIR REC               | r
+GROUND REC            | g
+
+
+# Other keys
+
+Key                   | Function
+--------------------- | -------------
+Space                 | Exit application
+ESC                   | Close OSD menu or exit application
+
 
 # Considerations
 
@@ -178,9 +236,13 @@ ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is 
 
 **TODO: check ov5640 1280x720 36MBit performance**
 
-## Lenses 
+## Lens 
 
-Both esp32cam and esp32s3sense come this narrow lenses which definitely should be replaced with wide angle 120 lenses to be used on UAV.
+![alt text](doc/images/ov2640_lens.jpg "ov2640 lens")
+
+Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 lens to be used on UAV.
+
+Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
 # Wifi channel
 
