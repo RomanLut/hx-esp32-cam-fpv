@@ -144,6 +144,8 @@ bool s_SDSlow = false;
 bool s_SDError = false;
 bool s_isOV5640 = false;
 
+bool s_debugWindowVisisble = false;
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
@@ -547,7 +549,7 @@ void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& 
     
     if ( 
         (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) || 
-        (videoAspect16x9 == (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16x9)) 
+        (videoAspect16x9 == (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X9)) 
     )
     {
         //no scale or stretch
@@ -601,6 +603,19 @@ void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, f
 
 //===================================================================================
 //===================================================================================
+void exitApp()
+{
+    if (s_groundstation_config.record)
+    {
+        std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+        fflush(s_groundstation_config.record_file);
+        fclose(s_groundstation_config.record_file); 
+    }
+    abort();
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -627,6 +642,7 @@ int run(char* argv[])
 
     auto f = [&config,&argv]
     {
+        bool ignoreKeys = g_osdMenu.visible;
         //---------- fullscreen window
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -685,271 +701,277 @@ int run(char* argv[])
         g_osdMenu.draw(config);
 
         //------------ debug window
-        char buf[256];
-        sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %s %d%% AQ:%d %s/%s###HAL", 
-        s_min_rssi, video_fps, s_lost_frame_count, 
-        s_total_data/1024, 
-        resolutionName[(int)config.camera.resolution], 
-        s_wifi_queue,
-        s_curr_quality,
-        rateName[(int)s_curr_wifi_rate], rateName[(int)config.wifi_rate]);
-
-        ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); 
-        ImGui::Begin(buf);
+        if ( s_debugWindowVisisble )
         {
-            {
-                int value = config.wifi_power;
-                ImGui::SliderInt("WIFI Power", &value, 0, 20); 
-                config.wifi_power = value;
-            }
-            {
-                static int value = (int)config.wifi_rate;
-                ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
-                if (config.wifi_rate != (WIFI_Rate)value) 
-                {
-                    config.wifi_rate = (WIFI_Rate)value;
-                    saveGround2AirConfig(config);
-                }
-            }
-            {
-                int value = (int)config.camera.resolution;
-                ImGui::SliderInt("Resolution", &value, 0, 10);
-                if ( config.camera.resolution != (Resolution)value )
-                {
-                    config.camera.resolution = (Resolution)value;
-                    saveGround2AirConfig(config);
-                }
-            }
-            if ( ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
-            {
-                config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
-            }
-            if ( ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
-            {
-                config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
-            }
+            char buf[256];
+            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %s %d%% AQ:%d %s/%s###HAL", 
+            s_min_rssi, video_fps, s_lost_frame_count, 
+            s_total_data/1024, 
+            resolutionName[(int)config.camera.resolution], 
+            s_wifi_queue,
+            s_curr_quality,
+            rateName[(int)s_curr_wifi_rate], rateName[(int)config.wifi_rate]);
 
+            ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); 
+            ImGui::Begin(buf);
             {
-                int value = (int)config.camera.fps_limit;
-                ImGui::SliderInt("FPS Limit", &value, 0, 100);
-                config.camera.fps_limit = (uint8_t)value;
-            }
-            {
-                int value = config.camera.quality;
-                ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
-                config.camera.quality = value;
-            }
+                {
+                    int value = config.wifi_power;
+                    ImGui::SliderInt("WIFI Power", &value, 0, 20); 
+                    config.wifi_power = value;
+                }
+                {
+                    int value = (int)config.wifi_rate;
+                    ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
+                    if (config.wifi_rate != (WIFI_Rate)value) 
+                    {
+                        config.wifi_rate = (WIFI_Rate)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
+                {
+                    int value = (int)config.camera.resolution;
+                    ImGui::SliderInt("Resolution", &value, 0, 10);
+                    if ( config.camera.resolution != (Resolution)value )
+                    {
+                        config.camera.resolution = (Resolution)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
 
-            ImGui::Checkbox("AGC", &config.camera.agc);
-            ImGui::SameLine();            
-            ImGui::Checkbox("AEC", &config.camera.aec);
-            if ( config.camera.aec )
-            {
+                if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
+                {
+                    config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
+                }
+                if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
+                {
+                    config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
+                }
+
+                {
+                    int value = (int)config.camera.fps_limit;
+                    ImGui::SliderInt("FPS Limit", &value, 0, 100);
+                    config.camera.fps_limit = (uint8_t)value;
+                }
+                {
+                    int value = config.camera.quality;
+                    ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
+                    config.camera.quality = value;
+                }
+
+                ImGui::Checkbox("AGC", &config.camera.agc);
                 ImGui::SameLine();            
-                ImGui::Checkbox("AEC DSP", &config.camera.aec2);
-            }
-            ImGui::SameLine();            
-            {
-                bool prev = config.camera.vflip;
-                ImGui::Checkbox("VFLIP", &config.camera.vflip);
-                if ( prev != config.camera.vflip )
+                ImGui::Checkbox("AEC", &config.camera.aec);
+                if ( config.camera.aec )
                 {
-                    saveGround2AirConfig(config);
+                    ImGui::SameLine();            
+                    ImGui::Checkbox("AEC DSP", &config.camera.aec2);
                 }
-            }
-            ImGui::SameLine();            
-            ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
-
-            if ( !config.camera.agc )
-            {
-                int value = config.camera.agc_gain;
-                ImGui::SliderInt("AGC Gain", &value, 0, 30);
-                config.camera.agc_gain = (int8_t)value;
-            }
-            else 
-            {
-                int value = config.camera.gainceiling;
-                ImGui::SliderInt("GainCeiling", &value, 0, 6);
-                config.camera.gainceiling = (uint8_t)value;
-            }
-
-            if ( config.camera.aec )
-            {
-                int value = config.camera.ae_level;
-                ImGui::SliderInt("AEC Level", &value, -2, 2);
-                if ( config.camera.ae_level != (int8_t)value)
+                ImGui::SameLine();            
                 {
-                    config.camera.ae_level = (int8_t)value;
-                    saveGround2AirConfig(config);
+                    bool prev = config.camera.vflip;
+                    ImGui::Checkbox("VFLIP", &config.camera.vflip);
+                    if ( prev != config.camera.vflip )
+                    {
+                        saveGround2AirConfig(config);
+                    }
                 }
-            }
-            else 
-            {
-                int value = config.camera.aec_value;
-                ImGui::SliderInt("AEC Value", &value, 0, 1200);
-                config.camera.aec_value = (uint16_t)value;
-            }
+                ImGui::SameLine();            
+                ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
 
-            {
-                int value = config.camera.brightness;
-                ImGui::SliderInt("Brightness", &value, -2, 2);
-                if (config.camera.brightness != (int8_t)value)
+                if ( !config.camera.agc )
                 {
-                    config.camera.brightness = (int8_t)value;
-                    saveGround2AirConfig(config);
+                    int value = config.camera.agc_gain;
+                    ImGui::SliderInt("AGC Gain", &value, 0, 30);
+                    config.camera.agc_gain = (int8_t)value;
                 }
-            }
-
-            {
-                int value = config.camera.contrast;
-                ImGui::SliderInt("Contrast", &value, -2, 2);
-                if (config.camera.contrast != (int8_t)value)
+                else 
                 {
-                    config.camera.contrast = (int8_t)value;
-                    saveGround2AirConfig(config);
+                    int value = config.camera.gainceiling;
+                    ImGui::SliderInt("GainCeiling", &value, 0, 6);
+                    config.camera.gainceiling = (uint8_t)value;
                 }
-            }
 
-            {
-                int value = config.camera.saturation;
-                ImGui::SliderInt("Saturation", &value, -2, 2);
-                if (config.camera.saturation != (int8_t)value)
+                if ( config.camera.aec )
                 {
-                    config.camera.saturation = (int8_t)value;
-                    saveGround2AirConfig(config);
+                    int value = config.camera.ae_level;
+                    ImGui::SliderInt("AEC Level", &value, -2, 2);
+                    if ( config.camera.ae_level != (int8_t)value)
+                    {
+                        config.camera.ae_level = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
                 }
-            }
-
-            {
-                int value = config.camera.sharpness;
-                ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
-                if (config.camera.sharpness != (int8_t)value)
+                else 
                 {
-                    config.camera.sharpness = (int8_t)value;
-                    saveGround2AirConfig(config);
+                    int value = config.camera.aec_value;
+                    ImGui::SliderInt("AEC Value", &value, 0, 1200);
+                    config.camera.aec_value = (uint16_t)value;
                 }
-            }
 
-/* does nothing ?
-            if ( s_isOV5640 )
-            {
-                int value = config.camera.denoise;
-                ImGui::SliderInt("Denoise", &value, 0, 8);
-                config.camera.denoise = (int8_t)value;
-            }
-*/
-            {
-                int ch = (int)s_groundstation_config.screenAspectRatio;
-                ImGui::SliderInt("Letterbox", &ch, 0, 2);
-                if ( ch != (int)s_groundstation_config.screenAspectRatio)
                 {
-                    s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
-                    saveGroundStationConfig();
+                    int value = config.camera.brightness;
+                    ImGui::SliderInt("Brightness", &value, -2, 2);
+                    if (config.camera.brightness != (int8_t)value)
+                    {
+                        config.camera.brightness = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
                 }
-            }
 
-            {
-                int ch = s_groundstation_config.wifi_channel;
-                ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
-                if ( ch != s_groundstation_config.wifi_channel)
                 {
-                    saveGroundStationConfig();
-                    bRestartRequired = true;
+                    int value = config.camera.contrast;
+                    ImGui::SliderInt("Contrast", &value, -2, 2);
+                    if (config.camera.contrast != (int8_t)value)
+                    {
+                        config.camera.contrast = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
                 }
-            }
 
-            if ( bRestartRequired)
-            {
-                ImGui::Text("*Restart to apply!");
-            }
-
-            {
-                //ImGui::Checkbox("LC", &config.camera.lenc);
-                //ImGui::SameLine();
-                //ImGui::Checkbox("DCW", &config.camera.dcw);
-                //ImGui::SameLine();
-                //ImGui::Checkbox("H", &config.camera.hmirror);
-                //ImGui::SameLine();
-                //ImGui::Checkbox("V", &config.camera.vflip);
-                //ImGui::SameLine();
-                //ImGui::Checkbox("Raw", &config.camera.raw_gma);
-                //ImGui::SameLine();
-
-                ImGui::Checkbox("Stats", &s_groundstation_config.stats);
-
-                if (ImGui::Button("Air Record") || ImGui::IsKeyPressed(ImGuiKey_R))
                 {
-                    config.air_record_btn++;
+                    int value = config.camera.saturation;
+                    ImGui::SliderInt("Saturation", &value, -2, 2);
+                    if (config.camera.saturation != (int8_t)value)
+                    {
+                        config.camera.saturation = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
+
+                {
+                    int value = config.camera.sharpness;
+                    ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
+                    if (config.camera.sharpness != (int8_t)value)
+                    {
+                        config.camera.sharpness = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
+
+    /* does nothing ?
+                if ( s_isOV5640 )
+                {
+                    int value = config.camera.denoise;
+                    ImGui::SliderInt("Denoise", &value, 0, 8);
+                    config.camera.denoise = (int8_t)value;
+                }
+    */
+                {
+                    int ch = (int)s_groundstation_config.screenAspectRatio;
+                    ImGui::SliderInt("Letterbox", &ch, 0, 2);
+                    if ( ch != (int)s_groundstation_config.screenAspectRatio)
+                    {
+                        s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
+                        saveGroundStationConfig();
+                    }
+                }
+
+                {
+                    int ch = s_groundstation_config.wifi_channel;
+                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
+                    if ( ch != s_groundstation_config.wifi_channel)
+                    {
+                        saveGroundStationConfig();
+                        bRestartRequired = true;
+                    }
+                }
+
+                if ( bRestartRequired)
+                {
+                    ImGui::Text("*Restart to apply!");
+                }
+
+                {
+                    //ImGui::Checkbox("LC", &config.camera.lenc);
+                    //ImGui::SameLine();
+                    //ImGui::Checkbox("DCW", &config.camera.dcw);
+                    //ImGui::SameLine();
+                    //ImGui::Checkbox("H", &config.camera.hmirror);
+                    //ImGui::SameLine();
+                    //ImGui::Checkbox("V", &config.camera.vflip);
+                    //ImGui::SameLine();
+                    //ImGui::Checkbox("Raw", &config.camera.raw_gma);
+                    //ImGui::SameLine();
+
+                    ImGui::Checkbox("Stats", &s_groundstation_config.stats);
+
+                    if ( ImGui::Button("Air Record") || ( !ignoreKeys &&   ImGui::IsKeyPressed(ImGuiKey_R)))
+                    {
+                        config.air_record_btn++;
+                    }
+
+                    ImGui::SameLine();
+                    if (ImGui::Button("GS Record") || ( !ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G)))
+                    {
+                        s_groundstation_config.record = !s_groundstation_config.record;
+
+                        std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+                        if(s_groundstation_config.record)
+                        {
+                            auto time=std::time({});
+                            char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
+                            std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
+                            s_groundstation_config.record_file=fopen(filename,"wb+");
+
+                            LOGI("start record:{}",std::string(filename));
+                        }
+                        else
+                        {
+                            fflush(s_groundstation_config.record_file);
+                            fclose(s_groundstation_config.record_file);
+                            s_groundstation_config.record_file=nullptr;
+                        }
+                    }
                 }
 
                 ImGui::SameLine();
-                if (ImGui::Button("GS Record") || ImGui::IsKeyPressed(ImGuiKey_G))
+                if (ImGui::Button("Restart"))
                 {
-                    s_groundstation_config.record = !s_groundstation_config.record;
-
-                    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                    if(s_groundstation_config.record)
-                    {
-                        auto time=std::time({});
-                        char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
-                        std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
-                        s_groundstation_config.record_file=fopen(filename,"wb+");
-
-                        LOGI("start record:{}",std::string(filename));
-                    }
-                    else
-                    {
-                        fflush(s_groundstation_config.record_file);
-                        fclose(s_groundstation_config.record_file);
-                        s_groundstation_config.record_file=nullptr;
-                    }
+                    //send channel change command to receiver, then restart
+                    restart_tp = Clock::now();
+                    bRestart = true;
                 }
-            }
 
-            ImGui::SameLine();
-            if (ImGui::Button("Restart"))
-            {
-                //send channel change command to receiver, then restart
-                restart_tp = Clock::now();
-                bRestart = true;
-            }
-
-            if ( bRestart ) 
-            {
-                //start sending new channel to air, restart after 2 seconds
-                config.wifi_channel = s_groundstation_config.wifi_channel;
-                if (Clock::now() - restart_tp >= std::chrono::milliseconds(2000)) 
+                ImGui::SameLine();
+                if (ImGui::Button("Exit"))
                 {
-                    bRestart = false;
-                    char tempstr[30];
-                    sprintf(tempstr,"ESPVTX_WIFI_CHN=%d",s_groundstation_config.wifi_channel);
-                    putenv(tempstr);
-                    execv(argv[0],argv);
+                    exitApp();
                 }
-            } 
-
-            ImGui::SameLine();
-            if (ImGui::Button("Exit") || ImGui::IsKeyPressed(ImGuiKey_Space) || ImGui::IsKeyPressed(ImGuiKey_Escape))
-            {
-                if(s_groundstation_config.record){
-                    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                    fflush(s_groundstation_config.record_file);
-                    fclose(s_groundstation_config.record_file); 
-                }
-                abort();
+                
+                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
+                ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
+                    s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
+                    s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
+                    s_isOV5640 ? "OV5640" : "OV2640");
             }
-            
-            ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
-            ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
-                s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
-                s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
-                s_isOV5640 ? "OV5640" : "OV2640");
+            ImGui::End();
+        } //debug window
+        
+        if ( ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle)
+        )
+        {
+            s_debugWindowVisisble = !s_debugWindowVisisble;
         }
-        ImGui::End();
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
+        {
+            exitApp();
+        }
+
+        if ( bRestart ) 
+        {
+            //start sending new channel to air, restart after 3 seconds
+            config.wifi_channel = s_groundstation_config.wifi_channel;
+            if (Clock::now() - restart_tp >= std::chrono::milliseconds(3000)) 
+            {
+                bRestart = false;
+                execv(argv[0],argv);
+            }
+        } 
 
         std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
         s_ground2air_config_packet = config;
-
     };
 
     s_hal->add_render_callback(f);
