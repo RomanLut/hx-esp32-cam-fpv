@@ -1,25 +1,25 @@
-# Building ground station image
+# Building groundstation image
 
-This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in-beetween models should also work. Raspberry Pi Zero 0W and 1 are not supported (too low performance).
+This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in-beetween models should also work. Raspberry Pi Zero W and 1 are not supported (too low performance).
 
 Image can be prepared on Raspberry PI 4B and used on Raspberry PI Zero 2W, except rtl8812au driver installation. Driver, compiled on RPI2W does not work on PRI4 and vice versa. You have to repeat driver installation steps. Once compiled on both boards, image works on both.
 
 *On Raspberry Pi Zero 2W, due to low memory, you may want to set GPU Memory to 16 before building anything. You may need to use ```make -j1``` instead of ```make -j4```. Set GPU Memory to 64 after last step.*
 
-Drivers for AR9271 wifi card are included in OS image and works without additional setup.
+Driver for AR9271 wifi card is included in the OS image and works without additional setup.
 
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/
 
 * Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
 
-* Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool)
+* Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool). Default credentials for prebilt image: ```pi``` ```1234```.
 
 * Either use connected usb keyboard or ssh connect using putty. Find out ip address: ```ifconfig```
 
-  If still not connected to internet, run ''sudo raspi-config''' and setup wifi network: System Options -> Wireless LAN.
+  If still not connected to internet, run ''sudo raspi-config''' and setup wifi network: **System Options -> Wireless LAN.**
 
-* Update to latest kernel and reboot:
+* Update to the latest kernel and reboot:
 
   ```sudo apt-get update```
 
@@ -30,8 +30,8 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 * Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
 * start ```sudo raspi-config``` and change the following options:
-  * Display Options -> Resolution -> 1280x720x60Hz
-  * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
+  * **Display Options -> Resolution -> 1280x720x60Hz**
+  * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
   
 Save and reboot.
 
@@ -73,7 +73,7 @@ Save and reboot.
 
   ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
   
-  ```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
 
   ```cd rtl8812au```
 
@@ -145,6 +145,19 @@ Save and reboot.
 
   ```sudo reboot```
 
+# Updating groundstation image
+
+Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to ap using internal wifi card.
+
+To update groundstation software, pull updates from '''release''' branch:
+
+  ```cd esp32-cam-fpv```
+  
+  ```cd gs```
+  
+  ```git pull```
+  
+  ```make```
 
 
 # Building ground station development image
@@ -165,10 +178,10 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 * Change screen resolution: Preferences -> Screen configuration -> 1280x720
 
 * start ```sudo raspi-config``` and change the following options:
-  * Display Options -> Resolution -> 1280x720x60Hz
-  * Interface options -> Serial Port -> Shell: No, Hardware enable: Yes
-  * Advanced options -> Compositor -> Disable
-  * [Raspberry Pi Zero 2W] Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS
+  * **Display Options -> Resolution -> 1280x720x60Hz**
+  * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
+  * **Advanced options -> Compositor -> Disable**
+  * [Raspberry Pi Zero 2W] **Advanced options -> GL Driver -> G3 GL (Full KMS) OpenGL desktop driver with full KMS**
   
 Save and reboot.
 
@@ -198,7 +211,7 @@ Save and reboot.
 
   ```cd /home/pi/```
 
-  ```git clone https://github.com/svpcom/rtl8812au/```
+  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
  
   ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
 

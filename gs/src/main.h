@@ -11,8 +11,11 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "Clock.h"
 
 #include "Log.h"
+
+#include "packets.h"
 
 
 #define USE_MAVLINK
@@ -59,7 +62,7 @@ enum class ScreenAspectRatio : int
 {
     STRETCH = 0,
     ASPECT4X3 = 1,
-    ASPECT16x9 = 2
+    ASPECT16X9 = 2
 };
 
 //===================================================================================
@@ -78,3 +81,19 @@ struct TGroundstationConfig
 extern TGroundstationConfig s_groundstation_config;
 
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
+extern void saveGroundStationConfig();
+extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
+
+extern bool s_isOV5640;
+extern uint16_t s_SDTotalSpaceGB16;
+extern uint16_t s_SDFreeSpaceGB16;
+extern bool s_air_record;
+extern bool s_SDDetected;
+extern bool s_SDSlow;
+extern bool s_SDError;
+extern bool bRestartRequired;
+extern bool bRestart;
+extern Clock::time_point restart_tp;
+
+
+extern const char* resolutionName[];

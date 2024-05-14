@@ -2,6 +2,26 @@
 
 #include "main.h"
 #include "imgui.h"
+#include "packets.h"
+
+//=======================================================
+//=======================================================
+enum class OSDMenuId
+{
+    Main,
+    PictureSettings,
+    Resolution,
+    Brightness,
+    Contrast,
+    Exposure,
+    Saturation,
+    Sharpness,
+    VerticalFlip,
+    Letterbox,
+    WifiRate,
+    WifiChannel,
+    Restart
+};
 
 //=======================================================
 //=======================================================
@@ -9,12 +29,42 @@ class OSDMenu
 {
 public:
     OSDMenu();
-    
+
+    bool visible;
+
     void init();
-    void draw();
+    void draw( Ground2Air_Config_Packet& config );
 
 private:
-    bool visible;
+
+    OSDMenuId menuId;
+    int selectedItem;
+    int itemsCount;
+    int keyHandled;
+
+    int bWidth;
+    int sWidth;
+    int bHeight;
+
+    void drawMenuTitle( const char* caption );
+    bool drawMenuItem( const char* caption, int itemIndex, bool clip = false);
+    void drawStatus( const char* caption );
+
+    bool exitKeyPressed();
+
+    void drawMainMenu(Ground2Air_Config_Packet& config);
+    void drawPictureSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawResolutionMenu(Ground2Air_Config_Packet& config);
+    void drawBrightnessMenu(Ground2Air_Config_Packet& config);
+    void drawContrastMenu(Ground2Air_Config_Packet& config);
+    void drawExposureMenu(Ground2Air_Config_Packet& config);
+    void drawSaturationMenu(Ground2Air_Config_Packet& config);
+    void drawSharpnessMenu(Ground2Air_Config_Packet& config);
+    void drawVerticalFlipMenu(Ground2Air_Config_Packet& config);
+    void drawLetterboxMenu(Ground2Air_Config_Packet& config);
+    void drawWifiRateMenu(Ground2Air_Config_Packet& config);
+    void drawWifiChannelMenu(Ground2Air_Config_Packet& config);
+    void drawRestartMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;
