@@ -26,7 +26,7 @@ Open source digital FPV system based on esp32cam.
 - **esp32s3sense** with **ov5640** camera
 
 **Ground station:**
-- **Raspberry Pi Zero 2W**(reecommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
+- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
 
 
 ## Original project
@@ -42,15 +42,15 @@ The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been
 
 The wifi data is sent using packet injection which is possible on **ESP32** platform. Data is sent with forward error correction encoding (FEC) which allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
 
-The air unit can also record the video straight from the camera to a SD card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
+The air unit can also record the video straight from the camera to SD card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide.
 
-There is significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The quality of air unit recording is the same as on GS (no recompression is done).
+There is a significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The video quality of air unit recording is the same as on GS (no recompression is done).
 
 The size of JPEG images vary a lot depending on number of details in the view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
 
-The receiver is a Raspberry PI Zero 2W ... Pi4  with Realtek 8812au(recommended) or AR9271 adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
+The receiver is a **Raspberry PI Zero 2W** ... **Pi4**  with **Realtek 8812au**(recommended) or **AR9271** adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
 
-8812au with LNA is recommended, while PA is not that important. Range is limited by **ESP32** maximum output power of 100mW (20dB).
+**8812au** with LNA is recommended, while PA is not that important. Range is limited by **ESP32** maximum output power of 100mW (20dB).
 
 The JPEG decoding is done with turbojpeg to lower latency and - based on the resolution - can take between 1 and 7 milliseconds.
 
@@ -70,7 +70,7 @@ Secondly, esp32 is not capable of video encoding, which means that video stream 
 
 Image looks Ok on 7” screen, but not more.
 
-Let’s say honest: we expect at least HD resolution from a digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against good analog system. Compared to analog AIO camera, **esp32-cam-fpv** offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
+Let’s say honest: we expect at least HD resolution from the digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against good analog system. Compared to analog AIO camera, **esp32-cam-fpv** offers air unit and ground station video recording, digital OSD, Mavlink stream, telemetry logging and absence of analog noise on image, for the same price. The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
 
 **esp32-cam-fpv** definitely looses againg all commecially available digital FPV systems.
 
@@ -89,24 +89,24 @@ Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam
 
 **esp32cam**
 
-esp32cam does not have enogh free pins. Two configurations are available:
+esp32cam does not have enough free pins. Two configurations are available currently:
 
-**Mavlink + REC button**
+**Displayport MSP OSD + REC button**
 
 ![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
 
-**Mavlink + Displayport MSP OSD**
+**Displayport MSP OSD + Mavlink**
 
 ![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
 
-Both internal red LED and flash LED are usid for indication:
+Both internal red LED and flash LED are used for indication:
  * solid - not recording
  * blinking 1Hz - recording
  * blinking 3Hz - OTA update mode.
  
-Replace flash LED with small indication LED (Blue LED + 100Ohm resistor), or reomve, or paint with black marker.
+Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or remove, or paint with black marker.
 
-REC button is used to start/stop air unit recording. Hold REC button on powerup to enter OTA (over the air update) mode.
+**REC button** is used to start/stop air unit recording. Hold **REC button** on powerup to enter OTA (over the air update) mode.
 
 ![alt text](doc/images/esp32cam_flash_led.jpg "esp32cam_flash_led.png")
 
@@ -116,15 +116,11 @@ With pcb antenna, 50m transmission distance can barely be achieved. A jumper has
 
 ![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
 
-![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell")
+![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell") ![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
 
-![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
+![alt text](doc/images/esp32s3sense_shell2.jpg "esp32s3sense_shell2") ![alt text](doc/images/esp32s3sense_shell3.jpg "esp32s3sense_shell3")
 
-![alt text](doc/images/esp32s3sense_shell2.jpg "esp32s3sense_shell2")
-
-![alt text](doc/images/esp32s3sense_shell3.jpg "esp32s3sense_shell3")
-
-![alt text](doc/images/esp32s3sense_shell_plane.jpg "esp32s3sense_plane")
+![alt text](doc/images/esp32s3sense_shell_plane.jpg "esp32s3sense_plane") ![alt text](doc/images/esp32s3sense_j3.jpg "esp32s3sense_j3")
 
 Module comes with moderate flexible antenna which should be replaced with 2dBi dipole to maximize range.
 
@@ -132,9 +128,7 @@ Internal yellow LED conflicts with SD card and thus can not be used for indicati
 
 Existing **Boot** button is used to start/stop air uint recording.
 
-A jumper should be soldered on J3 to enable SD card (somehow it works without it, but is required for stable operation):
-
-![alt text](doc/images/esp32s3sense_j3.jpg "esp32s3sense_j3")
+A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation):
 
 ## Current consumption
 
@@ -222,17 +216,17 @@ ESC                   | Close OSD menu or exit application
 
 **esp32cam** and **esp32s3sence** boards come with the **OV2640** sensor by default. 
 
-The sweet spot settings for this camera seems to be 800x600 resolution with jpeg quality varying in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 mode 800x456 is implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
+The sweet spot settings for this camera seems to be 800x600 resolution with JPEG compression level in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 modes 640x360 and 800x456 are implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
-Another option is 640x480 and 640x356, which can have better JPEG compression level set per frame, but lucks pixel details and thus have not benefit over 800x600.
+Another options are 640x480 and 640x356, which can have better JPEG compression level set per frame, but luck pixel details and thus do not benefit over 800x600.
 
-Any resolution lower then 640x356, despite high frame rate (60fps and 320x240), is useless in my opinion due to luck of details.
+Any resolution lower then 640x360, despite high frame rate (60fps with 320x240), is useless in my opinion due to luck of details.
 
-ov2640 can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
+**ov2640** can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
 
 **OV5640**
 
-**OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by esp32s3 only thanks to 2x maximum DMA speed).
+**OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** only thanks to 2x maximum DMA speed).
 
 **TODO: check ov5640 1280x720 36MBit performance**
 
@@ -246,28 +240,25 @@ Note that there are sensors with slightly different lens diameter. Two sensors o
 
 # Wifi channel
 
-Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with AR9271 and esp32s3sense stock antenna.
+Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna.
 
 ## Wifi rate
 
-24MBit seems to be a sweet spot which provides high bandwidth and range. 
+24Mbps seems to be a sweet spot which provides high bandwidth and range. 
 
-Lowering bandwidth to 12mBit seems to not provide any range improvement; reception still drops at -83dB. 
+Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36mBit allows to send less compressed frames, but decreases range to 600m. 36mBit bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 1.2 Megabytess per second. Maximum SD write speed 1.2Mb/sec should also be considered here for the air uint DVR.
-
-todo: test mcs modes
-** TODO**
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 1.5 Mb/sec. Maximum SD write speed 1.2Mb/sec should also be considered here for the air unit DVR.
 
 ## Wifi interferrence 
 
 Wifi channel is shared beetween multiple clients. In crowded area, bandwith can be significanly lower then expected. While tested on table at home, **esp32-cam-fpv** can show ~5FPS due to low bandwidth and high packet loss; this is normal.
 
-Note than UAV in the air will sense carrier of all Wifi routers around and share wifi channel bandwidth with them (Carrier-sense multiple access with collision avoidance (CSMA/CA) https://www.geeksforgeeks.org/carrier-sense-multiple-access-csma/ )
+Note than UAV in the air will sense carrier of all Wifi routers around and share wifi channel bandwidth with them (See **Carrier-sense multiple access with collision avoidance (CSMA/CA)** https://www.geeksforgeeks.org/carrier-sense-multiple-access-csma/ )
 
 ## DVR
 
-Class 10 SD Card is required for air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
+Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
 **ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (1.4Mb/sec write speed instead of 1.2Mb/sec).
 
@@ -277,17 +268,17 @@ With the same JPEG compression level the size of a frame can vary a lot dependin
 
 Compression level can be set in range 1..63 (lower is better quality). However **ov2640** can return broken frames or crash with compression levels lower then 8. Also, decreasing compression level below 8 increases frame size but does not increase image much due to bad sensor quality itself.
 
-GS calculates 3 coefficients which are used to adjust compressoin quality, where 8 is maximum and each coefficient can decrease it up to 63.
+Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is maximum and each coefficient can decrease it up to 63.
 
 Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (6/12 FEC redundancy) and divided by FPS. The result is target frame size.
 
-Additionally, frame size is limited to safe 40Kb.
+Additionally, frame size is limited to safe 40Kb ( 40kb*30 FPS = 1.2Mb/sec).
 
-Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower the expected).
+Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected).
 
 # FEC
 
-Frames are sent using Forward error correction encoding. Currently FEC is set to 6/12 which means any 6 of 12 pakets in block can be lost, but frame will be recovered.
+Frames are sent using Forward error correction encoding. Currently FEC is set to 6/12 which means any 6 of 12 packets in block can be lost, but frame will be recovered.
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease causes by wasted bandwidth.
 
@@ -307,26 +298,26 @@ Other cards should also work but not tested.
 
 ## Antenas
 
-This antena seems to be the best choise UAV because it is flexible and can be mouted on the wing using part of cable tie or toothpick:
+This 2.4Ghz antena seems to be the best choice for the UAV because it is flexible and can be mouted on the wing using part of cable tie or toothpick:
 
 ![alt text](doc/images/2dbi_dipole.jpg "2dbi dipole")
 
-Various PCB antenas for 2.4Ghz can be considered but not tested:
+Various PCB antenas for 2.4Ghz can be considered (not tested):
 
 ![alt text](doc/images/pcb_antena.jpg "pcb antena")
 
-The best choise for GS is 5dBi dipoles. 
+The best choice for GS is 5dBi dipoles. 
 
 It is important that all antenas should be mounded **VERTICALLY**.
 
 **esp32cam** PCB antena can not provide range more the a few metters. **esp32cam** board requires soldering resistor to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-Do not power wifi card or **ESP32** without antena attached; it can damage output ampilier.
+Do not power wifi card or **ESP32** without antena attached; it can damage output amplifier.
 
 
 ## Range 
 
-1km at 24MBit, 600m at 36MBit (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+1km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
@@ -338,23 +329,23 @@ Tested on inav microplane:
 
 I am still searching for the best **RTL8812au** drivers for this project.
 
-There seems to be few choises:
+There are seems to be few choises:
 
   * Works fine: https://github.com/morrownr/8812au-20210629
   * Works fine: https://github.com/morrownr/8812au-20210820
   * Seems to work but does not report RSSI: https://github.com/svpcom/rtl8812au/tree/v5.2.20
-  * Seems to work but RSSI seems to be reportex 2x higher then real: https://github.com/svpcom/rtl8812au/tree/v5.2.20-rssi-fix-but-sometimes-crash
+  * Seems to work but RSSI seems to be reported 2x higher then real: https://github.com/svpcom/rtl8812au/tree/v5.2.20-rssi-fix-but-sometimes-crash
   * Not tested: https://github.com/aircrack-ng/rtl8812au
 
 Proper drivers for **AR8271** are included in OS image already.
 
-Note that some optimizations important for other open source digital FPV systems are not important for **esp32-cam-fpv**. Wifi card is not used on air unit, so high output power and and high-bandwidth packet injection is not important.
+Note that some optimizations important for other open source digital FPV systems are not important for **esp32-cam-fpv**. Wifi card is not used on air unit, so high output power and and high-bandwidth packet injection are not important.
 
 ## Latency
 
 Latency is in range 10-30ms, for 640...1280 resolutions with both cameras (1280 30fps for ov5640). From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission. 
 
-Raspberry Pi Zero 2W GS with 60Hz TV:
+**Raspberry Pi Zero 2W** GS with 60Hz TV:
 
 ![alt text](doc/images/latency.jpg "latency")
 
@@ -364,7 +355,7 @@ Raspberry Pi Zero 2W GS with 60Hz TV:
 
 ![alt text](doc/images/gs_internal_wifi.jpg "gs internal wifi")
 
-**NEXMON** drivers https://github.com/seemoo-lab/nexmon offer monitor and packet injection for internal wifi card of Raspberry Pi. Original idea was to build exremely cheap ground station based on Raspberry Pi with internal antena replaced by dipople.
+**NEXMON** drivers https://github.com/seemoo-lab/nexmon offer monitor mode and packet injection for internal wifi card of Raspberry Pi. Original idea was to build extremely cheap ground station based on Raspberry Pi with internal antena replaced by dipople.
 
 Unfortunatelly these attempts was unsuccessfull.
 
@@ -376,7 +367,7 @@ Additionally, there is a bug in the driver: if wifi hotspot which was associated
 
 Lesons learned: 
 
-  - a wifi card with a good sensitivity and proper drivers with monitor mode and packet injection support is a key factor for successfull open source digital FPV system. So far only rtl8812au matches this creiteria and is recommended choise.
+  - a wifi card with a good sensitivity and proper drivers with monitor mode and packet injection support is a key factor for successfull open source digital FPV system. So far only rtl8812au matches these criterias and is recommended choice.
   
   - you should aim for the best reception sensitivity possible on ground; GS should not be cheap. Air unit should be cheap - it can crash or fly away; GS is not.
 
@@ -389,14 +380,14 @@ Lesons learned:
 
 Sensors can be bought with flex cables of various length.
 
-Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Flex cable wires cary high frequency (10Mhz) digital signals which produce a lot of RF noise. GPS sensor mounted in less then 7cm from esp32cam was jammed completely. Micro plane does not have a lot of space to separate GPS sensor from **esp32cam**. Even moved to the end of the wing (15cmaway from **esp32cam**) it still barely found any satellites. **esp32cam** and flex cable shielding improved situation a little bit, but not enough to trust GPS sensor and try a range testing. 
+Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Flex cable wires cary high frequency (10Mhz) digital signals which produce a lot of RF noise. GPS sensor mounted in less then 7cm from **esp32cam** was jammed completely. Micro plane does not have a lot of space to separate GPS sensor from **esp32cam**. Even moved to the end of the wing (15cmaway from **esp32cam**) it still barely found any satellites. **esp32cam** and flex cable shielding improved situation a little bit, but not enough to trust GPS sensor and try a range testing. 
 
 **esp32cam** with long flex cable has been replaced with compact **esp32s3sense** board.
 
 
 # FAQ
 
-* Can original raspberry pi zero W be used as GS?
+* Can original **Raspberry Pi Zero W** be used as GS?
   
   No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
