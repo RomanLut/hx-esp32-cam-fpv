@@ -10,6 +10,8 @@ Open source digital FPV system based on esp32cam.
 - [ ] release prebuilt images and firmware
 - [ ] better diagnostic tools, investigate frame droping
 - [ ] write proper format .mpg on air and ground
+- [ ] Android GS
+- [ ] Meta Quest 2 GS
 
 ## Features:
 - 640x480(4:3), 640x360(16:9), 800x600(4:3), 800x456(16:9) 30FPS 
