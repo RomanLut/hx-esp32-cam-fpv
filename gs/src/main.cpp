@@ -763,15 +763,6 @@ int run(char* argv[])
                     }
                 }
 
-                if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
-                {
-                    config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
-                }
-                if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
-                {
-                    config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
-                }
-
                 {
                     int value = (int)config.camera.fps_limit;
                     ImGui::SliderInt("FPS Limit", &value, 0, 100);
@@ -963,15 +954,17 @@ int run(char* argv[])
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
         {
             config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
+            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SVGA16;
             saveGround2AirConfig(config);
         }
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
         {
             config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
+            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SXGA;
             saveGround2AirConfig(config);
         }
 
-        if ( ImGui::Button("Air Record") || ( !ignoreKeys &&   ImGui::IsKeyPressed(ImGuiKey_R)))
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
         {
             config.air_record_btn++;
         }
