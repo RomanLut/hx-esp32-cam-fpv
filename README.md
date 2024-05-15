@@ -20,7 +20,7 @@ Open source digital FPV system based on esp32cam.
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
-**Air units variants:**
+**Air unit variants:**
 - **esp32cam** with **ov2640** camera
 - **esp32s3sense** with **ov2640** camera
 - **esp32s3sense** with **ov5640** camera
