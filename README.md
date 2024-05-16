@@ -116,6 +116,8 @@ With pcb antenna, 50m transmission distance can barely be achieved. A jumper has
 
 **es32s3sense**
 
+STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
+
 ![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
 
 ![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell") ![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
@@ -139,6 +141,8 @@ Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30m
 ## Ground Station
 
 Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+
+STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/right changes resolution.
 
