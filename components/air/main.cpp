@@ -1138,38 +1138,38 @@ constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Groun
 
 static const int WifiRateBandwidth[] = 
 {
-    2*1024*100, // 0 - RATE_B_2M_CCK,
-    2*1024*100, // 1 - RATE_B_2M_CCK_S,
-    5*1024*100, // 2 - RATE_B_5_5M_CCK,
-    5*1024*100, // 3 - RATE_B_5_5M_CCK_S,
-    11*1024*100, // 4 - RATE_B_11M_CCK,
-    11*1024*100, // 5 - RATE_B_11M_CCK_S,
+    2*1024*125, // 0 - RATE_B_2M_CCK,
+    2*1024*125, // 1 - RATE_B_2M_CCK_S,
+    5*1024*125, // 2 - RATE_B_5_5M_CCK,
+    5*1024*125, // 3 - RATE_B_5_5M_CCK_S,
+    11*1024*125, // 4 - RATE_B_11M_CCK,
+    11*1024*125, // 5 - RATE_B_11M_CCK_S,
 
-    6*1024*100, // 6 - RATE_G_6M_ODFM,
-    9*1024*100, // 7 - RATE_G_9M_ODFM,
-    12*1024*100, // 8 - RATE_G_12M_ODFM,
-    18*1024*100, // 9 - RATE_G_18M_ODFM,
-    24*1024*100,  // 10 - RATE_G_24M_ODFM,
-    36*1024*100,  // 11 - RATE_G_36M_ODFM,
-    48*1024*100,  // 12 - RATE_G_48M_ODFM,
-    54*1024*100,  // 13 - RATE_G_54M_ODFM,
+    6*1024*125, // 6 - RATE_G_6M_ODFM,
+    9*1024*125, // 7 - RATE_G_9M_ODFM,
+    12*1024*125, // 8 - RATE_G_12M_ODFM,
+    18*1024*125, // 9 - RATE_G_18M_ODFM,
+    24*1024*125,  // 10 - RATE_G_24M_ODFM,
+    36*1024*125,  // 11 - RATE_G_36M_ODFM,
+    48*1024*125,  // 12 - RATE_G_48M_ODFM,
+    54*1024*125,  // 13 - RATE_G_54M_ODFM,
 
-    6*1024*100, // 14 - RATE_N_6_5M_MCS0,
-    7*1024*100, // 15 - RATE_N_7_2M_MCS0_S,
-    13*1024*100, // 16 - RATE_N_13M_MCS1,
-    14*1024*100, // 17 - RATE_N_14_4M_MCS1_S,
-    19*1024*100, // 18 - RATE_N_19_5M_MCS2,
-    21*1024*100, // 19 - RATE_N_21_7M_MCS2_S,
-    26*1024*100, // 20 - RATE_N_26M_MCS3,
-    28*1024*100, // 21 - RATE_N_28_9M_MCS3_S,
-    39*1024*100, // 22 - RATE_N_39M_MCS4,
-    43*1024*100, // 23 - RATE_N_43_3M_MCS4_S,
-    52*1024*100, // 24 - RATE_N_52M_MCS5,
-    57*1024*100, // 25 - RATE_N_57_8M_MCS5_S,
-    58*1024*100, // 26 - RATE_N_58M_MCS6,
-    65*1024*100, // 27 - RATE_N_65M_MCS6_S,
-    65*1024*100, // 28 - RATE_N_65M_MCS7,
-    72*1024*100 // 29 - RATE_N_72M_MCS7_S,
+    6*1024*125, // 14 - RATE_N_6_5M_MCS0,
+    7*1024*125, // 15 - RATE_N_7_2M_MCS0_S,
+    13*1024*125, // 16 - RATE_N_13M_MCS1,
+    14*1024*125, // 17 - RATE_N_14_4M_MCS1_S,
+    19*1024*125, // 18 - RATE_N_19_5M_MCS2,
+    21*1024*125, // 19 - RATE_N_21_7M_MCS2_S,
+    26*1024*125, // 20 - RATE_N_26M_MCS3,
+    28*1024*125, // 21 - RATE_N_28_9M_MCS3_S,
+    39*1024*125, // 22 - RATE_N_39M_MCS4,
+    43*1024*125, // 23 - RATE_N_43_3M_MCS4_S,
+    52*1024*125, // 24 - RATE_N_52M_MCS5,
+    57*1024*125, // 25 - RATE_N_57_8M_MCS5_S,
+    58*1024*125, // 26 - RATE_N_58M_MCS6,
+    65*1024*125, // 27 - RATE_N_65M_MCS6_S,
+    65*1024*125, // 28 - RATE_N_65M_MCS7,
+    72*1024*125 // 29 - RATE_N_72M_MCS7_S,
 };
 
 
@@ -1182,12 +1182,18 @@ IRAM_ATTR int getBandwidthForRate(WIFI_Rate rate)
 //=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
+    /*
 #ifdef SENSOR_OV5640
-    //quality changes kill framerate on ov5640. Limit changes.
+    //compression level adjustment kills framerate on ov5640. Limit changes.
     s_quality_counter++;
-    if ( s_quality_counter < 30 ) return;
+    if ( s_max_wlan_outgoing_queue_usage > 70 )
+    {
+        s_quality_counter = 15;//decrease quality immediatelly if wlan queue gets large. Otherwise frames will be dropped
+    }
+    if ( s_quality_counter < 15 ) return;
     s_quality_counter = 0;
 #endif
+*/
 
     if ( video_full_frame_size > s_max_frame_size )
     {
@@ -1200,13 +1206,31 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     //K1 - wifi bandwidth
     //data rate available with current wifi rate
     int rateBandwidth = getBandwidthForRate(s_wlan_rate);
+
+#ifdef BOARD_XIAOS3SENSE        
+    //2.9MB/sec is practical maximum limit which works
+    if ( rateBandwidth > 2900*1024 ) rateBandwidth = 2900*1024;
+#else
+    //2.3MB/sec is practical maximum limit which works
+    if ( rateBandwidth > 2300*1024 ) rateBandwidth = 2300*1024;
+#endif
+
     //decrease available data rate using FEC codec parameters
     int FECbandwidth = rateBandwidth * s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
 
-    //1.2mb/sec is practical maximum limit which works
-    if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
+    if ( s_air_record )
+    {
+#ifdef BOARD_XIAOS3SENSE        
+        //1.2MB/sec is practical maximum SD write speed 
+        //we limit to 1.1MB/sec to have safe margin
+        if ( FECbandwidth > 1100*1024 ) FECbandwidth = 1100*1024;
+#else
+        //0.9MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 900*1024 ) FECbandwidth = 900*1024;
+#endif
+    }
     
-    int frameSize = FECbandwidth / fps * 7 / 10;  //assume only  70% of total bandwidth is available in practice
+    int frameSize = FECbandwidth / fps * 9 / 10;  //assume only  90% of total bandwidth is available in practice
     if ( frameSize < 1 ) frameSize = 1;
 
     float k = frameSize * 1.0f / video_full_frame_size;
