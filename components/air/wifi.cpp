@@ -273,13 +273,14 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     //this reduces throughput for some reason
-    //update: do nto see any bad effect. Contrary, without completion cb, wifi_tx() tentds to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
+    //update: do not see any bad effect. Contrary, without completion cb, wifi_tx() tends to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
 #ifdef TX_COMPLETION_CB
     ESP_ERROR_CHECK(esp_wifi_set_tx_done_cb(wifi_tx_done));
     xSemaphoreGive(s_wifi_tx_done_semaphore);
 #endif
 
     ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
+    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
     ESP_ERROR_CHECK(esp_wifi_set_channel(chn, WIFI_SECOND_CHAN_NONE));
 
     wifi_promiscuous_filter_t filter = 
