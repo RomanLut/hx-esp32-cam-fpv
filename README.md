@@ -168,7 +168,7 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
  Can be used for RC and for downlink telemetry. Setup 115200 UART. 
  
- This is transparent bidirectional stream sent with FEC encoding.
+ This is transparent bidirectional stream sent with FEC encoding (Groun2Air: k=2,n=3, Air2Ground: k=6,n=12).
 
 # OSD Menu
 
@@ -276,7 +276,7 @@ Compression level can be set in range 1..63 (lower is better quality). However *
 
 Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is maximum and each coefficient can decrease it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (6/12 FEC redundancy) and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (12/6 FEC redundancy) and divided by FPS. The result is target frame size.
 
 Additionally, frame size is limited to safe 40Kb ( 40kb*30 FPS = 1.2Mb/sec).
 
@@ -284,7 +284,7 @@ Additionally, frame size is decreased if Wifi output queue grows (Wifi channel i
 
 # FEC
 
-Frames are sent using Forward error correction encoding. Currently FEC is set to 6/12 which means any 6 of 12 packets in block can be lost, but frame will be recovered.
+Frames are sent using Forward error correction encoding. Currently FEC is set to k=6, n=12 which means that bandwidth is doubled but any 6 of 12 packets in block can be lost, and frame will still be recovered.
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease causes by wasted bandwidth.
 
