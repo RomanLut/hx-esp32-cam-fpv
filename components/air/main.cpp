@@ -1273,6 +1273,19 @@ IRAM_ATTR void applyAdaptiveQuality()
 
     int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
 
+/*
+    //experiment - alternating quality
+    if ( s_air_record )
+    {
+        s_quality_counter++;
+        if (s_quality_counter & 3 )
+        {
+            quality1+=32;
+            if ( quality1 > 63 ) quality1 = 63;
+        }
+    }
+*/
+
     if (s_quality != quality1)
     {
         s_quality = quality1;
@@ -1477,7 +1490,7 @@ static void init_camera()
 #ifdef SENSOR_OV5640    
     config.xclk_freq_hz = 26000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
 #else
-    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/7 = 11,428Mhz and we use clk2x
+    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
     config.pixel_format = PIXFORMAT_JPEG;
     config.frame_size = FRAMESIZE_SVGA;
