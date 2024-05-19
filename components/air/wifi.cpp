@@ -85,9 +85,16 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
 
     end_writing_wlan_outgoing_packet(packet);
 
-    if ( s_max_wlan_outgoing_queue_size < s_wlan_outgoing_queue.size() )
+    size_t qs = s_wlan_outgoing_queue.size();
+
+    if ( s_max_wlan_outgoing_queue_size < qs )
     {
-        s_max_wlan_outgoing_queue_size = s_wlan_outgoing_queue.size();
+        s_max_wlan_outgoing_queue_size = qs;
+    }
+
+    if ( s_max_wlan_outgoing_queue_size_frame < qs )
+    {
+        s_max_wlan_outgoing_queue_size_frame = qs;
     }
 
     xSemaphoreGive(s_wlan_outgoing_mux);
@@ -435,6 +442,20 @@ uint8_t getMaxWlanOutgoingQueueUsage()
     v = s_max_wlan_outgoing_queue_size;
     c = s_wlan_outgoing_queue.capacity();
     s_max_wlan_outgoing_queue_size = 0;
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v * 100 / c;
+}
+
+uint8_t getMaxWlanOutgoingQueueUsageFrame()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+    v = s_max_wlan_outgoing_queue_size_frame;
+    c = s_wlan_outgoing_queue.capacity();
+    s_max_wlan_outgoing_queue_size_frame = 0;
     xSemaphoreGive(s_wlan_outgoing_mux);
 
     return v * 100 / c;

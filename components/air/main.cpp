@@ -62,7 +62,7 @@ static int s_actual_capture_fps = 0;
 
 static int s_quality = 20;
 static int s_quality_counter = 0;
-static float s_quality_framesize_K1 = 1;
+static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
 static float s_quality_framesize_K2 = 1;
 static float s_quality_framesize_K3 = 1;
 static int s_max_frame_size = 0;
@@ -969,8 +969,8 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 //===========================================================================================
 IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
-    //ahdnle settings not reated to camera sensor setup.
-    //camera sensor settings are prcessed in camera_data_available() callback
+    //handle settings not related to camera sensor setup.
+    //camera sensor settings are processed in camera_data_available() callback
     handle_ground2air_config_packetEx1(src);
 }
 
@@ -1201,11 +1201,13 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     }
     if ( video_full_frame_size == 0 ) return;
 
-    int fps = s_actual_capture_fps > 10 ? s_actual_capture_fps : 10;
+    int fps = s_actual_capture_fps > 1 ? s_actual_capture_fps : 1;
 
     //K1 - wifi bandwidth
     //data rate available with current wifi rate
     int rateBandwidth = getBandwidthForRate(s_wlan_rate);
+
+    rateBandwidth = rateBandwidth * 5 / 10;  //assume only  50% of theoretical maximum bandwidth is available in practice
 
 #ifdef BOARD_XIAOS3SENSE        
     //2.9MB/sec is practical maximum limit which works
@@ -1230,7 +1232,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 #endif
     }
     
-    int frameSize = FECbandwidth / fps * 9 / 10;  //assume only  90% of total bandwidth is available in practice
+    int frameSize = FECbandwidth / fps;
     if ( frameSize < 1 ) frameSize = 1;
 
     float k = frameSize * 1.0f / video_full_frame_size;
@@ -1240,27 +1242,47 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_quality_framesize_K1 < 0.05f ) s_quality_framesize_K1 = 0.05f;
     if ( s_quality_framesize_K1 > 1.0f ) s_quality_framesize_K1 = 1.0f;
 
-    //k2 - max frame size
-    int safe_frame_size = 40*1024 * 30 / fps;
-    s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
+
+    //k2 - max frame size which do not overload wifi output queue
+    //frame is added to queue in bursts
+    //wifi output queue should have space to hold frame data and fec data
+    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
+    safe_frame_size = safe_frame_size * 9 / 10;  //substract 10% for OSD and mavlink telemetry
+    if ( video_full_frame_size > safe_frame_size )
+    {
+        s_quality_framesize_K2 -= (video_full_frame_size - safe_frame_size) / 100000.0f;// * 30 / fps;
+    }
+    else
+    {
+        s_quality_framesize_K2 += ( safe_frame_size - video_full_frame_size ) / 1000000.0f;// * 30 / fps;
+    }
     if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
     if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
 
+
+    /*
+    s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
+    if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
+    if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
+    */
+
     //K3 - wifi queue
+
     if ( s_stats.wlan_error_count > 0 )
     {
         s_quality_framesize_K3 -= 0.01f;  
     }
 
-    if ( s_max_wlan_outgoing_queue_usage > 70 )
+    //keep wifi out queue usage below 50%
+    int max_wlan_outgoing_queue_usage_frame = getMaxWlanOutgoingQueueUsageFrame(); //get the maximum wifi queue usage while sending frame 
+    if ( max_wlan_outgoing_queue_usage_frame > 50 )
     {
-        s_quality_framesize_K3 -= (s_max_wlan_outgoing_queue_usage - 70) / 30000.0f;
+        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 50) / 1000.0f;
     }
     else
     {
-        s_quality_framesize_K3 += ( 70 - s_max_wlan_outgoing_queue_usage ) / 10000.0f;
+        s_quality_framesize_K3 += ( 50 - max_wlan_outgoing_queue_usage_frame ) / 20000.0f;
     }
-
     if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
     else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
 }
@@ -1302,8 +1324,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
     if ( getOVFFlagAndReset() )
     {
-        s_quality_framesize_K1 = 0.05;
-        s_quality_framesize_K2 = 0.05;
+        s_quality_framesize_K3 = 0.05;
         applyAdaptiveQuality();
     }
 
@@ -1494,7 +1515,7 @@ static void init_camera()
 #endif    
     config.pixel_format = PIXFORMAT_JPEG;
     config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 8;
+    config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
     config.fb_count = 2;
     config.grab_mode = CAMERA_GRAB_LATEST;
     config.fb_location = CAMERA_FB_IN_DRAM;
@@ -1642,7 +1663,7 @@ extern "C" void app_main()
     nvs_args_init();
 
     s_ground2air_config_packet.wifi_channel = (uint16_t)nvs_args_read("channel");
-    if(s_ground2air_config_packet.wifi_channel > 13)
+    if((s_ground2air_config_packet.wifi_channel < 1)  || (s_ground2air_config_packet.wifi_channel > 13))
     {
         s_ground2air_config_packet.wifi_channel = DEFAULT_WIFI_CHANNEL;
         nvs_args_set("channel", DEFAULT_WIFI_CHANNEL);
