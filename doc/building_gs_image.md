@@ -79,6 +79,10 @@ Save and reboot.
 
   ```sudo ./dkms-install.sh```
 
+* Download **esp32-cam-fpv** repository:
+ 
+  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  
 * Adding GPIO keys support:
  
   ```sudo nano /boot/config.txt```
@@ -109,9 +113,7 @@ Save and reboot.
 
   ```cd /home/pi/```
 
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
-
-  ```cd esp32-cam-fpv```
+    ```cd esp32-cam-fpv```
 
   ```cd gs```
 
@@ -219,6 +221,10 @@ Save and reboot.
 
   ```sudo ./dkms-install.sh```
 
+* Download **esp32-cam-fpv** repository:
+
+  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+
 * Adding GPIO keys support:
  
   ```sudo nano /boot/config.txt```
@@ -248,8 +254,6 @@ Save and reboot.
 * Build ground station software:
 
   ```cd /home/pi/```
-
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
   ```cd esp32-cam-fpv```
 

@@ -116,6 +116,8 @@ With pcb antenna, 50m transmission distance can barely be achieved. A jumper has
 
 **es32s3sense**
 
+STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
+
 ![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
 
 ![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell") ![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
@@ -139,6 +141,8 @@ Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30m
 ## Ground Station
 
 Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+
+STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/right changes resolution.
 
@@ -164,7 +168,7 @@ OSD for GPIO Joystick is not done yet; but REC buttons do work and Joystick lef/
 
  Can be used for RC and for downlink telemetry. Setup 115200 UART. 
  
- This is transparent bidirectional stream sent with FEC encoding.
+ This is transparent bidirectional stream sent with FEC encoding (Groun2Air: k=2,n=3, Air2Ground: k=6,n=12).
 
 # OSD Menu
 
@@ -220,7 +224,7 @@ ESC                   | Close OSD menu or exit application
 
 The sweet spot settings for this camera seems to be 800x600 resolution with JPEG compression level in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 modes 640x360 and 800x456 are implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
-Another options are 640x480 and 640x356, which can have better JPEG compression level set per frame, but luck pixel details and thus do not benefit over 800x600.
+Another options are 640x480 and 640x360, which can have better JPEG compression level set per frame, but luck pixel details and thus do not benefit over 800x600.
 
 Any resolution lower then 640x360, despite high frame rate (60fps with 320x240), is useless in my opinion due to luck of details.
 
@@ -250,7 +254,7 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 1.5 Mb/sec. Maximum SD write speed 1.2Mb/sec should also be considered here for the air unit DVR.
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 0.8Mb/sec should also be considered here for the air unit DVR.
 
 ## Wifi interferrence 
 
@@ -262,7 +266,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (1.4Mb/sec write speed instead of 1.2Mb/sec).
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (1.1Mb/sec write speed instead of 0.8Mb/sec).
 
 ## Adaptive quality
 
@@ -272,15 +276,17 @@ Compression level can be set in range 1..63 (lower is better quality). However *
 
 Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is maximum and each coefficient can decrease it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (6/12 FEC redundancy) and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (12/6 FEC redundancy) and divided by FPS. The result is target frame size.
 
 Additionally, frame size is limited to safe 40Kb ( 40kb*30 FPS = 1.2Mb/sec).
 
 Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected).
 
+Additionally, compression level is limited when air unit DVR is enabled; it is 0.8MB/sec frame data for **ESP32** and 1.1MB/sec for **esp32s3sense**. Theoretically, compressino level can be better on 36Mbps wifi rate if DVR is stopped.
+
 # FEC
 
-Frames are sent using Forward error correction encoding. Currently FEC is set to 6/12 which means any 6 of 12 packets in block can be lost, but frame will be recovered.
+Frames are sent using Forward error correction encoding. Currently FEC is set to k=6, n=12 which means that bandwidth is doubled but any 6 of 12 packets in block can be lost, and frame will still be recovered.
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease causes by wasted bandwidth.
 
