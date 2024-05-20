@@ -9,6 +9,8 @@
 #include "packets.h"
 #include "crc.h"
 
+#include "vcd_profiler.h"
+
 
 static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                            10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -410,6 +412,10 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
             if (res == pdFALSE || !packet.data)
                 continue;
 
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC,1);
+#endif
+
             //taskYIELD();
             ENCODER_LOG("1: Received packet: %d\n", uxQueueSpacesAvailable(m_encoder.packet_queue));
 
@@ -463,10 +469,18 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
             {
                 BaseType_t res = xQueueSend(m_encoder.packet_pool, &packet, 0);
                 assert(res);
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
             }
             m_encoder.block_packets.clear();
             m_encoder.last_block_index++;
         }
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC,0);
+#endif
+
     }
 
     vTaskDelete(nullptr);
@@ -499,6 +513,9 @@ IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block
                 return false;
             }
             crt_packet.size = 0;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
         }
 
         size_t s = std::min<size_t>(m_descriptor.mtu - crt_packet.size, size);
@@ -520,6 +537,9 @@ IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block
                 res = xQueueSend(m_encoder.packet_pool, &crt_packet, 0);
                 assert(res == pdPASS);
                 crt_packet = Encoder::Packet();
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
                 return false;
             }
             crt_packet = Encoder::Packet();
@@ -550,6 +570,9 @@ IRAM_ATTR uint8_t* Fec_Codec::get_encode_packet_data(bool block)
             ENCODER_LOG("0: Timeout waiting for empty slot\n");
             return nullptr;
         }
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
     }
     crt_packet.size = m_descriptor.mtu; //mark the packet as full
 
@@ -588,6 +611,9 @@ IRAM_ATTR bool Fec_Codec::flush_encode_packet(bool block)
         res = xQueueSend(m_encoder.packet_pool, &crt_packet, 0);
         assert(res == pdPASS);
         crt_packet = Encoder::Packet();
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
         return false;
     }
     crt_packet = Encoder::Packet();

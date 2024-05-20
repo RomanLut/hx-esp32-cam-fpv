@@ -14,6 +14,7 @@
 
 
 void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,void (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
+
 class Fec_Codec
 {
 public:

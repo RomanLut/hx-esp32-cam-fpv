@@ -4,6 +4,9 @@
 #include "fec_codec.h"
 #include "crc.h"
 #include "lwip/inet.h"
+
+#include "vcd_profiler.h"
+
 static const char * TAG="wifi_task";
 
 #define TX_COMPLETION_CB
@@ -81,11 +84,18 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
     else
     {
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
     }
 
     end_writing_wlan_outgoing_packet(packet);
 
     size_t qs = s_wlan_outgoing_queue.size();
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+#endif
 
     if ( s_max_wlan_outgoing_queue_size < qs )
     {
@@ -132,6 +142,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
         {
             //send pending wlan packets
             xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
             start_reading_wlan_outgoing_packet(packet);
             xSemaphoreGive(s_wlan_outgoing_mux);
 
@@ -142,6 +153,10 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                 size_t spins = 0;
                 while (packet.ptr)
                 {
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_WIFI_TX,1);
+#endif
+
 #ifdef TX_COMPLETION_CB                    
                     xSemaphoreTake(s_wifi_tx_done_semaphore, 0); //clear the notif
 #endif
@@ -153,25 +168,45 @@ IRAM_ATTR static void wifi_tx_proc(void *)
 
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
+
+#ifdef PROFILE_CAMERA_DATA    
+    size_t qs = s_wlan_outgoing_queue.size();
+    s_profiler.add(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+#endif
                         xSemaphoreGive(s_wlan_outgoing_mux);
 
 #ifdef TX_COMPLETION_CB
                         xSemaphoreTake(s_wifi_tx_done_semaphore, portMAX_DELAY); //wait for the tx_done notification
 #endif
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_WIFI_TX,0);
+#endif
+
                     }
                     else if (res == ESP_ERR_NO_MEM) //No TX buffers available, need to poll.
                     {
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_WIFI_SPIN,1);
+#endif
                         //s_stats.wlan_error_count++;
                         spins++;
                         if (spins > 1000)
                             vTaskDelay(1);
                         else
                             taskYIELD();
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_WIFI_SPIN,0);
+#endif
                     }
                     else //other errors
                     {
                         //ESP_LOGE(TAG,"Wlan err: %d\n", res);
                         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
                         xSemaphoreGive(s_wlan_outgoing_mux);
@@ -253,6 +288,11 @@ IRAM_ATTR static void wifi_rx_proc(void *)
 IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus)
 {
     xSemaphoreGive(s_wifi_tx_done_semaphore);
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_DONE);
+#endif
+
 }
 #endif 
 
@@ -460,3 +500,4 @@ uint8_t getMaxWlanOutgoingQueueUsageFrame()
 
     return v * 100 / c;
 }
+

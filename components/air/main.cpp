@@ -46,6 +46,8 @@
 #include "osd.h"
 #include "msp.h"
 
+#include "vcd_profiler.h"
+
 static int s_stats_last_tp = -10000;
 
 
@@ -259,7 +261,22 @@ void checkButton()
     {
         if ( s_restart_time == 0 )
         {
+#if defined(ENABLE_PROFILER) && defined (START_PROFILER_WITH_BUTTON)
+            if ( s_profiler.isActive())
+            {
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
+            }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(500);
+            }
+#else
             s_air_record = !s_air_record;
+#endif            
         }
         LOG("Button pressed!\n");
     }
@@ -326,10 +343,11 @@ static constexpr size_t SD_FAST_BUFFER_SIZE = 10000;
 Circular_Buffer s_sd_fast_buffer(new uint8_t[SD_FAST_BUFFER_SIZE], SD_FAST_BUFFER_SIZE);
 
 //this slow buffer is used to buffer data that is about to be written to SD. The reason it's this big is because SD card write speed fluctuated a lot and 
-// sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enoigh buffer.
+// sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enough buffer.
 //The data is written to the sd card by the sd_write_task, in chunks of SD_WRITE_BLOCK_SIZE.
 static constexpr size_t SD_SLOW_BUFFER_SIZE_PSRAM = 3 * 1024 * 1024;
-static constexpr size_t SD_SLOW_BUFFER_SIZE_RAM = 32768;
+//removeme: buffer is in RAM for esp32-vtx board
+static constexpr size_t SD_SLOW_BUFFER_SIZE_RAM = 32768;  
 Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
@@ -824,7 +842,22 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         {
             if ( ((uint8_t)(dst.air_record_btn + 1)) == src.air_record_btn )
             {
+#if defined(ENABLE_PROFILER) && defined (START_PROFILER_WITH_GS_BUTTON)
+            if ( s_profiler.isActive())
+            {
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
+            }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(500);
+            }
+#else
                 s_air_record = !s_air_record;
+#endif                
             }
             dst.air_record_btn = src.air_record_btn;
         }
@@ -1027,6 +1060,9 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
     }
 }
 
@@ -1079,6 +1115,9 @@ IRAM_ATTR void send_air2ground_data_packet()
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
     }
     else
     {
@@ -1131,6 +1170,9 @@ IRAM_ATTR void send_air2ground_osd_packet()
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
     }
 }
 
@@ -1244,10 +1286,11 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
 
     //k2 - max frame size which do not overload wifi output queue
-    //frame is added to queue in bursts
     //wifi output queue should have space to hold frame data and fec data
     int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
-    safe_frame_size = safe_frame_size * 9 / 10;  //substract 10% for OSD and mavlink telemetry
+    //queue is emptied by tx thread constantly so we can assume virtually "larger buffer"
+    safe_frame_size += FECbandwidth / fps; 
+    safe_frame_size = safe_frame_size * 7 / 10;  //assume next frame can suddenly increase is size by 30%
     if ( video_full_frame_size > safe_frame_size )
     {
         s_quality_framesize_K2 -= (video_full_frame_size - safe_frame_size) / 100000.0f;// * 30 / fps;
@@ -1270,18 +1313,18 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( s_stats.wlan_error_count > 0 )
     {
-        s_quality_framesize_K3 -= 0.01f;  
+        s_quality_framesize_K3 = 0; //we overloaded wifi buffer. drop quality immediatelly, we do not want to loose more frames
     }
 
-    //keep wifi out queue usage below 50%
+    //keep wifi out queue usage below 40%
     int max_wlan_outgoing_queue_usage_frame = getMaxWlanOutgoingQueueUsageFrame(); //get the maximum wifi queue usage while sending frame 
-    if ( max_wlan_outgoing_queue_usage_frame > 50 )
+    if ( max_wlan_outgoing_queue_usage_frame > 40 )
     {
-        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 50) / 1000.0f;
+        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 40) / 100.0f;
     }
     else
     {
-        s_quality_framesize_K3 += ( 50 - max_wlan_outgoing_queue_usage_frame ) / 20000.0f;
+        s_quality_framesize_K3 += ( 60 - max_wlan_outgoing_queue_usage_frame ) / 10000.0f;
     }
     if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
     else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
@@ -1320,10 +1363,17 @@ IRAM_ATTR void applyAdaptiveQuality()
 //=============================================================================================
 IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_t count, bool last)
 {
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_DATA, 1);
+#endif
+
     size_t stride=((cam_obj_t *)cam_obj)->dma_bytes_per_item;
 
     if ( getOVFFlagAndReset() )
     {
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_OVF);
+#endif
         s_quality_framesize_K3 = 0.05;
         applyAdaptiveQuality();
     }
@@ -1388,6 +1438,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_video_frame_data_size += c;
                 s_video_full_frame_size += c;
 
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
+#endif
 
                 size_t c8 = c >> 3;
                 for (size_t i = c8; i > 0; i--)
@@ -1461,6 +1514,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             recalculateFrameSizeQualityK(s_video_full_frame_size);
             applyAdaptiveQuality();
             s_video_full_frame_size = 0;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_DATA_SIZE, 0);
+#endif
 
             handle_ground2air_config_packetEx2(false);
 
@@ -1482,6 +1538,15 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     }
 
     s_fec_encoder.unlock();
+
+#ifdef PROFILE_CAMERA_DATA    
+    if (last) s_profiler.toggle(PF_CAMERA_FRAME_END);
+#endif
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.add(PF_CAMERA_DATA, 0);
+#endif
+
     return count;
 }
 
@@ -1619,6 +1684,10 @@ extern "C" void app_main()
     initialize_status_led();
     initialize_flash_led();
     initialize_rec_button();
+
+#ifdef ENABLE_PROFILER
+    s_profiler.init();
+#endif
 
 #ifdef DVR_SUPPORT
 
@@ -1783,6 +1852,16 @@ extern "C" void app_main()
         update_status_led();
 
         checkButton();
+
+#ifdef ENABLE_PROFILER
+        if ( s_profiler.full() || s_profiler.timedOut() )
+        {
+            LOG("Profiler stopped!\n");
+            s_profiler.stop();
+            s_profiler.save();
+            s_profiler.clear();
+        } 
+#endif
 
 /*
 #ifdef UART_MAVLINK
