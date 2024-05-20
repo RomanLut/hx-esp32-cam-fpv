@@ -63,11 +63,11 @@ static uint8_t s_osdUpdateCounter = 0;
 static int s_actual_capture_fps = 0;
 
 static int s_quality = 20;
-static int s_quality_counter = 0;
 static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
 static float s_quality_framesize_K2 = 1;
 static float s_quality_framesize_K3 = 1;
 static int s_max_frame_size = 0;
+static int s_sharpness = 20;
 
 static int64_t s_video_last_sent_tp = esp_timer_get_time();
 static int64_t s_video_last_acquired_tp = esp_timer_get_time();
@@ -272,7 +272,7 @@ void checkButton()
             else
             {
                 LOG("Profiler started!\n");
-                s_profiler.start(500);
+                s_profiler.start(3000);
             }
 #else
             s_air_record = !s_air_record;
@@ -853,7 +853,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
             else
             {
                 LOG("Profiler started!\n");
-                s_profiler.start(500);
+                s_profiler.start(3000);
             }
 #else
                 s_air_record = !s_air_record;
@@ -961,7 +961,11 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(brightness, brightness, int);
     APPLY(contrast, contrast, int);
     APPLY(saturation, saturation, int);
-    APPLY(sharpness, sharpness, int);
+    if ( s_quality < 50 )
+    {
+        APPLY(sharpness, sharpness, int);
+        s_sharpness = src.camera.sharpness;
+    }
     APPLY(denoise, denoise, int);
 #ifdef SENSOR_OV5640
     //gainceiling for ov5640 is range 0...3ff
@@ -1061,7 +1065,7 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
 #endif
     }
 }
@@ -1115,8 +1119,8 @@ IRAM_ATTR void send_air2ground_data_packet()
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
-#ifdef PROFILE_CAMERA_DATA    
-    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
 #endif
     }
     else
@@ -1171,7 +1175,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
 #endif
     }
 }
@@ -1224,19 +1228,6 @@ IRAM_ATTR int getBandwidthForRate(WIFI_Rate rate)
 //=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
-    /*
-#ifdef SENSOR_OV5640
-    //compression level adjustment kills framerate on ov5640. Limit changes.
-    s_quality_counter++;
-    if ( s_max_wlan_outgoing_queue_usage > 70 )
-    {
-        s_quality_counter = 15;//decrease quality immediatelly if wlan queue gets large. Otherwise frames will be dropped
-    }
-    if ( s_quality_counter < 15 ) return;
-    s_quality_counter = 0;
-#endif
-*/
-
     if ( video_full_frame_size > s_max_frame_size )
     {
         s_max_frame_size = video_full_frame_size;
@@ -1311,7 +1302,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     //K3 - wifi queue
 
-    if ( s_stats.wlan_error_count > 0 )
+    if ( (s_stats.wlan_error_count > 0) || (s_fec_spin_count > 0) || (s_fec_wlan_error_count > 0))
     {
         s_quality_framesize_K3 = 0; //we overloaded wifi buffer. drop quality immediatelly, we do not want to loose more frames
     }
@@ -1338,24 +1329,25 @@ IRAM_ATTR void applyAdaptiveQuality()
 
     int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
 
-/*
-    //experiment - alternating quality
-    if ( s_air_record )
-    {
-        s_quality_counter++;
-        if (s_quality_counter & 3 )
-        {
-            quality1+=32;
-            if ( quality1 > 63 ) quality1 = 63;
-        }
-    }
-*/
-
     if (s_quality != quality1)
     {
         s_quality = quality1;
         sensor_t* s = esp_camera_sensor_get(); 
         s->set_quality(s, s_quality); 
+
+        int sharpness1 = s_ground2air_config_packet.camera.sharpness;
+
+        if ( s_quality > 50 ) sharpness1 = -2; 
+        else if ( s_quality > 45 ) sharpness1 = -1;
+        else if ( s_quality > 40 ) sharpness1 = 0;
+
+        if ( s_ground2air_config_packet.camera.sharpness < sharpness1 ) sharpness1 = s_ground2air_config_packet.camera.sharpness;
+
+        if (s_sharpness != sharpness1 )
+        {
+            s->set_sharpness(s, sharpness1);
+            s_sharpness = sharpness1;
+        }
     }
 }
 
@@ -1514,6 +1506,8 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             recalculateFrameSizeQualityK(s_video_full_frame_size);
             applyAdaptiveQuality();
             s_video_full_frame_size = 0;
+            s_stats.fec_spin_count += s_fec_spin_count;
+            s_fec_spin_count = 0;
 #ifdef PROFILE_CAMERA_DATA    
     s_profiler.add(PF_CAMERA_DATA_SIZE, 0);
 #endif
@@ -1540,7 +1534,10 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     s_fec_encoder.unlock();
 
 #ifdef PROFILE_CAMERA_DATA    
-    if (last) s_profiler.toggle(PF_CAMERA_FRAME_END);
+    if (last)
+    {
+        s_profiler.add(PF_CAMERA_FRAME_QUALITY, s_quality);
+    }
 #endif
 
 #ifdef PROFILE_CAMERA_DATA    
@@ -1833,8 +1830,11 @@ extern "C" void app_main()
             s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
             s_stats_last_tp = millis();
-            LOG("WLAN S: %d, R: %d, E: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
-                s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage,
+            s_stats.wlan_error_count += s_fec_wlan_error_count;
+            s_fec_wlan_error_count = 0;
+            LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
+                s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
+                s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage, 
                 s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                 s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                 (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 

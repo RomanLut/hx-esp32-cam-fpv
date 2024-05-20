@@ -12,8 +12,10 @@
 #include "fec.h"
 
 
+extern int s_fec_spin_count;
+extern int s_fec_wlan_error_count;
 
-void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,void (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
+void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
 
 class Fec_Codec
 {
@@ -50,7 +52,7 @@ public:
 
     //Callback for when an encoded packet is available
     //NOTE: this is called form another thread!!!
-    void set_data_encoded_cb(void (*cb)(const void* data, size_t size));
+    void set_data_encoded_cb(bool (*cb)(const void* data, size_t size));
 
     //Add here data that will be encoded.
     //Size dosn't have to be a full packet. Can be anything > 0, even bigger than a packet
@@ -113,7 +115,7 @@ private:
 
         Packet crt_packet;
 
-        void (*cb)(const void* data, size_t size);
+        bool (*cb)(const void* data, size_t size);
     } m_encoder;
 
     void seal_packet(Encoder::Packet& packet, uint32_t block_index, uint8_t packet_index);

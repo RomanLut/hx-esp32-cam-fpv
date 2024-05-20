@@ -67,9 +67,11 @@ IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
         xTaskNotifyGive(s_wifi_rx_task); //notify task
 }
 
-IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
+IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 {
-    if (s_ground2air_config_packet.wifi_power == 0) return;
+    if (s_ground2air_config_packet.wifi_power == 0) return true;
+
+    bool res = true;
 
     Wlan_Outgoing_Packet packet;
 
@@ -83,10 +85,7 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
     }
     else
     {
-        s_stats.wlan_error_count++;
-#ifdef PROFILE_CAMERA_DATA    
-    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
-#endif
+        res = false;
     }
 
     end_writing_wlan_outgoing_packet(packet);
@@ -113,6 +112,8 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
     if (s_wifi_tx_task)
         xTaskNotifyGive(s_wifi_tx_task); //notify task
     //LOG("gave semaphore\n");
+
+    return res;
 }
 
 inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_queue_size)

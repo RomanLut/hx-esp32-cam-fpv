@@ -56,6 +56,7 @@ struct Stats
     uint32_t wlan_data_sent = 0;
     uint32_t wlan_data_received = 0;
     uint16_t wlan_error_count = 0;
+    uint16_t fec_spin_count = 0;
     uint16_t wlan_received_packets_dropped = 0;
     uint32_t video_data = 0;
     uint16_t video_frames = 0;

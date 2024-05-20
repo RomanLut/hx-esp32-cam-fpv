@@ -1,14 +1,14 @@
 #pragma once
 
 //===========================================================
-//Uncommet one of modes to enable profiler
-//#define PROFILE_CAMERA_DATA
+//Uncomment to enable profiler
+#define PROFILE_CAMERA_DATA
 
 
 //uncomment to start profiling with button
 #define START_PROFILER_WITH_BUTTON
 
-//uncomment to profile with GS REC button
+//uncomment to profile with GS "Air REC" button
 #define START_PROFILER_WITH_GS_BUTTON
 //===========================================================
 
@@ -18,28 +18,32 @@
 #define ENABLE_PROFILER
 
 #define PF_CAMERA_DATA          0
-#define PF_CAMERA_FRAME_END     1
+#define PF_CAMERA_FRAME_QUALITY 1
 #define PF_CAMERA_DATA_SIZE     2
 #define PF_CAMERA_FEC_POOL      3
 #define PF_CAMERA_FEC           4
 #define PF_CAMERA_WIFI_TX       5
 #define PF_CAMERA_WIFI_SPIN     6
-#define PF_CAMERA_WIFI_DONE     7
-#define PF_CAMERA_WIFI_QUEUE    8
-#define PF_CAMERA_WIFI_OVF      9
-#define PF_CAMERA_OVF           10
+#define PF_CAMERA_FEC_SPIN      7
+#define PF_CAMERA_WIFI_DONE     8
+#define PF_CAMERA_WIFI_QUEUE    9
+#define PF_CAMERA_WIFI_OVF      10
+#define PF_CAMERA_FEC_OVF       11
+#define PF_CAMERA_OVF           12
 
 #define PF0_NAME "cam_data"
-#define PF1_NAME "frame_end"
+#define PF1_NAME "quality"
 #define PF2_NAME "data_size"
 #define PF3_NAME "fec_pool"
 #define PF4_NAME "cam_fec"
 #define PF5_NAME "wifi_tx"
 #define PF6_NAME "wifi_spin"
-#define PF7_NAME "wifi_done"
-#define PF8_NAME "wifi_queue"
-#define PF9_NAME "wifi_ovf"
-#define PF10_NAME "cam_ovf"
+#define PF7_NAME "fec_spin"
+#define PF8_NAME "wifi_done"
+#define PF9_NAME "wifi_queue"
+#define PF10_NAME "wifi_ovf"
+#define PF11_NAME "fec_ovf"
+#define PF12_NAME "cam_ovf"
 
 
 #endif
