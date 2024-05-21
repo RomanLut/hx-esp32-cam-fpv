@@ -95,7 +95,7 @@ bool VCDProfiler::init()
 
 //===========================================================
 //===========================================================
-IRAM_ATTR void VCDProfiler::add(int var, int val)
+IRAM_ATTR void VCDProfiler::set(int var, int val)
 {
     if ( this->active )
     {

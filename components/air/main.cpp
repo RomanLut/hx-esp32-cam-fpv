@@ -272,7 +272,7 @@ void checkButton()
             else
             {
                 LOG("Profiler started!\n");
-                s_profiler.start(3000);
+                s_profiler.start(1000);
             }
 #else
             s_air_record = !s_air_record;
@@ -339,7 +339,7 @@ static uint32_t s_sd_next_segment_id = 0;
 
 //the fast buffer is RAM and used to transfer data quickly from the camera callback to the slow, SPIRAM buffer. 
 //Writing directly to the SPIRAM buffer is too slow in the camera callback and causes lost frames, so I use this RAM buffer and a separate task (sd_enqueue_task) for that.
-static constexpr size_t SD_FAST_BUFFER_SIZE = 10000;
+static constexpr size_t SD_FAST_BUFFER_SIZE = 8192;
 Circular_Buffer s_sd_fast_buffer(new uint8_t[SD_FAST_BUFFER_SIZE], SD_FAST_BUFFER_SIZE);
 
 //this slow buffer is used to buffer data that is about to be written to SD. The reason it's this big is because SD card write speed fluctuated a lot and 
@@ -352,7 +352,19 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
 // this RAM block and write from it directly. This results in several MB/s write speed performance which is good enough.
-static constexpr size_t SD_WRITE_BLOCK_SIZE = 2048;
+//ESP32S3: 2048  - 1.2 MB/s
+//ESP32S3: 6*512 - 1.5 MB/s
+//ESP32S3: 4096  - 1.8 MB/s *
+//ESP32S3: 10*512- 1.9 MB/s
+//ESP32S3: 8192  - 2.5 MB/s
+//ESP32S3: 20*512- 2.5 MB/s
+//ESP32S3: 4096 SPI RAM - 0.38 MB/s
+
+//ESP32 2096: 0.58 MB/s
+//ESP32 6*512:1 MB/s
+//ESP32 4096: 1.2 MB/s *
+//ESP32 8192: 1.3 MB/s
+static constexpr size_t SD_WRITE_BLOCK_SIZE = 4096;
 
 
 /*
@@ -565,7 +577,7 @@ static FILE* open_sd_file()
 static void sd_write_proc(void*)
 {
     //for fast SD writes, buffer has to be in DMA enabled memory
-    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);//new uint8_t[SD_WRITE_BLOCK_SIZE];
+    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
     while (true)
     {
@@ -586,6 +598,11 @@ static void sd_write_proc(void*)
 
         xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
         s_sd_slow_buffer->clear();
+
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.set(PF_CAMERA_SD_SLOW_BUF, 0 );
+#endif
+
         xSemaphoreGive(s_sd_slow_buffer_mux);
 
         bool error = false; 
@@ -611,6 +628,9 @@ static void sd_write_proc(void*)
 
                 xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
                 bool read = s_sd_slow_buffer->read(block, SD_WRITE_BLOCK_SIZE);
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100 ));
+#endif
                 xSemaphoreGive(s_sd_slow_buffer_mux);
                 if (!read)
                 {
@@ -670,6 +690,10 @@ static void sd_enqueue_proc(void*)
 
         xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
         s_sd_fast_buffer.clear();
+
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.set(PF_CAMERA_SD_FAST_BUF, 0);
+#endif
         xSemaphoreGive(s_sd_fast_buffer_mux);
 
         while (true)
@@ -691,11 +715,24 @@ static void sd_enqueue_proc(void*)
             if ( !s_sd_slow_buffer->write(buffer, size) )
             {
                 s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.toggle(PF_CAMERA_SD_OVF );
+#endif
             }
+
+#ifdef PROFILE_CAMERA_DATA    
+            s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100));
+#endif
+
             xSemaphoreGive(s_sd_slow_buffer_mux);
 
             xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
             s_sd_fast_buffer.end_reading(size);
+
+#ifdef PROFILE_CAMERA_DATA    
+            s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100));
+#endif
+
             xSemaphoreGive(s_sd_fast_buffer_mux);
 
             if (s_sd_write_task)
@@ -712,6 +749,11 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
     bool ok = s_sd_fast_buffer.write(data, size);
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100) );
+#endif
+
     xSemaphoreGive(s_sd_fast_buffer_mux);
     if (ok)
     {
@@ -721,6 +763,9 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
     else
     {
         s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_SD_OVF);
+#endif
     }
 }
 
@@ -853,7 +898,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
             else
             {
                 LOG("Profiler started!\n");
-                s_profiler.start(3000);
+                s_profiler.start(1000);
             }
 #else
                 s_air_record = !s_air_record;
@@ -1256,12 +1301,11 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_air_record )
     {
 #ifdef BOARD_XIAOS3SENSE        
-        //1.2MB/sec is practical maximum SD write speed 
-        //we limit to 1.1MB/sec to have safe margin
-        if ( FECbandwidth > 1100*1024 ) FECbandwidth = 1100*1024;
+        //1.8MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1800*1024 ) FECbandwidth = 1800*1024;
 #else
-        //0.9MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 900*1024 ) FECbandwidth = 900*1024;
+        //1.2MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
 #endif
     }
     
@@ -1356,7 +1400,7 @@ IRAM_ATTR void applyAdaptiveQuality()
 IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_t count, bool last)
 {
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_DATA, 1);
+    s_profiler.set(PF_CAMERA_DATA, 1);
 #endif
 
     size_t stride=((cam_obj_t *)cam_obj)->dma_bytes_per_item;
@@ -1431,7 +1475,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_video_full_frame_size += c;
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
+                s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
 #endif
 
                 size_t c8 = c >> 3;
@@ -1509,7 +1553,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             s_stats.fec_spin_count += s_fec_spin_count;
             s_fec_spin_count = 0;
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_DATA_SIZE, 0);
+            s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
 #endif
 
             handle_ground2air_config_packetEx2(false);
@@ -1536,12 +1580,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef PROFILE_CAMERA_DATA    
     if (last)
     {
-        s_profiler.add(PF_CAMERA_FRAME_QUALITY, s_quality);
+        s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
     }
 #endif
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_DATA, 0);
+    s_profiler.set(PF_CAMERA_DATA, 0);
 #endif
 
     return count;

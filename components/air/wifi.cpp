@@ -93,7 +93,7 @@ IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
     size_t qs = s_wlan_outgoing_queue.size();
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+    s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
 #endif
 
     if ( s_max_wlan_outgoing_queue_size < qs )
@@ -121,7 +121,7 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
   //SPI RAM is too slow, can not handle more then 2Mb/s bandwidth
   //s_wlan_outgoing_queue.init(new uint8_t[wlan_outgoing_queue_size], wlan_outgoing_queue_size);
   s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL ),wlan_outgoing_queue_size );
-  //s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_SPIRAM ),wlan_outgoing_queue_size );
+  //s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_SPIRAM ),wlan_outgoing_queue_size*4 );
 
   s_wlan_incoming_queue.init(new uint8_t[wlan_incoming_queue_size], wlan_incoming_queue_size);
 
@@ -155,7 +155,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                 while (packet.ptr)
                 {
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_WIFI_TX,1);
+                    s_profiler.set(PF_CAMERA_WIFI_TX,1);
 #endif
 
 #ifdef TX_COMPLETION_CB                    
@@ -171,8 +171,8 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                         end_reading_wlan_outgoing_packet(packet);
 
 #ifdef PROFILE_CAMERA_DATA    
-    size_t qs = s_wlan_outgoing_queue.size();
-    s_profiler.add(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+                        size_t qs = s_wlan_outgoing_queue.size();
+                        s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
 #endif
                         xSemaphoreGive(s_wlan_outgoing_mux);
 
@@ -181,7 +181,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
 #endif
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_WIFI_TX,0);
+                        s_profiler.set(PF_CAMERA_WIFI_TX,0);
 #endif
 
                     }
@@ -189,7 +189,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                     {
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_WIFI_SPIN,1);
+                        s_profiler.set(PF_CAMERA_WIFI_SPIN,1);
 #endif
                         //s_stats.wlan_error_count++;
                         spins++;
@@ -198,7 +198,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                         else
                             taskYIELD();
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_WIFI_SPIN,0);
+                        s_profiler.set(PF_CAMERA_WIFI_SPIN,0);
 #endif
                     }
                     else //other errors
@@ -291,7 +291,7 @@ IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_
     xSemaphoreGive(s_wifi_tx_done_semaphore);
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.toggle(PF_CAMERA_WIFI_DONE);
+    s_profiler.toggle(PF_CAMERA_WIFI_DONE_CB);
 #endif
 
 }

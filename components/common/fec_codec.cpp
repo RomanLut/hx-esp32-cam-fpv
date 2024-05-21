@@ -416,7 +416,7 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                 continue;
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC,1);
+            s_profiler.set(PF_CAMERA_FEC,1);
 #endif
             ENCODER_LOG("1: Received packet: %d\n", uxQueueSpacesAvailable(m_encoder.packet_queue));
 
@@ -430,11 +430,11 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                     {
                         s_fec_spin_count++;
 #ifdef PROFILE_CAMERA_DATA    
-                        s_profiler.add(PF_CAMERA_FEC_SPIN,1);
+                        s_profiler.set(PF_CAMERA_FEC_SPIN,1);
 #endif
                         taskYIELD();  
 #ifdef PROFILE_CAMERA_DATA    
-                        s_profiler.add(PF_CAMERA_FEC_SPIN,0);
+                        s_profiler.set(PF_CAMERA_FEC_SPIN,0);
 #endif
                         if ( uxQueueMessagesWaiting(m_encoder.packet_pool) < 2 )
                         {
@@ -484,7 +484,7 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                 BaseType_t res = xQueueSend(m_encoder.packet_pool, &packet, 0);
                 assert(res);
 #ifdef PROFILE_CAMERA_DATA    
-            s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+                s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
             }
             m_encoder.block_packets.clear();
@@ -507,11 +507,11 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                             //there is a plenty of space in fec pool so we can wait here until situation imporves.
                             s_fec_spin_count++;
 #ifdef PROFILE_CAMERA_DATA    
-        s_profiler.add(PF_CAMERA_FEC_SPIN,1);
+                            s_profiler.set(PF_CAMERA_FEC_SPIN,1);
 #endif
                             taskYIELD();
 #ifdef PROFILE_CAMERA_DATA    
-        s_profiler.add(PF_CAMERA_FEC_SPIN,0);
+                            s_profiler.set(PF_CAMERA_FEC_SPIN,0);
 #endif
                             if ( uxQueueMessagesWaiting(m_encoder.packet_pool) < 2 )
                             {
@@ -539,7 +539,7 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
         }
 
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC,0);
+    s_profiler.set(PF_CAMERA_FEC,0);
 #endif
 
     }
@@ -575,7 +575,7 @@ IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block
             }
             crt_packet.size = 0;
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+            s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
         }
 
@@ -599,7 +599,7 @@ IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block
                 assert(res == pdPASS);
                 crt_packet = Encoder::Packet();
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+                s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
                 return false;
             }
@@ -632,7 +632,7 @@ IRAM_ATTR uint8_t* Fec_Codec::get_encode_packet_data(bool block)
             return nullptr;
         }
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+        s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
     }
     crt_packet.size = m_descriptor.mtu; //mark the packet as full
@@ -673,7 +673,7 @@ IRAM_ATTR bool Fec_Codec::flush_encode_packet(bool block)
         assert(res == pdPASS);
         crt_packet = Encoder::Packet();
 #ifdef PROFILE_CAMERA_DATA    
-    s_profiler.add(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+        s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
         return false;
     }
