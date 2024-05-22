@@ -86,14 +86,17 @@ enum class Resolution : uint8_t
     UXGA,   //1600x1200
 };
 
+#define FEC_K 6
+#define FEC_N 12
+
 struct Ground2Air_Config_Packet : Ground2Air_Header
 {
     uint8_t ping = 0; //used for latency measurement
     int8_t wifi_power = 20;//dBm
     WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
-    uint8_t fec_codec_k = 6;
-    uint8_t fec_codec_n = 12;
+    uint8_t fec_codec_k = FEC_K;
+    uint8_t fec_codec_n = FEC_N;
     uint16_t fec_codec_mtu = AIR2GROUND_MTU;
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
 

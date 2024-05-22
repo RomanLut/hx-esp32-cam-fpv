@@ -41,6 +41,13 @@ class Stats
         return this->sum / (float)STATS_SIZE;
     }
 
+    uint8_t max()
+    {
+        uint8_t res = 0;
+        for ( int i = 0; i < STATS_SIZE; i++ ) if ( this->data[i] > res) res = this->data[i];
+        return res;
+    }
+
     static float getter(void* data, int idx)
     {
         const Stats* inst = (const Stats*)data;

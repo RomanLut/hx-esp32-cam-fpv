@@ -1123,7 +1123,7 @@ void Comms::process_rx_packets()
                     //LOGI("Packet {}", block->index * coding_k + d->index);
                     m_data_stats_data_accumulated += d->data.size();
                     {
-                        std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);   
+                        std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);
                         d->restoredByFEC = false;
                         rx.ready_packet_queue.push_back(d);
                     }
@@ -1200,11 +1200,11 @@ void Comms::process_rx_packets()
                 if (!d->is_processed)
                 {
                     //LOGI("Packet F {}", block->index * coding_k + d->index);
-                    m_data_stats_data_accumulated += d->data.size();
                     {
                         std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);   
                         d->restoredByFEC = true;
                         rx.ready_packet_queue.push_back(d);
+                        m_data_stats_data_accumulated += d->data.size();
                     }
                     rx.last_packet_tp = Clock::now();
                     d->is_processed = true;
@@ -1238,7 +1238,9 @@ void Comms::process_rx_packets()
             {
                 RX::Packet_ptr const& d = block->packets[i];
                 if (!d->is_processed)
+                {
                     ;//LOGI("Skipping {}", block->index * coding_k + d->index);
+                }
             }
             rx.next_block_index = block->index + 1;
             rx.block_queue.pop_front();

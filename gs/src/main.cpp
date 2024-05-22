@@ -151,6 +151,7 @@ Stats s_frameParts_stats;
 Stats s_frameTime_stats;
 Stats s_frameQuality_stats;
 Stats s_dataSize_stats;
+Stats s_queueUsage_stats;
 
 OSD g_osd;
 
@@ -206,7 +207,8 @@ static void comms_thread_proc()
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size, min_rssi, 
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count,video_fps);
+                std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count,
+                video_fps);
 
             s_min_rssi = min_rssi;
             s_total_data = total_data;
@@ -385,6 +387,7 @@ static void comms_thread_proc()
                         s_frameTime_stats.add(0);
                         s_frameQuality_stats.add(0);
                         s_frameParts_stats.add(video_next_part_index);
+                        s_queueUsage_stats.add(s_wifi_queue);
                     }
 
                     //frames [video_frame_index + 1 ... untill air2ground_video_packet.frame_index) are lost completely
@@ -397,6 +400,7 @@ static void comms_thread_proc()
                         s_frameTime_stats.addMultiple( 0, df );
                         s_frameQuality_stats.addMultiple( 0, df );
                         s_frameParts_stats.addMultiple( 0, df );
+                        s_queueUsage_stats.addMultiple(0,df);
                     }
 
                     video_frame_index = air2ground_video_packet.frame_index;
@@ -430,6 +434,7 @@ static void comms_thread_proc()
                         s_frame_stats.add(video_restoredByFEC ? 1 : 3);
                         s_frameParts_stats.add(air2ground_video_packet.part_index);
                         s_frameQuality_stats.add(s_curr_quality);
+                        s_queueUsage_stats.add(s_curr_quality);
 
                         auto current_time = Clock::now();
                         auto duration_since_last_frame = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_frame_decoded);
@@ -704,7 +709,9 @@ int run(char* argv[])
 
                 ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
                 ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 3.0f, ImVec2(0, 24));            
-                ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, NULL, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
+
+                sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
+                ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
                 ImGui::PlotHistogram("Period", Stats::getter, &s_frameTime_stats, s_frameTime_stats.count(), 0, NULL, 0, 100.0f, ImVec2(0, 60));
 
                 sprintf(overlay, "cur: %d", s_curr_quality);
@@ -712,6 +719,9 @@ int run(char* argv[])
 
                 sprintf(overlay, "avg: %d KB/sec", ((int)(s_dataSize_stats.average()+0.5f) )*10);
                 ImGui::PlotHistogram("DataSize", Stats::getter, &s_dataSize_stats, s_dataSize_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+
+                sprintf(overlay, "%d%%", (int)(s_wifi_queue));
+                ImGui::PlotHistogram("Wifi Load", Stats::getter, &s_queueUsage_stats, s_queueUsage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
 
                 ImGui::PopItemWidth();
             }
@@ -754,6 +764,24 @@ int run(char* argv[])
                     }
                 }
                 {
+                    int ch = s_groundstation_config.wifi_channel;
+                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
+                    if ( ch != s_groundstation_config.wifi_channel)
+                    {
+                        saveGroundStationConfig();
+                        bRestartRequired = true;
+                    }
+                }
+                {
+                    int value = config.fec_codec_n;
+                    ImGui::SliderInt("FEC_N", &value,FEC_K+1, FEC_N);
+                    if (config.fec_codec_n != (int8_t)value)
+                    {
+                        config.fec_codec_n = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
+                {
                     int value = (int)config.camera.resolution;
                     ImGui::SliderInt("Resolution", &value, 0, 10);
                     if ( config.camera.resolution != (Resolution)value )
@@ -762,7 +790,6 @@ int run(char* argv[])
                         saveGround2AirConfig(config);
                     }
                 }
-
                 {
                     int value = (int)config.camera.fps_limit;
                     ImGui::SliderInt("FPS Limit", &value, 0, 100);
@@ -882,16 +909,6 @@ int run(char* argv[])
                     }
                 }
 
-                {
-                    int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
-                    if ( ch != s_groundstation_config.wifi_channel)
-                    {
-                        saveGroundStationConfig();
-                        bRestartRequired = true;
-                    }
-                }
-
                 if ( bRestartRequired)
                 {
                     ImGui::Text("*Restart to apply!");
@@ -937,7 +954,7 @@ int run(char* argv[])
                     exitApp();
                 }
                 
-                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
+                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS DBG:%d", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps, s_dbg);
                 ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
@@ -1093,6 +1110,7 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["vflip"] = std::to_string(config.camera.vflip ? 1 : 0);
     ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
     ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
+    ini["gs"]["fec_n"] = std::to_string((int)config.fec_codec_n);
     s_iniFile.write(ini);
 }
 
@@ -1180,6 +1198,11 @@ int main(int argc, const char* argv[])
         if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_G_36M_ODFM );
     }
 
+    {
+        std::string& temp = ini["gs"]["fec_n"];
+        if (temp != "") s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
+    }
+
     for(int i=1;i<argc;++i){
         auto temp = std::string(argv[i]);
         auto next = i!=argc-1? std::string(argv[i+1]):std::string("");
@@ -1194,14 +1217,9 @@ int main(int argc, const char* argv[])
             check_argval("port");
             s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
             i++;
-        }else if(temp=="-k"){
-            check_argval("k");
-            s_ground2air_config_packet.fec_codec_k =  std::stoi(next);
-            i++;
-            LOGI("set rx fec_k to {}",s_ground2air_config_packet.fec_codec_k);
         }else if(temp=="-n"){
             check_argval("n");
-            s_ground2air_config_packet.fec_codec_n =  std::stoi(next);
+            s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( std::stoi(next), FEC_K+1, FEC_N ); 
             i++;
             LOGI("set rx fec_n to {}",s_ground2air_config_packet.fec_codec_n);
         }else if(temp=="-rx"){
@@ -1236,8 +1254,7 @@ int main(int argc, const char* argv[])
             printf("-rx <rx_interface1> <rx_interface2>, default: wlan0mon single interface\n");
             printf("-tx <tx_interface>, default: wlan0mon\n");
             printf("-p <gd_ip>, default: disabled\n");
-            printf("-k <rx_fec_k>, default: 2\n");
-            printf("-n <rx_fec_n>, default: 6\n");
+            printf("-n <rx_fec_n>, 7...12, default: 12\n");
             printf("-ch <wifi_channel>, default: 7\n");
             printf("-w <width>, default: 1280\n");
             printf("-h <width>, default: 720\n");
