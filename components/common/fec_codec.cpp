@@ -479,10 +479,21 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
 
             size_t fec_count = m_descriptor.coding_n - m_descriptor.coding_k;
             for (size_t i = 0; i < fec_count; i++)
+            {
                 m_encoder.fec_dst_ptrs[i] = m_encoder.block_fec_packets[i].data + sizeof(Packet_Header);
+            }
 
             //encode
             fec_encode(m_fec, m_encoder.fec_src_ptrs.data(), m_encoder.fec_dst_ptrs.data(), BLOCK_NUMS + m_descriptor.coding_k, m_descriptor.coding_n - m_descriptor.coding_k, m_descriptor.mtu);
+
+            ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
+
+/*
+static int avg = 0;
+start = esp_timer_get_time() - start;
+avg = avg - ((avg+2048) >>12) + start;
+SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
+*/
 
             //return packets to the pool
             ENCODER_LOG("Returning packets: %d\n", uxQueueSpacesAvailable(m_encoder.packet_pool));
@@ -535,7 +546,6 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                         {
                             break;
                         }
-
                     }
                 }
             }

@@ -1731,6 +1731,7 @@ extern "C" void app_main()
 
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
 
     initialize_status_led();
     initialize_flash_led();

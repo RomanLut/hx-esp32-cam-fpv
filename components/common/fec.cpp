@@ -170,6 +170,15 @@ generate_gf (void) {
 #define GF_MULC0(c) __gf_mulc_ = gf_mul_table[c]
 #define GF_ADDMULC(dst, x) dst ^= __gf_mulc_[x]
 
+#define GF_ADDMULC4(dst, src)  \
+    temp1 = *((uint32_t*)dst);  \
+    temp1 ^= __gf_mulc_[*src++];  \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 8;   \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 16;  \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 24;  \
+    *((uint32_t*)dst) = temp1;   \
+    dst+=4;   
+
 /*
  * addmul() computes dst[] = dst[] + c * src[]
  * This is used often, so better optimize it! Currently the loop is
@@ -186,29 +195,35 @@ _addmul1(register gf*restrict dst, const register gf*restrict src, gf c, size_t 
     USE_GF_MULC;
     const gf* lim = &dst[sz - UNROLL + 1];
 
+    register uint32_t temp1;
+
     GF_MULC0 (c);
 
 #if (UNROLL > 1)                /* unrolling by 8/16 is quite effective on the pentium */
     for (; dst < lim;) {
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
 #if (UNROLL > 4)
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
 #endif
 #if (UNROLL > 8)
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
+        GF_ADDMULC4 (dst, src);
 #endif
     }
 #endif
