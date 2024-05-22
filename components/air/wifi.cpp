@@ -96,11 +96,6 @@ IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
     s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
 #endif
 
-    if ( s_max_wlan_outgoing_queue_size < qs )
-    {
-        s_max_wlan_outgoing_queue_size = qs;
-    }
-
     if ( s_max_wlan_outgoing_queue_size_frame < qs )
     {
         s_max_wlan_outgoing_queue_size_frame = qs;
@@ -174,6 +169,11 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                         size_t qs = s_wlan_outgoing_queue.size();
                         s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
 #endif
+                        if ( (s_min_wlan_outgoing_queue_size_frame == -1) || ( s_min_wlan_outgoing_queue_size_frame > qs ) )
+                        {
+                            s_min_wlan_outgoing_queue_size_frame = qs;
+                        }
+
                         xSemaphoreGive(s_wlan_outgoing_mux);
 
 #ifdef TX_COMPLETION_CB
@@ -488,17 +488,60 @@ uint8_t getMaxWlanOutgoingQueueUsage()
     return v * 100 / c;
 }
 
+uint8_t getMinWlanOutgoingQueueUsageSeen()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+    v = s_min_wlan_outgoing_queue_size_seen;
+    c = s_wlan_outgoing_queue.capacity();
+    s_min_wlan_outgoing_queue_size_seen = 0;
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v * 100 / c;
+}
+
 uint8_t getMaxWlanOutgoingQueueUsageFrame()
 {
     size_t v;
     size_t c;
 
     xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
     v = s_max_wlan_outgoing_queue_size_frame;
+
+    if ( s_max_wlan_outgoing_queue_size < v )
+    {
+        s_max_wlan_outgoing_queue_size = v;
+    }
+
     c = s_wlan_outgoing_queue.capacity();
     s_max_wlan_outgoing_queue_size_frame = 0;
+
     xSemaphoreGive(s_wlan_outgoing_mux);
 
     return v * 100 / c;
+}
+
+uint8_t getMinWlanOutgoingQueueUsageFrame()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
+    v = s_min_wlan_outgoing_queue_size_frame;
+
+    if ( s_min_wlan_outgoing_queue_size_seen < v )  //-1 is handled Ok
+    {
+        s_min_wlan_outgoing_queue_size_seen = v;
+    }
+
+    c = s_wlan_outgoing_queue.capacity();
+    s_min_wlan_outgoing_queue_size_frame = -1;
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v == -1? 0 : v * 100 / c;
 }
 

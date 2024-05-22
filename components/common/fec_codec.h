@@ -72,6 +72,7 @@ public:
     IRAM_ATTR bool decode_data(const void* data, size_t size, bool block);
 
     bool init(const Descriptor& descriptor, bool is_encoder);
+    void switch_n(int n);
 private:
 
     void stop_tasks();

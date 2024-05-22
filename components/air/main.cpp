@@ -27,6 +27,7 @@
 #include "freertos/semphr.h"
 #include "driver/uart.h"
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "fec_codec.h"
 #include "packets.h"
@@ -74,6 +75,7 @@ static int64_t s_video_last_acquired_tp = esp_timer_get_time();
 static bool s_video_skip_frame = false;
 static int64_t s_video_target_frame_dt = 0;
 static uint8_t s_max_wlan_outgoing_queue_usage = 0;
+static uint8_t s_min_wlan_outgoing_queue_usage_seen = 0;
 
 static int64_t s_restart_time = 0;
 
@@ -360,10 +362,11 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 //ESP32S3: 20*512- 2.5 MB/s
 //ESP32S3: 4096 SPI RAM - 0.38 MB/s
 
-//ESP32 2096: 0.58 MB/s
+//ESP32 2096: 0.9 MB/s
 //ESP32 6*512:1 MB/s
-//ESP32 4096: 1.2 MB/s *
-//ESP32 8192: 1.3 MB/s
+//ESP32 4096: 1.6 MB/s *
+//ESP32 12*512:1.5 MB/s  ???
+//ESP32 8192: 1.9 MB/s
 static constexpr size_t SD_WRITE_BLOCK_SIZE = 4096;
 
 
@@ -554,22 +557,25 @@ static bool init_sd()
     return true;
 }
 
-static FILE* open_sd_file()
+static int open_sd_file()
 {
     char buffer[64];
     sprintf(buffer, "/sdcard/v%03lu_%03lu.mpg", (long unsigned int)s_sd_next_session_id, (long unsigned int)s_sd_next_segment_id);
-    FILE* f = fopen(buffer, "wb");
-    if (!f){
+    int fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+
+    if (fd == -1)
+    {
         LOG("error to open sdcard session %s!\n",buffer);
-        return nullptr;
+        return-1;
     }
 
     LOG("Opening session file '%s'\n", buffer);
     s_sd_file_size = 0;
     s_sd_next_segment_id++;
 
-    return f;
+    return fd;
 }
+
 
 //=============================================================================================
 //=============================================================================================
@@ -587,8 +593,8 @@ static void sd_write_proc(void*)
             continue;
         }
 
-        FILE* f = open_sd_file();
-        if (!f)
+        int fd = open_sd_file();
+        if ( fd == -1)
         {
             s_air_record = false;
             SDError = true;
@@ -639,7 +645,7 @@ static void sd_write_proc(void*)
 
                 if ( !done )
                 {
-                    if (fwrite(block, SD_WRITE_BLOCK_SIZE, 1, f) == 0)
+                    if (write(fd, block, SD_WRITE_BLOCK_SIZE) < 0 )
                     {
                         LOG("Error while writing! Stopping session\n");
                         done = true;
@@ -661,9 +667,9 @@ static void sd_write_proc(void*)
 
         if (!error)
         {
-            fflush(f);
-            fsync(fileno(f));
-            fclose(f);
+            fsync(fd);
+            close(fd);
+
             updateSDInfo();
         }
         else
@@ -855,11 +861,11 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         LOG("Wifi power changed from %d to %d\n", (int)dst.wifi_power, (int)src.wifi_power);
         ESP_ERROR_CHECK(set_wlan_power_dBm(src.wifi_power));
     }
-    if (dst.fec_codec_k != src.fec_codec_k || dst.fec_codec_n != src.fec_codec_n || dst.fec_codec_mtu != src.fec_codec_mtu)
+    if (dst.fec_codec_n != src.fec_codec_n)
     {
         LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.fec_codec_k, (int)dst.fec_codec_n, (int)dst.fec_codec_mtu, (int)src.fec_codec_k, (int)src.fec_codec_n, (int)src.fec_codec_mtu);
         {
-            init_fec_codec(s_fec_encoder,src.fec_codec_k,src.fec_codec_n,src.fec_codec_mtu,true);
+            s_fec_encoder.switch_n( src.fec_codec_n );
         }
     }
     if (dst.wifi_channel != src.wifi_channel)
@@ -1304,8 +1310,8 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
         //1.8MB/sec is practical maximum SD write speed 
         if ( FECbandwidth > 1800*1024 ) FECbandwidth = 1800*1024;
 #else
-        //1.2MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
+        //1.6MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1600*1024 ) FECbandwidth = 1600*1024;
 #endif
     }
     
@@ -1350,6 +1356,10 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     {
         s_quality_framesize_K3 = 0; //we overloaded wifi buffer. drop quality immediatelly, we do not want to loose more frames
     }
+
+    int min_wlan_outgoing_queue_usage_frame = getMinWlanOutgoingQueueUsageFrame(); //get the minimum wifi queue usage while sending frame
+    //todo: drop quality depending on min usage
+    //should be kept zero
 
     //keep wifi out queue usage below 40%
     int max_wlan_outgoing_queue_usage_frame = getMaxWlanOutgoingQueueUsageFrame(); //get the maximum wifi queue usage while sending frame 
@@ -1873,12 +1883,13 @@ extern "C" void app_main()
         {
             s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
+            s_min_wlan_outgoing_queue_usage_seen = getMinWlanOutgoingQueueUsageSeen();
             s_stats_last_tp = millis();
             s_stats.wlan_error_count += s_fec_wlan_error_count;
             s_fec_wlan_error_count = 0;
-            LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
+            LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
                 s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
-                s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage, 
+                s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                 s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                 s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                 (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 

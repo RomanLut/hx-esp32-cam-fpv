@@ -4,7 +4,9 @@
 Queue s_wlan_incoming_queue;
 Queue s_wlan_outgoing_queue;
 size_t s_max_wlan_outgoing_queue_size = 0;  //for per-second debug stats
+size_t s_min_wlan_outgoing_queue_size_seen = 0;  //for per-second debug stats
 size_t s_max_wlan_outgoing_queue_size_frame = 0; //for adjusting frame quality every frame
+size_t s_min_wlan_outgoing_queue_size_frame = -1; //for adjusting frame quality every frame
 
 IRAM_ATTR bool start_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet, size_t size)
 {
