@@ -27,6 +27,7 @@
 #include "freertos/semphr.h"
 #include "driver/uart.h"
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "fec_codec.h"
 #include "packets.h"
@@ -46,6 +47,8 @@
 #include "osd.h"
 #include "msp.h"
 
+#include "vcd_profiler.h"
+
 static int s_stats_last_tp = -10000;
 
 
@@ -61,17 +64,18 @@ static uint8_t s_osdUpdateCounter = 0;
 static int s_actual_capture_fps = 0;
 
 static int s_quality = 20;
-static int s_quality_counter = 0;
-static float s_quality_framesize_K1 = 1;
+static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
 static float s_quality_framesize_K2 = 1;
 static float s_quality_framesize_K3 = 1;
 static int s_max_frame_size = 0;
+static int s_sharpness = 20;
 
 static int64_t s_video_last_sent_tp = esp_timer_get_time();
 static int64_t s_video_last_acquired_tp = esp_timer_get_time();
 static bool s_video_skip_frame = false;
 static int64_t s_video_target_frame_dt = 0;
 static uint8_t s_max_wlan_outgoing_queue_usage = 0;
+static uint8_t s_min_wlan_outgoing_queue_usage_seen = 0;
 
 static int64_t s_restart_time = 0;
 
@@ -259,7 +263,22 @@ void checkButton()
     {
         if ( s_restart_time == 0 )
         {
+#if defined(ENABLE_PROFILER) && defined (START_PROFILER_WITH_BUTTON)
+            if ( s_profiler.isActive())
+            {
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
+            }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(1000);
+            }
+#else
             s_air_record = !s_air_record;
+#endif            
         }
         LOG("Button pressed!\n");
     }
@@ -322,19 +341,33 @@ static uint32_t s_sd_next_segment_id = 0;
 
 //the fast buffer is RAM and used to transfer data quickly from the camera callback to the slow, SPIRAM buffer. 
 //Writing directly to the SPIRAM buffer is too slow in the camera callback and causes lost frames, so I use this RAM buffer and a separate task (sd_enqueue_task) for that.
-static constexpr size_t SD_FAST_BUFFER_SIZE = 10000;
+static constexpr size_t SD_FAST_BUFFER_SIZE = 8192;
 Circular_Buffer s_sd_fast_buffer(new uint8_t[SD_FAST_BUFFER_SIZE], SD_FAST_BUFFER_SIZE);
 
 //this slow buffer is used to buffer data that is about to be written to SD. The reason it's this big is because SD card write speed fluctuated a lot and 
-// sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enoigh buffer.
+// sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enough buffer.
 //The data is written to the sd card by the sd_write_task, in chunks of SD_WRITE_BLOCK_SIZE.
 static constexpr size_t SD_SLOW_BUFFER_SIZE_PSRAM = 3 * 1024 * 1024;
-static constexpr size_t SD_SLOW_BUFFER_SIZE_RAM = 32768;
+//removeme: buffer is in RAM for esp32-vtx board
+static constexpr size_t SD_SLOW_BUFFER_SIZE_RAM = 32768;  
 Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
 // this RAM block and write from it directly. This results in several MB/s write speed performance which is good enough.
-static constexpr size_t SD_WRITE_BLOCK_SIZE = 2048;
+//ESP32S3: 2048  - 1.2 MB/s
+//ESP32S3: 6*512 - 1.5 MB/s
+//ESP32S3: 4096  - 1.8 MB/s *
+//ESP32S3: 10*512- 1.9 MB/s
+//ESP32S3: 8192  - 2.5 MB/s
+//ESP32S3: 20*512- 2.5 MB/s
+//ESP32S3: 4096 SPI RAM - 0.38 MB/s
+
+//ESP32 2096: 0.9 MB/s
+//ESP32 6*512:1 MB/s
+//ESP32 4096: 1.6 MB/s *
+//ESP32 12*512:1.5 MB/s  ???
+//ESP32 8192: 1.9 MB/s
+static constexpr size_t SD_WRITE_BLOCK_SIZE = 4096;
 
 
 /*
@@ -524,22 +557,25 @@ static bool init_sd()
     return true;
 }
 
-static FILE* open_sd_file()
+static int open_sd_file()
 {
     char buffer[64];
     sprintf(buffer, "/sdcard/v%03lu_%03lu.mpg", (long unsigned int)s_sd_next_session_id, (long unsigned int)s_sd_next_segment_id);
-    FILE* f = fopen(buffer, "wb");
-    if (!f){
+    int fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+
+    if (fd == -1)
+    {
         LOG("error to open sdcard session %s!\n",buffer);
-        return nullptr;
+        return-1;
     }
 
     LOG("Opening session file '%s'\n", buffer);
     s_sd_file_size = 0;
     s_sd_next_segment_id++;
 
-    return f;
+    return fd;
 }
+
 
 //=============================================================================================
 //=============================================================================================
@@ -547,7 +583,7 @@ static FILE* open_sd_file()
 static void sd_write_proc(void*)
 {
     //for fast SD writes, buffer has to be in DMA enabled memory
-    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);//new uint8_t[SD_WRITE_BLOCK_SIZE];
+    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
     while (true)
     {
@@ -557,8 +593,8 @@ static void sd_write_proc(void*)
             continue;
         }
 
-        FILE* f = open_sd_file();
-        if (!f)
+        int fd = open_sd_file();
+        if ( fd == -1)
         {
             s_air_record = false;
             SDError = true;
@@ -568,6 +604,11 @@ static void sd_write_proc(void*)
 
         xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
         s_sd_slow_buffer->clear();
+
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.set(PF_CAMERA_SD_SLOW_BUF, 0 );
+#endif
+
         xSemaphoreGive(s_sd_slow_buffer_mux);
 
         bool error = false; 
@@ -593,6 +634,9 @@ static void sd_write_proc(void*)
 
                 xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
                 bool read = s_sd_slow_buffer->read(block, SD_WRITE_BLOCK_SIZE);
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100 ));
+#endif
                 xSemaphoreGive(s_sd_slow_buffer_mux);
                 if (!read)
                 {
@@ -601,7 +645,7 @@ static void sd_write_proc(void*)
 
                 if ( !done )
                 {
-                    if (fwrite(block, SD_WRITE_BLOCK_SIZE, 1, f) == 0)
+                    if (write(fd, block, SD_WRITE_BLOCK_SIZE) < 0 )
                     {
                         LOG("Error while writing! Stopping session\n");
                         done = true;
@@ -623,9 +667,9 @@ static void sd_write_proc(void*)
 
         if (!error)
         {
-            fflush(f);
-            fsync(fileno(f));
-            fclose(f);
+            fsync(fd);
+            close(fd);
+
             updateSDInfo();
         }
         else
@@ -652,6 +696,10 @@ static void sd_enqueue_proc(void*)
 
         xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
         s_sd_fast_buffer.clear();
+
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.set(PF_CAMERA_SD_FAST_BUF, 0);
+#endif
         xSemaphoreGive(s_sd_fast_buffer_mux);
 
         while (true)
@@ -673,11 +721,24 @@ static void sd_enqueue_proc(void*)
             if ( !s_sd_slow_buffer->write(buffer, size) )
             {
                 s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.toggle(PF_CAMERA_SD_OVF );
+#endif
             }
+
+#ifdef PROFILE_CAMERA_DATA    
+            s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100));
+#endif
+
             xSemaphoreGive(s_sd_slow_buffer_mux);
 
             xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
             s_sd_fast_buffer.end_reading(size);
+
+#ifdef PROFILE_CAMERA_DATA    
+            s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100));
+#endif
+
             xSemaphoreGive(s_sd_fast_buffer_mux);
 
             if (s_sd_write_task)
@@ -694,6 +755,11 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
     bool ok = s_sd_fast_buffer.write(data, size);
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100) );
+#endif
+
     xSemaphoreGive(s_sd_fast_buffer_mux);
     if (ok)
     {
@@ -703,6 +769,9 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
     else
     {
         s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_SD_OVF);
+#endif
     }
 }
 
@@ -792,11 +861,11 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         LOG("Wifi power changed from %d to %d\n", (int)dst.wifi_power, (int)src.wifi_power);
         ESP_ERROR_CHECK(set_wlan_power_dBm(src.wifi_power));
     }
-    if (dst.fec_codec_k != src.fec_codec_k || dst.fec_codec_n != src.fec_codec_n || dst.fec_codec_mtu != src.fec_codec_mtu)
+    if (dst.fec_codec_n != src.fec_codec_n)
     {
         LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.fec_codec_k, (int)dst.fec_codec_n, (int)dst.fec_codec_mtu, (int)src.fec_codec_k, (int)src.fec_codec_n, (int)src.fec_codec_mtu);
         {
-            init_fec_codec(s_fec_encoder,src.fec_codec_k,src.fec_codec_n,src.fec_codec_mtu,true);
+            s_fec_encoder.switch_n( src.fec_codec_n );
         }
     }
     if (dst.wifi_channel != src.wifi_channel)
@@ -824,7 +893,22 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         {
             if ( ((uint8_t)(dst.air_record_btn + 1)) == src.air_record_btn )
             {
+#if defined(ENABLE_PROFILER) && defined (START_PROFILER_WITH_GS_BUTTON)
+            if ( s_profiler.isActive())
+            {
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
+            }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(1000);
+            }
+#else
                 s_air_record = !s_air_record;
+#endif                
             }
             dst.air_record_btn = src.air_record_btn;
         }
@@ -928,7 +1012,11 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(brightness, brightness, int);
     APPLY(contrast, contrast, int);
     APPLY(saturation, saturation, int);
-    APPLY(sharpness, sharpness, int);
+    if ( s_quality < 50 )
+    {
+        APPLY(sharpness, sharpness, int);
+        s_sharpness = src.camera.sharpness;
+    }
     APPLY(denoise, denoise, int);
 #ifdef SENSOR_OV5640
     //gainceiling for ov5640 is range 0...3ff
@@ -969,8 +1057,8 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 //===========================================================================================
 IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
-    //ahdnle settings not reated to camera sensor setup.
-    //camera sensor settings are prcessed in camera_data_available() callback
+    //handle settings not related to camera sensor setup.
+    //camera sensor settings are processed in camera_data_available() callback
     handle_ground2air_config_packetEx1(src);
 }
 
@@ -1027,6 +1115,9 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
+#endif
     }
 }
 
@@ -1079,6 +1170,9 @@ IRAM_ATTR void send_air2ground_data_packet()
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
+#endif
     }
     else
     {
@@ -1131,6 +1225,9 @@ IRAM_ATTR void send_air2ground_osd_packet()
     {
         LOG("Fec codec busy\n");
         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
+#endif
     }
 }
 
@@ -1138,38 +1235,38 @@ constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Groun
 
 static const int WifiRateBandwidth[] = 
 {
-    2*1024*100, // 0 - RATE_B_2M_CCK,
-    2*1024*100, // 1 - RATE_B_2M_CCK_S,
-    5*1024*100, // 2 - RATE_B_5_5M_CCK,
-    5*1024*100, // 3 - RATE_B_5_5M_CCK_S,
-    11*1024*100, // 4 - RATE_B_11M_CCK,
-    11*1024*100, // 5 - RATE_B_11M_CCK_S,
+    2*1024*125, // 0 - RATE_B_2M_CCK,
+    2*1024*125, // 1 - RATE_B_2M_CCK_S,
+    5*1024*125, // 2 - RATE_B_5_5M_CCK,
+    5*1024*125, // 3 - RATE_B_5_5M_CCK_S,
+    11*1024*125, // 4 - RATE_B_11M_CCK,
+    11*1024*125, // 5 - RATE_B_11M_CCK_S,
 
-    6*1024*100, // 6 - RATE_G_6M_ODFM,
-    9*1024*100, // 7 - RATE_G_9M_ODFM,
-    12*1024*100, // 8 - RATE_G_12M_ODFM,
-    18*1024*100, // 9 - RATE_G_18M_ODFM,
-    24*1024*100,  // 10 - RATE_G_24M_ODFM,
-    36*1024*100,  // 11 - RATE_G_36M_ODFM,
-    48*1024*100,  // 12 - RATE_G_48M_ODFM,
-    54*1024*100,  // 13 - RATE_G_54M_ODFM,
+    6*1024*125, // 6 - RATE_G_6M_ODFM,
+    9*1024*125, // 7 - RATE_G_9M_ODFM,
+    12*1024*125, // 8 - RATE_G_12M_ODFM,
+    18*1024*125, // 9 - RATE_G_18M_ODFM,
+    24*1024*125,  // 10 - RATE_G_24M_ODFM,
+    36*1024*125,  // 11 - RATE_G_36M_ODFM,
+    48*1024*125,  // 12 - RATE_G_48M_ODFM,
+    54*1024*125,  // 13 - RATE_G_54M_ODFM,
 
-    6*1024*100, // 14 - RATE_N_6_5M_MCS0,
-    7*1024*100, // 15 - RATE_N_7_2M_MCS0_S,
-    13*1024*100, // 16 - RATE_N_13M_MCS1,
-    14*1024*100, // 17 - RATE_N_14_4M_MCS1_S,
-    19*1024*100, // 18 - RATE_N_19_5M_MCS2,
-    21*1024*100, // 19 - RATE_N_21_7M_MCS2_S,
-    26*1024*100, // 20 - RATE_N_26M_MCS3,
-    28*1024*100, // 21 - RATE_N_28_9M_MCS3_S,
-    39*1024*100, // 22 - RATE_N_39M_MCS4,
-    43*1024*100, // 23 - RATE_N_43_3M_MCS4_S,
-    52*1024*100, // 24 - RATE_N_52M_MCS5,
-    57*1024*100, // 25 - RATE_N_57_8M_MCS5_S,
-    58*1024*100, // 26 - RATE_N_58M_MCS6,
-    65*1024*100, // 27 - RATE_N_65M_MCS6_S,
-    65*1024*100, // 28 - RATE_N_65M_MCS7,
-    72*1024*100 // 29 - RATE_N_72M_MCS7_S,
+    6*1024*125, // 14 - RATE_N_6_5M_MCS0,
+    7*1024*125, // 15 - RATE_N_7_2M_MCS0_S,
+    13*1024*125, // 16 - RATE_N_13M_MCS1,
+    14*1024*125, // 17 - RATE_N_14_4M_MCS1_S,
+    19*1024*125, // 18 - RATE_N_19_5M_MCS2,
+    21*1024*125, // 19 - RATE_N_21_7M_MCS2_S,
+    26*1024*125, // 20 - RATE_N_26M_MCS3,
+    28*1024*125, // 21 - RATE_N_28_9M_MCS3_S,
+    39*1024*125, // 22 - RATE_N_39M_MCS4,
+    43*1024*125, // 23 - RATE_N_43_3M_MCS4_S,
+    52*1024*125, // 24 - RATE_N_52M_MCS5,
+    57*1024*125, // 25 - RATE_N_57_8M_MCS5_S,
+    58*1024*125, // 26 - RATE_N_58M_MCS6,
+    65*1024*125, // 27 - RATE_N_65M_MCS6_S,
+    65*1024*125, // 28 - RATE_N_65M_MCS7,
+    72*1024*125 // 29 - RATE_N_72M_MCS7_S,
 };
 
 
@@ -1182,31 +1279,43 @@ IRAM_ATTR int getBandwidthForRate(WIFI_Rate rate)
 //=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
-#ifdef SENSOR_OV5640
-    //quality changes kill framerate on ov5640. Limit changes.
-    s_quality_counter++;
-    if ( s_quality_counter < 30 ) return;
-    s_quality_counter = 0;
-#endif
-
     if ( video_full_frame_size > s_max_frame_size )
     {
         s_max_frame_size = video_full_frame_size;
     }
     if ( video_full_frame_size == 0 ) return;
 
-    int fps = s_actual_capture_fps > 10 ? s_actual_capture_fps : 10;
+    int fps = s_actual_capture_fps > 1 ? s_actual_capture_fps : 1;
 
     //K1 - wifi bandwidth
     //data rate available with current wifi rate
     int rateBandwidth = getBandwidthForRate(s_wlan_rate);
+
+    rateBandwidth = rateBandwidth * 5 / 10;  //assume only  50% of theoretical maximum bandwidth is available in practice
+
+#ifdef BOARD_XIAOS3SENSE        
+    //2.9MB/sec is practical maximum limit which works
+    if ( rateBandwidth > 2900*1024 ) rateBandwidth = 2900*1024;
+#else
+    //2.3MB/sec is practical maximum limit which works
+    if ( rateBandwidth > 2300*1024 ) rateBandwidth = 2300*1024;
+#endif
+
     //decrease available data rate using FEC codec parameters
     int FECbandwidth = rateBandwidth * s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
 
-    //1.2mb/sec is practical maximum limit which works
-    if ( FECbandwidth > 1200*1024 ) FECbandwidth = 1200*1024;
+    if ( s_air_record )
+    {
+#ifdef BOARD_XIAOS3SENSE        
+        //1.8MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1800*1024 ) FECbandwidth = 1800*1024;
+#else
+        //1.6MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1600*1024 ) FECbandwidth = 1600*1024;
+#endif
+    }
     
-    int frameSize = FECbandwidth / fps * 7 / 10;  //assume only  70% of total bandwidth is available in practice
+    int frameSize = FECbandwidth / fps;
     if ( frameSize < 1 ) frameSize = 1;
 
     float k = frameSize * 1.0f / video_full_frame_size;
@@ -1216,27 +1325,52 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_quality_framesize_K1 < 0.05f ) s_quality_framesize_K1 = 0.05f;
     if ( s_quality_framesize_K1 > 1.0f ) s_quality_framesize_K1 = 1.0f;
 
-    //k2 - max frame size
-    int safe_frame_size = 40*1024 * 30 / fps;
-    s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
-    if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
-    if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
 
-    //K3 - wifi queue
-    if ( s_stats.wlan_error_count > 0 )
+    //k2 - max frame size which do not overload wifi output queue
+    //wifi output queue should have space to hold frame data and fec data
+    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
+    //queue is emptied by tx thread constantly so we can assume virtually "larger buffer"
+    safe_frame_size += FECbandwidth / fps; 
+    safe_frame_size = safe_frame_size * 7 / 10;  //assume next frame can suddenly increase is size by 30%
+    if ( video_full_frame_size > safe_frame_size )
     {
-        s_quality_framesize_K3 -= 0.01f;  
-    }
-
-    if ( s_max_wlan_outgoing_queue_usage > 70 )
-    {
-        s_quality_framesize_K3 -= (s_max_wlan_outgoing_queue_usage - 70) / 30000.0f;
+        s_quality_framesize_K2 -= (video_full_frame_size - safe_frame_size) / 100000.0f;// * 30 / fps;
     }
     else
     {
-        s_quality_framesize_K3 += ( 70 - s_max_wlan_outgoing_queue_usage ) / 10000.0f;
+        s_quality_framesize_K2 += ( safe_frame_size - video_full_frame_size ) / 1000000.0f;// * 30 / fps;
+    }
+    if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
+    if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
+
+
+    /*
+    s_quality_framesize_K2 = s_quality_framesize_K2 * safe_frame_size * 1.0f / video_full_frame_size;
+    if ( s_quality_framesize_K2 < 0.05f ) s_quality_framesize_K2 = 0.05f;
+    if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
+    */
+
+    //K3 - wifi queue
+
+    if ( (s_stats.wlan_error_count > 0) || (s_fec_spin_count > 0) || (s_fec_wlan_error_count > 0))
+    {
+        s_quality_framesize_K3 = 0; //we overloaded wifi buffer. drop quality immediatelly, we do not want to loose more frames
     }
 
+    int min_wlan_outgoing_queue_usage_frame = getMinWlanOutgoingQueueUsageFrame(); //get the minimum wifi queue usage while sending frame
+    //todo: drop quality depending on min usage
+    //should be kept zero
+
+    //keep wifi out queue usage below 40%
+    int max_wlan_outgoing_queue_usage_frame = getMaxWlanOutgoingQueueUsageFrame(); //get the maximum wifi queue usage while sending frame 
+    if ( max_wlan_outgoing_queue_usage_frame > 40 )
+    {
+        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 40) / 100.0f;
+    }
+    else
+    {
+        s_quality_framesize_K3 += ( 60 - max_wlan_outgoing_queue_usage_frame ) / 10000.0f;
+    }
     if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
     else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
 }
@@ -1254,6 +1388,20 @@ IRAM_ATTR void applyAdaptiveQuality()
         s_quality = quality1;
         sensor_t* s = esp_camera_sensor_get(); 
         s->set_quality(s, s_quality); 
+
+        int sharpness1 = s_ground2air_config_packet.camera.sharpness;
+
+        if ( s_quality > 50 ) sharpness1 = -2; 
+        else if ( s_quality > 45 ) sharpness1 = -1;
+        else if ( s_quality > 40 ) sharpness1 = 0;
+
+        if ( s_ground2air_config_packet.camera.sharpness < sharpness1 ) sharpness1 = s_ground2air_config_packet.camera.sharpness;
+
+        if (s_sharpness != sharpness1 )
+        {
+            s->set_sharpness(s, sharpness1);
+            s_sharpness = sharpness1;
+        }
     }
 }
 
@@ -1261,12 +1409,18 @@ IRAM_ATTR void applyAdaptiveQuality()
 //=============================================================================================
 IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_t count, bool last)
 {
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.set(PF_CAMERA_DATA, 1);
+#endif
+
     size_t stride=((cam_obj_t *)cam_obj)->dma_bytes_per_item;
 
     if ( getOVFFlagAndReset() )
     {
-        s_quality_framesize_K1 = 0.05;
-        s_quality_framesize_K2 = 0.05;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_OVF);
+#endif
+        s_quality_framesize_K3 = 0.05;
         applyAdaptiveQuality();
     }
 
@@ -1330,6 +1484,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_video_frame_data_size += c;
                 s_video_full_frame_size += c;
 
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
+#endif
 
                 size_t c8 = c >> 3;
                 for (size_t i = c8; i > 0; i--)
@@ -1403,6 +1560,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             recalculateFrameSizeQualityK(s_video_full_frame_size);
             applyAdaptiveQuality();
             s_video_full_frame_size = 0;
+            s_stats.fec_spin_count += s_fec_spin_count;
+            s_fec_spin_count = 0;
+#ifdef PROFILE_CAMERA_DATA    
+            s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
+#endif
 
             handle_ground2air_config_packetEx2(false);
 
@@ -1424,6 +1586,18 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     }
 
     s_fec_encoder.unlock();
+
+#ifdef PROFILE_CAMERA_DATA    
+    if (last)
+    {
+        s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
+    }
+#endif
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.set(PF_CAMERA_DATA, 0);
+#endif
+
     return count;
 }
 
@@ -1453,11 +1627,11 @@ static void init_camera()
 #ifdef SENSOR_OV5640    
     config.xclk_freq_hz = 26000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
 #else
-    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/7 = 11,428Mhz and we use clk2x
+    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
     config.pixel_format = PIXFORMAT_JPEG;
     config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 8;
+    config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
     config.fb_count = 2;
     config.grab_mode = CAMERA_GRAB_LATEST;
     config.fb_location = CAMERA_FB_IN_DRAM;
@@ -1562,6 +1736,10 @@ extern "C" void app_main()
     initialize_flash_led();
     initialize_rec_button();
 
+#ifdef ENABLE_PROFILER
+    s_profiler.init();
+#endif
+
 #ifdef DVR_SUPPORT
 
     void* psb = heap_caps_malloc(SD_SLOW_BUFFER_SIZE_PSRAM, MALLOC_CAP_SPIRAM);
@@ -1605,7 +1783,7 @@ extern "C" void app_main()
     nvs_args_init();
 
     s_ground2air_config_packet.wifi_channel = (uint16_t)nvs_args_read("channel");
-    if(s_ground2air_config_packet.wifi_channel > 13)
+    if((s_ground2air_config_packet.wifi_channel < 1)  || (s_ground2air_config_packet.wifi_channel > 13))
     {
         s_ground2air_config_packet.wifi_channel = DEFAULT_WIFI_CHANNEL;
         nvs_args_set("channel", DEFAULT_WIFI_CHANNEL);
@@ -1705,9 +1883,13 @@ extern "C" void app_main()
         {
             s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
+            s_min_wlan_outgoing_queue_usage_seen = getMinWlanOutgoingQueueUsageSeen();
             s_stats_last_tp = millis();
-            LOG("WLAN S: %d, R: %d, E: %d, D: %d, %%: %d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
-                s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.wlan_received_packets_dropped, s_max_wlan_outgoing_queue_usage,
+            s_stats.wlan_error_count += s_fec_wlan_error_count;
+            s_fec_wlan_error_count = 0;
+            LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
+                s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
+                s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                 s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                 s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                 (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
@@ -1725,6 +1907,16 @@ extern "C" void app_main()
         update_status_led();
 
         checkButton();
+
+#ifdef ENABLE_PROFILER
+        if ( s_profiler.full() || s_profiler.timedOut() )
+        {
+            LOG("Profiler stopped!\n");
+            s_profiler.stop();
+            s_profiler.save();
+            s_profiler.clear();
+        } 
+#endif
 
 /*
 #ifdef UART_MAVLINK

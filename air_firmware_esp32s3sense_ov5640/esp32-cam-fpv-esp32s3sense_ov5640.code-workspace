@@ -25,7 +25,8 @@
 			"utility": "cpp",
 			"functional": "cpp",
 			"*.tcc": "cpp",
-			"stdint.h": "c"
+			"stdint.h": "c",
+			"random": "cpp"
 		}
 	}
 }

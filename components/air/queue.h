@@ -181,5 +181,8 @@ private:
 extern Queue s_wlan_incoming_queue;
 extern Queue s_wlan_outgoing_queue;
 extern size_t s_max_wlan_outgoing_queue_size;
+extern size_t s_min_wlan_outgoing_queue_size_seen;
+extern size_t s_max_wlan_outgoing_queue_size_frame;
+extern size_t s_min_wlan_outgoing_queue_size_frame;
 
 ////////////////////////////////////////////////////////////////////////////////////
