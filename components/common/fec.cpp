@@ -58,7 +58,11 @@ modnn(int x) {
  * multiplication is held in a local variable declared with USE_GF_MULC . See
  * usage in _addmul1().
  */
-static gf* gf_mul_table[256];
+
+typedef gf gf_mul_table_t[256][256];
+typedef gf_mul_table_t* gf_mul_table_p;
+
+static gf_mul_table_p gf_mul_table;
 
 /*
  * Generate GF(2**m) from the irreducible polynomial p(X) in p[0]..p[m]
@@ -73,22 +77,22 @@ static gf* gf_mul_table[256];
 static void
 _init_mul_table(void) {
   int i, j;
+
+#ifdef ESP_PLATFORM      
+      gf_mul_table = (gf_mul_table_p)heap_caps_malloc(256*256, MALLOC_CAP_SPIRAM);
+#else
+      gf_mul_table = (gf_mul_table_p)malloc( 256*256 );
+#endif
+
   for (i = 0; i < 256; i++)
   {
-#ifdef ESP_PLATFORM      
-      gf_mul_table[i] = (gf*)heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
-      if (!gf_mul_table[i])
-        gf_mul_table[i] = new gf[256];
-#else
-      gf_mul_table[i] = new gf[256];
-#endif
-      
       for (j = 0; j < 256; j++)
-          gf_mul_table[i][j] = gf_exp[modnn (gf_log[i] + gf_log[j])];
+          (*gf_mul_table)[i][j] = gf_exp[modnn (gf_log[i] + gf_log[j])];
   }
 
   for (j = 0; j < 256; j++)
-      gf_mul_table[0][j] = gf_mul_table[j][0] = 0;
+      (*gf_mul_table)[0][j] = (*gf_mul_table)[j][0] = 0;
+      
 }
 
 #define NEW_GF_MATRIX(rows, cols) \
@@ -163,11 +167,11 @@ generate_gf (void) {
  */
 
 
-#define gf_mul(x,y) gf_mul_table[x][y]
+#define gf_mul(x,y) (*gf_mul_table)[x][y]
 
-#define USE_GF_MULC register gf * __gf_mulc_
+#define USE_GF_MULC register const gf * __gf_mulc_
 
-#define GF_MULC0(c) __gf_mulc_ = gf_mul_table[c]
+#define GF_MULC0(c) __gf_mulc_ = (const gf*)&((*gf_mul_table)[c])
 #define GF_ADDMULC(dst, x) dst ^= __gf_mulc_[x]
 
 #define GF_ADDMULC4(dst, src)  \
