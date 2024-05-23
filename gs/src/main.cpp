@@ -954,7 +954,7 @@ int run(char* argv[])
                     exitApp();
                 }
                 
-                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS DBG:%d", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps, s_dbg);
+                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
                 ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
