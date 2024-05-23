@@ -78,6 +78,7 @@ static uint8_t s_max_wlan_outgoing_queue_usage = 0;
 static uint8_t s_min_wlan_outgoing_queue_usage_seen = 0;
 
 static int64_t s_restart_time = 0;
+static int64_t s_wifi_ovf_time = 0;
 
 extern WIFI_Rate s_wlan_rate;
 
@@ -1208,6 +1209,22 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.wifi_queue = s_max_wlan_outgoing_queue_usage;
     packet.air_record_state = s_air_record ? 1 : 0;
 
+    s_wifi_ovf_time = 0;
+    if ( s_wifi_ovf_time > 0 )
+    {
+        int64_t t = esp_timer_get_time();
+        t -= s_wifi_ovf_time;
+        if ( t < 1000000 )
+        {
+            s_wifi_ovf_time = 1;
+        }
+        else
+        {
+            s_wifi_ovf_time = 0;
+        }
+    }
+    packet.wifi_ovf = s_air_record ? 1 : 0;
+
     packet.SDFreeSpaceGB16 = SDFreeSpaceGB16;
     packet.SDTotalSpaceGB16 = SDTotalSpaceGB16;
     packet.curr_quality = s_quality;
@@ -1924,6 +1941,11 @@ extern "C" void app_main()
             print_cpu_usage();
 
             s_max_frame_size = 0;
+
+            if ( s_stats.fec_spin_count > 0 )
+            {
+                s_wifi_ovf_time = esp_timer_get_time();
+            }
 
             s_stats = Stats();
         }
