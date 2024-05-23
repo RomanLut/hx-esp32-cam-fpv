@@ -49,7 +49,7 @@ const char* resolutionName[] =
     "800x600",
     "800x456",
     "1024x768",
-    "1280x1024",
+    "1280x960",
     "1280x720",
     "1600x1200"
 };
@@ -704,7 +704,48 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(60.0f, 0));
+                ImGui::Button(buf, ImVec2(55.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //video bitrate
+                char buf[32];
+                sprintf(buf, "%.1fMb", (int)s_total_data*8.0f/(1024*1024));
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(90.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //resolution
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                //ImGui::Button(resolutionName[(int)config.camera.resolution], ImVec2(120.0f, 0));
+                ImGui::Button(resolutionName[(int)config.camera.resolution]);
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //fps
+                char buf[32];
+                sprintf(buf, "%02d", (int)video_fps);
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(45.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
