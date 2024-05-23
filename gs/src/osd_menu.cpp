@@ -138,6 +138,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::WifiRate: this->drawWifiRateMenu(config); break;
         case OSDMenuId::WifiChannel: this->drawWifiChannelMenu(config); break;
         case OSDMenuId::Restart: this->drawRestartMenu(config); break;
+        case OSDMenuId::FEC: this->drawFECMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -201,7 +202,19 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Picture Settings...", 3) )
+    {
+        char buf[256];
+        int i  = config.fec_codec_n == 8 ? 0 : config.fec_codec_n == 12 ? 2 : 1;
+        const char* levels[] = {"Weak (6/8)", "Medium (6/10)", "Strong (6/12)"};
+        sprintf(buf, "FEC: %s##3", levels[i]);
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            this->menuId = OSDMenuId::FEC;
+            this->selectedItem = i;
+        }
+    }
+
+    if ( this->drawMenuItem( "Picture Settings...", 4) )
     {
         this->menuId = OSDMenuId::PictureSettings;
         this->selectedItem = 0;
@@ -210,7 +223,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         char buf[256];
         const char* modes[] = {"Stretch", "Screen is 4:3", "Screen is 16:9"};
         sprintf(buf, "Letterbox: %s##4", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,2)]);
-        if ( this->drawMenuItem( buf, 4) )
+        if ( this->drawMenuItem( buf, 5) )
         {
             this->menuId = OSDMenuId::Letterbox;
             this->selectedItem = (int)s_groundstation_config.screenAspectRatio;
@@ -284,8 +297,8 @@ void OSDMenu::drawPictureSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        const char* sharpnessLevels[] = {"Blur more", "Blur", "Normal", "Sharpen", "Sharpen more", "Adaptive"};
-        sprintf(buf, "Sharpness: %s##4", sharpnessLevels[clamp((int)config.camera.sharpness,-2,3)+2]);
+        const char* sharpnessLevels[] = {"Blur more", "Blur", "Normal", "Sharpen", "Sharpen more"};
+        sprintf(buf, "Sharpness: %s##4", sharpnessLevels[clamp((int)config.camera.sharpness,-2,2)+2]);
         if ( this->drawMenuItem( buf, 4) )
         {
             this->menuId = OSDMenuId::Sharpness;
@@ -304,7 +317,7 @@ void OSDMenu::drawPictureSettingsMenu(Ground2Air_Config_Packet& config)
     if ( this->exitKeyPressed())
     {
         this->menuId = OSDMenuId::Main;
-        this->selectedItem = 3;
+        this->selectedItem = 4;
     }
 
 }
@@ -343,7 +356,7 @@ void OSDMenu::drawResolutionMenu(Ground2Air_Config_Packet& config)
         saveAndExit = true;
     }
    
-    if (this->drawMenuItem( s_isOV5640 ? "1280x1024 30fps (4:3)" : "1280x1024 13fps (4:3)", 4) )
+    if (this->drawMenuItem( s_isOV5640 ? "1280x960 30fps (4:3)" : "1280x960 13fps (4:3)", 4) )
     {
         config.camera.resolution = Resolution::SXGA;
         saveAndExit = true;
@@ -619,12 +632,6 @@ void OSDMenu::drawSharpnessMenu(Ground2Air_Config_Packet& config)
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "Adaptive", 5) )
-    {
-        config.camera.sharpness = 3;
-        saveAndExit = true;
-    }
-
     if ( saveAndExit )
     {
         saveGround2AirConfig(config);
@@ -706,7 +713,7 @@ void OSDMenu::drawLetterboxMenu(Ground2Air_Config_Packet& config)
     if ( saveAndExit || this->exitKeyPressed())
     {
         this->menuId = OSDMenuId::Main;
-        this->selectedItem = 4;
+        this->selectedItem = 5;
     }
 }
 
@@ -797,6 +804,45 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     {
         this->menuId = OSDMenuId::Main;
         this->selectedItem = 1;
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawFECMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> FEC" );
+    ImGui::Spacing();
+
+    bool saveAndExit = false;
+
+    if ( this->drawMenuItem( "Weak (6/8)", 0) )
+    {
+        config.fec_codec_n = 8;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Medium (6/10)", 1) )
+    {
+        config.fec_codec_n = 10;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Strong (6/12)", 2) )
+    {
+        config.fec_codec_n = 12;
+        saveAndExit = true;
+    }
+
+    if ( saveAndExit )
+    {
+        saveGround2AirConfig(config);
+    }
+
+    if ( saveAndExit || this->exitKeyPressed())
+    {
+        this->menuId = OSDMenuId::Main;
+        this->selectedItem = 3;
     }
 }
 

@@ -20,7 +20,8 @@ enum class OSDMenuId
     Letterbox,
     WifiRate,
     WifiChannel,
-    Restart
+    Restart,
+    FEC
 };
 
 //=======================================================
@@ -65,6 +66,7 @@ private:
     void drawWifiRateMenu(Ground2Air_Config_Packet& config);
     void drawWifiChannelMenu(Ground2Air_Config_Packet& config);
     void drawRestartMenu(Ground2Air_Config_Packet& config);
+    void drawFECMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;
