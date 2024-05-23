@@ -107,7 +107,7 @@ private:
         uint32_t last_block_index = 0;
 
         std::vector<Packet> block_packets;
-        std::vector<Packet> block_fec_packets; //these are owned by the array
+        Packet block_fec_packet;
 
         std::vector<uint8_t const*> fec_src_ptrs;
         std::vector<uint8_t*> fec_dst_ptrs;

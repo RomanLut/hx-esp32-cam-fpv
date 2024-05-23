@@ -187,14 +187,10 @@ void Fec_Codec::stop_tasks()
 
     m_encoder.packet_pool_owned.clear();
     
-    for (Encoder::Packet& p : m_encoder.block_fec_packets)
-    {
-        delete p.data;
-        p.data = nullptr;
-    }
+    delete m_encoder.block_fec_packet.data;
+    m_encoder.block_fec_packet.data = nullptr;
     
     m_encoder.fec_src_ptrs.clear();
-    m_encoder.fec_dst_ptrs.clear();
 
     ////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -272,19 +268,14 @@ bool Fec_Codec::start_tasks()
             }
         }
         
-        m_encoder.block_fec_packets.resize(m_descriptor.coding_n - m_descriptor.coding_k);
-        for (Encoder::Packet& packet : m_encoder.block_fec_packets)
+        m_encoder.block_fec_packet.data = new uint8_t[m_encoded_packet_size];
+        if (!m_encoder.block_fec_packet.data)
         {
-            packet.data = new uint8_t[m_encoded_packet_size];
-            if (!packet.data)
-            {
-                stop_tasks();
-                return false;
-            }
+            stop_tasks();
+            return false;
         }
 
         m_encoder.fec_src_ptrs.resize(m_descriptor.coding_k);
-        m_encoder.fec_dst_ptrs.resize(m_descriptor.coding_n);
         
         if (m_descriptor.core != Core::Any)
         {
@@ -465,11 +456,9 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
             m_encoder.block_packets.push_back(packet);
         }
 
-        //compute fec packets
+        //compute fec packets and send
         if (m_encoder.block_packets.size() >= m_descriptor.coding_k)
         {
-            uint64_t start = esp_timer_get_time();
-
             //init data for the fec_encode
             for (size_t i = 0; i < m_descriptor.coding_k; i++)
             {
@@ -477,16 +466,18 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
                 m_encoder.fec_src_ptrs[i] = packet.data + sizeof(Packet_Header);
             }
 
+            uint8_t* fec_dst_ptr = m_encoder.block_fec_packet.data + sizeof(Packet_Header);
+
             size_t fec_count = m_descriptor.coding_n - m_descriptor.coding_k;
+
             for (size_t i = 0; i < fec_count; i++)
             {
-                m_encoder.fec_dst_ptrs[i] = m_encoder.block_fec_packets[i].data + sizeof(Packet_Header);
-            }
+                uint64_t start = esp_timer_get_time();
 
-            //encode
-            fec_encode(m_fec, m_encoder.fec_src_ptrs.data(), m_encoder.fec_dst_ptrs.data(), BLOCK_NUMS + m_descriptor.coding_k, m_descriptor.coding_n - m_descriptor.coding_k, m_descriptor.mtu);
+                //encode
+                fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, m_descriptor.mtu);
 
-            ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
+                ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
 
 /*
 static int avg = 0;
@@ -495,30 +486,15 @@ avg = avg - ((avg+2048) >>12) + start;
 SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 */
 
-            //return packets to the pool
-            ENCODER_LOG("Returning packets: %d\n", uxQueueSpacesAvailable(m_encoder.packet_pool));
-            for (Encoder::Packet& packet: m_encoder.block_packets)
-            {
-                BaseType_t res = xQueueSend(m_encoder.packet_pool, &packet, 0);
-                assert(res);
-#ifdef PROFILE_CAMERA_DATA    
-                s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
-#endif
-            }
-            m_encoder.block_packets.clear();
-
             //seal the result
-            for (size_t i = 0; i < fec_count; i++)
-            {
-                m_encoder.block_fec_packets[i].size = m_descriptor.mtu;
+                m_encoder.block_fec_packet.size = m_descriptor.mtu;
                 if (m_encoder.cb)
                 {
-                    seal_packet(m_encoder.block_fec_packets[i], m_encoder.last_block_index, m_descriptor.coding_k + i);
+                    seal_packet(m_encoder.block_fec_packet, m_encoder.last_block_index, m_descriptor.coding_k + i);
 
-                    //we are adding several packets in a burst. Here wifi output queue may overload.
                     while ( true )
                     {
-                        if ( !m_encoder.cb(m_encoder.block_fec_packets[i].data, m_encoded_packet_size) )
+                        if ( !m_encoder.cb(m_encoder.block_fec_packet.data, m_encoded_packet_size) )
                         {
                             //wifi output queue is overloaded.
                             //yield untill some space is available.
@@ -549,6 +525,18 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
                     }
                 }
             }
+
+            //return packets to the pool
+            ENCODER_LOG("Returning packets: %d\n", uxQueueSpacesAvailable(m_encoder.packet_pool));
+            for (Encoder::Packet& packet: m_encoder.block_packets)
+            {
+                BaseType_t res = xQueueSend(m_encoder.packet_pool, &packet, 0);
+                assert(res);
+#ifdef PROFILE_CAMERA_DATA    
+                s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
+#endif
+            }
+            m_encoder.block_packets.clear();
 
             ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
 

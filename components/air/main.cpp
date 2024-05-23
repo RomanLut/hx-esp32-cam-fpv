@@ -1277,6 +1277,22 @@ IRAM_ATTR int getBandwidthForRate(WIFI_Rate rate)
 
 //=============================================================================================
 //=============================================================================================
+IRAM_ATTR int calculateAdaptiveQualityValue()
+{
+    int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
+    if ( quality1 < 8) quality1 = 8;
+    if ( quality1 > 63) quality1 = 63;
+
+    //recode due to non-linear frame size changes depending on quality
+    //from 8 to 19 frame size decreases by half, from 20 to 63 frame size decreases by half
+    //y=(x-8)^2.3/185 + 8
+    static const uint8_t recode[64-8] = { 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 14, 15, 15, 16, 17, 18, 19, 20, 20, 21, 23, 24, 25, 26, 27, 29, 30, 31, 33, 34, 36, 37, 39, 41, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63};
+
+    return recode[quality1-8];
+}
+
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
     if ( video_full_frame_size > s_max_frame_size )
@@ -1358,18 +1374,28 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     }
 
     int min_wlan_outgoing_queue_usage_frame = getMinWlanOutgoingQueueUsageFrame(); //get the minimum wifi queue usage while sending frame
-    //todo: drop quality depending on min usage
-    //should be kept zero
 
-    //keep wifi out queue usage below 40%
+    //keep max wifi out queue usage below 80%
+    //keep min wifi out queue usage in range 0...10%
     int max_wlan_outgoing_queue_usage_frame = getMaxWlanOutgoingQueueUsageFrame(); //get the maximum wifi queue usage while sending frame 
-    if ( max_wlan_outgoing_queue_usage_frame > 40 )
+    if ( min_wlan_outgoing_queue_usage_frame > 10 )
     {
-        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 40) / 100.0f;
+        s_quality_framesize_K3 -= (min_wlan_outgoing_queue_usage_frame - 10) / 100.0f;
+        //make sure quality is dropped at least by 1 point
+        while ( s_quality_framesize_K3 > 0 )
+        {
+            int quality1 = calculateAdaptiveQualityValue();
+            if ( quality1 > s_quality ) break;
+            s_quality_framesize_K3 -= 0.01;
+        }
     }
-    else
+    else if ( max_wlan_outgoing_queue_usage_frame > 80 )
     {
-        s_quality_framesize_K3 += ( 60 - max_wlan_outgoing_queue_usage_frame ) / 10000.0f;
+        s_quality_framesize_K3 -= (max_wlan_outgoing_queue_usage_frame - 60) / 100.0f;
+    }
+    else 
+    {
+        s_quality_framesize_K3 += ( 40 - max_wlan_outgoing_queue_usage_frame ) / 10000.0f;
     }
     if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
     else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
@@ -1381,7 +1407,7 @@ IRAM_ATTR void applyAdaptiveQuality()
 {
     if ( s_ground2air_config_packet.camera.quality != 0 ) return;
 
-    int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
+    int quality1 = calculateAdaptiveQualityValue();
 
     if (s_quality != quality1)
     {
