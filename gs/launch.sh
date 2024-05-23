@@ -1,7 +1,24 @@
-if ! iw dev wlan1 info &> /dev/null; then
-    echo "wlan1 interface not found, exiting script."
-    exit 1
-fi
+# Function to check if wlan1 is up
+does_wlan1_missing() {
+  iw dev wlan1 info &> /dev/null;   
+}
+
+interval=1
+timeout=10
+
+counter=0
+
+# Loop until wlan1 is up or timeout is reached
+while ! does_wlan1_missing; do
+    if [ $counter -ge $timeout ]; then
+        echo "Timeout reached. wlan1 did not appear."
+        exit 1
+    fi
+    
+    echo "Waiting for wlan1 to be up..."
+    sleep $interval
+    counter=$((counter + 1))
+done
 
 cd /home/pi/esp32-cam-fpv
 cd gs

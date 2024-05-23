@@ -1209,22 +1209,21 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.wifi_queue = s_max_wlan_outgoing_queue_usage;
     packet.air_record_state = s_air_record ? 1 : 0;
 
-    s_wifi_ovf_time = 0;
+    packet.wifi_ovf = 0;
     if ( s_wifi_ovf_time > 0 )
     {
         int64_t t = esp_timer_get_time();
         t -= s_wifi_ovf_time;
         if ( t < 1000000 )
         {
-            s_wifi_ovf_time = 1;
+            packet.wifi_ovf = 1;
         }
         else
         {
             s_wifi_ovf_time = 0;
         }
     }
-    packet.wifi_ovf = s_air_record ? 1 : 0;
-
+    
     packet.SDFreeSpaceGB16 = SDFreeSpaceGB16;
     packet.SDTotalSpaceGB16 = SDTotalSpaceGB16;
     packet.curr_quality = s_quality;
