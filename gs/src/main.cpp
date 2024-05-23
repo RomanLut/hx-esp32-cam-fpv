@@ -139,6 +139,7 @@ Clock::time_point restart_tp;
 uint16_t s_SDTotalSpaceGB16 = 0;
 uint16_t s_SDFreeSpaceGB16 = 0;
 bool s_air_record = false;
+bool s_wifi_ovf =false;
 bool s_SDDetected = false;
 bool s_SDSlow = false;
 bool s_SDError = false;
@@ -512,6 +513,7 @@ static void comms_thread_proc()
                 s_SDTotalSpaceGB16 = air2ground_osd_packet.SDTotalSpaceGB16;
                 s_SDFreeSpaceGB16 = air2ground_osd_packet.SDFreeSpaceGB16;
                 s_air_record = air2ground_osd_packet.air_record_state != 0;
+                s_wifi_ovf = air2ground_osd_packet.wifi_ovf !=0;
                 s_SDDetected = air2ground_osd_packet.SDDetected != 0;
                 s_SDError = air2ground_osd_packet.SDError != 0;
                 s_SDSlow = air2ground_osd_packet.SDSlow != 0;
@@ -678,13 +680,43 @@ int run(char* argv[])
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav  | ImGuiWindowFlags_NoFocusOnAppearing);
         {
+
+            {
+                //RSSI
+                char buf[32];
+                sprintf(buf, "%d", (int)s_min_rssi );
+
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(60.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //queue usage
+                char buf[32];
+                sprintf(buf, "%d%%", (int)s_wifi_queue );
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(60.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
             if ( s_air_record )
             {
                 //AIR REC
+                ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.7f, 0.7f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.8f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("AIR");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
@@ -696,8 +728,8 @@ int run(char* argv[])
                 ImGui::SameLine();
                 ImGui::PushID(1);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.7f, 0.7f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.8f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("GS");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
