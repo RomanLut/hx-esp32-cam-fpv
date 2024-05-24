@@ -34,7 +34,7 @@ void OSDMenu::drawMenuTitle( const char* caption )
 //=======================================================
 void OSDMenu::drawStatus( const char* caption )
 {
-    ImVec4 color = (ImVec4)ImColor(0,0,0);
+    ImVec4 color = (ImVec4)ImColor(48,48,48);
     ImGui::PushStyleColor(ImGuiCol_Button, color);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, color);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, color);
@@ -81,6 +81,11 @@ bool OSDMenu::drawMenuItem( const char* caption, int itemIndex, bool clip )
 
     this->keyHandled |= res;
 
+    if ( res )
+    {
+        this->backMenuItem = itemIndex;
+    }
+
     return res;
 }
 
@@ -126,19 +131,20 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
     switch (this->menuId)
     {
         case OSDMenuId::Main: this->drawMainMenu(config); break;
-        case OSDMenuId::PictureSettings: this->drawPictureSettingsMenu(config); break;
+        case OSDMenuId::CameraSettings: this->drawCameraSettingsMenu(config); break;
         case OSDMenuId::Resolution: this->drawResolutionMenu(config); break;
         case OSDMenuId::Brightness: this->drawBrightnessMenu(config); break;
         case OSDMenuId::Contrast: this->drawContrastMenu(config); break;
         case OSDMenuId::Exposure: this->drawExposureMenu(config); break;
         case OSDMenuId::Saturation: this->drawSaturationMenu(config); break;
         case OSDMenuId::Sharpness: this->drawSharpnessMenu(config); break;
-        case OSDMenuId::VerticalFlip: this->drawVerticalFlipMenu(config); break;
+        case OSDMenuId::ExitToShell: this->drawExitToShellMenu(config); break;
         case OSDMenuId::Letterbox: this->drawLetterboxMenu(config); break;
         case OSDMenuId::WifiRate: this->drawWifiRateMenu(config); break;
         case OSDMenuId::WifiChannel: this->drawWifiChannelMenu(config); break;
         case OSDMenuId::Restart: this->drawRestartMenu(config); break;
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
+        case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -214,21 +220,18 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Picture Settings...", 4) )
+    if ( this->drawMenuItem( "Camera Settings...", 4) )
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 0;
     }
+
+    if ( this->drawMenuItem( "Ground Station Settings...", 5) )
     {
-        char buf[256];
-        const char* modes[] = {"Stretch", "Screen is 4:3", "Screen is 16:9"};
-        sprintf(buf, "Letterbox: %s##4", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,2)]);
-        if ( this->drawMenuItem( buf, 5) )
-        {
-            this->menuId = OSDMenuId::Letterbox;
-            this->selectedItem = (int)s_groundstation_config.screenAspectRatio;
-        }
+        this->menuId = OSDMenuId::GSSettings;
+        this->selectedItem = 0;
     }
+
     //this->drawMenuItem( "OSD...", 5);
 
     ImGui::Dummy(ImVec2(0.0f, 20.0f));
@@ -251,9 +254,9 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
-void OSDMenu::drawPictureSettingsMenu(Ground2Air_Config_Packet& config)
+void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Menu -> Picture Settings" );
+    this->drawMenuTitle( "Menu -> Camera Settings" );
     
     {
         char buf[256];
@@ -307,17 +310,23 @@ void OSDMenu::drawPictureSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical flip: Disabled##5", 5) )
+        if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical Flip: Disabled##5", 5) )
         {
-            this->menuId = OSDMenuId::VerticalFlip;
-            this->selectedItem = config.camera.vflip ? 1: 0;
+            config.camera.vflip = !config.camera.vflip;
+        }
+    }
+
+    {
+        if ( this->drawMenuItem( config.camera.vflip ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 5) )
+        {
+            config.camera.hmirror = !config.camera.hmirror;
         }
     }
 
     if ( this->exitKeyPressed())
     {
         this->menuId = OSDMenuId::Main;
-        this->selectedItem = 4;
+        this->selectedItem = this->backMenuItem;
     }
 
 }
@@ -392,7 +401,7 @@ bool OSDMenu::exitKeyPressed()
 //=======================================================
 void OSDMenu::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Brightness" );
+    this->drawMenuTitle( "Camera Settings -> Brightness" );
     ImGui::Spacing();
 
     bool saveAndExit = false;
@@ -434,7 +443,7 @@ void OSDMenu::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 0;
     }
 }
@@ -444,7 +453,7 @@ void OSDMenu::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawContrastMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Contrast" );
+    this->drawMenuTitle( "Camera Settings -> Contrast" );
     ImGui::Spacing();
 
     bool saveAndExit = false;
@@ -486,7 +495,7 @@ void OSDMenu::drawContrastMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 1;
     }
 }
@@ -495,7 +504,7 @@ void OSDMenu::drawContrastMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawExposureMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Exposure" );
+    this->drawMenuTitle( "Camera Settings -> Exposure" );
     ImGui::Spacing();
 
     bool saveAndExit = false;
@@ -537,7 +546,7 @@ void OSDMenu::drawExposureMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 2;
     }
 }
@@ -546,7 +555,7 @@ void OSDMenu::drawExposureMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawSaturationMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Saturation" );
+    this->drawMenuTitle( "Camera Settings -> Saturation" );
     ImGui::Spacing();
 
     bool saveAndExit = false;
@@ -588,7 +597,7 @@ void OSDMenu::drawSaturationMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 3;
     }
 }
@@ -597,7 +606,7 @@ void OSDMenu::drawSaturationMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawSharpnessMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Sharpness" );
+    this->drawMenuTitle( "Camera Settings -> Sharpness" );
     ImGui::Spacing();
 
     bool saveAndExit = false;
@@ -639,41 +648,33 @@ void OSDMenu::drawSharpnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::PictureSettings;
+        this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 4;
     }
 }
 
 //=======================================================
 //=======================================================
-void OSDMenu::drawVerticalFlipMenu(Ground2Air_Config_Packet& config)
+void OSDMenu::drawExitToShellMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Picture Settings -> Vert.Flip" );
+    this->drawMenuTitle( "Exit To Shell ?" );
     ImGui::Spacing();
 
-    bool saveAndExit = false;
-
-    if ( this->drawMenuItem( "Disabled", 0) )
+    if ( this->drawMenuItem( "Exit", 0) )
     {
-        config.camera.vflip = false;
-        saveAndExit = true;
+        exitApp();
     }
 
-    if ( this->drawMenuItem( "Enabled", 1) )
+    bool b = false;
+    if ( this->drawMenuItem( "Cancel", 1) )
     {
-        config.camera.vflip = true;
-        saveAndExit = true;
+        b= true;
     }
 
-    if ( saveAndExit )
+    if ( b || this->exitKeyPressed())
     {
-        saveGround2AirConfig(config);
-    }
-
-    if ( saveAndExit || this->exitKeyPressed())
-    {
-        this->menuId = OSDMenuId::PictureSettings;
-        this->selectedItem = 5;
+        this->menuId = OSDMenuId::GSSettings;
+        this->selectedItem = this->backMenuItem;
     }
 }
 
@@ -712,8 +713,8 @@ void OSDMenu::drawLetterboxMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit || this->exitKeyPressed())
     {
-        this->menuId = OSDMenuId::Main;
-        this->selectedItem = 5;
+        this->menuId = OSDMenuId::GSSettings;
+        this->selectedItem = this->backMenuItem;
     }
 }
 
@@ -843,6 +844,37 @@ void OSDMenu::drawFECMenu(Ground2Air_Config_Packet& config)
     {
         this->menuId = OSDMenuId::Main;
         this->selectedItem = 3;
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> GS Settings" );
+    ImGui::Spacing();
+
+    {
+        char buf[256];
+        const char* modes[] = {"Stretch", "Screen is 4:3", "Screen is 16:9"};
+        sprintf(buf, "Letterbox: %s##4", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,2)]);
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->menuId = OSDMenuId::Letterbox;
+            this->selectedItem = (int)s_groundstation_config.screenAspectRatio;
+        }
+    }
+
+    if ( this->drawMenuItem( "Exit To Shell", 1) )
+    {
+        this->menuId = OSDMenuId::ExitToShell;
+        this->selectedItem = 0;
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->menuId = OSDMenuId::Main;
+        this->selectedItem = this->backMenuItem;
     }
 }
 

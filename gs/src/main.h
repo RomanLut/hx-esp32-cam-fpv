@@ -83,6 +83,7 @@ extern TGroundstationConfig s_groundstation_config;
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
 extern void saveGroundStationConfig();
 extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
+extern void exitApp();
 
 extern bool s_isOV5640;
 extern uint16_t s_SDTotalSpaceGB16;

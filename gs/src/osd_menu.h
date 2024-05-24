@@ -9,19 +9,20 @@
 enum class OSDMenuId
 {
     Main,
-    PictureSettings,
+    CameraSettings,
     Resolution,
     Brightness,
     Contrast,
     Exposure,
     Saturation,
     Sharpness,
-    VerticalFlip,
+    ExitToShell,
     Letterbox,
     WifiRate,
     WifiChannel,
     Restart,
-    FEC
+    FEC,
+    GSSettings
 };
 
 //=======================================================
@@ -42,6 +43,7 @@ private:
     int selectedItem;
     int itemsCount;
     int keyHandled;
+    int backMenuItem;
 
     int bWidth;
     int sWidth;
@@ -54,19 +56,20 @@ private:
     bool exitKeyPressed();
 
     void drawMainMenu(Ground2Air_Config_Packet& config);
-    void drawPictureSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawCameraSettingsMenu(Ground2Air_Config_Packet& config);
     void drawResolutionMenu(Ground2Air_Config_Packet& config);
     void drawBrightnessMenu(Ground2Air_Config_Packet& config);
     void drawContrastMenu(Ground2Air_Config_Packet& config);
     void drawExposureMenu(Ground2Air_Config_Packet& config);
     void drawSaturationMenu(Ground2Air_Config_Packet& config);
     void drawSharpnessMenu(Ground2Air_Config_Packet& config);
-    void drawVerticalFlipMenu(Ground2Air_Config_Packet& config);
+    void drawExitToShellMenu(Ground2Air_Config_Packet& config);
     void drawLetterboxMenu(Ground2Air_Config_Packet& config);
     void drawWifiRateMenu(Ground2Air_Config_Packet& config);
     void drawWifiChannelMenu(Ground2Air_Config_Packet& config);
     void drawRestartMenu(Ground2Air_Config_Packet& config);
     void drawFECMenu(Ground2Air_Config_Packet& config);
+    void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;
