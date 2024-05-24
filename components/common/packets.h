@@ -61,6 +61,7 @@ struct Ground2Air_Header
     Type type = Type::Telemetry; 
     uint32_t size = 0;
     uint8_t crc = 0;
+    uint8_t packet_version = PACKET_VERSION;
 };
 
 constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
@@ -80,7 +81,7 @@ enum class Resolution : uint8_t
     VGA16,    //640x360
     SVGA,   //800x600
     SVGA16,  //800x456
-    XGA,    //1024x768
+    XGA16,    //1024x576
     SXGA,   //1280x1024
     HD,   //1280x720
     UXGA,   //1600x1200
@@ -99,13 +100,16 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
     uint8_t fec_codec_n = FEC_N;
     uint16_t fec_codec_mtu = AIR2GROUND_MTU;
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+    uint16_t sessionId;  //assigned random number on boot on each side. Used to recognise that either GS or Air unit has rebooted
 
     //Description of some settings:
     //https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
     struct Camera
     {
         Resolution resolution = Resolution::SVGA;
-        uint8_t fps_limit = 31;
+        uint8_t fps_limit = 60;
         uint8_t quality = 0;//0 - 63  0-auto
         int8_t brightness = 0;//-2 - 2
         int8_t contrast = 0;//-2 - 2

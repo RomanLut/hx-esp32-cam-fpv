@@ -28,6 +28,7 @@
 #include "driver/uart.h"
 #include <unistd.h>
 #include <fcntl.h>
+#include "esp_random.h"
 
 #include "fec_codec.h"
 #include "packets.h"
@@ -76,6 +77,8 @@ static bool s_video_skip_frame = false;
 static int64_t s_video_target_frame_dt = 0;
 static uint8_t s_max_wlan_outgoing_queue_usage = 0;
 static uint8_t s_min_wlan_outgoing_queue_usage_seen = 0;
+
+static int64_t s_last_seen_config_packet = esp_timer_get_time();;
 
 static int64_t s_restart_time = 0;
 static int64_t s_wifi_ovf_time = 0;
@@ -850,8 +853,21 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 //process settings not related to camera sensor setup
 IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
-    Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
     s_recv_ground2air_packet = true;
+
+    int64_t t = esp_timer_get_time();
+    int64_t dt = t - s_last_seen_config_packet;
+    s_last_seen_config_packet = t;
+
+    Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
+
+    bool newSession = false;
+    if (dst.sessionId != src.sessionId)
+    {
+        dst.sessionId = src.sessionId;
+        newSession = true;
+    }
+
     if (dst.wifi_rate != src.wifi_rate)
     {
         LOG("Wifi rate changed from %d to %d\n", (int)dst.wifi_rate, (int)src.wifi_rate);
@@ -892,27 +908,54 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     {
         if ( dst.air_record_btn != src.air_record_btn )
         {
-            if ( ((uint8_t)(dst.air_record_btn + 1)) == src.air_record_btn )
+            if ( !newSession )
             {
-#if defined(ENABLE_PROFILER) && defined (START_PROFILER_WITH_GS_BUTTON)
-            if ( s_profiler.isActive())
-            {
-                LOG("Profiler stopped!\n");
-                s_profiler.stop();
-                s_profiler.save();
-                s_profiler.clear();
-            }
-            else
-            {
-                LOG("Profiler started!\n");
-                s_profiler.start(1000);
-            }
-#else
                 s_air_record = !s_air_record;
-#endif                
+                dst.air_record_btn = src.air_record_btn;
             }
-            dst.air_record_btn = src.air_record_btn;
         }
+
+#if defined(ENABLE_PROFILER)
+        if ( dst.profile1_btn != src.profile1_btn )
+        {
+            if ( !newSession )
+            {
+                if ( s_profiler.isActive())
+                {
+                    LOG("Profiler stopped!\n");
+                    s_profiler.stop();
+                    s_profiler.save();
+                    s_profiler.clear();
+                }
+                else
+                {
+                    LOG("Profiler started!\n");
+                    s_profiler.start(500);
+                }
+                dst.profile1_btn = src.profile2_btn;
+            }
+        }
+
+        if ( dst.profile2_btn != src.profile2_btn )
+        {
+            if ( !newSession )
+            {
+                if ( s_profiler.isActive())
+                {
+                    LOG("Profiler stopped!\n");
+                    s_profiler.stop();
+                    s_profiler.save();
+                    s_profiler.clear();
+                }
+                else
+                {
+                    LOG("Profiler started!\n");
+                    s_profiler.start(3000);
+                }
+                dst.profile2_btn = src.profile2_btn;
+            }
+        }
+#endif
     }
 
     dst = src;
@@ -965,7 +1008,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 #endif
             break;
 
-            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break;
+            case Resolution::XGA16: s->set_framesize(s, FRAMESIZE_XGA); break;
             case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
             case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
@@ -1766,6 +1809,7 @@ extern "C" void app_main()
     ground2air_config_packet.type = Ground2Air_Header::Type::Config;
     ground2air_config_packet.size = sizeof(ground2air_config_packet);
     ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    s_ground2air_config_packet.sessionId = (uint16_t)esp_random();
 
     srand(esp_timer_get_time());
 

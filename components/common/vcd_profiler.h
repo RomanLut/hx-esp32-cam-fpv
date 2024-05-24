@@ -6,10 +6,7 @@
 
 
 //uncomment to start profiling with button
-#define START_PROFILER_WITH_BUTTON
-
-//uncomment to profile with GS "Air REC" button
-#define START_PROFILER_WITH_GS_BUTTON
+//#define START_PROFILER_WITH_BUTTON
 //===========================================================
 
 //------------------------
