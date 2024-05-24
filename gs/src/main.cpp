@@ -20,6 +20,8 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 
+#include <random>
+
 #include "socket.h"
 
 #include "ini.h"
@@ -147,6 +149,8 @@ bool s_isOV5640 = false;
 
 bool s_debugWindowVisisble = false;
 
+bool s_noPing = false;
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
@@ -197,22 +201,16 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
-            if (ping_count == 0)
-            {
-                ping_count = 0;
-                ping_min = std::chrono::seconds(0);
-                ping_max = std::chrono::seconds(0);
-                ping_avg = std::chrono::seconds(0);
-            }
-
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size, min_rssi, 
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count,
+                ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
                 video_fps);
 
             s_min_rssi = min_rssi;
             s_total_data = total_data;
+
+            s_noPing = (ping_count == 0) || (std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count > 2000);
 
             ping_min = std::chrono::seconds(999);
             ping_max = std::chrono::seconds(0);
@@ -750,6 +748,19 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
+            if ( s_noPing )
+            {
+                //NO PING!
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!NO PING!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
             if ( s_air_record )
             {
                 //AIR REC
@@ -998,19 +1009,28 @@ int run(char* argv[])
                     //ImGui::SameLine();
                     //ImGui::Checkbox("Raw", &config.camera.raw_gma);
                     //ImGui::SameLine();
+                }
+                if ( ImGui::Button("Profile 500ms") )
+                {
+                    config.profile1_btn++;
+                }
+                ImGui::SameLine();
+                if ( ImGui::Button("Profile 3s") )
+                {
+                    config.profile2_btn++;
+                }
+                ImGui::SameLine();
+                ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
-                    ImGui::Checkbox("Stats", &s_groundstation_config.stats);
+                if ( ImGui::Button("Air Record") )
+                {
+                    config.air_record_btn++;
+                }
 
-                    if ( ImGui::Button("Air Record") )
-                    {
-                        config.air_record_btn++;
-                    }
-
-                    ImGui::SameLine();
-                    if (ImGui::Button("GS Record"))
-                    {
-                        toggleGSRecording();
-                    }
+                ImGui::SameLine();
+                if (ImGui::Button("GS Record"))
+                {
+                    toggleGSRecording();
                 }
 
                 ImGui::SameLine();
@@ -1044,13 +1064,13 @@ int run(char* argv[])
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
         {
             config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
-            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SVGA16;
+            if ( config.camera.resolution == Resolution::XGA16 ) config.camera.resolution = Resolution::SVGA16;
             saveGround2AirConfig(config);
         }
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
         {
             config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
-            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SXGA;
+            if ( config.camera.resolution == Resolution::XGA16 ) config.camera.resolution = Resolution::SXGA;
             saveGround2AirConfig(config);
         }
 
@@ -1193,6 +1213,8 @@ int main(int argc, const char* argv[])
 {
     init_crc8_table();
 
+    std::srand(static_cast<unsigned int>(std::time(0)));
+
     s_iniFile.read(ini);
 
     Comms::RX_Descriptor rx_descriptor;
@@ -1210,6 +1232,8 @@ int main(int argc, const char* argv[])
     //config.camera.quality = 30;
 
     s_groundstation_config.stats = false;
+
+    s_ground2air_config_packet.sessionId = (uint16_t)std::rand();
 
     {
         std::string& temp = ini["gs"]["wifi_channel"];
