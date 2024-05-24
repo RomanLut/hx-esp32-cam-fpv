@@ -865,7 +865,9 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     if (dst.sessionId != src.sessionId)
     {
         dst.sessionId = src.sessionId;
-        newSession = true;
+        dst.air_record_btn = src.air_record_btn;
+        dst.profile1_btn = src.profile1_btn;
+        dst.profile2_btn = src.profile2_btn;
     }
 
     if (dst.wifi_rate != src.wifi_rate)
@@ -908,52 +910,43 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     {
         if ( dst.air_record_btn != src.air_record_btn )
         {
-            if ( !newSession )
-            {
-                s_air_record = !s_air_record;
-                dst.air_record_btn = src.air_record_btn;
-            }
+            s_air_record = !s_air_record;
+            dst.air_record_btn = src.air_record_btn;
         }
 
 #if defined(ENABLE_PROFILER)
         if ( dst.profile1_btn != src.profile1_btn )
         {
-            if ( !newSession )
+            if ( s_profiler.isActive())
             {
-                if ( s_profiler.isActive())
-                {
-                    LOG("Profiler stopped!\n");
-                    s_profiler.stop();
-                    s_profiler.save();
-                    s_profiler.clear();
-                }
-                else
-                {
-                    LOG("Profiler started!\n");
-                    s_profiler.start(500);
-                }
-                dst.profile1_btn = src.profile2_btn;
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
             }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(500);
+            }
+            dst.profile1_btn = src.profile2_btn;
         }
 
         if ( dst.profile2_btn != src.profile2_btn )
         {
-            if ( !newSession )
+            if ( s_profiler.isActive())
             {
-                if ( s_profiler.isActive())
-                {
-                    LOG("Profiler stopped!\n");
-                    s_profiler.stop();
-                    s_profiler.save();
-                    s_profiler.clear();
-                }
-                else
-                {
-                    LOG("Profiler started!\n");
-                    s_profiler.start(3000);
-                }
-                dst.profile2_btn = src.profile2_btn;
+                LOG("Profiler stopped!\n");
+                s_profiler.stop();
+                s_profiler.save();
+                s_profiler.clear();
             }
+            else
+            {
+                LOG("Profiler started!\n");
+                s_profiler.start(3000);
+            }
+            dst.profile2_btn = src.profile2_btn;
         }
 #endif
     }
@@ -1249,7 +1242,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.SDError = SDError ? 1: 0;
     packet.curr_wifi_rate = (uint8_t)s_wlan_rate;
 
-    packet.wifi_queue = s_max_wlan_outgoing_queue_usage;
+    packet.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
+    packet.wifi_queue_max = s_max_wlan_outgoing_queue_usage;
     packet.air_record_state = s_air_record ? 1 : 0;
 
     packet.wifi_ovf = 0;
@@ -1544,7 +1538,6 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     }
                     dptr -= stride;
                 }
-
             }
 
             while (count > 0)
