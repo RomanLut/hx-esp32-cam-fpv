@@ -1,29 +1,32 @@
-# Function to check if wlan1 is up
-does_wlan1_missing() {
-  iw dev wlan1 info &> /dev/null;   
-}
+#!/bin/bash
 
-interval=1
+# Time to wait for wlan1 to appear
 timeout=10
+interval=1
+elapsed=0
 
-counter=0
-
-# Loop until wlan1 is up or timeout is reached
-while ! does_wlan1_missing; do
-    if [ $counter -ge $timeout ]; then
-        echo "Timeout reached. wlan1 did not appear."
-        exit 1
-    fi
+# Loop to check for wlan1
+while [ $elapsed -lt $timeout ]; do
+  if ip link show wlan1 &> /dev/null; then
+    echo "wlan1 found, starting GS..."
     
-    echo "Waiting for wlan1 to be up..."
-    sleep $interval
-    counter=$((counter + 1))
+    cd /home/pi/esp32-cam-fpv
+    cd gs
+    sudo airmon-ng check kill
+    sudo ip link set wlan1 down
+    sudo iw dev wlan1 set type monitor
+    sudo ip link set wlan1 up
+    sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0  ./gs -fullscreen 1 -sm 1 -rx wlan1 -tx wlan1
+
+#reconnect wlan0 to access point
+    sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+
+    exit 0
+  fi
+  echo "Waiting for wlan1..."
+  sleep $interval
+  elapsed=$((elapsed + interval))
 done
 
-cd /home/pi/esp32-cam-fpv
-cd gs
-sudo airmon-ng check kill
-sudo ip link set wlan1 down
-sudo iw dev wlan1 set type monitor
-sudo ip link set wlan1 up
-sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0  ./gs -fullscreen 1 -sm 1 -rx wlan1 -tx wlan1
+echo "wlan1 not found within $timeout seconds, exiting..."
+exit 1
