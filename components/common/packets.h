@@ -192,15 +192,27 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
     uint8_t SDError : 1;
     uint8_t curr_wifi_rate :5; //WIFI_Rate
 
-    uint8_t wifi_queue : 7;
+    uint8_t wifi_queue_min : 7;
     uint8_t air_record_state : 1;
 
-    uint16_t SDFreeSpaceGB16 : 12;
-    uint16_t SDTotalSpaceGB16 : 12;
-    uint16_t curr_quality : 6;
-    uint16_t wifi_ovf : 1;
+    uint8_t wifi_queue_max;
 
-    uint16_t isOV5640 : 1;
+    uint32_t SDFreeSpaceGB16 : 12;
+    uint32_t SDTotalSpaceGB16 : 12;
+    uint32_t curr_quality : 6;
+    uint32_t wifi_ovf : 1;
+    uint32_t isOV5640 : 1;
+
+    uint16_t outPacketRate;
+    uint16_t inPacketRate;
+    uint8_t inPacketLostRatio;
+    uint8_t rssiDbm;
+    uint8_t snrDb;
+    uint8_t noiseFloorDbm;
+    uint8_t captureFPS;
+    uint8_t cam_ovf_count;
+    uint16_t inMavlinkRate; //b/s
+    uint16_t outMavlinkRate; //b/s
 
     OSDBuffer buffer;
 };
