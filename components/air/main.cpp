@@ -791,6 +791,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     if (type == WIFI_PKT_MGMT)
     {
         //LOG("management packet\n");
+        s_stats.inRejectedPacketCounter++;
         return;
     }
     else if (type == WIFI_PKT_DATA)
@@ -800,6 +801,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     else if (type == WIFI_PKT_MISC)
     {
         //LOG("misc packet\n");
+        s_stats.inRejectedPacketCounter++;
         return;
     }
 
@@ -810,7 +812,11 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     //s_stats.wlan_data_sent += 1;
 
     if (len <= WLAN_IEEE_HEADER_SIZE)
+    {
+        LOG("WLAN receive header error");
+        s_stats.wlan_error_count++;
         return;
+    }
 
     //LOG("Recv %d bytes\n", len);
     //LOG("Channel: %d\n", (int)pkt->rx_ctrl.channel);
@@ -819,12 +825,8 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     //LOG("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     uint8_t *data = pkt->payload;
     if (memcmp(data + 10, WLAN_IEEE_HEADER_GROUND2AIR + 10, 6) != 0)
-        return;
-
-    if (len <= WLAN_IEEE_HEADER_SIZE)
     {
-        LOG("WLAN receive header error");
-        s_stats.wlan_error_count++;
+        s_stats.inRejectedPacketCounter++;
         return;
     }
 
@@ -835,11 +837,14 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     int16_t rssi = pkt->rx_ctrl.rssi;
 
-    size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
+    //xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
+    //s_wlan_incoming_rssi = rssi;
+    //xSemaphoreGive(s_wlan_incoming_mux);
 
-    xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
-    s_wlan_incoming_rssi = rssi;
-    xSemaphoreGive(s_wlan_incoming_mux);
+    s_stats.inPacketCounter++;
+    s_stats.rssiDbm = pkt->rx_ctrl.rssi;
+
+    size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
     s_fec_decoder.lock();
     if (!s_fec_decoder.decode_data(data, size, false))
@@ -1273,6 +1278,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.outPacketRate = s_stats.outPacketRate;
     packet.stats.inPacketRate = s_stats.inPacketRate;
+    packet.stats.inRejectedPacketRate = s_stats.inRejectedPacketRate;
     packet.stats.rssiDbm = s_stats.rssiDbm;
     packet.stats.snrDb = s_stats.snrDb;
     packet.stats.noiseFloorDbm = s_stats.noiseFloorDbm;
@@ -1990,6 +1996,9 @@ extern "C" void app_main()
 
             s_stats.inPacketRate = s_stats.inPacketCounter;
             s_stats.inPacketCounter = 0;
+
+            s_stats.inRejectedPacketRate = s_stats.inRejectedPacketCounter;
+            s_stats.inRejectedPacketCounter = 0;
 
             s_stats.outPacketRate = s_stats.outPacketCounter;
             s_stats.outPacketCounter = 0;

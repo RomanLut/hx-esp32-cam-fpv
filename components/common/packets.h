@@ -205,7 +205,7 @@ struct AirStats
 
     uint16_t outPacketRate;
     uint16_t inPacketRate;
-    uint8_t inPacketLossRatio;  //%*256
+    uint16_t inRejectedPacketRate;
     uint8_t rssiDbm;
     uint8_t snrDb;
     uint8_t noiseFloorDbm;

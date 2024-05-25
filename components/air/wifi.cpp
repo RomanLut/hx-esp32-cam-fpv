@@ -50,6 +50,8 @@ void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& 
 //===========================================================================================
 IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
 {
+    s_stats.inPacketCounter++;
+    
     Wlan_Incoming_Packet packet;
 
     xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
@@ -161,6 +163,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                     if (res == ESP_OK)
                     {
                         s_stats.wlan_data_sent += packet.size;
+                        s_stats.outPacketCounter++;
 
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
