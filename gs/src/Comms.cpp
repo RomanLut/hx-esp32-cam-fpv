@@ -457,6 +457,18 @@ bool Comms::process_rx_packet(PCap& pcap)
                 s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
                 break;
 
+            case IEEE80211_RADIOTAP_ANTENNA:
+            {
+                if ((uint8_t*)rti.this_arg == 0 ) 
+                {
+                    s_gs_stats.antena1PacketsCounter++;
+                }
+                else
+                {
+                    s_gs_stats.antena2PacketsCounter++;
+                }
+            }
+
             case IEEE80211_RADIOTAP_FLAGS:
                 prh.radiotap_flags = *rti.this_arg;
                 break;

@@ -838,7 +838,7 @@ int run(char* argv[])
 
                 const float table_width = 420.0f;
                 ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
-                ImGui::SetCursorPosY(0);
+                ImGui::SetCursorPosY(10);
 
                 if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f) ))
                 {
@@ -991,6 +991,30 @@ int run(char* argv[])
 
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("%d db", (int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm );
+                    }
+*/
+
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Antena1 pkts");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena1PacketsCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Antena2 pkts");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena2PacketsCounter);
                     }
 */
                     {

@@ -90,6 +90,8 @@ struct GSStats
 
     uint8_t rssiDbm = 0;
     uint8_t noiseFloorDbm = 0;
+    uint8_t antena1PacketsCounter = 0;
+    uint8_t antena2PacketsCounter = 0;
 
     uint8_t brokenFrames = 0;  //JPEG decoding errors
 
