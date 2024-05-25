@@ -1264,8 +1264,6 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.stats.SDTotalSpaceGB16 = SDTotalSpaceGB16;
     packet.stats.curr_quality = s_quality;
 
-    packet.stats.cam_frame_size_min = s_last_stats.camera_frame_size_min;
-    packet.stats.cam_frame_size_max = s_last_stats.camera_frame_size_max;
 #ifdef SENSOR_OV5640
     packet.stats.isOV5640 = 1;
 #else
@@ -1278,6 +1276,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.stats.rssiDbm = s_last_stats.rssiDbm;
     packet.stats.noiseFloorDbm = s_last_stats.noiseFloorDbm;
     packet.stats.captureFPS = s_actual_capture_fps;
+    packet.stats.cam_frame_size_min = s_last_stats.camera_frame_size_min;
+    packet.stats.cam_frame_size_max = s_last_stats.camera_frame_size_max;
     packet.stats.cam_ovf_count = cam_ovf_count;
     packet.stats.inMavlinkRate = s_last_stats.in_telemetry_data;
     packet.stats.outMavlinkRate = s_last_stats.out_telemetry_data;
@@ -1648,12 +1648,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
         if ( last && (s_video_full_frame_size > 0))
         {
-            if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min < s_video_full_frame_size) )
+            if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min > s_video_full_frame_size) )
             {
-                s_video_full_frame_size = s_stats.camera_frame_size_min;
+                s_stats.camera_frame_size_min = s_video_full_frame_size;
             } 
 
-            if ( s_stats.camera_frame_size_max > s_video_full_frame_size )
+            if ( s_stats.camera_frame_size_max < s_video_full_frame_size )
             {
                 s_stats.camera_frame_size_max = s_video_full_frame_size;
             } 

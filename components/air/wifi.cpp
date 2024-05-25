@@ -51,8 +51,6 @@ void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& 
 //===========================================================================================
 IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
 {
-    s_stats.inPacketCounter++;
-
     Wlan_Incoming_Packet packet;
 
     xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
