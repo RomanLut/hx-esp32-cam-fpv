@@ -198,8 +198,13 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        int i = clamp( (int)config.wifi_rate - (int)WIFI_Rate::RATE_G_12M_ODFM, 0, 3);
-        const char* rates[] = {"12Mbps", "18Mbps", "24Mbps", "36Mbps"};
+        int i = config.wifi_rate == WIFI_Rate::RATE_G_18M_ODFM ? 0 : 
+            config.wifi_rate == WIFI_Rate::RATE_G_24M_ODFM ? 1 :
+            config.wifi_rate == WIFI_Rate::RATE_G_36M_ODFM ? 2 :
+            config.wifi_rate == WIFI_Rate::RATE_N_19_5M_MCS2 ? 3 :
+            config.wifi_rate == WIFI_Rate::RATE_N_26M_MCS3 ? 4 :
+            config.wifi_rate == WIFI_Rate::RATE_N_39M_MCS4 ? 5 : 6;
+        const char* rates[] = {"OFDM 18Mbps", "OFDM 24Mbps", "OFDM 36Mbps", "MCS2L 19.5Mbps", "MCS3L 26Mbps", "MCS4L 39Mbps", "Other"};
         sprintf(buf, "Wifi Rate: %s##2", rates[i]);
         if ( this->drawMenuItem( buf, 2) )
         {
@@ -727,27 +732,39 @@ void OSDMenu::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    if ( this->drawMenuItem( "12Mbps", 0) )
-    {
-        config.wifi_rate = WIFI_Rate::RATE_G_12M_ODFM;
-        saveAndExit = true;
-    }
-
-    if ( this->drawMenuItem( "18Mbps", 1) )
+    if ( this->drawMenuItem( "OFDM 18Mbps", 0) )
     {
         config.wifi_rate = WIFI_Rate::RATE_G_18M_ODFM;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "24Mbps", 2) )
+    if ( this->drawMenuItem( "OFDM 24Mbps", 1) )
     {
         config.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "36Mbps", 3) )
+    if ( this->drawMenuItem( "OFDM 36Mbps", 2) )
     {
         config.wifi_rate = WIFI_Rate::RATE_G_36M_ODFM;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "MCS2L 19.5Mbps", 3) )
+    {
+        config.wifi_rate = WIFI_Rate::RATE_N_19_5M_MCS2;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "MCS3L 26Mbps", 4) )
+    {
+        config.wifi_rate = WIFI_Rate::RATE_N_26M_MCS3;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "MCS4L 39Mbps", 5) )
+    {
+        config.wifi_rate = WIFI_Rate::RATE_N_39M_MCS4;
         saveAndExit = true;
     }
 
@@ -759,7 +776,7 @@ void OSDMenu::drawWifiRateMenu(Ground2Air_Config_Packet& config)
     if ( saveAndExit || this->exitKeyPressed())
     {
         this->menuId = OSDMenuId::Main;
-        this->selectedItem = 2;
+        this->selectedItem = this->backMenuItem;
     }
 }
 

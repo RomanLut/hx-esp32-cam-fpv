@@ -205,7 +205,7 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
 
     uint16_t outPacketRate;
     uint16_t inPacketRate;
-    uint8_t inPacketLostRatio;
+    uint8_t inPacketLossRatio;  //%*256
     uint8_t rssiDbm;
     uint8_t snrDb;
     uint8_t noiseFloorDbm;

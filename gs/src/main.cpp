@@ -74,23 +74,23 @@ const char* rateName[] =
     "48M",
     "54M",
 
-    "MCS0_6.5M_L",
-    "MCS0_7.2M_S",
-    "MCS1_13M_L",
-    "MCS1_14.4M_S",
-    "MCS2_19.5M_L",
-    "MCS2_21.7M_S",
-    "MCS3_26.3M_L",
-    "MCS3_28.9M_S",
-    "MCS4_39M_L",
-    "MCS4_43.3M_S",
-    "MCS5_52M_L",
+    "MCS0_6.5ML",
+    "MCS0_7.2MS",
+    "MCS1L_13M",
+    "MCS1S_14.4M",
+    "MCS2L_19.5M",
+    "MCS2S_21.7M",
+    "MCS3L_26M",
+    "MCS3S_28.9M",
+    "MCS4L_39M",
+    "MCS4S_43.3M",
+    "MCS5L_52M",
 
-    "MCS5_57M_S",
-    "MCS6_58M_L",
-    "MCS6_65M_S",
-    "MCS7_65_L",
-    "MCS7_72_S"
+    "MCS5S_57.8M",
+    "MCS6L_58.5M",
+    "MCS6S_65M",
+    "MCS7L_65",
+    "MCS7S_72.2"
 };
 
 std::unique_ptr<IHAL> s_hal;
@@ -133,7 +133,8 @@ int s_min_rssi = 0;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
-int s_wifi_queue = 0;
+int s_wifi_queue_min = 0;
+int s_wifi_queue_max = 0;
 uint8_t s_curr_quality = 0;
 bool bRestart = false;
 bool bRestartRequired = false;
@@ -160,6 +161,7 @@ Stats s_queueUsage_stats;
 
 OSD g_osd;
 
+static Air2Ground_OSD_Packet s_last_air2ground_osd_packet;
 //===================================================================================
 //===================================================================================
 static void comms_thread_proc()
@@ -386,7 +388,7 @@ static void comms_thread_proc()
                         s_frameTime_stats.add(0);
                         s_frameQuality_stats.add(0);
                         s_frameParts_stats.add(video_next_part_index);
-                        s_queueUsage_stats.add(s_wifi_queue);
+                        s_queueUsage_stats.add(s_wifi_queue_max);
                     }
 
                     //frames [video_frame_index + 1 ... untill air2ground_video_packet.frame_index) are lost completely
@@ -502,12 +504,16 @@ static void comms_thread_proc()
                     LOGE("OSD frame: crc mismatch: {} != {}", crc, computed_crc);
                     break;
                 }
+
+                s_last_air2ground_osd_packet = air2ground_osd_packet;
+
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
 
                 s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.curr_wifi_rate;
                 s_curr_quality = air2ground_osd_packet.curr_quality;
-                s_wifi_queue = air2ground_osd_packet.wifi_queue;
+                s_wifi_queue_min = air2ground_osd_packet.wifi_queue_min;
+                s_wifi_queue_max = air2ground_osd_packet.wifi_queue_max;
                 s_SDTotalSpaceGB16 = air2ground_osd_packet.SDTotalSpaceGB16;
                 s_SDFreeSpaceGB16 = air2ground_osd_packet.SDFreeSpaceGB16;
                 s_air_record = air2ground_osd_packet.air_record_state != 0;
@@ -696,7 +702,7 @@ int run(char* argv[])
             {
                 //queue usage
                 char buf[32];
-                sprintf(buf, "%d%%", (int)s_wifi_queue );
+                sprintf(buf, "%d%%", (int)s_wifi_queue_max );
                 ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
@@ -804,10 +810,176 @@ int run(char* argv[])
                 sprintf(overlay, "avg: %d KB/sec", ((int)(s_dataSize_stats.average()+0.5f) )*10);
                 ImGui::PlotHistogram("DataSize", Stats::getter, &s_dataSize_stats, s_dataSize_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
 
-                sprintf(overlay, "%d%%", (int)(s_wifi_queue));
+                sprintf(overlay, "%d%%", (int)(s_wifi_queue_max));
                 ImGui::PlotHistogram("Wifi Load", Stats::getter, &s_queueUsage_stats, s_queueUsage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
 
                 ImGui::PopItemWidth();
+
+                if (ImGui::BeginTable("table1", 2, 0, ImVec2(420.0f, 24.0f) ))
+                {
+                    ImGuiStyle& style = ImGui::GetStyle();
+                    ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
+ 
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f); 
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirOutPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_air2ground_osd_packet.outPacketRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirInPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_air2ground_osd_packet.inPacketRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirPacketLossRatio");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%.1f3%%", s_last_air2ground_osd_packet.inPacketLossRatio / 256.0f);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSOutPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("234 pkt/s");
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSInPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("234 pkt/s");
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSPacketLossRatio");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("0.3%%");
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air RSSI");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_air2ground_osd_packet.rssiDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air Noise Floor");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_air2ground_osd_packet.noiseFloorDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air SNR");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d db", s_last_air2ground_osd_packet.snrDb);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Capture FPS");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d FPS", s_last_air2ground_osd_packet.captureFPS);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Camera OVF");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d", s_last_air2ground_osd_packet.cam_ovf_count);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Mavlink Up");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b/s", s_last_air2ground_osd_packet.inMavlinkRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Mavlink Down");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b/s", s_last_air2ground_osd_packet.outMavlinkRate);
+                    }
+
+
+/*
+    uint16_t outPacketRate;
+    uint16_t inPacketRate;
+    uint8_t inPacketLostRatio;
+    uint8_t rssiDbm;
+    uint8_t snrDb;
+    uint8_t noiseFloorDbm;
+    uint8_t captureFPS;
+    uint8_t cam_ovf_count;
+    uint16_t inMavlinkRate; //b/s
+    uint16_t outMavlinkRate; //b/s
+*/
+                    ImGui::EndTable();
+                }
             }
 
             g_osd.draw();
@@ -822,24 +994,27 @@ int run(char* argv[])
         if ( s_debugWindowVisisble )
         {
             char buf[256];
-            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %s %d%% AQ:%d %s/%s###HAL", 
+            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %d%%..%d%% AQ:%d %s/%s###HAL", 
             s_min_rssi, video_fps, s_lost_frame_count, 
             s_total_data/1024, 
-            resolutionName[(int)config.camera.resolution], 
-            s_wifi_queue,
+            s_wifi_queue_min,s_wifi_queue_max,
             s_curr_quality,
             rateName[(int)s_curr_wifi_rate], rateName[(int)config.wifi_rate]);
+
+            static const float SLIDER_WIDTH = 480.0f;
 
             ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); 
             ImGui::Begin(buf);
             {
                 {
                     int value = config.wifi_power;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Power", &value, 0, 20); 
                     config.wifi_power = value;
                 }
                 {
                     int value = (int)config.wifi_rate;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
                     if (config.wifi_rate != (WIFI_Rate)value) 
                     {
@@ -849,6 +1024,7 @@ int run(char* argv[])
                 }
                 {
                     int ch = s_groundstation_config.wifi_channel;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                     if ( ch != s_groundstation_config.wifi_channel)
                     {
@@ -858,6 +1034,7 @@ int run(char* argv[])
                 }
                 {
                     int value = config.fec_codec_n;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("FEC_N", &value,FEC_K+1, FEC_N);
                     if (config.fec_codec_n != (int8_t)value)
                     {
@@ -867,6 +1044,7 @@ int run(char* argv[])
                 }
                 {
                     int value = (int)config.camera.resolution;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Resolution", &value, 0, 10);
                     if ( config.camera.resolution != (Resolution)value )
                     {
@@ -876,11 +1054,13 @@ int run(char* argv[])
                 }
                 {
                     int value = (int)config.camera.fps_limit;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("FPS Limit", &value, 0, 100);
                     config.camera.fps_limit = (uint8_t)value;
                 }
                 {
                     int value = config.camera.quality;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
                     config.camera.quality = value;
                 }
@@ -908,12 +1088,14 @@ int run(char* argv[])
                 if ( !config.camera.agc )
                 {
                     int value = config.camera.agc_gain;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AGC Gain", &value, 0, 30);
                     config.camera.agc_gain = (int8_t)value;
                 }
                 else 
                 {
                     int value = config.camera.gainceiling;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("GainCeiling", &value, 0, 6);
                     config.camera.gainceiling = (uint8_t)value;
                 }
@@ -921,6 +1103,7 @@ int run(char* argv[])
                 if ( config.camera.aec )
                 {
                     int value = config.camera.ae_level;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AEC Level", &value, -2, 2);
                     if ( config.camera.ae_level != (int8_t)value)
                     {
@@ -931,12 +1114,14 @@ int run(char* argv[])
                 else 
                 {
                     int value = config.camera.aec_value;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AEC Value", &value, 0, 1200);
                     config.camera.aec_value = (uint16_t)value;
                 }
 
                 {
                     int value = config.camera.brightness;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Brightness", &value, -2, 2);
                     if (config.camera.brightness != (int8_t)value)
                     {
@@ -947,6 +1132,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.contrast;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Contrast", &value, -2, 2);
                     if (config.camera.contrast != (int8_t)value)
                     {
@@ -957,6 +1143,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.saturation;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Saturation", &value, -2, 2);
                     if (config.camera.saturation != (int8_t)value)
                     {
@@ -967,6 +1154,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.sharpness;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
                     if (config.camera.sharpness != (int8_t)value)
                     {
@@ -985,6 +1173,7 @@ int run(char* argv[])
     */
                 {
                     int ch = (int)s_groundstation_config.screenAspectRatio;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Letterbox", &ch, 0, 2);
                     if ( ch != (int)s_groundstation_config.screenAspectRatio)
                     {
@@ -1048,7 +1237,7 @@ int run(char* argv[])
                 }
                 
                 ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
-                ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
+                ImGui::Text("AIR SD: %s%s%s %.2fGB/%.2fGB %s", 
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
                     s_isOV5640 ? "OV5640" : "OV2640");
@@ -1224,6 +1413,8 @@ int main(int argc, const char* argv[])
     tx_descriptor.interface = "wlan1mon";
 
     s_hal.reset(new PI_HAL());
+
+    memset( &s_last_air2ground_osd_packet, 0, sizeof(Air2Ground_OSD_Packet) );
 
     Ground2Air_Config_Packet& config = s_ground2air_config_packet;
     //config.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;

@@ -664,7 +664,7 @@ bool PI_HAL::init()
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
     io.Fonts->AddFontDefault();
-    io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
+    //io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
     io.Fonts->Build();
 
     return true;
