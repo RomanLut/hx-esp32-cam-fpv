@@ -185,7 +185,7 @@ struct OSDBuffer
     uint8_t screenHigh[OSD_ROWS][OSD_COLS_H];
 };
 
-struct Air2Ground_OSD_Packet : Air2Ground_Header
+struct AirStats
 {
     uint8_t SDDetected : 1;
     uint8_t SDSlow : 1;
@@ -213,7 +213,11 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
     uint8_t cam_ovf_count;
     uint16_t inMavlinkRate; //b/s
     uint16_t outMavlinkRate; //b/s
+};
 
+struct Air2Ground_OSD_Packet : Air2Ground_Header
+{
+    AirStats stats;
     OSDBuffer buffer;
 };
 

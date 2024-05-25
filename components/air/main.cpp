@@ -1238,23 +1238,23 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.version = PACKET_VERSION;
     packet.crc = 0;
 
-    packet.SDDetected = s_sd_initialized ? 1: 0;
-    packet.SDSlow = s_stats.sd_drops ? 1: 0;
-    packet.SDError = SDError ? 1: 0;
-    packet.curr_wifi_rate = (uint8_t)s_wlan_rate;
+    packet.stats.SDDetected = s_sd_initialized ? 1: 0;
+    packet.stats.SDSlow = s_stats.sd_drops ? 1: 0;
+    packet.stats.SDError = SDError ? 1: 0;
+    packet.stats.curr_wifi_rate = (uint8_t)s_wlan_rate;
 
-    packet.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
-    packet.wifi_queue_max = s_max_wlan_outgoing_queue_usage;
-    packet.air_record_state = s_air_record ? 1 : 0;
+    packet.stats.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
+    packet.stats.wifi_queue_max = s_max_wlan_outgoing_queue_usage;
+    packet.stats.air_record_state = s_air_record ? 1 : 0;
 
-    packet.wifi_ovf = 0;
+    packet.stats.wifi_ovf = 0;
     if ( s_wifi_ovf_time > 0 )
     {
         int64_t t = esp_timer_get_time();
         t -= s_wifi_ovf_time;
         if ( t < 1000000 )
         {
-            packet.wifi_ovf = 1;
+            packet.stats.wifi_ovf = 1;
         }
         else
         {
@@ -1262,24 +1262,24 @@ IRAM_ATTR void send_air2ground_osd_packet()
         }
     }
     
-    packet.SDFreeSpaceGB16 = SDFreeSpaceGB16;
-    packet.SDTotalSpaceGB16 = SDTotalSpaceGB16;
-    packet.curr_quality = s_quality;
-#ifdef SENSOR_OV5640    
-    packet.isOV5640 = 1;
+    packet.stats.SDFreeSpaceGB16 = SDFreeSpaceGB16;
+    packet.stats.SDTotalSpaceGB16 = SDTotalSpaceGB16;
+    packet.stats.curr_quality = s_quality;
+#ifdef SENSOR_OV5640
+    packet.stats.isOV5640 = 1;
 #else
-    packet.isOV5640 = 0;
+    packet.stats.isOV5640 = 0;
 #endif    
 
-    packet.outPacketRate = s_stats.outPacketRate;
-    packet.inPacketRate = s_stats.inPacketRate;
-    packet.rssiDbm = s_stats.rssiDbm;
-    packet.snrDb = s_stats.snrDb;
-    packet.noiseFloorDbm = s_stats.noiseFloorDbm;
-    packet.captureFPS = s_actual_capture_fps;
-    packet.cam_ovf_count = cam_ovf_count;
-    packet.inMavlinkRate = s_stats.in_telemetry_data;
-    packet.outMavlinkRate = s_stats.out_telemetry_data;
+    packet.stats.outPacketRate = s_stats.outPacketRate;
+    packet.stats.inPacketRate = s_stats.inPacketRate;
+    packet.stats.rssiDbm = s_stats.rssiDbm;
+    packet.stats.snrDb = s_stats.snrDb;
+    packet.stats.noiseFloorDbm = s_stats.noiseFloorDbm;
+    packet.stats.captureFPS = s_actual_capture_fps;
+    packet.stats.cam_ovf_count = cam_ovf_count;
+    packet.stats.inMavlinkRate = s_stats.in_telemetry_data;
+    packet.stats.outMavlinkRate = s_stats.out_telemetry_data;
 
     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
     
