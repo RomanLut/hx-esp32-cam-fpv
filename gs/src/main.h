@@ -80,6 +80,27 @@ struct TGroundstationConfig
 
 extern TGroundstationConfig s_groundstation_config;
 
+//===================================================================================
+//===================================================================================
+struct GSStats
+{
+    uint16_t outPacketCounter = 0;
+    uint16_t inPacketCounter = 0;
+    uint16_t inRejectedPacketCounter = 0;
+
+    uint8_t rssiDbm = 0;
+    uint8_t noiseFloorDbm = 0;
+
+    uint8_t brokenFrames = 0;  //JPEG decoding errors
+
+    int pingMinMS = 0;
+    int pingMaxMS = 0;
+};
+
+extern GSStats s_gs_stats;
+extern GSStats s_last_gs_stats;
+
+
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
 extern void saveGroundStationConfig();
 extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);

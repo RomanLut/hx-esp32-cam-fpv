@@ -162,6 +162,10 @@ Stats s_queueUsage_stats;
 OSD g_osd;
 
 static AirStats s_last_airStats;
+
+GSStats s_gs_stats;
+GSStats s_last_gs_stats;
+
 //===================================================================================
 //===================================================================================
 static void comms_thread_proc()
@@ -213,6 +217,8 @@ static void comms_thread_proc()
             s_total_data = total_data;
 
             s_noPing = (ping_count == 0) || (std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count > 2000);
+            s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count();
+            s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count();
 
             ping_min = std::chrono::seconds(999);
             ping_max = std::chrono::seconds(0);
@@ -223,6 +229,10 @@ static void comms_thread_proc()
             ping_count = 0;
             total_data = 0;
             min_rssi = 0;
+
+            s_last_gs_stats = s_gs_stats;
+            s_gs_stats = GSStats();
+
             last_stats_tp = Clock::now();
         }
 
@@ -652,6 +662,16 @@ void exitApp()
 
 //===================================================================================
 //===================================================================================
+float calcLossRatio( int outCount, int inCount)
+{
+    if ( outCount == 0 ) return 0;
+    int loss = outCount - inCount;
+    if ( loss <= 0 ) return 0;
+    return (loss * 100.0f)/ outCount;
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -816,7 +836,11 @@ int run(char* argv[])
 
                 ImGui::PopItemWidth();
 
-                if (ImGui::BeginTable("table1", 2, 0, ImVec2(420.0f, 24.0f) ))
+                const float table_width = 420.0f;
+                ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
+                ImGui::SetCursorPosY(0);
+
+                if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f) ))
                 {
                     ImGuiStyle& style = ImGui::GetStyle();
                     ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
@@ -850,10 +874,22 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirOthersPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_airStats.inRejectedPacketRate);
+                    }
+
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
                         ImGui::Text("AirPacketLossRatio");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%.1f3%%", 0 );
+                        ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats.outPacketCounter, s_last_airStats.inPacketRate) );
                     }
 
                     {
@@ -864,7 +900,7 @@ int run(char* argv[])
                         ImGui::Text("GSOutPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("234 pkt/s");
+                        ImGui::Text("%d pkt/s", s_last_gs_stats.outPacketCounter);
                     }
 
                     {
@@ -875,7 +911,7 @@ int run(char* argv[])
                         ImGui::Text("GSInPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("234 pkt/s");
+                        ImGui::Text("%d pkt/s", s_last_gs_stats.inPacketCounter);
                     }
 
                     {
@@ -886,7 +922,8 @@ int run(char* argv[])
                         ImGui::Text("GSPacketLossRatio");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("0.3%%");
+
+                        ImGui::Text("%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter));
                     }
 
                     {
@@ -919,7 +956,63 @@ int run(char* argv[])
                         ImGui::Text("Air SNR");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d db", s_last_airStats.snrDb);
+                        ImGui::Text("%d db", (int)s_last_airStats.noiseFloorDbm - s_last_airStats.rssiDbm );
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS RSSI");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Noise Floor");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.noiseFloorDbm);
+                    }
+
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS SNR");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d db", (int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm );
+                    }
+*/
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Ping min");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", s_last_gs_stats.pingMinMS);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Ping max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", s_last_gs_stats.pingMaxMS);
                     }
 
                     {
@@ -938,10 +1031,43 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Frame size min");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_min);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Frame size max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_max);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
                         ImGui::Text("Camera OVF");
 
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("%d", s_last_airStats.cam_ovf_count);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Broken frames");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d", s_last_gs_stats.brokenFrames);
                     }
 
                     {

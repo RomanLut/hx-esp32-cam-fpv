@@ -13,6 +13,7 @@
 #include "Pool.h"
 #include "structures.h"
 #include <algorithm>
+#include "main.h"
 
 //#define DEBUG_PCAP
 
@@ -448,7 +449,14 @@ bool Comms::process_rx_packet(PCap& pcap)
 
             case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
                 prh.input_dBm = *(int8_t*)rti.this_arg;
+                s_gs_stats.rssiDbm = -*(int8_t*)rti.this_arg; 
                 break;
+
+            case IEEE80211_RADIOTAP_DBM_ANTNOISE:
+                prh.input_dBm = *(int8_t*)rti.this_arg;
+                s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
+                break;
+
             case IEEE80211_RADIOTAP_FLAGS:
                 prh.radiotap_flags = *rti.this_arg;
                 break;
@@ -863,7 +871,10 @@ void Comms::rx_thread_proc(size_t index)
 
         int n = select(30, &readset, nullptr, nullptr, &to);
         if (n != 0 && FD_ISSET(pcap.rx_pcap_selectable_fd, &readset))
+        {
+            s_gs_stats.inPacketCounter++;
             process_rx_packet(pcap);
+        }
     }
 }
 
@@ -1012,6 +1023,10 @@ void Comms::tx_thread_proc()
                 {
                     LOGW("Incomplete packet sent: {} / {}", r, isize);
                     //result = Result::ERROR;
+                }
+                else
+                {
+                    s_gs_stats.outPacketCounter++;
                 }
             }
         }
