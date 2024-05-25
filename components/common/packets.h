@@ -210,6 +210,8 @@ struct AirStats
     uint8_t noiseFloorDbm;
     uint8_t captureFPS;
     uint8_t cam_ovf_count;
+    uint16_t cam_frame_size_min; //bytes
+    uint16_t cam_frame_size_max; //bytes
     uint16_t inMavlinkRate; //b/s
     uint16_t outMavlinkRate; //b/s
 };

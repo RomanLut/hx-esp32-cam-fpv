@@ -73,8 +73,10 @@ struct Stats
     uint16_t inRejectedPacketCounter = 0;
 
     uint8_t rssiDbm = 0;
-    uint8_t snrDb = 0;
     uint8_t noiseFloorDbm = 0;
+
+    uint16_t camera_frame_size_min;
+    uint16_t camera_frame_size_max;
 };
 
 extern Stats s_stats;
