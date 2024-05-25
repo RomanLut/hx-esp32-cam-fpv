@@ -223,7 +223,13 @@ Save and reboot.
 
 * Download **esp32-cam-fpv** repository:
 
+  Clone eiither stable version (release branch):
+
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+
+  Or unstable development version (master branch):
+
+  ```git clone --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
 * Adding GPIO keys support:
  
