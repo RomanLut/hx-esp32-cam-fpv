@@ -161,7 +161,7 @@ Stats s_queueUsage_stats;
 
 OSD g_osd;
 
-static Air2Ground_OSD_Packet s_last_air2ground_osd_packet;
+static AirStats s_last_airStats;
 //===================================================================================
 //===================================================================================
 static void comms_thread_proc()
@@ -505,23 +505,24 @@ static void comms_thread_proc()
                     break;
                 }
 
-                s_last_air2ground_osd_packet = air2ground_osd_packet;
+                s_last_airStats = air2ground_osd_packet.stats;
 
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
 
-                s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.curr_wifi_rate;
-                s_curr_quality = air2ground_osd_packet.curr_quality;
-                s_wifi_queue_min = air2ground_osd_packet.wifi_queue_min;
-                s_wifi_queue_max = air2ground_osd_packet.wifi_queue_max;
-                s_SDTotalSpaceGB16 = air2ground_osd_packet.SDTotalSpaceGB16;
-                s_SDFreeSpaceGB16 = air2ground_osd_packet.SDFreeSpaceGB16;
-                s_air_record = air2ground_osd_packet.air_record_state != 0;
-                s_wifi_ovf = air2ground_osd_packet.wifi_ovf !=0;
-                s_SDDetected = air2ground_osd_packet.SDDetected != 0;
-                s_SDError = air2ground_osd_packet.SDError != 0;
-                s_SDSlow = air2ground_osd_packet.SDSlow != 0;
-                s_isOV5640 = air2ground_osd_packet.isOV5640 != 0;
+                //TODO: remove all these, use s_last_airStats
+                s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.stats.curr_wifi_rate;
+                s_curr_quality = air2ground_osd_packet.stats.curr_quality;
+                s_wifi_queue_min = air2ground_osd_packet.stats.wifi_queue_min;
+                s_wifi_queue_max = air2ground_osd_packet.stats.wifi_queue_max;
+                s_SDTotalSpaceGB16 = air2ground_osd_packet.stats.SDTotalSpaceGB16;
+                s_SDFreeSpaceGB16 = air2ground_osd_packet.stats.SDFreeSpaceGB16;
+                s_air_record = air2ground_osd_packet.stats.air_record_state != 0;
+                s_wifi_ovf = air2ground_osd_packet.stats.wifi_ovf !=0;
+                s_SDDetected = air2ground_osd_packet.stats.SDDetected != 0;
+                s_SDError = air2ground_osd_packet.stats.SDError != 0;
+                s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
+                s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
                 g_osd.update( &air2ground_osd_packet.buffer );
             }
@@ -830,7 +831,7 @@ int run(char* argv[])
                         ImGui::Text("AirOutPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_air2ground_osd_packet.outPacketRate);
+                        ImGui::Text("%d pkt/s", s_last_airStats.outPacketRate);
                     }
 
                     {
@@ -841,7 +842,7 @@ int run(char* argv[])
                         ImGui::Text("AirInPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_air2ground_osd_packet.inPacketRate);
+                        ImGui::Text("%d pkt/s", s_last_airStats.inPacketRate);
                     }
 
                     {
@@ -852,7 +853,7 @@ int run(char* argv[])
                         ImGui::Text("AirPacketLossRatio");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%.1f3%%", s_last_air2ground_osd_packet.inPacketLossRatio / 256.0f);
+                        ImGui::Text("%.1f3%%", 0 );
                     }
 
                     {
@@ -896,7 +897,7 @@ int run(char* argv[])
                         ImGui::Text("Air RSSI");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_air2ground_osd_packet.rssiDbm);
+                        ImGui::Text("%d dbm", -s_last_airStats.rssiDbm);
                     }
 
                     {
@@ -907,7 +908,7 @@ int run(char* argv[])
                         ImGui::Text("Air Noise Floor");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_air2ground_osd_packet.noiseFloorDbm);
+                        ImGui::Text("%d dbm", -s_last_airStats.noiseFloorDbm);
                     }
 
                     {
@@ -918,7 +919,7 @@ int run(char* argv[])
                         ImGui::Text("Air SNR");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d db", s_last_air2ground_osd_packet.snrDb);
+                        ImGui::Text("%d db", s_last_airStats.snrDb);
                     }
 
                     {
@@ -929,7 +930,7 @@ int run(char* argv[])
                         ImGui::Text("Capture FPS");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d FPS", s_last_air2ground_osd_packet.captureFPS);
+                        ImGui::Text("%d FPS", s_last_airStats.captureFPS);
                     }
 
                     {
@@ -940,7 +941,7 @@ int run(char* argv[])
                         ImGui::Text("Camera OVF");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d", s_last_air2ground_osd_packet.cam_ovf_count);
+                        ImGui::Text("%d", s_last_airStats.cam_ovf_count);
                     }
 
                     {
@@ -951,7 +952,7 @@ int run(char* argv[])
                         ImGui::Text("Mavlink Up");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b/s", s_last_air2ground_osd_packet.inMavlinkRate);
+                        ImGui::Text("%d b/s", s_last_airStats.inMavlinkRate);
                     }
 
                     {
@@ -962,7 +963,7 @@ int run(char* argv[])
                         ImGui::Text("Mavlink Down");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b/s", s_last_air2ground_osd_packet.outMavlinkRate);
+                        ImGui::Text("%d b/s", s_last_airStats.outMavlinkRate);
                     }
 
 
@@ -1414,7 +1415,7 @@ int main(int argc, const char* argv[])
 
     s_hal.reset(new PI_HAL());
 
-    memset( &s_last_air2ground_osd_packet, 0, sizeof(Air2Ground_OSD_Packet) );
+    memset( &s_last_airStats, 0, sizeof(AirStats) );
 
     Ground2Air_Config_Packet& config = s_ground2air_config_packet;
     //config.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
