@@ -64,8 +64,23 @@ struct Stats
     uint16_t video_frames = 0;
     uint32_t sd_data = 0;
     uint32_t sd_drops = 0;
+    
     uint32_t out_telemetry_data = 0;
+    uint32_t out_telemetry_data_counter = 0;
+
     uint32_t in_telemetry_data = 0;
+    uint32_t in_telemetry_data_counter = 0;
+
+    uint16_t outPacketCounter = 0;
+    uint16_t outPacketRate = 0;
+
+    uint16_t inPacketCounter = 0;
+    uint16_t inPacketRate = 0;
+
+    uint8_t rssiDbm = 0;
+    uint8_t snrDb = 0;
+    uint8_t noiseFloorDbm = 0;
+
 };
 
 extern Stats s_stats;
