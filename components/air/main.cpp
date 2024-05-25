@@ -782,8 +782,6 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
 
 #endif
 
-int16_t s_wlan_incoming_rssi = 0; //this is protected by the s_wlan_incoming_mux
-
 //=============================================================================================
 //=============================================================================================
 IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
@@ -835,14 +833,9 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     len -= 4; //the received length has 4 more bytes at the end for some reason.
 
-    int16_t rssi = pkt->rx_ctrl.rssi;
-
-    //xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
-    //s_wlan_incoming_rssi = rssi;
-    //xSemaphoreGive(s_wlan_incoming_mux);
-
     s_stats.inPacketCounter++;
-    s_stats.rssiDbm = pkt->rx_ctrl.rssi;
+    s_stats.rssiDbm = -pkt->rx_ctrl.rssi;
+    s_stats.noiseFloorDbm = -pkt->rx_ctrl.noise_floor;
 
     size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
@@ -1244,7 +1237,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.crc = 0;
 
     packet.stats.SDDetected = s_sd_initialized ? 1: 0;
-    packet.stats.SDSlow = s_stats.sd_drops ? 1: 0;
+    packet.stats.SDSlow = s_last_stats.sd_drops ? 1: 0;
     packet.stats.SDError = SDError ? 1: 0;
     packet.stats.curr_wifi_rate = (uint8_t)s_wlan_rate;
 
@@ -1276,16 +1269,16 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.stats.isOV5640 = 0;
 #endif    
 
-    packet.stats.outPacketRate = s_stats.outPacketRate;
-    packet.stats.inPacketRate = s_stats.inPacketRate;
-    packet.stats.inRejectedPacketRate = s_stats.inRejectedPacketRate;
-    packet.stats.rssiDbm = s_stats.rssiDbm;
-    packet.stats.snrDb = s_stats.snrDb;
-    packet.stats.noiseFloorDbm = s_stats.noiseFloorDbm;
+    packet.stats.outPacketRate = s_last_stats.outPacketCounter;
+    packet.stats.inPacketRate = s_last_stats.inPacketCounter;
+    packet.stats.inRejectedPacketRate = s_last_stats.inRejectedPacketCounter;
+    packet.stats.rssiDbm = s_last_stats.rssiDbm;
+    packet.stats.snrDb = s_last_stats.snrDb;
+    packet.stats.noiseFloorDbm = s_last_stats.noiseFloorDbm;
     packet.stats.captureFPS = s_actual_capture_fps;
     packet.stats.cam_ovf_count = cam_ovf_count;
-    packet.stats.inMavlinkRate = s_stats.in_telemetry_data;
-    packet.stats.outMavlinkRate = s_stats.out_telemetry_data;
+    packet.stats.inMavlinkRate = s_last_stats.in_telemetry_data;
+    packet.stats.outMavlinkRate = s_last_stats.out_telemetry_data;
 
     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
     
@@ -1988,21 +1981,6 @@ extern "C" void app_main()
             s_stats.wlan_error_count += s_fec_wlan_error_count;
             s_fec_wlan_error_count = 0;
 
-            s_stats.in_telemetry_data = s_stats.in_telemetry_data_counter;
-            s_stats.in_telemetry_data_counter = 0;
-            
-            s_stats.out_telemetry_data = s_stats.out_telemetry_data_counter;
-            s_stats.out_telemetry_data_counter = 0;
-
-            s_stats.inPacketRate = s_stats.inPacketCounter;
-            s_stats.inPacketCounter = 0;
-
-            s_stats.inRejectedPacketRate = s_stats.inRejectedPacketCounter;
-            s_stats.inRejectedPacketCounter = 0;
-
-            s_stats.outPacketRate = s_stats.outPacketCounter;
-            s_stats.outPacketCounter = 0;
-
             if (s_uart_verbose > 0 )
             {
                 LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
@@ -2022,6 +2000,7 @@ extern "C" void app_main()
                 s_wifi_ovf_time = esp_timer_get_time();
             }
 
+            s_last_stats = s_stats;
             s_stats = Stats();
         }
 
