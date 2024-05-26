@@ -176,11 +176,11 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 0) )
         {
             this->menuId = OSDMenuId::Resolution;
-            if ( config.camera.resolution == Resolution::VGA) this->selectedItem = 0;
-            else if ( config.camera.resolution == Resolution::VGA16) this->selectedItem = 1;
-            else if ( config.camera.resolution == Resolution::SVGA) this->selectedItem = 2;
-            else if ( config.camera.resolution == Resolution::SVGA16) this->selectedItem = 3;
-            else if ( config.camera.resolution == Resolution::SXGA) this->selectedItem = 4;
+            if ( config.camera.resolution == Resolution::VGA16) this->selectedItem = 0;
+            else if ( config.camera.resolution == Resolution::VGA) this->selectedItem = 1;
+            else if ( config.camera.resolution == Resolution::SVGA16) this->selectedItem = 2;
+            else if ( config.camera.resolution == Resolution::SVGA) this->selectedItem = 3;
+            else if ( config.camera.resolution == Resolution::XGA16) this->selectedItem = 4;
             else if ( config.camera.resolution == Resolution::HD) this->selectedItem = 5;
             else selectedItem = 0;
         }
@@ -345,34 +345,34 @@ void OSDMenu::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    if ( this->drawMenuItem( "640x480 30fps (4:3)", 0) )
-    {
-        config.camera.resolution = Resolution::VGA;
-        saveAndExit = true;
-    }
-
-    if ( this->drawMenuItem( "640x360 30fps (16:9)", 1) )
+    if ( this->drawMenuItem( "640x360 30fps (16:9)", 0) )
     {
         config.camera.resolution = Resolution::VGA16;
         saveAndExit = true;
     }
+
+    if ( this->drawMenuItem( "640x480 30fps (4:3)", 1) )
+    {
+        config.camera.resolution = Resolution::VGA;
+        saveAndExit = true;
+    }
     
 
-    if ( this->drawMenuItem( "800x600 30fps (4:3)", 2) )
+    if ( this->drawMenuItem( "800x456 30fps (16:9)", 2) )
+    {
+        config.camera.resolution = Resolution::SVGA16;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "800x600 30fps (4:3)", 3) )
     {
         config.camera.resolution = Resolution::SVGA;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "800x456 30fps (16:9)", 3) )
+    if (this->drawMenuItem( s_isOV5640 ? "1024x576 30fps (16:9)" : "1024x576 13fps (16:9)", 4) )
     {
-        config.camera.resolution = Resolution::SVGA16;
-        saveAndExit = true;
-    }
-   
-    if (this->drawMenuItem( s_isOV5640 ? "1280x960 30fps (4:3)" : "1280x960 13fps (4:3)", 4) )
-    {
-        config.camera.resolution = Resolution::SXGA;
+        config.camera.resolution = Resolution::XGA16;
         saveAndExit = true;
     }
 

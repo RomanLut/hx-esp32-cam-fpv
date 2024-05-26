@@ -51,6 +51,7 @@ const char* resolutionName[] =
     "800x600",
     "800x456",
     "1024x768",
+    "1024x576",
     "1280x960",
     "1280x720",
     "1600x1200"
@@ -1196,7 +1197,7 @@ int run(char* argv[])
                 {
                     int value = (int)config.camera.resolution;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Resolution", &value, 0, 10);
+                    ImGui::SliderInt("Resolution", &value, 0, 11);
                     if ( config.camera.resolution != (Resolution)value )
                     {
                         config.camera.resolution = (Resolution)value;
