@@ -1220,7 +1220,7 @@ int run(char* argv[])
                 ImGui::Checkbox("AGC", &config.camera.agc);
                 ImGui::SameLine();            
                 ImGui::Checkbox("AEC", &config.camera.aec);
-                if ( config.camera.aec )
+                if ( config.camera.aec && !s_isOV5640)
                 {
                     ImGui::SameLine();            
                     ImGui::Checkbox("AEC DSP", &config.camera.aec2);
