@@ -229,6 +229,12 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     {
         this->menuId = OSDMenuId::CameraSettings;
         this->selectedItem = 0;
+
+        if ( s_isOV5640 && config.camera.vflip )
+        {
+            config.camera.vflip = false;
+            saveGround2AirConfig(config);
+        }
     }
 
     if ( this->drawMenuItem( "Ground Station Settings...", 5) )
@@ -314,6 +320,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    if (!s_isOV5640)  //vertical flip drops framerate by half, useless
     {
         if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical Flip: Disabled##5", 5) )
         {
@@ -321,12 +328,14 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+/*
     {
-        if ( this->drawMenuItem( config.camera.vflip ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 5) )
+        if ( this->drawMenuItem( config.camera.hmirror ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 5) )
         {
             config.camera.hmirror = !config.camera.hmirror;
         }
     }
+*/
 
     if ( this->exitKeyPressed())
     {
