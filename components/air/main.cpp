@@ -1003,7 +1003,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
                 s->set_framesize(s, FRAMESIZE_P_HD); //800x456
 #else
                 //s->set_framesize(s, FRAMESIZE_P_HD);  800x448 13 fps
-                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456 13 fps
 #endif
             break;
 
@@ -1013,8 +1013,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 #ifdef SENSOR_OV5640
                 s->set_framesize(s, FRAMESIZE_P_FHD);
 #else
-                s->set_framesize(s, FRAMESIZE_XGA);
-//                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                s->set_res_raw(s, 0/*OV2640_MODE_UXGA*/,0,0,0, 0, 624/2, 1600, 1200-624, 1600,1200-624,false,false);   //1024x576 13 fps
                 
 #endif
             break;
