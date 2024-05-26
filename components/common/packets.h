@@ -81,6 +81,7 @@ enum class Resolution : uint8_t
     VGA16,    //640x360
     SVGA,   //800x600
     SVGA16,  //800x456
+    XGA,    //1024x768
     XGA16,    //1024x576
     SXGA,   //1280x1024
     HD,   //1280x720

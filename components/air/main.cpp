@@ -892,8 +892,8 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         nvs_args_set("channel", src.wifi_channel);
         ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.wifi_channel, WIFI_SECOND_CHAN_NONE));
 
-        s_air_record = false;
-        s_restart_time = esp_timer_get_time() + 2000000;
+        //s_air_record = false;
+        //s_restart_time = esp_timer_get_time() + 2000000;
     }
 
     if (dst.camera.fps_limit != src.camera.fps_limit)
@@ -961,6 +961,13 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
+    s_shouldRestartRecording = dst.camera.resolution != src.camera.resolution;
+
+#ifdef SENSOR_OV5640
+    //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
+    src.camera.aec2 = false;
+#endif
+
     if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
     {
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
@@ -1000,7 +1007,17 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 #endif
             break;
 
-            case Resolution::XGA16: s->set_framesize(s, FRAMESIZE_XGA); break;
+            case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break; //1024x768
+
+            case Resolution::XGA16:  //1024x576
+#ifdef SENSOR_OV5640
+                s->set_framesize(s, FRAMESIZE_P_FHD);
+#else
+                s->set_framesize(s, FRAMESIZE_XGA);
+//                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                
+#endif
+            break;
             case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
             case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
@@ -1008,7 +1025,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             break;
 
         }
-        s_shouldRestartRecording = true;
     }
 
 #define APPLY(n1, n2, type) \
@@ -1106,7 +1122,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
     int s = src.size - sizeof(Ground2Air_Header);
-    s_stats.in_telemetry_data_counter += s;        
+    s_stats.in_telemetry_data += s;        
 
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
@@ -1212,7 +1228,7 @@ IRAM_ATTR void send_air2ground_data_packet()
     }
     else
     {
-        s_stats.out_telemetry_data_counter += s_mavlinkOutBufferCount;
+        s_stats.out_telemetry_data += s_mavlinkOutBufferCount;
         s_mavlinkOutBufferCount = 0;
     }
 }
@@ -1611,6 +1627,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
         {
             s_video_frame_started = false;
 
+            if ( s_video_full_frame_size  < 2000)
+            {
+        cam_ovf_count++;
+            }
+
             //frame pacing!
             int64_t now = esp_timer_get_time();
 
@@ -1726,7 +1747,7 @@ static void init_camera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 #ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 26000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
+    config.xclk_freq_hz = 20000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
 #else
     config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
@@ -1892,8 +1913,6 @@ extern "C" void app_main()
         nvs_args_set("channel", DEFAULT_WIFI_CHANNEL);
     }
 
-    LOG("WIFI channel%d\n", s_ground2air_config_packet.wifi_channel );
-
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
 
 #ifdef DVR_SUPPORT
@@ -1979,6 +1998,8 @@ extern "C" void app_main()
     set_ground2air_config_packet_handler(handle_ground2air_config_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
+    LOG("WIFI channel: %d\n", s_ground2air_config_packet.wifi_channel );
+
     while (true)
     {
         int dt = millis() - s_stats_last_tp;
@@ -1995,13 +2016,13 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d\n",
+                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d\n",
                     s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, s_max_frame_size); 
+                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count); 
                 print_cpu_usage();
             }
 
