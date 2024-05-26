@@ -5,6 +5,7 @@
 #include "fec.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -58,7 +59,11 @@ modnn(int x) {
  * multiplication is held in a local variable declared with USE_GF_MULC . See
  * usage in _addmul1().
  */
-static gf* gf_mul_table[256];
+
+typedef gf gf_mul_table_t[256][256];
+typedef gf_mul_table_t* gf_mul_table_p;
+
+static gf_mul_table_p gf_mul_table;
 
 /*
  * Generate GF(2**m) from the irreducible polynomial p(X) in p[0]..p[m]
@@ -73,22 +78,22 @@ static gf* gf_mul_table[256];
 static void
 _init_mul_table(void) {
   int i, j;
+
+#ifdef ESP_PLATFORM      
+      gf_mul_table = (gf_mul_table_p)heap_caps_malloc(256*256, MALLOC_CAP_SPIRAM);
+#else
+      gf_mul_table = (gf_mul_table_p)malloc( 256*256 );
+#endif
+
   for (i = 0; i < 256; i++)
   {
-#ifdef ESP_PLATFORM      
-      gf_mul_table[i] = (gf*)heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
-      if (!gf_mul_table[i])
-        gf_mul_table[i] = new gf[256];
-#else
-      gf_mul_table[i] = new gf[256];
-#endif
-      
       for (j = 0; j < 256; j++)
-          gf_mul_table[i][j] = gf_exp[modnn (gf_log[i] + gf_log[j])];
+          (*gf_mul_table)[i][j] = gf_exp[modnn (gf_log[i] + gf_log[j])];
   }
 
   for (j = 0; j < 256; j++)
-      gf_mul_table[0][j] = gf_mul_table[j][0] = 0;
+      (*gf_mul_table)[0][j] = (*gf_mul_table)[j][0] = 0;
+      
 }
 
 #define NEW_GF_MATRIX(rows, cols) \
@@ -163,12 +168,21 @@ generate_gf (void) {
  */
 
 
-#define gf_mul(x,y) gf_mul_table[x][y]
+#define gf_mul(x,y) (*gf_mul_table)[x][y]
 
-#define USE_GF_MULC register gf * __gf_mulc_
+#define USE_GF_MULC register const gf * __gf_mulc_
 
-#define GF_MULC0(c) __gf_mulc_ = gf_mul_table[c]
+#define GF_MULC0(c) __gf_mulc_ = (const gf*)&((*gf_mul_table)[c])
 #define GF_ADDMULC(dst, x) dst ^= __gf_mulc_[x]
+
+#define GF_ADDMULC4(dst, src)  \
+    temp1 = *((uint32_t*)dst);  \
+    temp1 ^= __gf_mulc_[*src++];  \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 8;   \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 16;  \
+    temp1 ^= ((uint32_t)__gf_mulc_[*src++]) << 24;  \
+    *((uint32_t*)dst) = temp1;   \
+    dst+=4;   
 
 /*
  * addmul() computes dst[] = dst[] + c * src[]
@@ -186,29 +200,35 @@ _addmul1(register gf*restrict dst, const register gf*restrict src, gf c, size_t 
     USE_GF_MULC;
     const gf* lim = &dst[sz - UNROLL + 1];
 
+    register uint32_t temp1;
+
     GF_MULC0 (c);
 
 #if (UNROLL > 1)                /* unrolling by 8/16 is quite effective on the pentium */
     for (; dst < lim;) {
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+//      GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
 #if (UNROLL > 4)
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
 #endif
 #if (UNROLL > 8)
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
-        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+//        GF_ADDMULC (*dst++, *src++);
+        GF_ADDMULC4 (dst, src);
+        GF_ADDMULC4 (dst, src);
 #endif
     }
 #endif
@@ -496,6 +516,22 @@ fec_encode(const fec_t* code, const gf*restrict const*restrict const src, gf*res
                 addmul(fecs[i]+k, src[j]+k, p[j], stride);
         }
     }
+}
+
+void
+fec_encode_block(const fec_t* code, const gf*restrict const*restrict const src, gf*restrict const fec, const unsigned*restrict const block_nums, int fec_block_index, size_t sz) {
+    unsigned char j;
+    size_t k;
+    unsigned fecnum;
+    const gf* p;
+    int i;
+
+    fecnum=block_nums[fec_block_index];
+    assert (fecnum >= code->k);
+    bzero(fec, sz);
+    p = &(code->enc_matrix[fecnum * code->k]);
+    for (j = 0; j < code->k; j++)
+        addmul(fec, src[j], p[j], sz);
 }
 
 /**

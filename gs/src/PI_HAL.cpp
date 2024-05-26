@@ -309,12 +309,47 @@ bool PI_HAL::init_display_sdl()
 
     if (m_impl->fullscreen)
     {
-        SDL_WindowFlags window_flags = (SDL_WindowFlags)(
-            SDL_WINDOW_FULLSCREEN | 
-            SDL_WINDOW_OPENGL | 
-            SDL_WINDOW_SHOWN | 
-            SDL_WINDOW_BORDERLESS );
-        m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
+        // Desired display mode
+        SDL_DisplayMode desiredMode;
+        desiredMode.w = m_impl->width;
+        desiredMode.h = m_impl->height;
+        desiredMode.format = 0;  // Format 0 means any format
+        desiredMode.refresh_rate = 0;  // Refresh rate 0 means any refresh rate
+        desiredMode.driverdata = 0;  // Driverdata should be 0
+
+        // Closest display mode found
+        SDL_DisplayMode closestMode;
+
+        if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode)) 
+        {
+            printf("Display mode:");
+            printf("  Width: %d\n", closestMode.w);
+            printf("  Height: %d\n", closestMode.h);
+            printf("  Refresh Rate: %d\n", closestMode.refresh_rate);
+            printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(closestMode.format));            
+
+            m_impl->width = closestMode.w;
+            m_impl->height = closestMode.h;
+
+            SDL_WindowFlags window_flags = (SDL_WindowFlags)(
+                SDL_WINDOW_FULLSCREEN | 
+                SDL_WINDOW_OPENGL | 
+                SDL_WINDOW_SHOWN | 
+                SDL_WINDOW_BORDERLESS );
+            m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
+
+            if (SDL_SetWindowDisplayMode(m_impl->window, &closestMode) != 0) 
+            {
+                printf("SDL_SetWindowDisplayMode Error: %s\n", SDL_GetError());
+                SDL_DestroyWindow(m_impl->window);
+                SDL_Quit();
+                return false;
+            }
+        }
+        else
+        {
+            printf("Can not find videomode %dx%d", m_impl->width, m_impl->height);
+        }
     }
     else
     {
@@ -629,7 +664,7 @@ bool PI_HAL::init()
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
     io.Fonts->AddFontDefault();
-    io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
+    //io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
     io.Fonts->Build();
 
     return true;

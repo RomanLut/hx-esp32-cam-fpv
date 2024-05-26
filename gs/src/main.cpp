@@ -20,6 +20,8 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 
+#include <random>
+
 #include "socket.h"
 
 #include "ini.h"
@@ -49,7 +51,8 @@ const char* resolutionName[] =
     "800x600",
     "800x456",
     "1024x768",
-    "1280x1024",
+    "1024x576",
+    "1280x960",
     "1280x720",
     "1600x1200"
 };
@@ -72,24 +75,27 @@ const char* rateName[] =
     "48M",
     "54M",
 
-    "MCS0_6.5M_L",
-    "MCS0_7.2M_S",
-    "MCS1_13M_L",
-    "MCS1_14.4M_S",
-    "MCS2_19.5M_L",
-    "MCS2_21.7M_S",
-    "MCS3_26.3M_L",
-    "MCS3_28.9M_S",
-    "MCS4_39M_L",
-    "MCS4_43.3M_S",
-    "MCS5_52M_L",
+    "MCS0_6.5ML",
+    "MCS0_7.2MS",
+    "MCS1L_13M",
+    "MCS1S_14.4M",
+    "MCS2L_19.5M",
+    "MCS2S_21.7M",
+    "MCS3L_26M",
+    "MCS3S_28.9M",
+    "MCS4L_39M",
+    "MCS4S_43.3M",
+    "MCS5L_52M",
 
-    "MCS5_57M_S",
-    "MCS6_58M_L",
-    "MCS6_65M_S",
-    "MCS7_65_L",
-    "MCS7_72_S"
+    "MCS5S_57.8M",
+    "MCS6L_58.5M",
+    "MCS6S_65M",
+    "MCS7L_65",
+    "MCS7S_72.2"
 };
+
+static const Resolution resolutionsList[] = { Resolution::VGA16, Resolution::VGA, Resolution::SVGA16, Resolution::SVGA, Resolution::XGA16, Resolution::HD };
+#define RESOLUTOINS_LIST_SIZE 6
 
 std::unique_ptr<IHAL> s_hal;
 Comms s_comms;
@@ -131,7 +137,8 @@ int s_min_rssi = 0;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
-int s_wifi_queue = 0;
+int s_wifi_queue_min = 0;
+int s_wifi_queue_max = 0;
 uint8_t s_curr_quality = 0;
 bool bRestart = false;
 bool bRestartRequired = false;
@@ -139,6 +146,7 @@ Clock::time_point restart_tp;
 uint16_t s_SDTotalSpaceGB16 = 0;
 uint16_t s_SDFreeSpaceGB16 = 0;
 bool s_air_record = false;
+bool s_wifi_ovf =false;
 bool s_SDDetected = false;
 bool s_SDSlow = false;
 bool s_SDError = false;
@@ -146,13 +154,21 @@ bool s_isOV5640 = false;
 
 bool s_debugWindowVisisble = false;
 
+bool s_noPing = false;
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
 Stats s_frameQuality_stats;
 Stats s_dataSize_stats;
+Stats s_queueUsage_stats;
 
 OSD g_osd;
+
+static AirStats s_last_airStats;
+
+GSStats s_gs_stats;
+GSStats s_last_gs_stats;
 
 //===================================================================================
 //===================================================================================
@@ -195,21 +211,18 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
-            if (ping_count == 0)
-            {
-                ping_count = 0;
-                ping_min = std::chrono::seconds(0);
-                ping_max = std::chrono::seconds(0);
-                ping_avg = std::chrono::seconds(0);
-            }
-
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size, min_rssi, 
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count,video_fps);
+                ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
+                video_fps);
 
             s_min_rssi = min_rssi;
             s_total_data = total_data;
+
+            s_noPing = (ping_count == 0) || (std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count > 2000);
+            s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count();
+            s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count();
 
             ping_min = std::chrono::seconds(999);
             ping_max = std::chrono::seconds(0);
@@ -220,6 +233,10 @@ static void comms_thread_proc()
             ping_count = 0;
             total_data = 0;
             min_rssi = 0;
+
+            s_last_gs_stats = s_gs_stats;
+            s_gs_stats = GSStats();
+
             last_stats_tp = Clock::now();
         }
 
@@ -385,6 +402,7 @@ static void comms_thread_proc()
                         s_frameTime_stats.add(0);
                         s_frameQuality_stats.add(0);
                         s_frameParts_stats.add(video_next_part_index);
+                        s_queueUsage_stats.add(s_wifi_queue_max);
                     }
 
                     //frames [video_frame_index + 1 ... untill air2ground_video_packet.frame_index) are lost completely
@@ -397,6 +415,7 @@ static void comms_thread_proc()
                         s_frameTime_stats.addMultiple( 0, df );
                         s_frameQuality_stats.addMultiple( 0, df );
                         s_frameParts_stats.addMultiple( 0, df );
+                        s_queueUsage_stats.addMultiple(0,df);
                     }
 
                     video_frame_index = air2ground_video_packet.frame_index;
@@ -430,6 +449,7 @@ static void comms_thread_proc()
                         s_frame_stats.add(video_restoredByFEC ? 1 : 3);
                         s_frameParts_stats.add(air2ground_video_packet.part_index);
                         s_frameQuality_stats.add(s_curr_quality);
+                        s_queueUsage_stats.add(s_curr_quality);
 
                         auto current_time = Clock::now();
                         auto duration_since_last_frame = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_frame_decoded);
@@ -498,19 +518,25 @@ static void comms_thread_proc()
                     LOGE("OSD frame: crc mismatch: {} != {}", crc, computed_crc);
                     break;
                 }
+
+                s_last_airStats = air2ground_osd_packet.stats;
+
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
 
-                s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.curr_wifi_rate;
-                s_curr_quality = air2ground_osd_packet.curr_quality;
-                s_wifi_queue = air2ground_osd_packet.wifi_queue;
-                s_SDTotalSpaceGB16 = air2ground_osd_packet.SDTotalSpaceGB16;
-                s_SDFreeSpaceGB16 = air2ground_osd_packet.SDFreeSpaceGB16;
-                s_air_record = air2ground_osd_packet.air_record_state != 0;
-                s_SDDetected = air2ground_osd_packet.SDDetected != 0;
-                s_SDError = air2ground_osd_packet.SDError != 0;
-                s_SDSlow = air2ground_osd_packet.SDSlow != 0;
-                s_isOV5640 = air2ground_osd_packet.isOV5640 != 0;
+                //TODO: remove all these, use s_last_airStats
+                s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.stats.curr_wifi_rate;
+                s_curr_quality = air2ground_osd_packet.stats.curr_quality;
+                s_wifi_queue_min = air2ground_osd_packet.stats.wifi_queue_min;
+                s_wifi_queue_max = air2ground_osd_packet.stats.wifi_queue_max;
+                s_SDTotalSpaceGB16 = air2ground_osd_packet.stats.SDTotalSpaceGB16;
+                s_SDFreeSpaceGB16 = air2ground_osd_packet.stats.SDFreeSpaceGB16;
+                s_air_record = air2ground_osd_packet.stats.air_record_state != 0;
+                s_wifi_ovf = air2ground_osd_packet.stats.wifi_ovf !=0;
+                s_SDDetected = air2ground_osd_packet.stats.SDDetected != 0;
+                s_SDError = air2ground_osd_packet.stats.SDError != 0;
+                s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
+                s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
                 g_osd.update( &air2ground_osd_packet.buffer );
             }
@@ -640,6 +666,16 @@ void exitApp()
 
 //===================================================================================
 //===================================================================================
+float calcLossRatio( int outCount, int inCount)
+{
+    if ( outCount == 0 ) return 0;
+    int loss = outCount - inCount;
+    if ( loss <= 0 ) return 0;
+    return (loss * 100.0f)/ outCount;
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -673,13 +709,97 @@ int run(char* argv[])
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav  | ImGuiWindowFlags_NoFocusOnAppearing);
         {
+
+            {
+                //RSSI
+                char buf[32];
+                sprintf(buf, "%d", (int)s_min_rssi );
+
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(60.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //queue usage
+                char buf[32];
+                sprintf(buf, "%d%%", (int)s_wifi_queue_max );
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(55.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //video bitrate
+                char buf[32];
+                sprintf(buf, "%.1fMb", (int)s_total_data*8.0f/(1024*1024));
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(90.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //resolution
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                //ImGui::Button(resolutionName[(int)config.camera.resolution], ImVec2(120.0f, 0));
+                ImGui::Button(resolutionName[(int)config.camera.resolution]);
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            {
+                //fps
+                char buf[32];
+                sprintf(buf, "%02d", (int)video_fps);
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(45.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( s_noPing )
+            {
+                //NO PING!
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!NO PING!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
             if ( s_air_record )
             {
                 //AIR REC
+                ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.7f, 0.7f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.8f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("AIR");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
@@ -691,8 +811,8 @@ int run(char* argv[])
                 ImGui::SameLine();
                 ImGui::PushID(1);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.7f, 0.7f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.8f, 0.8f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("GS");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
@@ -704,7 +824,9 @@ int run(char* argv[])
 
                 ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
                 ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 3.0f, ImVec2(0, 24));            
-                ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, NULL, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
+
+                sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
+                ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
                 ImGui::PlotHistogram("Period", Stats::getter, &s_frameTime_stats, s_frameTime_stats.count(), 0, NULL, 0, 100.0f, ImVec2(0, 60));
 
                 sprintf(overlay, "cur: %d", s_curr_quality);
@@ -713,7 +835,306 @@ int run(char* argv[])
                 sprintf(overlay, "avg: %d KB/sec", ((int)(s_dataSize_stats.average()+0.5f) )*10);
                 ImGui::PlotHistogram("DataSize", Stats::getter, &s_dataSize_stats, s_dataSize_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
 
+                sprintf(overlay, "%d%%", (int)(s_wifi_queue_max));
+                ImGui::PlotHistogram("Wifi Load", Stats::getter, &s_queueUsage_stats, s_queueUsage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+
                 ImGui::PopItemWidth();
+
+                const float table_width = 420.0f;
+                ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
+                ImGui::SetCursorPosY(10);
+
+                if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f) ))
+                {
+                    ImGuiStyle& style = ImGui::GetStyle();
+                    ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
+ 
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f); 
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirOutPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_airStats.outPacketRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirInPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_airStats.inPacketRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirOthersPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_airStats.inRejectedPacketRate);
+                    }
+
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AirPacketLossRatio");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats.outPacketCounter, s_last_airStats.inPacketRate) );
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSOutPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_gs_stats.outPacketCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSInPacketRate");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", s_last_gs_stats.inPacketCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSPacketLossRatio");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter));
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air RSSI");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_airStats.rssiDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air Noise Floor");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_airStats.noiseFloorDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Air SNR");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d db", (int)s_last_airStats.noiseFloorDbm - s_last_airStats.rssiDbm );
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS RSSI");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Noise Floor");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.noiseFloorDbm);
+                    }
+
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS SNR");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d db", (int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm );
+                    }
+*/
+
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Antena1 pkts");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena1PacketsCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS Antena2 pkts");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena2PacketsCounter);
+                    }
+*/
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Ping min");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", s_last_gs_stats.pingMinMS);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Ping max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", s_last_gs_stats.pingMaxMS);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Capture FPS");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d FPS", s_last_airStats.captureFPS);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Frame size min");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_min);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Frame size max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_max);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Camera OVF");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d", s_last_airStats.cam_ovf_count);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Broken frames");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d", s_last_gs_stats.brokenFrames);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Mavlink Up");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b/s", s_last_airStats.inMavlinkRate);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Mavlink Down");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d b/s", s_last_airStats.outMavlinkRate);
+                    }
+
+
+/*
+    uint16_t outPacketRate;
+    uint16_t inPacketRate;
+    uint8_t inPacketLostRatio;
+    uint8_t rssiDbm;
+    uint8_t snrDb;
+    uint8_t noiseFloorDbm;
+    uint8_t captureFPS;
+    uint8_t cam_ovf_count;
+    uint16_t inMavlinkRate; //b/s
+    uint16_t outMavlinkRate; //b/s
+*/
+                    ImGui::EndTable();
+                }
             }
 
             g_osd.draw();
@@ -728,24 +1149,27 @@ int run(char* argv[])
         if ( s_debugWindowVisisble )
         {
             char buf[256];
-            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %s %d%% AQ:%d %s/%s###HAL", 
+            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %d%%..%d%% AQ:%d %s/%s###HAL", 
             s_min_rssi, video_fps, s_lost_frame_count, 
             s_total_data/1024, 
-            resolutionName[(int)config.camera.resolution], 
-            s_wifi_queue,
+            s_wifi_queue_min,s_wifi_queue_max,
             s_curr_quality,
             rateName[(int)s_curr_wifi_rate], rateName[(int)config.wifi_rate]);
+
+            static const float SLIDER_WIDTH = 480.0f;
 
             ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); 
             ImGui::Begin(buf);
             {
                 {
                     int value = config.wifi_power;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Power", &value, 0, 20); 
                     config.wifi_power = value;
                 }
                 {
                     int value = (int)config.wifi_rate;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
                     if (config.wifi_rate != (WIFI_Rate)value) 
                     {
@@ -754,22 +1178,44 @@ int run(char* argv[])
                     }
                 }
                 {
+                    int ch = s_groundstation_config.wifi_channel;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
+                    if ( ch != s_groundstation_config.wifi_channel)
+                    {
+                        saveGroundStationConfig();
+                        bRestartRequired = true;
+                    }
+                }
+                {
+                    int value = config.fec_codec_n;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SliderInt("FEC_N", &value,FEC_K+1, FEC_N);
+                    if (config.fec_codec_n != (int8_t)value)
+                    {
+                        config.fec_codec_n = (int8_t)value;
+                        saveGround2AirConfig(config);
+                    }
+                }
+                {
                     int value = (int)config.camera.resolution;
-                    ImGui::SliderInt("Resolution", &value, 0, 10);
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SliderInt("Resolution", &value, 0, 11);
                     if ( config.camera.resolution != (Resolution)value )
                     {
                         config.camera.resolution = (Resolution)value;
                         saveGround2AirConfig(config);
                     }
                 }
-
                 {
                     int value = (int)config.camera.fps_limit;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("FPS Limit", &value, 0, 100);
                     config.camera.fps_limit = (uint8_t)value;
                 }
                 {
                     int value = config.camera.quality;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
                     config.camera.quality = value;
                 }
@@ -777,7 +1223,7 @@ int run(char* argv[])
                 ImGui::Checkbox("AGC", &config.camera.agc);
                 ImGui::SameLine();            
                 ImGui::Checkbox("AEC", &config.camera.aec);
-                if ( config.camera.aec )
+                if ( config.camera.aec && !s_isOV5640)
                 {
                     ImGui::SameLine();            
                     ImGui::Checkbox("AEC DSP", &config.camera.aec2);
@@ -797,12 +1243,14 @@ int run(char* argv[])
                 if ( !config.camera.agc )
                 {
                     int value = config.camera.agc_gain;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AGC Gain", &value, 0, 30);
                     config.camera.agc_gain = (int8_t)value;
                 }
                 else 
                 {
                     int value = config.camera.gainceiling;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("GainCeiling", &value, 0, 6);
                     config.camera.gainceiling = (uint8_t)value;
                 }
@@ -810,6 +1258,7 @@ int run(char* argv[])
                 if ( config.camera.aec )
                 {
                     int value = config.camera.ae_level;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AEC Level", &value, -2, 2);
                     if ( config.camera.ae_level != (int8_t)value)
                     {
@@ -820,12 +1269,14 @@ int run(char* argv[])
                 else 
                 {
                     int value = config.camera.aec_value;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("AEC Value", &value, 0, 1200);
                     config.camera.aec_value = (uint16_t)value;
                 }
 
                 {
                     int value = config.camera.brightness;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Brightness", &value, -2, 2);
                     if (config.camera.brightness != (int8_t)value)
                     {
@@ -836,6 +1287,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.contrast;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Contrast", &value, -2, 2);
                     if (config.camera.contrast != (int8_t)value)
                     {
@@ -846,6 +1298,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.saturation;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Saturation", &value, -2, 2);
                     if (config.camera.saturation != (int8_t)value)
                     {
@@ -856,6 +1309,7 @@ int run(char* argv[])
 
                 {
                     int value = config.camera.sharpness;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
                     if (config.camera.sharpness != (int8_t)value)
                     {
@@ -874,21 +1328,12 @@ int run(char* argv[])
     */
                 {
                     int ch = (int)s_groundstation_config.screenAspectRatio;
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("Letterbox", &ch, 0, 2);
                     if ( ch != (int)s_groundstation_config.screenAspectRatio)
                     {
                         s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
                         saveGroundStationConfig();
-                    }
-                }
-
-                {
-                    int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
-                    if ( ch != s_groundstation_config.wifi_channel)
-                    {
-                        saveGroundStationConfig();
-                        bRestartRequired = true;
                     }
                 }
 
@@ -908,19 +1353,28 @@ int run(char* argv[])
                     //ImGui::SameLine();
                     //ImGui::Checkbox("Raw", &config.camera.raw_gma);
                     //ImGui::SameLine();
+                }
+                if ( ImGui::Button("Profile 500ms") )
+                {
+                    config.profile1_btn++;
+                }
+                ImGui::SameLine();
+                if ( ImGui::Button("Profile 3s") )
+                {
+                    config.profile2_btn++;
+                }
+                ImGui::SameLine();
+                ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
-                    ImGui::Checkbox("Stats", &s_groundstation_config.stats);
+                if ( ImGui::Button("Air Record") )
+                {
+                    config.air_record_btn++;
+                }
 
-                    if ( ImGui::Button("Air Record") )
-                    {
-                        config.air_record_btn++;
-                    }
-
-                    ImGui::SameLine();
-                    if (ImGui::Button("GS Record"))
-                    {
-                        toggleGSRecording();
-                    }
+                ImGui::SameLine();
+                if (ImGui::Button("GS Record"))
+                {
+                    toggleGSRecording();
                 }
 
                 ImGui::SameLine();
@@ -938,7 +1392,7 @@ int run(char* argv[])
                 }
                 
                 ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
-                ImGui::Text("AIR SD Card: %s%s%s %.2fGB/%.2fGB %s", 
+                ImGui::Text("AIR SD: %s%s%s %.2fGB/%.2fGB %s", 
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
                     s_isOV5640 ? "OV5640" : "OV2640");
@@ -951,16 +1405,47 @@ int run(char* argv[])
             s_debugWindowVisisble = !s_debugWindowVisisble;
         }
 
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
+        bool resetRes = false;
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) )
         {
-            config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
-            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SVGA16;
-            saveGround2AirConfig(config);
+            bool found = false;
+            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
+            {
+                if ( config.camera.resolution == resolutionsList[i])
+                {
+                    if ( i!=0)
+                    {
+                        config.camera.resolution = resolutionsList[i-1];
+                        saveGround2AirConfig(config);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            resetRes |=  !found;
         }
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow))
         {
-            config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
-            if ( config.camera.resolution == Resolution::XGA ) config.camera.resolution = Resolution::SXGA;
+            bool found = false;
+            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
+            {
+                if ( config.camera.resolution == resolutionsList[i])
+                {
+                    if ( i != RESOLUTOINS_LIST_SIZE-1 )
+                    {
+                        config.camera.resolution = resolutionsList[i+1];
+                        saveGround2AirConfig(config);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            resetRes |= !found;
+        }
+
+        if ( resetRes )
+        {
+            config.camera.resolution = Resolution::SVGA16;
             saveGround2AirConfig(config);
         }
 
@@ -1093,6 +1578,7 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["vflip"] = std::to_string(config.camera.vflip ? 1 : 0);
     ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
     ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
+    ini["gs"]["fec_n"] = std::to_string((int)config.fec_codec_n);
     s_iniFile.write(ini);
 }
 
@@ -1101,6 +1587,8 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
 int main(int argc, const char* argv[])
 {
     init_crc8_table();
+
+    std::srand(static_cast<unsigned int>(std::time(0)));
 
     s_iniFile.read(ini);
 
@@ -1112,6 +1600,8 @@ int main(int argc, const char* argv[])
 
     s_hal.reset(new PI_HAL());
 
+    memset( &s_last_airStats, 0, sizeof(AirStats) );
+
     Ground2Air_Config_Packet& config = s_ground2air_config_packet;
     //config.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
     //config.camera.resolution = Resolution::SVGA;
@@ -1119,6 +1609,8 @@ int main(int argc, const char* argv[])
     //config.camera.quality = 30;
 
     s_groundstation_config.stats = false;
+
+    s_ground2air_config_packet.sessionId = (uint16_t)std::rand();
 
     {
         std::string& temp = ini["gs"]["wifi_channel"];
@@ -1180,6 +1672,11 @@ int main(int argc, const char* argv[])
         if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_G_36M_ODFM );
     }
 
+    {
+        std::string& temp = ini["gs"]["fec_n"];
+        if (temp != "") s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
+    }
+
     for(int i=1;i<argc;++i){
         auto temp = std::string(argv[i]);
         auto next = i!=argc-1? std::string(argv[i+1]):std::string("");
@@ -1194,14 +1691,9 @@ int main(int argc, const char* argv[])
             check_argval("port");
             s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
             i++;
-        }else if(temp=="-k"){
-            check_argval("k");
-            s_ground2air_config_packet.fec_codec_k =  std::stoi(next);
-            i++;
-            LOGI("set rx fec_k to {}",s_ground2air_config_packet.fec_codec_k);
         }else if(temp=="-n"){
             check_argval("n");
-            s_ground2air_config_packet.fec_codec_n =  std::stoi(next);
+            s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( std::stoi(next), FEC_K+1, FEC_N ); 
             i++;
             LOGI("set rx fec_n to {}",s_ground2air_config_packet.fec_codec_n);
         }else if(temp=="-rx"){
@@ -1236,8 +1728,7 @@ int main(int argc, const char* argv[])
             printf("-rx <rx_interface1> <rx_interface2>, default: wlan0mon single interface\n");
             printf("-tx <tx_interface>, default: wlan0mon\n");
             printf("-p <gd_ip>, default: disabled\n");
-            printf("-k <rx_fec_k>, default: 2\n");
-            printf("-n <rx_fec_n>, default: 6\n");
+            printf("-n <rx_fec_n>, 7...12, default: 12\n");
             printf("-ch <wifi_channel>, default: 7\n");
             printf("-w <width>, default: 1280\n");
             printf("-h <width>, default: 720\n");

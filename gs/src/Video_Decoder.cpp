@@ -151,7 +151,10 @@ ImVec2 Video_Decoder::get_video_resolution() const
 bool Video_Decoder::decode_data(void const* data, size_t size)
 {
     if (!data || size == 0)
+    {
+        s_gs_stats.brokenFrames++;
         return false;
+    }
         
     Input_ptr input = m_impl->input_pool.acquire();
     input->data.resize(size);
@@ -268,6 +271,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         if (tjDecompressHeader3(tjInstance, data, size, &width, &height, &inSubsamp, &inColorspace) < 0)
         {
+            s_gs_stats.brokenFrames++;
             tjDestroy(tjInstance);
             LOGE("Jpeg header error: {}", tjGetErrorStr());
             continue;
@@ -284,6 +288,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         //if (tjDecompressToYUVPlanes(tjInstance, data, size, planesPtr.data(), 0, nullptr, 0, flags) < 0)
         if(tjDecompress2(tjInstance, data, size,output->rgb_data.data(),width,0,height,TJPF_RGB,flags))
         {
+            s_gs_stats.brokenFrames++;
             //tjDestroy(m_impl->tjInstance);
             LOGE("decompressing JPEG image: {}", tjGetErrorStr());
             //return false;

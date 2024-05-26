@@ -4,6 +4,9 @@
 #include "fec_codec.h"
 #include "crc.h"
 #include "lwip/inet.h"
+
+#include "vcd_profiler.h"
+
 static const char * TAG="wifi_task";
 
 #define TX_COMPLETION_CB
@@ -24,6 +27,7 @@ SemaphoreHandle_t s_wifi_tx_done_semaphore = xSemaphoreCreateBinary();
 TaskHandle_t s_wifi_tx_task = nullptr;
 TaskHandle_t s_wifi_rx_task = nullptr;
 Stats s_stats;
+Stats s_last_stats;
 
 static void (*ground2air_config_packet_handler)(Ground2Air_Config_Packet& src)=nullptr;
 static void (*ground2air_data_packet_handler)(Ground2Air_Data_Packet& src)=nullptr;
@@ -64,9 +68,11 @@ IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
         xTaskNotifyGive(s_wifi_rx_task); //notify task
 }
 
-IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
+IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 {
-    if (s_ground2air_config_packet.wifi_power == 0) return;
+    if (s_ground2air_config_packet.wifi_power == 0) return true;
+
+    bool res = true;
 
     Wlan_Outgoing_Packet packet;
 
@@ -80,14 +86,20 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
     }
     else
     {
-        s_stats.wlan_error_count++;
+        res = false;
     }
 
     end_writing_wlan_outgoing_packet(packet);
 
-    if ( s_max_wlan_outgoing_queue_size < s_wlan_outgoing_queue.size() )
+    size_t qs = s_wlan_outgoing_queue.size();
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+#endif
+
+    if ( s_max_wlan_outgoing_queue_size_frame < qs )
     {
-        s_max_wlan_outgoing_queue_size = s_wlan_outgoing_queue.size();
+        s_max_wlan_outgoing_queue_size_frame = qs;
     }
 
     xSemaphoreGive(s_wlan_outgoing_mux);
@@ -96,6 +108,8 @@ IRAM_ATTR void add_to_wlan_outgoing_queue(const void* data, size_t size)
     if (s_wifi_tx_task)
         xTaskNotifyGive(s_wifi_tx_task); //notify task
     //LOG("gave semaphore\n");
+
+    return res;
 }
 
 inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_queue_size)
@@ -103,7 +117,7 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
   //SPI RAM is too slow, can not handle more then 2Mb/s bandwidth
   //s_wlan_outgoing_queue.init(new uint8_t[wlan_outgoing_queue_size], wlan_outgoing_queue_size);
   s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL ),wlan_outgoing_queue_size );
-  //s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_SPIRAM ),wlan_outgoing_queue_size );
+  //s_wlan_outgoing_queue.init( (uint8_t*)heap_caps_malloc(wlan_outgoing_queue_size, MALLOC_CAP_SPIRAM ),wlan_outgoing_queue_size*4 );
 
   s_wlan_incoming_queue.init(new uint8_t[wlan_incoming_queue_size], wlan_incoming_queue_size);
 
@@ -125,6 +139,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
         {
             //send pending wlan packets
             xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
             start_reading_wlan_outgoing_packet(packet);
             xSemaphoreGive(s_wlan_outgoing_mux);
 
@@ -135,6 +150,10 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                 size_t spins = 0;
                 while (packet.ptr)
                 {
+#ifdef PROFILE_CAMERA_DATA    
+                    s_profiler.set(PF_CAMERA_WIFI_TX,1);
+#endif
+
 #ifdef TX_COMPLETION_CB                    
                     xSemaphoreTake(s_wifi_tx_done_semaphore, 0); //clear the notif
 #endif
@@ -143,28 +162,54 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                     if (res == ESP_OK)
                     {
                         s_stats.wlan_data_sent += packet.size;
+                        s_stats.outPacketCounter++;
 
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
+
+#ifdef PROFILE_CAMERA_DATA    
+                        size_t qs = s_wlan_outgoing_queue.size();
+                        s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
+#endif
+                        if ( (s_min_wlan_outgoing_queue_size_frame == -1) || ( s_min_wlan_outgoing_queue_size_frame > qs ) )
+                        {
+                            s_min_wlan_outgoing_queue_size_frame = qs;
+                        }
+
                         xSemaphoreGive(s_wlan_outgoing_mux);
 
 #ifdef TX_COMPLETION_CB
                         xSemaphoreTake(s_wifi_tx_done_semaphore, portMAX_DELAY); //wait for the tx_done notification
 #endif
+
+#ifdef PROFILE_CAMERA_DATA    
+                        s_profiler.set(PF_CAMERA_WIFI_TX,0);
+#endif
+
                     }
                     else if (res == ESP_ERR_NO_MEM) //No TX buffers available, need to poll.
                     {
+
+#ifdef PROFILE_CAMERA_DATA    
+                        s_profiler.set(PF_CAMERA_WIFI_SPIN,1);
+#endif
                         //s_stats.wlan_error_count++;
                         spins++;
                         if (spins > 1000)
                             vTaskDelay(1);
                         else
                             taskYIELD();
+#ifdef PROFILE_CAMERA_DATA    
+                        s_profiler.set(PF_CAMERA_WIFI_SPIN,0);
+#endif
                     }
                     else //other errors
                     {
                         //ESP_LOGE(TAG,"Wlan err: %d\n", res);
                         s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+#endif
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
                         xSemaphoreGive(s_wlan_outgoing_mux);
@@ -246,6 +291,11 @@ IRAM_ATTR static void wifi_rx_proc(void *)
 IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus)
 {
     xSemaphoreGive(s_wifi_tx_done_semaphore);
+
+#ifdef PROFILE_CAMERA_DATA    
+    s_profiler.toggle(PF_CAMERA_WIFI_DONE_CB);
+#endif
+
 }
 #endif 
 
@@ -273,13 +323,14 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     //this reduces throughput for some reason
-    //update: do nto see any bad effect. Contrary, without completion cb, wifi_tx() tentds to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
+    //update: do not see any bad effect. Contrary, without completion cb, wifi_tx() tends to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
 #ifdef TX_COMPLETION_CB
     ESP_ERROR_CHECK(esp_wifi_set_tx_done_cb(wifi_tx_done));
     xSemaphoreGive(s_wifi_tx_done_semaphore);
 #endif
 
     ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
+    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
     ESP_ERROR_CHECK(esp_wifi_set_channel(chn, WIFI_SECOND_CHAN_NONE));
 
     wifi_promiscuous_filter_t filter = 
@@ -438,3 +489,61 @@ uint8_t getMaxWlanOutgoingQueueUsage()
 
     return v * 100 / c;
 }
+
+uint8_t getMinWlanOutgoingQueueUsageSeen()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+    v = s_min_wlan_outgoing_queue_size_seen;
+    c = s_wlan_outgoing_queue.capacity();
+    s_min_wlan_outgoing_queue_size_seen = 0;
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v * 100 / c;
+}
+
+uint8_t getMaxWlanOutgoingQueueUsageFrame()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
+    v = s_max_wlan_outgoing_queue_size_frame;
+
+    if ( s_max_wlan_outgoing_queue_size < v )
+    {
+        s_max_wlan_outgoing_queue_size = v;
+    }
+
+    c = s_wlan_outgoing_queue.capacity();
+    s_max_wlan_outgoing_queue_size_frame = 0;
+
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v * 100 / c;
+}
+
+uint8_t getMinWlanOutgoingQueueUsageFrame()
+{
+    size_t v;
+    size_t c;
+
+    xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
+
+    v = s_min_wlan_outgoing_queue_size_frame;
+
+    if ( s_min_wlan_outgoing_queue_size_seen < v )  //-1 is handled Ok
+    {
+        s_min_wlan_outgoing_queue_size_seen = v;
+    }
+
+    c = s_wlan_outgoing_queue.capacity();
+    s_min_wlan_outgoing_queue_size_frame = -1;
+    xSemaphoreGive(s_wlan_outgoing_mux);
+
+    return v == -1? 0 : v * 100 / c;
+}
+

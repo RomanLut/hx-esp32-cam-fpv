@@ -61,6 +61,7 @@ struct Ground2Air_Header
     Type type = Type::Telemetry; 
     uint32_t size = 0;
     uint8_t crc = 0;
+    uint8_t packet_version = PACKET_VERSION;
 };
 
 constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
@@ -81,10 +82,14 @@ enum class Resolution : uint8_t
     SVGA,   //800x600
     SVGA16,  //800x456
     XGA,    //1024x768
+    XGA16,    //1024x576
     SXGA,   //1280x1024
     HD,   //1280x720
     UXGA,   //1600x1200
 };
+
+#define FEC_K 6
+#define FEC_N 12
 
 struct Ground2Air_Config_Packet : Ground2Air_Header
 {
@@ -92,17 +97,20 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
     int8_t wifi_power = 20;//dBm
     WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
-    uint8_t fec_codec_k = 6;
-    uint8_t fec_codec_n = 12;
+    uint8_t fec_codec_k = FEC_K;
+    uint8_t fec_codec_n = FEC_N;
     uint16_t fec_codec_mtu = AIR2GROUND_MTU;
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+    uint16_t sessionId;  //assigned random number on boot on each side. Used to recognise that either GS or Air unit has rebooted
 
     //Description of some settings:
     //https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
     struct Camera
     {
         Resolution resolution = Resolution::SVGA;
-        uint8_t fps_limit = 31;
+        uint8_t fps_limit = 60;
         uint8_t quality = 0;//0 - 63  0-auto
         int8_t brightness = 0;//-2 - 2
         int8_t contrast = 0;//-2 - 2
@@ -178,21 +186,40 @@ struct OSDBuffer
     uint8_t screenHigh[OSD_ROWS][OSD_COLS_H];
 };
 
-struct Air2Ground_OSD_Packet : Air2Ground_Header
+struct AirStats
 {
     uint8_t SDDetected : 1;
     uint8_t SDSlow : 1;
     uint8_t SDError : 1;
     uint8_t curr_wifi_rate :5; //WIFI_Rate
 
-    uint8_t wifi_queue : 7;
+    uint8_t wifi_queue_min : 7;
     uint8_t air_record_state : 1;
 
-    uint16_t SDFreeSpaceGB16 : 12;
-    uint16_t SDTotalSpaceGB16 : 12;
-    uint16_t curr_quality : 7;
-    uint16_t isOV5640 : 1;
+    uint8_t wifi_queue_max;
 
+    uint32_t SDFreeSpaceGB16 : 12;
+    uint32_t SDTotalSpaceGB16 : 12;
+    uint32_t curr_quality : 6;
+    uint32_t wifi_ovf : 1;
+    uint32_t isOV5640 : 1;
+
+    uint16_t outPacketRate;
+    uint16_t inPacketRate;
+    uint16_t inRejectedPacketRate;
+    uint8_t rssiDbm;
+    uint8_t noiseFloorDbm;
+    uint8_t captureFPS;
+    uint8_t cam_ovf_count;
+    uint16_t cam_frame_size_min; //bytes
+    uint16_t cam_frame_size_max; //bytes
+    uint16_t inMavlinkRate; //b/s
+    uint16_t outMavlinkRate; //b/s
+};
+
+struct Air2Ground_OSD_Packet : Air2Ground_Header
+{
+    AirStats stats;
     OSDBuffer buffer;
 };
 
