@@ -300,7 +300,7 @@ Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. S
 
 ## Adaptive compression
 
-With the same JPEG compression level the size of a frame can vary a lot depending on scenery. A lot means order of 5 or more. Adaptive compressing is implemented to achieve best possible image quality.
+With the same JPEG compression level the size of a frame can vary a lot depending on scenery. A lot means order of 5 or more. Adaptive compression is implemented to achieve best possible image quality.
 
 For **ov2640** sensor, compression level can be set in range 1..63 (lower is better quality). However **ov2640** can return broken frames or crash with compression levels lower then 8. Also, decreasing compression level below 8 increases frame size but does not increase image much due to bad sensor quality itself. System uses range 8...63.
 
