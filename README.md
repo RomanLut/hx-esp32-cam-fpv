@@ -361,7 +361,7 @@ Do not power wifi card or **ESP32** without antena attached; it can damage outpu
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
-Tested on inav microplane:
+Tested on inav microplane: https://www.youtube.com/watch?v=GYB-UckucRA
 
 ![alt text](doc/images/dfminispirit.jpg "df mini spirit")
 
