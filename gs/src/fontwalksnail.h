@@ -23,6 +23,8 @@ public:
 	FontWalksnail(const char* fileName);
 	~FontWalksnail();
 
+  bool loaded;
+
   void drawChar(uint16_t code, int x1, int y1, int width, int height);
 
   void drawTest();

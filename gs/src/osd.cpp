@@ -1,20 +1,72 @@
+#include <iostream>
+#include <filesystem>
+#include <vector>
+#include <string>
+#include <algorithm> 
+
 #include "osd.h"
 #include "imgui.h"
 #include "main.h"
 
+namespace fs = std::filesystem;
+
+OSD g_osd;
 
 //======================================================
 //======================================================
 OSD::OSD()
 {
     memset( &this->buffer, 0, OSD_BUFFER_SIZE );
+    this->currentFontName[0]=0;
 }
 
 //======================================================
 //======================================================
 void OSD::init()
 {
-    this->font = new FontWalksnail("assets/INAV_default_24.png");
+    this->fontsList = this->getFontsList();
+}
+
+//======================================================
+//======================================================
+void OSD::loadFont(const char* fontName)
+{
+    char fileName[1024];
+    sprintf( fileName, "assets/osd_fonts/%s", fontName);
+    if (!this->font) delete this->font;
+    this->font = new FontWalksnail(fileName);
+
+    strcpy( this->currentFontName, fontName);
+}
+
+//======================================================
+//======================================================
+std::vector<std::string> OSD::getFontsList()
+{
+    std::vector<std::string> pngFiles;
+    fs::path directoryPath = "assets/osd_fonts";
+
+    try {
+        if (fs::exists(directoryPath) && fs::is_directory(directoryPath)) 
+        {
+            for (const auto& entry : fs::directory_iterator(directoryPath)) 
+            {
+                if (entry.is_regular_file() && entry.path().extension() == ".png") 
+                {
+                    pngFiles.push_back(entry.path().filename().string());
+                }
+            }
+        } 
+        else 
+        {
+            std::cerr << "Directory does not exist or is not a directory: " << directoryPath << std::endl;
+        }
+    } catch (const fs::filesystem_error& e) 
+    {
+        std::cerr << "Filesystem error: " << e.what() << std::endl;
+    }
+
+    return pngFiles;
 }
 
 //======================================================
@@ -72,3 +124,9 @@ void OSD::update(void* pScreen)
     memcpy(&this->buffer, pScreen, OSD_BUFFER_SIZE);
 }
 
+//======================================================
+//======================================================
+bool OSD::isFontError()
+{
+    return !this->font || !this->font->loaded;
+}

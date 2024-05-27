@@ -24,8 +24,6 @@
 
 #include "socket.h"
 
-#include "ini.h"
-
 #ifdef TEST_LATENCY
 extern "C"
 {
@@ -164,8 +162,6 @@ Stats s_frameTime_stats;
 Stats s_frameQuality_stats;
 Stats s_dataSize_stats;
 Stats s_queueUsage_stats;
-
-OSD g_osd;
 
 static AirStats s_last_airStats;
 
@@ -718,7 +714,12 @@ int run(char* argv[])
 
     size_t video_frame_count = 0;
 
-    g_osd.init();
+    {
+        g_osd.init();
+
+        std::string& temp = ini["gs"]["osd_font"] ;
+        g_osd.loadFont( temp != "" ? temp.c_str() : "INAV_default_24.png" );
+    }
 
     Clock::time_point last_stats_tp = Clock::now();
     Clock::time_point last_tp = Clock::now();
@@ -849,6 +850,18 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("!Incompatible Air Unit firmware. Please update!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            //OSD Font error
+            if (g_osd.isFontError())
+            {
+                ImGui::PushID(1);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!Displayport OSD Font Unexpected Format!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }

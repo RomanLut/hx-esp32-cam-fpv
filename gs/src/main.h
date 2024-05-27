@@ -14,6 +14,7 @@
 #include "Clock.h"
 
 #include "Log.h"
+#include "ini.h"
 
 #include "packets.h"
 
@@ -124,3 +125,6 @@ extern Clock::time_point restart_tp;
 
 
 extern const char* resolutionName[];
+extern mINI::INIStructure ini;
+extern mINI::INIFile s_iniFile;
+
