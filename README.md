@@ -10,6 +10,7 @@ Open source digital FPV system based on esp32cam.
 - [x] better diagnostic tools
 - [ ] write proper format .mpg on air and ground
 - [ ] font selection for Displayport OSD
+- [ ] air unit channel search
 - [ ] release prebuilt images and firmware
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
