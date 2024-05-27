@@ -9,6 +9,7 @@ Open source digital FPV system based on esp32cam.
 - [x] test ov5640 sensor
 - [x] better diagnostic tools
 - [ ] write proper format .mpg on air and ground
+- [ ] font selection for Displayport OSD
 - [ ] release prebuilt images and firmware
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
