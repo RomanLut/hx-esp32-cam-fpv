@@ -94,6 +94,9 @@ const char* rateName[] =
     "MCS7S_72.2"
 };
 
+static const Resolution resolutionsList[] = { Resolution::VGA16, Resolution::VGA, Resolution::SVGA16, Resolution::SVGA, Resolution::XGA16, Resolution::HD };
+#define RESOLUTOINS_LIST_SIZE 6
+
 std::unique_ptr<IHAL> s_hal;
 Comms s_comms;
 Video_Decoder s_decoder;
@@ -1402,16 +1405,47 @@ int run(char* argv[])
             s_debugWindowVisisble = !s_debugWindowVisisble;
         }
 
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) && (config.camera.resolution > Resolution::VGA))
+        bool resetRes = false;
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) )
         {
-            config.camera.resolution = (Resolution)((int)config.camera.resolution - 1);
-            if ( config.camera.resolution == Resolution::XGA16 ) config.camera.resolution = Resolution::SVGA16;
-            saveGround2AirConfig(config);
+            bool found = false;
+            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
+            {
+                if ( config.camera.resolution == resolutionsList[i])
+                {
+                    if ( i!=0)
+                    {
+                        config.camera.resolution = resolutionsList[i-1];
+                        saveGround2AirConfig(config);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            resetRes |=  !found;
         }
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow) && (config.camera.resolution < Resolution::HD))
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow))
         {
-            config.camera.resolution = (Resolution)((int)config.camera.resolution + 1);
-            if ( config.camera.resolution == Resolution::XGA16 ) config.camera.resolution = Resolution::SXGA;
+            bool found = false;
+            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
+            {
+                if ( config.camera.resolution == resolutionsList[i])
+                {
+                    if ( i != RESOLUTOINS_LIST_SIZE-1 )
+                    {
+                        config.camera.resolution = resolutionsList[i+1];
+                        saveGround2AirConfig(config);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            resetRes |= !found;
+        }
+
+        if ( resetRes )
+        {
+            config.camera.resolution = Resolution::SVGA16;
             saveGround2AirConfig(config);
         }
 
