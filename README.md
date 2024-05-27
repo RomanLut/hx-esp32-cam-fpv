@@ -12,6 +12,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] font selection for Displayport OSD
 - [ ] air unit channel search
 - [ ] release prebuilt images and firmware
+- [ ] test dual wifi cards performance
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
 - [ ] Android GS
