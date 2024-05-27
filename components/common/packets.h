@@ -4,6 +4,7 @@
 
 #define DEFAULT_WIFI_CHANNEL 7
 
+#define FW_VERSION "0.1"
 #define PACKET_VERSION 1
 
 #pragma pack(push, 1) // exact fit - no padding

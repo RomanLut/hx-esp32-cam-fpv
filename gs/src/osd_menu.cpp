@@ -166,7 +166,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 {
     {
         char buf[256];
-        sprintf( buf, "ESP32-CAM-FPV v%s %s##title0", "0.1", s_isOV5640 ? "OV5640" : "OV2640");
+        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s##title0", FW_VERSION, PACKET_VERSION, s_isOV5640 ? "OV5640" : "OV2640");
         this->drawMenuTitle( buf );
     }
 
@@ -707,16 +707,34 @@ void OSDMenu::drawLetterboxMenu(Ground2Air_Config_Packet& config)
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "Screen is 4:3", 1) )
+    if ( this->drawMenuItem( "Letterbox", 1) )
+    {
+        s_groundstation_config.screenAspectRatio = ScreenAspectRatio::LETTERBOX;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Letterbox, Screen is 5:4", 2) )
+    {
+        s_groundstation_config.screenAspectRatio = ScreenAspectRatio::ASPECT5X4;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Letterbox, Screen is 4:3", 3) )
     {
         s_groundstation_config.screenAspectRatio = ScreenAspectRatio::ASPECT4X3;
         saveAndExit = true;
     }
 
 
-    if ( this->drawMenuItem( "Screen is 16:9", 2) )
+    if ( this->drawMenuItem( "Letterbox, Screen is 16:9", 4) )
     {
         s_groundstation_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X9;
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Letterbox, Screen is 16:10", 5) )
+    {
+        s_groundstation_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X10;
         saveAndExit = true;
     }
 
@@ -882,8 +900,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        const char* modes[] = {"Stretch", "Screen is 4:3", "Screen is 16:9"};
-        sprintf(buf, "Letterbox: %s##4", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,2)]);
+        const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
+        sprintf(buf, "Letterbox: %s##4", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
         if ( this->drawMenuItem( buf, 0) )
         {
             this->menuId = OSDMenuId::Letterbox;

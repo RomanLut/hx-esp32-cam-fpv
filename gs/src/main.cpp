@@ -156,6 +156,8 @@ bool s_debugWindowVisisble = false;
 
 bool s_noPing = false;
 
+Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milliseconds(10000);
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
@@ -342,6 +344,12 @@ static void comms_thread_proc()
 
             //filter bad packets
             Air2Ground_Header& air2ground_header = *(Air2Ground_Header*)rx_data.data.data();
+
+            if ( air2ground_header.version != PACKET_VERSION )
+            {
+                s_incompatibleFirmwareTime = Clock::now();
+                break;
+            }
 
             uint32_t packet_size = air2ground_header.size;
             if (air2ground_header.type == Air2Ground_Header::Type::Video)
@@ -572,29 +580,44 @@ static inline ImVec2 ImRotate(const ImVec2& v, float cos_a, float sin_a)
 void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& x2, int& y2)
 {
     bool videoAspect16x9 = s_decoder.isAspect16x9();
+
+    float videoAspect = videoAspect16x9 ? 16.0f / 9.0f : 4.0f/3.0f;
+
+    ImVec2 screenSize = ImGui::GetIO().DisplaySize;
+    float screenAspect = screenSize.x/screenSize.y;
     
-    if ( 
-        (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) || 
-        (videoAspect16x9 == (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X9)) 
-    )
+    if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT5X4 )
+    {
+        screenAspect =  5.0f / 4.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT4X3 )
+    {
+        screenAspect =  4.0f / 3.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X9 )
+    {
+        screenAspect =  16.0f / 9.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X10 )
+    {
+        screenAspect =  16.0f / 10.0f;
+    } 
+    
+    if (  (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) ||  ((int)(videoAspect*100 + 0.5) == (int)(screenAspect*100 + 0.5f)) )
     {
         //no scale or stretch
         x1 = 0; y1 = 0; x2 = width; y2 = height;
     }
-    else if ( videoAspect16x9 )
+    else if ( videoAspect > screenAspect )
     {
-        //16x9 on 4x3 screen
-        //16/9   16/12
-        //screen = 12 image 9
-        int h1 = height * 9 / 12;
+        //fe.e 16x9 on 4x3
+        int h1 = (int)(height * screenAspect / videoAspect + 0.5f);
         x1 = 0; y1 = (height - h1) / 2; x2 = width; y2 = y1 + h1;
     }
     else
     {
-        //4x3 on 16x9 screen
-        //12/9   16/9   
-        //screen = 16 image 12
-        int w1 = width * 12 / 16;
+        //f.e. 4x3 on 16x9
+        int w1 = (int)(width * videoAspect / screenAspect + 0.5f);
         x1 = (width - w1) / 2; y1 = 0; x2 = x1 + w1; y2 = height;
     }
 }
@@ -814,6 +837,18 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("GS");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            //Incompatible firmware
+            if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
+            {
+                ImGui::PushID(1);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!Incompatible Air Unit firmware. Please update!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1329,7 +1364,7 @@ int run(char* argv[])
                 {
                     int ch = (int)s_groundstation_config.screenAspectRatio;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Letterbox", &ch, 0, 2);
+                    ImGui::SliderInt("Letterbox", &ch, 0, 5);
                     if ( ch != (int)s_groundstation_config.screenAspectRatio)
                     {
                         s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
@@ -1629,7 +1664,7 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["screen_aspect_ratio"];
-        if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 2 );
+        if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 5 );
     }
 
     {

@@ -61,8 +61,11 @@ do { \
 enum class ScreenAspectRatio : int
 {
     STRETCH = 0,
-    ASPECT4X3 = 1,
-    ASPECT16X9 = 2
+    LETTERBOX = 1,
+    ASPECT5X4 = 2,
+    ASPECT4X3 = 3,
+    ASPECT16X9 = 4,
+    ASPECT16X10 = 5
 };
 
 //===================================================================================
