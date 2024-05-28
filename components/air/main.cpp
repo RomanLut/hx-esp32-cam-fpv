@@ -90,6 +90,8 @@ static uint16_t SDTotalSpaceGB16 = 0;
 static uint16_t SDFreeSpaceGB16 = 0;
 static uint8_t cam_ovf_count = 0;
 
+int32_t s_dbg;
+
 #ifdef UART_MAVLINK
 
 //constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
@@ -1534,22 +1536,44 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     s_fec_encoder.lock();
     if (data == nullptr) //start frame
     {
-        s_video_frame_started = true;        
+        s_video_frame_started = true;
     }
     else 
     {
-        if (!s_video_skip_frame)
-        {
 
 #ifdef BOARD_ESP32CAM
             //ESP32 - sample offset: 2, stride: 4
             const uint8_t* src = (const uint8_t*)data + 2;  // jump to the sample1 of DMA element
-#endif
+#endif            
 #ifdef BOARD_XIAOS3SENSE
             //ESP32S3 - sample offset: 0, stride: 1
-            const uint8_t* src = (const uint8_t*)data;
-#endif
+            const uint8_t* src = (const uint8_t*)data;  
+#endif            
+
+        if ( !s_video_skip_frame && s_video_frame_started && s_video_full_frame_size == 0 && src[0] != 0xff && src[stride] != 0xd8)
+        {
+            cam_ovf_count++; //broken frame data, no start marker
+            s_video_skip_frame = true;
+        }
+
+        if (!s_video_skip_frame)
+        {
+            /* 
+            'last' does not mark JPEG end block reliably.
+            ov2640: if VSYNC interrupt occurs near the end of block, we receive another 1Kb block of garbage.
+        
+            ov5640: we receive up to 3 more zero 1kb blocks (uncertain: can we receive +7 blocks if VSYNK interrupt occurs at the end of 4th block?)
+
+            There are two problems:
+            1) As we may receive garbage block, searching for the end marker in garbage may lead to incorrect JPEG size calculation and inclusion of garbage bytes 
+               (possibly with misleading JPEG markers) in the stream.
+            2) with 0v5640 we waste bandwidth for 1..3 1kb blocks, it's 10% video bandwidth wasted!
+        
+            TODO: Proper solution - jpeg chunks parsing
+            */
+
             count /= stride;
+
             if (last) //find the end marker for JPEG. Data after that can be discarded
             {
                 const uint8_t* dptr = src + (count - 2) * stride;
@@ -1565,6 +1589,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                         break;
                     }
                     dptr -= stride;
+                }
+                if (dptr == src ) 
+                {
+                    //end marker is not found in block, it was in previous block. Discard whole block.
+                    count = 0;
                 }
             }
 
@@ -1594,9 +1623,48 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
 #endif
 
+#ifdef BOARD_ESP32CAM
+                //ESP32 - sample offset: 2, stride: 4
                 size_t c8 = c >> 3;
+                
                 for (size_t i = c8; i > 0; i--)
                 {
+                    const uint8_t* src1  = src + 3*4;
+                    uint32_t temp;
+
+                    temp = *src1; 
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+
+                    *(uint32_t*)ptr = temp;
+                    ptr += 4;
+
+                    src1  = src + 7*4;
+
+                    temp = *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    
+                    src += 8*4;
+
+                    *(uint32_t*)ptr = temp;
+                    ptr+=4;
+
+                    /*
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
@@ -1605,11 +1673,19 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
+                    */
                 }
                 for (size_t i = c - (c8 << 3); i > 0; i--)
                 {
                     *ptr++ = *src; src += stride;
                 }
+#endif
+
+#ifdef BOARD_XIAOS3SENSE
+                //ESP32S3 - sample offset: 0, stride: 1
+                memcpy( ptr, src, c);
+                src += c;
+#endif
 
 #ifdef DVR_SUPPORT
                 if (s_air_record)
@@ -1626,9 +1702,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
         {
             s_video_frame_started = false;
 
-            if ( s_video_full_frame_size  < 2000)
+            if ( !s_video_skip_frame && s_video_full_frame_size  < 2000)
             {
-        cam_ovf_count++;
+                cam_ovf_count++;
             }
 
             //frame pacing!
@@ -2015,17 +2091,18 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d\n",
+                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d %d\n",
                     s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count); 
+                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg); 
                 print_cpu_usage();
             }
 
             s_max_frame_size = 0;
+            s_dbg = 0;
 
             if ( s_stats.fec_spin_count > 0 )
             {
