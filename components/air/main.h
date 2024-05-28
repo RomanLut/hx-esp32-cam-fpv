@@ -73,6 +73,9 @@
 
 #endif
 
+//write raw MJPEG stream isntead of avi
+#define WRITE_RAW_MJPEG_STREAM
+
 //===============================================================
 //===============================================================
 //for XIAO ESP32S3 Sense

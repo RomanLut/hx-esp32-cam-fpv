@@ -68,6 +68,16 @@ bool Circular_Buffer::read(void* dst, size_t size)
     return true;
 }
 
+bool Circular_Buffer::skip(size_t size)
+{
+    if (m_size < size)
+        return false;
+
+    m_start = (m_start + size) % m_capacity;
+    m_size -= size;
+    return true;
+}
+
 const void* Circular_Buffer::start_reading(size_t& size)
 {
     if (m_size == 0)
@@ -100,4 +110,10 @@ void Circular_Buffer::clear()
 {
     m_start = 0;
     m_size = 0;
+}
+
+uint8_t Circular_Buffer::peek( size_t offset)
+{
+    offset = (m_start + offset) % m_capacity;
+    return this->m_data[offset];
 }

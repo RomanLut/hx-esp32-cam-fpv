@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <cstdint>
 
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
@@ -28,9 +29,11 @@ public:
     IRAM_ATTR void resize(size_t size);
     IRAM_ATTR bool write(const void* data, size_t size);
     IRAM_ATTR bool read(void* dst, size_t size);
+    IRAM_ATTR bool skip(size_t size);
     IRAM_ATTR const void* start_reading(size_t& size);
     IRAM_ATTR void end_reading(size_t size); //call with the same size as the one returned by start_reading
     IRAM_ATTR void clear();
+    IRAM_ATTR uint8_t peek( size_t offset);
 
 private:
     uint8_t* m_data;
