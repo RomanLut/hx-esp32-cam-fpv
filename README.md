@@ -439,9 +439,9 @@ Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Fle
 
 **esp32cam** with long flex cable has been replaced with compact **esp32s3sense** board.
 
-#Development
+# Development
 
-See [development.md]([development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md))
+See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
 
 # FAQ
 
