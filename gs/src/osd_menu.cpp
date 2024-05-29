@@ -4,6 +4,8 @@
 #include "osd.h"
 #include "main.h"
 
+#define SEARCH_TIME_STEP_MS 1000
+
 OSDMenu g_osdMenu;
 
 //=======================================================
@@ -148,6 +150,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
+        case OSDMenuId::Search: this->drawSearchMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -174,25 +177,34 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
+        if ( this->drawMenuItem( "Search...", 0) )
+        {
+            this->search_tp = Clock::now() - std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+            this->searchDone = false;
+            this->goForward( OSDMenuId::Search, 0);
+        }
+    }
+
+    {
         char buf[256];
         sprintf(buf, "Resolution: %s##0", resolutionName[(int)config.camera.resolution]);
-        if ( this->drawMenuItem( buf, 0) )
+        if ( this->drawMenuItem( buf, 1) )
         {
-            if ( config.camera.resolution == Resolution::VGA16) this->selectedItem = 0;
-            else if ( config.camera.resolution == Resolution::VGA) this->selectedItem = 1;
-            else if ( config.camera.resolution == Resolution::SVGA16) this->selectedItem = 2;
-            else if ( config.camera.resolution == Resolution::SVGA) this->selectedItem = 3;
-            else if ( config.camera.resolution == Resolution::XGA16) this->selectedItem = 4;
-            else if ( config.camera.resolution == Resolution::HD) this->selectedItem = 5;
-            else selectedItem = 0;
-            this->goForward( OSDMenuId::Resolution, selectedItem );
+            int item = 0;
+            if ( config.camera.resolution == Resolution::VGA16) item = 0;
+            else if ( config.camera.resolution == Resolution::VGA) item = 1;
+            else if ( config.camera.resolution == Resolution::SVGA16) item = 2;
+            else if ( config.camera.resolution == Resolution::SVGA) item = 3;
+            else if ( config.camera.resolution == Resolution::XGA16) item = 4;
+            else if ( config.camera.resolution == Resolution::HD) item = 5;
+            this->goForward( OSDMenuId::Resolution, item );
         }
     }
     
     {
         char buf[256];
         sprintf(buf, "Wifi Channel: %d##1", s_groundstation_config.wifi_channel);
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::WifiChannel, s_groundstation_config.wifi_channel-1);
         }
@@ -208,7 +220,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
             config.wifi_rate == WIFI_Rate::RATE_N_39M_MCS4 ? 5 : 6;
         const char* rates[] = {"OFDM 18Mbps", "OFDM 24Mbps", "OFDM 36Mbps", "MCS2L 19.5Mbps", "MCS3L 26Mbps", "MCS4L 39Mbps", "Other"};
         sprintf(buf, "Wifi Rate: %s##2", rates[i]);
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::WifiRate, i );
         }
@@ -219,13 +231,13 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         int i  = config.fec_codec_n == 8 ? 0 : config.fec_codec_n == 12 ? 2 : 1;
         const char* levels[] = {"Weak (6/8)", "Medium (6/10)", "Strong (6/12)"};
         sprintf(buf, "FEC: %s##3", levels[i]);
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             this->goForward( OSDMenuId::FEC, i );
         }
     }
 
-    if ( this->drawMenuItem( "Camera Settings...", 4) )
+    if ( this->drawMenuItem( "Camera Settings...", 5) )
     {
         this->goForward( OSDMenuId::CameraSettings, 0 );
 
@@ -236,7 +248,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Ground Station Settings...", 5) )
+    if ( this->drawMenuItem( "Ground Station Settings...", 6) )
     {
         this->goForward( OSDMenuId::GSSettings, 0 );
     }
@@ -797,7 +809,6 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     this->drawMenuTitle( "Menu -> Wifi Channel" );
     ImGui::Spacing();
 
-    bool saveAndExit = false;
     bool bExit = false;
 
     for ( int i = 0; i < 13; i++ )
@@ -809,23 +820,11 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
             if ( s_groundstation_config.wifi_channel != (i+1)) 
             {
                 s_groundstation_config.wifi_channel = i+1;
-                saveAndExit = true;
+                saveGroundStationConfig();
+                applyWifiChannel(config);
             }
-            else
-            {
-                bExit = true;
-            }
+            bExit = true;
         }
-    }
-
-    if ( saveAndExit )
-    {
-        saveGroundStationConfig();
-
-        restart_tp = Clock::now();
-        bRestart = true;
-
-        this->menuId = OSDMenuId::Restart;
     }
 
     if ( bExit || this->exitKeyPressed() )
@@ -957,6 +956,46 @@ void OSDMenu::drawOSDFontMenu(Ground2Air_Config_Packet& config)
 
     if ( bExit || this->exitKeyPressed() )
     {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Search..." );
+    ImGui::Spacing();
+
+    bool bExit = false;
+
+    char buf[512];
+    sprintf(buf, searchDone ? "Found Channel: %d" : "Searching: Channel %d...", s_groundstation_config.wifi_channel);
+    this->drawStatus(buf);
+
+    if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - this->search_tp).count() > SEARCH_TIME_STEP_MS )
+    {
+        if ( this->searchDone )
+        {
+            bExit = true;
+        }
+        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < SEARCH_TIME_STEP_MS/2 )
+        {
+            this->searchDone = true;
+            this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+        }
+        else
+        {
+            this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+            s_groundstation_config.wifi_channel+=4;
+            if (s_groundstation_config.wifi_channel>13) s_groundstation_config.wifi_channel -= 13;
+            applyWifiChannelInstant(config);
+        }
+    }
+
+    if ( bExit || this->exitKeyPressed() )
+    {
+        saveGroundStationConfig();
         this->goBack();
     }
 }
