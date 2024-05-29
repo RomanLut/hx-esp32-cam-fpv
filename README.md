@@ -210,12 +210,6 @@ Joystick Up, Arrow Up                                  | Select previous menu it
 Joystick Down, Arrow Down                              | Select next menu item
 Joystick Left, Arrow Left, ESC                         | Exit to previous menu
 
-# Debug interface
-
-![alt text](doc/images/debug_menu.jpg "debugmenu")
-
-Toggle Debug interface with **D** or **Middle Mouse Button**.
-
 # Joystick button mapping
 
 GPIO Joystick and buttons are mapped to keys.
