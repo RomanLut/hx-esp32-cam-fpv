@@ -1325,4 +1325,14 @@ void Comms::process()
     }
 }
 
+void Comms::setChannel(int ch)
+{
+    for (const auto& itf: rx_descriptor.interfaces)
+    {
+        system(fmt::format("iwconfig {} channel {}", itf, ch).c_str());
+    }
+
+    int result = run((char **)argv);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////

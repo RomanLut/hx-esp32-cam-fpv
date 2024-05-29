@@ -42,6 +42,8 @@ public:
     //std::function<void(void const* data, size_t size)> on_data_received;
     bool receive(void* data, size_t& size, bool& restoredByFEC);
 
+    void setChannel(int ch);
+
     size_t get_data_rate() const;
     int get_input_dBm() const;
 

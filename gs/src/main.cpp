@@ -168,6 +168,8 @@ static AirStats s_last_airStats;
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
 
+static Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
+
 //===================================================================================
 //===================================================================================
 static void comms_thread_proc()
@@ -659,6 +661,7 @@ void toggleGSRecording()
         char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
         std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
         s_groundstation_config.record_file=fopen(filename,"wb+");
+        s_groundstation_config.syncFrameStart = true;
 
         LOGI("start record:{}",std::string(filename));
     }
@@ -1227,12 +1230,18 @@ int run(char* argv[])
                 }
                 {
                     int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 200); 
                     ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                     if ( ch != s_groundstation_config.wifi_channel)
                     {
                         saveGroundStationConfig();
-                        bRestartRequired = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Apply"))
+                    {
+                        //start sending new channel to air, restart after 2 seconds
+                        config.wifi_channel = s_groundstation_config.wifi_channel;
+                        s_change_channel = Clock::now() + std::chrono::milliseconds(2000);
                     }
                 }
                 {
@@ -1428,7 +1437,6 @@ int run(char* argv[])
                 ImGui::SameLine();
                 if (ImGui::Button("Restart"))
                 {
-                    //send channel change command to receiver, then restart
                     restart_tp = Clock::now();
                     bRestart = true;
                 }
@@ -1514,14 +1522,17 @@ int run(char* argv[])
 
         if ( bRestart ) 
         {
-            //start sending new channel to air, restart after 3 seconds
-            config.wifi_channel = s_groundstation_config.wifi_channel;
-            if (Clock::now() - restart_tp >= std::chrono::milliseconds(3000)) 
+            if (Clock::now() - restart_tp >= std::chrono::milliseconds(100)) 
             {
                 bRestart = false;
                 execv(argv[0],argv);
             }
         } 
+
+        if ( Clock::now() > s_change_channel )
+        {
+            s_change_channel = Clock::now() + std::chrono::hours(10000);
+        }
 
         std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
         s_ground2air_config_packet = config;
@@ -1815,12 +1826,7 @@ int main(int argc, const char* argv[])
     if (!s_comms.init(rx_descriptor, tx_descriptor))
         return -1;
 
-    for (const auto& itf: rx_descriptor.interfaces)
-    {
-        system(fmt::format("iwconfig {} channel {}", itf, s_groundstation_config.wifi_channel).c_str());
-    }
-
-    int result = run((char **)argv);
+    s_comms.setChannel( s_groundstation_config.wifi_channel );
 
     s_hal->shutdown();
 
