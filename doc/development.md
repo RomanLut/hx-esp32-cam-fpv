@@ -7,24 +7,37 @@
 
  **todo**
 
-# Development UI is enabled with **d** key or **middle mouse click**.
+# Development UI
 
-![alt text](doc/images/dev_ui.jpg "dev_ui.jpg")
+Development UI is enabled with **d** key or **middle mouse click**.
+
+![alt text](images/debug_menu.jpg "debugmenu")
 
 # Statistics
 
  Statistic can be enabled in development menu.
 
-![alt text](doc/images/statistic.jpg "satistic.jpg")
+![alt text](images/stats.jpg "stats.jpg")
+
+Graph               | Description
+------------------- | -------------
+Frames              | High rectangle - full frame received, small rectangle - frame is restored using FEC, emtpy space - frame is lost
+Parts               | Number of frame blocks processed to decode the frame
+Period              | Distance from previous decoded frame in ms
+Quality             | Frame compression setting
+Datasize            | Actual MJPEG stream bandwidth (without FEC encoding)
+Wifi load           | Air unit wifi queue usage in %
 
 
 # Profiling
 
+![alt text](images/vcd_profiling.png "vcd_profiling.png")
+
  GS code contains profiler which can write frame timing in VCD format to SD card.
 
- VCD file can than be viewed in tools like [https://www.wavetrace.io/](Wavetrace) (available as VSCode extension) or [https://vc.drom.io/](VCDrom).
+ VCD file can than be viewed in tools like [Wavetrace](https://www.wavetrace.io/) (available as VSCode extension) or [VCDrom](https://vc.drom.io/).
 
- See correspnding defines: ...
+ See corresponding [defines.](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/components/common/vcd_profiler.h#L5)
 
  Profling is started from development UI with **[Profile]** buttons for 500ms or for 3 seconds.
   
