@@ -23,7 +23,8 @@ enum class OSDMenuId
     Restart,
     FEC,
     GSSettings,
-    OSDFont
+    OSDFont,
+    Search
 };
 
 //=======================================================
@@ -47,6 +48,9 @@ private:
 
     std::vector<OSDMenuId> backMenuIds;
     std::vector<int> backMenuItems;
+
+    Clock::time_point search_tp = Clock::now();
+    bool searchDone;
 
     int bWidth;
     int sWidth;
@@ -77,6 +81,7 @@ private:
     void drawFECMenu(Ground2Air_Config_Packet& config);
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
     void drawOSDFontMenu(Ground2Air_Config_Packet& config);
+    void drawSearchMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;

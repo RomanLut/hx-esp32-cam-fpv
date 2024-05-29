@@ -155,6 +155,7 @@ bool s_debugWindowVisisble = false;
 bool s_noPing = false;
 
 Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milliseconds(10000);
+Clock::time_point s_last_packet_tp = Clock::now();
 
 Stats s_frame_stats;
 Stats s_frameParts_stats;
@@ -337,6 +338,8 @@ static void comms_thread_proc()
                 std::this_thread::yield();
                 break;
             }
+
+            s_last_packet_tp = Clock::now();
 
             rx_data.rssi = (int16_t)s_comms.get_input_dBm();
 
@@ -661,7 +664,6 @@ void toggleGSRecording()
         char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
         std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
         s_groundstation_config.record_file=fopen(filename,"wb+");
-        s_groundstation_config.syncFrameStart = true;
 
         LOGI("start record:{}",std::string(filename));
     }
@@ -695,6 +697,23 @@ float calcLossRatio( int outCount, int inCount)
     if ( loss <= 0 ) return 0;
     return (loss * 100.0f)/ outCount;
 }
+
+//===================================================================================
+//===================================================================================
+void applyWifiChannel(Ground2Air_Config_Packet& config)
+{
+    config.wifi_channel = s_groundstation_config.wifi_channel;
+    s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+}
+
+//===================================================================================
+//===================================================================================
+void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
+{
+    config.wifi_channel = s_groundstation_config.wifi_channel;
+    s_comms.setChannel (s_groundstation_config.wifi_channel);
+}
+
 
 //===================================================================================
 //===================================================================================
@@ -1229,19 +1248,22 @@ int run(char* argv[])
                     }
                 }
                 {
+                    bool pending = s_change_channel < Clock::now() + std::chrono::hours(1);
+                    ImGui::BeginDisabled( pending);
+                    if (ImGui::Button("APPLY"))
+                    {
+                        //start sending new channel to air, restart after 2 seconds
+                        applyWifiChannel(config);
+                    }
+                    ImGui::EndDisabled();
+
                     int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 200); 
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 90); 
                     ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                     if ( ch != s_groundstation_config.wifi_channel)
                     {
                         saveGroundStationConfig();
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button("Apply"))
-                    {
-                        //start sending new channel to air, restart after 2 seconds
-                        config.wifi_channel = s_groundstation_config.wifi_channel;
-                        s_change_channel = Clock::now() + std::chrono::milliseconds(2000);
                     }
                 }
                 {
@@ -1531,7 +1553,16 @@ int run(char* argv[])
 
         if ( Clock::now() > s_change_channel )
         {
-            s_change_channel = Clock::now() + std::chrono::hours(10000);
+            if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < 300 )
+            {
+                //still not changed - wait
+                s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+            }
+            else
+            {
+                s_change_channel = Clock::now() + std::chrono::hours(10000);
+                s_comms.setChannel (s_groundstation_config.wifi_channel);
+            }
         }
 
         std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
@@ -1827,6 +1858,8 @@ int main(int argc, const char* argv[])
         return -1;
 
     s_comms.setChannel( s_groundstation_config.wifi_channel );
+
+    int result = run((char **)argv);
 
     s_hal->shutdown();
 
