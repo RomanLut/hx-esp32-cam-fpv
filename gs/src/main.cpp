@@ -237,6 +237,7 @@ static void comms_thread_proc()
 
             s_last_gs_stats = s_gs_stats;
             s_gs_stats = GSStats();
+            s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
 
             last_stats_tp = Clock::now();
         }
@@ -985,7 +986,7 @@ int run(char* argv[])
                         ImGui::Text("GSInPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_gs_stats.inPacketCounter);
+                        ImGui::Text("%d+%d", s_last_gs_stats.inPacketCounter[0], s_last_gs_stats.inPacketCounter[1]);
                     }
 
                     {
@@ -993,13 +994,76 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSPacketLossRatio");
+                        ImGui::Text("GSPacketLossRatio1");
 
                         ImGui::TableSetColumnIndex(1);
 
-                        ImGui::Text("%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter));
+                        ImGui::Text("%.1f,%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[0]),
+                            calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[1]));
+                    }
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSExpectedPktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex) /12 * config.fec_codec_n);
                     }
 
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSUniquePktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", s_last_gs_stats.inUniquePacketCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSDublicatedPktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", s_last_gs_stats.inDublicatedPacketCounter);
+                    }
+*/
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSPacketLossRatio2");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
+                    }
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("FECSuccIndex");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        uint32_t blocksCount = s_last_gs_stats.FECBlocksCounter;
+                        if ( blocksCount == 0 ) blocksCount = 1;
+                        ImGui::Text("%.1f", s_last_gs_stats.FECSuccPacketIndexCounter * 1.0f / blocksCount);
+                    }
+*/
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
@@ -1068,29 +1132,6 @@ int run(char* argv[])
                     }
 */
 
-/*
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS Antena1 pkts");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena1PacketsCounter);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS Antena2 pkts");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena2PacketsCounter);
-                    }
-*/
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
@@ -1483,6 +1524,11 @@ int run(char* argv[])
             s_debugWindowVisisble = !s_debugWindowVisisble;
         }
 
+        if ( ImGui::IsKeyPressed(ImGuiKey_S))
+        {
+            s_groundstation_config.stats = !s_groundstation_config.stats;
+        }
+
         bool resetRes = false;
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) )
         {
@@ -1833,7 +1879,7 @@ int main(int argc, const char* argv[])
     }
 
     rx_descriptor.coding_k = s_ground2air_config_packet.fec_codec_k;
-    rx_descriptor.coding_n = s_ground2air_config_packet.fec_codec_n;
+    rx_descriptor.coding_n = 12;//s_ground2air_config_packet.fec_codec_n;
     rx_descriptor.mtu = s_ground2air_config_packet.fec_codec_mtu;
 
     tx_descriptor.coding_k = 2;

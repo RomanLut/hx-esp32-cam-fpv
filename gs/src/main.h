@@ -89,13 +89,18 @@ extern TGroundstationConfig s_groundstation_config;
 struct GSStats
 {
     uint16_t outPacketCounter = 0;
-    uint16_t inPacketCounter = 0;
-    uint16_t inRejectedPacketCounter = 0;
+    uint16_t inPacketCounter[2] = {0,0};
+
+    uint32_t lastPacketIndex = 0;
+    uint32_t statsPacketIndex = 0;
+    uint16_t inDublicatedPacketCounter = 0;
+    uint16_t inUniquePacketCounter = 0;
+
+    uint32_t FECSuccPacketIndexCounter = 0;
+    uint32_t FECBlocksCounter = 0;
 
     uint8_t rssiDbm = 0;
     uint8_t noiseFloorDbm = 0;
-    uint8_t antena1PacketsCounter = 0;
-    uint8_t antena2PacketsCounter = 0;
 
     uint8_t brokenFrames = 0;  //JPEG decoding errors
 
