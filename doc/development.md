@@ -21,7 +21,7 @@ Development UI is enabled with **d** key or **middle mouse click**.
 
 Graph               | Description
 ------------------- | -------------
-Frames              | Small rectangle - frame received, big rectangle - frame is restored using FEC, emtpy space - frame is lost
+Frames              | Big rectangle - frame received, small rectangle - frame is restored using FEC, emtpy space - frame is lost
 Parts               | Number of frame blocks processed to decode the frame
 Period              | Distance from previous decoded frame in ms
 Quality             | Frame compression setting
