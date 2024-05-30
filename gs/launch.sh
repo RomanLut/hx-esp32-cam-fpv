@@ -16,7 +16,13 @@ while [ $elapsed -lt $timeout ]; do
     sudo ip link set wlan1 down
     sudo iw dev wlan1 set type monitor
     sudo ip link set wlan1 up
-    sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0  ./gs -fullscreen 1 -sm 1 -rx wlan1 -tx wlan1
+
+# Check if wlan2 is available
+    if ip link show wlan2 &> /dev/null; then
+      sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs -fullscreen 1 -sm 1 -rx wlan1 wlan2 -tx wlan1
+    else
+      sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs -fullscreen 1 -sm 1 -rx wlan1 -tx wlan1
+    fi
 
 #reconnect wlan0 to access point
     sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
