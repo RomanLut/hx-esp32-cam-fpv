@@ -8,13 +8,14 @@ Open source digital FPV system based on esp32cam.
 - [x] documentation
 - [x] test ov5640 sensor
 - [x] better diagnostic tools
-- [ ] write proper format .mpg on air and ground
-- [ ] font selection for Displayport OSD
-- [ ] air unit channel search
+- [ ] write proper format .avi on air and ground (seek support)
+- [x] font selection for Displayport OSD
+- [x] air unit channel search
 - [ ] release prebuilt images and firmware
 - [ ] test dual wifi cards performance
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
+- [ ] Camera OSD elements position configuration
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
 
@@ -108,9 +109,9 @@ The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are:
 
 Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
 
-**esp32cam**
+## esp32cam
 
-esp32cam does not have enough free pins. Two configurations are available currently.
+**esp32cam** does not have enough free pins. Two configurations are available currently.
 Configuration is selected in [main.h](https://github.com/RomanLut/esp32-cam-fpv/blob/b63eb884e7c1e2ced3711dce53f20f102a39b4fc/components/air/main.h#L12) before building air unit firmware.
 
 
@@ -127,15 +128,15 @@ Both internal red LED and flash LED are used for indication:
  * blinking 1Hz - recording
  * blinking 3Hz - OTA update mode.
  
-Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or remove, or paint with black marker.
-
-**REC button** is used to start/stop air unit recording. Hold **REC button** on powerup to enter OTA (over the air update) mode.
+Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or remove, or paint with black marker:
 
 ![alt text](doc/images/esp32cam_flash_led.jpg "esp32cam_flash_led.png")
 
+**REC button** is used to start/stop air unit recording. Hold **REC button** on powerup to enter OTA (over the air update) mode.
+
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-**es32s3sense**
+## esp32s3sense
 
 STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
 
@@ -151,15 +152,15 @@ Module comes with moderate flexible antenna which should be replaced with 2dBi d
 
 Internal yellow LED conflicts with SD card and thus can not be used for indication. External LED should be soldered to pin **D0**.
 
-Existing **Boot** button is used to start/stop air uint recording.
+Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation):
 
-**es32s3sense** + **ov5640**
+## es32s3sense + ov5640
 
-**ov5640** offers 1024x576 30fps, 1280x720 30fps, less noisy sensor, much beter colors and contrast, good performance against sunlight.
+**ov5640** camera offers 1024x576 30fps, 1280x720 30fps, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
-**es32s3sense** boards are sold with **ov2640** which can be easily preplaced with **ov5640** purchased separately.
+**es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
 ## Current consumption
 
@@ -186,6 +187,8 @@ STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624
 # Displayport MSP OSD
 
  Configure Displayport MSP OSD 115200, Avatar in INav/Betaflight/Ardupilot.
+
+ A number of OSD fonts are included. User fonts can be placed in ```/gs/assets/osd_fonts/``` - 24 pixels wide png format.
  
  ![alt text](doc/images/displayport_osd.jpg "displayport_osd")
 
@@ -194,6 +197,20 @@ STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624
  Can be used for RC and for downlink telemetry. Setup 115200 UART. 
  
  This is transparent bidirectional stream sent with FEC encoding (Groun2Air: k=2,n=3, Air2Ground: k=6,n=12).
+
+# Camera OSD Elements
+
+![alt text](doc/images/osd_elements.png "osd_elements")
+
+From left to right:
+ - RSSI in Dbm
+ - Average wifi queue usage. Should be below 50%. Look for free wifi channel if getting higher
+ - actual MJPEG stream bandwidth in Mbps (without FEC encoding). Wifi stream bandwwith = MJPEG stream bandwidth * FEC_n / FEC_k
+ - resolution
+ - frame compression quality (lower is better quality)
+ - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
+ - ```AIR``` Air unit is recrding video to SD card
+ - ```GS``` GS is recording video to SD card
 
 # OSD Menu
 
@@ -210,13 +227,7 @@ Joystick Up, Arrow Up                                  | Select previous menu it
 Joystick Down, Arrow Down                              | Select next menu item
 Joystick Left, Arrow Left, ESC                         | Exit to previous menu
 
-# Debug interface
-
-![alt text](doc/images/debug_menu.jpg "debugmenu")
-
-Toggle Debug interface with **D** or **Middle Mouse Button**.
-
-# Joystick button mapping
+# GPIO Joystick button mapping
 
 GPIO Joystick and buttons are mapped to keys.
 
@@ -237,6 +248,7 @@ Key                   | Function
 --------------------- | -------------
 Space                 | Exit application
 ESC                   | Close OSD menu or exit application
+d                     | Open Development UI
 
 
 # Considerations
@@ -247,7 +259,7 @@ ESC                   | Close OSD menu or exit application
 
 **esp32cam** and **esp32s3sence** boards come with the **OV2640** sensor by default. 
 
-The sweet spot settings for this camera seems to be 800x600 resolution with JPEG compression level in range 8…63 (lower is better). 30 fps is achieved. Additionaly, custom 16:9 modes 640x360 and 800x456 are implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
+The sweet spot settings for this camera seems to be 800x600 resolution with JPEG compression level in range 8…63 (lower is better quality). 30 fps is achieved. Additionaly, custom 16:9 modes 640x360 and 800x456 are implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
 Another options are 640x480 and 640x360, which can have better JPEG compression level set per frame, but luck pixel details and thus do not benefit over 800x456.
 
@@ -259,11 +271,11 @@ Any resolution lower then 640x360, despite high frame rate (60fps with 320x240),
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
 
-800x456 image looks much better on **ov5640** thanks to hifhger sensor quality and less noise.
+800x456 image looks much better on **ov5640** thanks to highger sensor quality and less noise.
 
 However, 1280x720 30fps requres too high bandwidth, so system has to set high compression levels which elliminates detais. Overall, 1024x576 30fps looks better. Both modes require 36Mbps+ wifi rate to provide benefits over 800x456.
 
-**Note: ov5640** does not support vertical image flip**.
+**Note: ov5640** does not support **vertical image flip**.
 
 ## Lens 
 
@@ -277,7 +289,7 @@ Note that "nigh version" sensor do not have IR filter and show distorted colors.
 
 # Wifi channel
 
-Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna.
+Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna. In the crowded wifi environment, best channel is the one not used by other devices. System may not be able to push frames on bisy channel at all (high wifi queue usage will be shown on OSD).
 
 ## Wifi rate
 
@@ -285,7 +297,7 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 1.2Mb/sec should also be considered here for the air unit DVR.
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 1.2Mb/sec (esp32) and 1.6Mb/sec (esp32s3) should also be considered here for the air unit DVR.
 
 ## Wifi interferrence 
 
@@ -303,11 +315,13 @@ Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. S
 
 With the same JPEG compression level the size of a frame can vary a lot depending on scenery. A lot means order of 5 or more. Adaptive compression is implemented to achieve best possible image quality.
 
-For **ov2640** sensor, compression level can be set in range 1..63 (lower is better quality). However **ov2640** can return broken frames or crash with compression levels lower then 8. Also, decreasing compression level below 8 increases frame size but does not increase image much due to bad sensor quality itself. System uses range 8...63.
+For **ov2640** sensor, compression level can be set in range 1..63 (lower is better quality). However **ov2640** can return broken frames or crash with compression levels lower then 8. Also, decreasing compression level below 8 increases frame size but does not increase image quality much due to bad sensor quality itself. System uses range 8...63.
 
-Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is maximum and each coefficient can decrease it up to 63.
+Frame data flows throught a number of queues, which can easily be overloaded due to small RAM size on ESP32, see [profiling](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md#profiling).
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by 2 (12/6 FEC redundancy) and divided by FPS. The result is target frame size.
+Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compressoin level and each coefficient can increase it up to 63.
+
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
 
 Additionally, compression level is limited when air unit DVR is enabled; it is 1.2MB/sec frame data for **ESP32** and 1.6MB/sec for **esp32s3sense**. Theoretically, compression level can be better on 36Mbps+ wifi rate if DVR is stopped.
 
@@ -425,6 +439,9 @@ Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Fle
 
 **esp32cam** with long flex cable has been replaced with compact **esp32s3sense** board.
 
+# Development
+
+See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
 
 # FAQ
 
