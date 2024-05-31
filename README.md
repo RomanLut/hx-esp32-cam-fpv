@@ -207,7 +207,7 @@ From left to right:
  - Average wifi queue usage. Should be below 50%. Look for free wifi channel if getting higher
  - actual MJPEG stream bandwidth in Mbps (without FEC encoding). Wifi stream bandwwith = MJPEG stream bandwidth * FEC_n / FEC_k
  - resolution
- - frame compression quality (lower is better quality)
+ - FPS
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
  - ```AIR``` Air unit is recrding video to SD card
  - ```GS``` GS is recording video to SD card
