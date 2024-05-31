@@ -114,7 +114,7 @@ static int s_uart_verbose = 1;
 
 static bool s_air_record = false;
 
-static bool s_shouldRestartRecording = false;
+static uint64_t s_shouldRestartRecording;
 
 //=============================================================================================
 //=============================================================================================
@@ -355,20 +355,23 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
 // this RAM block and write from it directly. This results in several MB/s write speed performance which is good enough.
-//ESP32S3: 2048  - 1.2 MB/s
-//ESP32S3: 6*512 - 1.5 MB/s
-//ESP32S3: 4096  - 1.8 MB/s *
-//ESP32S3: 10*512- 1.9 MB/s
-//ESP32S3: 8192  - 2.5 MB/s
-//ESP32S3: 20*512- 2.5 MB/s
+//ESP32S3: 2048  - ~1.2 MB/s
+//ESP32S3: 6*512 - ~1.5 MB/s
+//ESP32S3: 4096  - ~1.4...1.8 MB/s 
+//ESP32S3: 10*512- ~1.9 MB/s
+//ESP32S3: 8192  - 1.9...2.5 MB/s
+//ESP32S3: 20*512- ~2.5 MB/s
 //ESP32S3: 4096 SPI RAM - 0.38 MB/s
 
 //ESP32 2096: 0.9 MB/s
 //ESP32 6*512:1 MB/s
-//ESP32 4096: 1.6 MB/s *
+//ESP32 4096: 1.6 MB/s 
 //ESP32 12*512:1.5 MB/s  ???
 //ESP32 8192: 1.9 MB/s
-static constexpr size_t SD_WRITE_BLOCK_SIZE = 4096;
+static constexpr size_t SD_WRITE_BLOCK_SIZE = 8192;
+
+//for fast SD writes, buffer has to be in DMA enabled memory
+static uint8_t* sd_write_block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
 
 /*
@@ -593,16 +596,15 @@ static int open_sd_file()
 //this will write data from the slow queue to raw MJPEG file
 static void sd_write_proc(void*)
 {
-    //for fast SD writes, buffer has to be in DMA enabled memory
-    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
-
     while (true)
     {
-        if (!s_air_record)
+        if (!s_air_record || (s_shouldRestartRecording > esp_timer_get_time()))
         {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
+        
+        s_shouldRestartRecording = 0;
 
         int fd = open_sd_file();
         if ( fd == -1)
@@ -625,6 +627,8 @@ static void sd_write_proc(void*)
         bool error = false; 
         bool done = false;
         bool syncFrameStart = true;
+        int offset = 0;
+
         while (!done)
         {
             ulTaskNotifyTake(pdTRUE, 1000 / portTICK_PERIOD_MS); //wait for notification
@@ -638,15 +642,16 @@ static void sd_write_proc(void*)
                     break;
                 }
 
-                if ( s_shouldRestartRecording ) 
+                if ( s_shouldRestartRecording != 0) 
                 {
-                    s_shouldRestartRecording = false;
                     done = true;
                     break;
                 }
 
+                int len = SD_WRITE_BLOCK_SIZE - offset;
+
                 xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                bool read = s_sd_slow_buffer->read(block, SD_WRITE_BLOCK_SIZE);
+                bool read = s_sd_slow_buffer->read(&(sd_write_block[offset]), len);
 #ifdef PROFILE_CAMERA_DATA    
                 s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100 ));
 #endif
@@ -656,12 +661,9 @@ static void sd_write_proc(void*)
                     break; //not enough data, wait
                 }
 
-                int offset = 0;
-                int len = SD_WRITE_BLOCK_SIZE;
-
                 if ( syncFrameStart )
                 {
-                    while ( (len >= 3) && ((block[offset] != 0xff) || (block[offset+1] != 0xd8) || (block[offset+2] != 0xff))) 
+                    while ( (len >= 3) && ((sd_write_block[offset] != 0xff) || (sd_write_block[offset+1] != 0xd8) || (sd_write_block[offset+2] != 0xff))) 
                     {
                         offset++;
                         len--;
@@ -669,33 +671,39 @@ static void sd_write_proc(void*)
 
                     if ( len < 3 ) 
                     {
-                        len = 0;
+                        offset = 0;
+                        continue;
                     }
                     else
                     {
-                        //LOG("Sync = %d %d 0x%02x 0x%02x\n", offset, len, (int)block[offset], (int)block[offset+1]);
+                        //LOG("Sync = %d %d 0x%02x 0x%02x\n", offset, len, (int)sd_write_block[offset], (int)sd_write_block[offset+1]);
                         syncFrameStart = false;
+                        if ( offset > 0 )
+                        {
+                            memcpy(sd_write_block, sd_write_block+offset, len);
+                            offset = len;
+                            continue;
+                        }
                     }
                 }
+
+                offset = 0;
                 
-                if ( len > 0 )
+                if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
                 {
-                    if (write(fd, &(block[offset]), len) < 0 )
-                    {
-                        LOG("Error while writing! Stopping session\n");
-                        done = true;
-                        error = true;
-                        SDError = true;
-                        break;
-                    }
-                    s_stats.sd_data += len;
-                    s_sd_file_size += len;
-                    if (s_sd_file_size > 50 * 1024 * 1024)
-                    {
-                        LOG("Max file size reached: %d. Restarting session\n", s_sd_file_size);
-                        done = true;
-                        break;
-                    }
+                    LOG("Error while writing! Stopping session\n");
+                    done = true;
+                    error = true;
+                    SDError = true;
+                    break;
+                }
+                s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
+                s_sd_file_size += SD_WRITE_BLOCK_SIZE;
+                if (s_sd_file_size > 50 * 1024 * 1024)
+                {
+                    LOG("Max file size reached: %d. Restarting session\n", s_sd_file_size);
+                    done = true;
+                    break;
                 }
             }  //while true -consume all buffer
         }  //while !done
@@ -722,7 +730,6 @@ static void sd_write_proc(void*)
 static void sd_write_proc(void*)
 {
     //for fast SD writes, buffer has to be in DMA enabled memory
-    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
     uint32_t blockSize = 0;
 
     while (true)
@@ -780,14 +787,14 @@ static void sd_write_proc(void*)
                     size_t len = std::min<size_t>(count, SD_WRITE_BLOCK_SIZE - blockSize);
                     
                     xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                    s_sd_slow_buffer->read( block + blockSize, len);
+                    s_sd_slow_buffer->read( sd_write_block + blockSize, len);
                     xSemaphoreGive(s_sd_slow_buffer_mux);
                     count -= len;
                     blockSize += len;
 
                     if (blockSize == SD_WRITE_BLOCK_SIZE)
                     {
-                        if (write(fd, block, SD_WRITE_BLOCK_SIZE) < 0 )
+                        if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
                         {
                             LOG("Error while writing! Stopping session\n");
                             done = true;
@@ -1106,7 +1113,11 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
-    s_shouldRestartRecording = dst.camera.resolution != src.camera.resolution;
+    if ( dst.camera.resolution != src.camera.resolution )
+    {
+        s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
+    }
+
 
 #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
@@ -1554,11 +1565,11 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_air_record )
     {
 #ifdef BOARD_XIAOS3SENSE        
-        //1.8MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1800*1024 ) FECbandwidth = 1800*1024;
+        //1.9MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
 #else
-        //1.6MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1600*1024 ) FECbandwidth = 1600*1024;
+        //1.9MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
 #endif
     }
     
@@ -2020,7 +2031,7 @@ static void init_camera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 #ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 20000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
+    config.xclk_freq_hz = 20000000;
 #else
     config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
@@ -2213,6 +2224,7 @@ extern "C" void app_main()
         }
     }
 
+    s_shouldRestartRecording =  esp_timer_get_time() + 2000000;
     {
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_write_proc, "SD Write", 4096, nullptr, 1, &s_sd_write_task, core);
