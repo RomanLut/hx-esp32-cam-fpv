@@ -453,7 +453,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
             case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
                 prh.input_dBm = *(int8_t*)rti.this_arg;
-                s_gs_stats.rssiDbm = -*(int8_t*)rti.this_arg; 
+                s_gs_stats.rssiDbm[pcap.index] = *(int8_t*)rti.this_arg; 
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:

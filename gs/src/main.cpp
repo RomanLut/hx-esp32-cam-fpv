@@ -149,6 +149,7 @@ bool s_SDDetected = false;
 bool s_SDSlow = false;
 bool s_SDError = false;
 bool s_isOV5640 = false;
+bool s_isDual = false;
 
 bool s_debugWindowVisisble = false;
 
@@ -1103,10 +1104,21 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS RSSI");
+                        ImGui::Text("GS RSSI 1");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm[0]);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS RSSI 2");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[1]);
                     }
 
                     {
@@ -1485,6 +1497,11 @@ int run(char* argv[])
                     config.profile2_btn++;
                 }
                 ImGui::SameLine();
+                if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
+                {
+                    s_hal->set_vsync(s_groundstation_config.vsync, true);
+                }
+                ImGui::SameLine();
                 ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
                 if ( ImGui::Button("Air Record") )
@@ -1730,10 +1747,10 @@ int main(int argc, const char* argv[])
     s_iniFile.read(ini);
 
     Comms::RX_Descriptor rx_descriptor;
-    rx_descriptor.interfaces = {"wlan1mon"};
+    rx_descriptor.interfaces = {"wlan1"};
 
     Comms::TX_Descriptor tx_descriptor;
-    tx_descriptor.interface = "wlan1mon";
+    tx_descriptor.interface = "wlan1";
 
     s_hal.reset(new PI_HAL());
 
@@ -1767,6 +1784,11 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["screen_aspect_ratio"];
         if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 5 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["vsync"];
+        if (temp != "") s_groundstation_config.vsync = atoi(temp.c_str()) !=0 ;
     }
 
     {
@@ -1854,7 +1876,7 @@ int main(int argc, const char* argv[])
             i++;
         }else if(temp=="-vsync"){
             check_argval("vsync");
-            s_hal->set_vsync(std::stoi(next) > 0);
+            s_groundstation_config.vsync = std::stoi(next) > 0;
             i++;
         }else if(temp=="-sm"){
             check_argval("sm");
@@ -1862,8 +1884,8 @@ int main(int argc, const char* argv[])
             i++;
         }else if(temp=="-help"){
             printf("gs -option val -option val\n");
-            printf("-rx <rx_interface1> <rx_interface2>, default: wlan0mon single interface\n");
-            printf("-tx <tx_interface>, default: wlan0mon\n");
+            printf("-rx <rx_interface1> <rx_interface2>, default: wlan1 single interface\n");
+            printf("-tx <tx_interface>, default: wlan1\n");
             printf("-p <gd_ip>, default: disabled\n");
             printf("-n <rx_fec_n>, 7...12, default: 12\n");
             printf("-ch <wifi_channel>, default: 7\n");
@@ -1894,6 +1916,8 @@ int main(int argc, const char* argv[])
     }
 #endif    
 
+     s_hal->set_vsync(s_groundstation_config.vsync, false);
+
     if (!s_hal->init())
         return -1;
 
@@ -1903,6 +1927,8 @@ int main(int argc, const char* argv[])
 
     if (!s_comms.init(rx_descriptor, tx_descriptor))
         return -1;
+
+    s_isDual = rx_descriptor.interfaces.size() > 1;
 
     s_comms.setChannel( s_groundstation_config.wifi_channel );
 

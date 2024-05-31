@@ -25,5 +25,5 @@ public:
     virtual void set_width( int w ) = 0;
     virtual void set_height( int h ) = 0;
     virtual void set_fullscreen( bool b ) = 0;
-    virtual void set_vsync( bool b ) = 0;
+    virtual void set_vsync( bool b, bool apply ) = 0;
 };

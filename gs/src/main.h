@@ -80,6 +80,7 @@ struct TGroundstationConfig
     int wifi_channel;
     ScreenAspectRatio screenAspectRatio;
     bool stats;
+    bool vsync = true;
 };
 
 extern TGroundstationConfig s_groundstation_config;
@@ -99,7 +100,7 @@ struct GSStats
     uint32_t FECSuccPacketIndexCounter = 0;
     uint32_t FECBlocksCounter = 0;
 
-    uint8_t rssiDbm = 0;
+    int8_t rssiDbm[2] = {0,0};
     uint8_t noiseFloorDbm = 0;
 
     uint8_t brokenFrames = 0;  //JPEG decoding errors
@@ -118,6 +119,7 @@ extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
 extern void exitApp();
 
 extern bool s_isOV5640;
+extern bool s_isDual;
 extern uint16_t s_SDTotalSpaceGB16;
 extern uint16_t s_SDFreeSpaceGB16;
 extern bool s_air_record;

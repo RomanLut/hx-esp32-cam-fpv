@@ -172,7 +172,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 {
     {
         char buf[256];
-        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s##title0", FW_VERSION, PACKET_VERSION, s_isOV5640 ? "OV5640" : "OV2640");
+        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s%s##title0", FW_VERSION, PACKET_VERSION, s_isDual ? "D " : "", s_isOV5640 ? "OV5640" : "OV2640");
         this->drawMenuTitle( buf );
     }
 
