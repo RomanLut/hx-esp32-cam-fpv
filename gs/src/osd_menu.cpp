@@ -909,6 +909,7 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 2) )
         {
             s_groundstation_config.vsync = !s_groundstation_config.vsync;
+            s_hal->set_vsync(s_groundstation_config.vsync, true);
             saveGroundStationConfig();
         }
     }
