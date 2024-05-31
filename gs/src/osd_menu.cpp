@@ -896,10 +896,20 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
-        sprintf(buf, "Letterbox: %s##1", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
+        sprintf(buf, "Letterbox: %s##2", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
         if ( this->drawMenuItem( buf, 1) )
         {
             this->goForward( OSDMenuId::Letterbox, (int)s_groundstation_config.screenAspectRatio );
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Vertical Sync: %s##3", s_groundstation_config.vsync ? "Enabled" :"Disabled");
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            s_groundstation_config.vsync = !s_groundstation_config.vsync;
+            saveGroundStationConfig();
         }
     }
 
