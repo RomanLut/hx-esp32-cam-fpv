@@ -235,6 +235,7 @@ static void comms_thread_proc()
             total_data = 0;
             min_rssi = 0;
 
+            s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
             s_gs_stats = GSStats();
             s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
