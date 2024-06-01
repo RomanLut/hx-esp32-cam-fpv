@@ -1313,7 +1313,7 @@ int run(char* argv[])
 
                     int ch = s_groundstation_config.wifi_channel;
                     ImGui::SameLine();
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 90); 
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 93); 
                     ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                     if ( ch != s_groundstation_config.wifi_channel)
                     {
@@ -1330,9 +1330,26 @@ int run(char* argv[])
                         saveGround2AirConfig(config);
                     }
                 }
+                
+                if ( s_isOV5640 )
+
                 {
+                    if ( ImGui::Checkbox("ov5640HiFPS", &config.camera.ov5640HighFPS) )
+                    {
+                        saveGround2AirConfig(config);
+                    }
+                }
+                else
+                {
+                    if ( ImGui::Checkbox("ov2640HiFPS", &config.camera.ov2640HighFPS) )
+                    {
+                        saveGround2AirConfig(config);
+                    }
+                }
+                {
+                    ImGui::SameLine();
                     int value = (int)config.camera.resolution;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 198); 
                     ImGui::SliderInt("Resolution", &value, 0, 11);
                     if ( config.camera.resolution != (Resolution)value )
                     {
@@ -1500,6 +1517,7 @@ int run(char* argv[])
                 if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
                 {
                     s_hal->set_vsync(s_groundstation_config.vsync, true);
+                    saveGroundStationConfig();
                 }
                 ImGui::SameLine();
                 ImGui::Checkbox("Stats", &s_groundstation_config.stats);
