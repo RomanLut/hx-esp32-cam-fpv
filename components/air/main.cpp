@@ -1113,12 +1113,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
-    if ( dst.camera.resolution != src.camera.resolution )
-    {
-        s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
-    }
-
-
 #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
     src.camera.aec2 = false;
@@ -1126,8 +1120,25 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
     if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
     {
+        s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
         sensor_t* s = esp_camera_sensor_get();
+
+#ifdef SENSOR_OV5640
+#else
+        if ( src.camera.ov2640HighFPS && 
+            ((src.camera.resolution == Resolution::VGA) ||
+            (src.camera.resolution == Resolution::VGA16) ||
+            (src.camera.resolution == Resolution::SVGA16)) 
+            )
+        {
+            s->set_xclk( s, LEDC_TIMER_0, 16 );
+        }
+        else
+        {
+            s->set_xclk( s, LEDC_TIMER_0, 12 );
+        }
+#endif
 
         switch (src.camera.resolution)
         {

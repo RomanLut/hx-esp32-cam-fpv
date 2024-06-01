@@ -136,6 +136,9 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
         bool hmirror = false;
         bool vflip = false;
         bool dcw = true;
+        bool ov2640HighFPS = false;
+        bool ov5640HighFPS = false;
+        bool ov5640NightMode = false;
     };
     Camera camera;
 };
