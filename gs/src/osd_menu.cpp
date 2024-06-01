@@ -335,7 +335,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
             saveGround2AirConfig(config);
         }
 
-        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40FPS (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
+        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
         {
             config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
             saveGround2AirConfig(config);
