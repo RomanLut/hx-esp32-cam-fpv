@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "Clock.h"
+#include "IHAL.h"
 
 #include "Log.h"
 #include "ini.h"
@@ -137,3 +138,4 @@ extern const char* resolutionName[];
 extern mINI::INIStructure ini;
 extern mINI::INIFile s_iniFile;
 
+extern std::unique_ptr<IHAL> s_hal;

@@ -906,14 +906,15 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Vertical Sync: %s##3", s_groundstation_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             s_groundstation_config.vsync = !s_groundstation_config.vsync;
+            s_hal->set_vsync(s_groundstation_config.vsync, true);
             saveGroundStationConfig();
         }
     }
 
-    if ( this->drawMenuItem( "Exit To Shell", 2) )
+    if ( this->drawMenuItem( "Exit To Shell", 3) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
