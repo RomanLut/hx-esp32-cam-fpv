@@ -187,7 +187,8 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Resolution: %s##0", resolutionName[(int)config.camera.resolution]);
+        const char** rn = s_isOV5640 ? config.camera.ov5640HighFPS? resolutionName5640Hi : resolutionName5640 : config.camera.ov2640HighFPS? resolutionName2640Hi : resolutionName2640;
+        sprintf(buf, "Resolution: %s##0", rn[clamp((int)config.camera.resolution, 0, 11)]);
         if ( this->drawMenuItem( buf, 1) )
         {
             int item = 0;
@@ -330,6 +331,22 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical Flip: Disabled##5", 5) )
         {
             config.camera.vflip = !config.camera.vflip;
+            config.camera.hmirror = config.camera.vflip;
+            saveGround2AirConfig(config);
+        }
+
+        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40FPS (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
+        {
+            config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
+            saveGround2AirConfig(config);
+        }
+    }
+    else
+    {
+        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50FPS Modes: Enabled##6" : "50FPS Modes: Disabled##5", 6) )
+        {
+            config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
+            saveGround2AirConfig(config);
         }
     }
 
@@ -358,38 +375,40 @@ void OSDMenu::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    if ( this->drawMenuItem( "640x360 30fps (16:9)", 0) )
+    const char** rn = s_isOV5640 ? config.camera.ov5640HighFPS? resolutionName5640Hia : resolutionName5640a : config.camera.ov2640HighFPS? resolutionName2640Hia : resolutionName2640a;
+
+    if ( this->drawMenuItem( rn[(int)Resolution::VGA16], 0) )
     {
         config.camera.resolution = Resolution::VGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "640x480 30fps (4:3)", 1) )
+    if ( this->drawMenuItem( rn[(int)Resolution::VGA], 1) )
     {
         config.camera.resolution = Resolution::VGA;
         saveAndExit = true;
     }
     
 
-    if ( this->drawMenuItem( "800x456 30fps (16:9)", 2) )
+    if ( this->drawMenuItem( rn[(int)Resolution::SVGA16], 2) )
     {
         config.camera.resolution = Resolution::SVGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "800x600 30fps (4:3)", 3) )
+    if ( this->drawMenuItem( rn[(int)Resolution::SVGA], 3) )
     {
         config.camera.resolution = Resolution::SVGA;
         saveAndExit = true;
     }
 
-    if (this->drawMenuItem( s_isOV5640 ? "1024x576 30fps (16:9)" : "1024x576 13fps (16:9)", 4) )
+    if (this->drawMenuItem( rn[(int)Resolution::XGA16], 4) )
     {
         config.camera.resolution = Resolution::XGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( s_isOV5640 ? "1280x720 30fps (16:9)" : "1280x720 13fps (16:9)", 5) )
+    if ( this->drawMenuItem( rn[(int)Resolution::HD], 5) )
     {
         config.camera.resolution = Resolution::HD;
         saveAndExit = true;

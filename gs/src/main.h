@@ -134,7 +134,15 @@ extern Clock::time_point s_last_packet_tp;
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);
 extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
 
-extern const char* resolutionName[];
+extern const char* resolutionName2640[];
+extern const char* resolutionName2640Hi[];
+extern const char* resolutionName5640[];
+extern const char* resolutionName5640Hi[];
+extern const char* resolutionName2640a[];
+extern const char* resolutionName2640Hia[];
+extern const char* resolutionName5640a[];
+extern const char* resolutionName5640Hia[];
+
 extern mINI::INIStructure ini;
 extern mINI::INIFile s_iniFile;
 
