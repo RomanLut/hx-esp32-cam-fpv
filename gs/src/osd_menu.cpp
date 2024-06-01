@@ -343,7 +343,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
     else
     {
-        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50FPS Modes: Enabled##6" : "50FPS Modes: Disabled##5", 6) )
+        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 6) )
         {
             config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
             saveGround2AirConfig(config);
