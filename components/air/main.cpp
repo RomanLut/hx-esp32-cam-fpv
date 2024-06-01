@@ -1118,7 +1118,11 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     src.camera.aec2 = false;
 #endif
 
-    if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
+    if (forceCameraSettings || 
+        (dst.camera.resolution != src.camera.resolution) || 
+        (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS ) || 
+        (src.camera.ov5640HighFPS != dst.camera.ov5640HighFPS )
+    )
     {
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
