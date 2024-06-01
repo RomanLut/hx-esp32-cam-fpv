@@ -12,7 +12,7 @@ Open source digital FPV system based on esp32cam.
 - [x] font selection for Displayport OSD
 - [x] air unit channel search
 - [ ] release prebuilt images and firmware
-- [ ] test dual wifi cards performance
+- [x] test dual wifi cards performance
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
 - [ ] Camera OSD elements position configuration
@@ -20,9 +20,10 @@ Open source digital FPV system based on esp32cam.
 - [ ] Meta Quest 2 GS
 
 ## Features:
-- 640x360 30fps, 640x480 30fps, 800x456 30 fps, 800x600 30fps, 1024x576 13 fps, 1280x720 13 fps
-- 1024x576 30fps, 1280:720 30fps on **esp32s3** + **ov5640**
-- up to 1km at 24mBit (line of sight), 600m at 36Mbps
+- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps
+- **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
+- **esp32s3 + ov5640**: 640x360 50fps, 640x480 50fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
+- up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
 - latency 10-30ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
@@ -78,7 +79,7 @@ Secondly, esp32 is not capable of video encoding, which means that video stream 
 
 Image looks Ok on 7” screen, but not more.
 
-Let’s say honest: we expect at least HD resolution from the digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against good analog system. 
+Let’s say honest: we expect at least HD resolution from the digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against best analog system. 
 
 Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - air unit and ground station video recording
@@ -89,7 +90,9 @@ Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  
 The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
 
-Currently the biggest problem is ocassional frame dropping and jerky framerate which is something which has to be investigated in detail. It looks Ok on big screen, but is not comfortable for FPV glasses.
+**esp32cam** is ok for 7" GS screen.
+
+For FPV Glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. 30Fps is not comfortable for FPV. **esp32s3sense + ov5640** offer 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
 
 **hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems.
 
@@ -265,15 +268,21 @@ Another options are 640x480 and 640x360, which can have better JPEG compression 
 
 Any resolution lower then 640x360, despite high frame rate (60fps with 320x240), is useless in my opinion due to luck of details.
 
-**ov2640** can capture 1280x720 at 13 FPS. Image looks Ok, but FPS is definitely is lower then acceptable level. 
+**ov2640** can capture 1280x720 at 13 FPS. Image looks Ok on 7" screen, but FPS is definitely is lower then acceptable level for FPV.
+
+It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work with all sensor.
 
 **OV5640**
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
 
-800x456 image looks much better on **ov5640** thanks to highger sensor quality and less noise.
+800x456 image looks much better on **ov5640** compared tp **2640** thanks to highger sensor quality and less noise.
 
 However, 1280x720 30fps requres too high bandwidth, so system has to set high compression levels which elliminates detais. Overall, 1024x576 30fps looks better. Both modes require 36Mbps+ wifi rate to provide benefits over 800x456.
+
+It is possible to enable 50Fps 640x360, 640x480 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV.
+
+While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too higher bandwidth for MJPEG stream. 
 
 **Note: ov5640** does not support **vertical image flip**.
 
@@ -369,6 +378,9 @@ Note: **esp32cam** board requires soldering resistor to use external antena: htt
 
 Do not power wifi card or **ESP32** without antena attached; it can damage output amplifier.
 
+# Dual Wifi Adapters
+
+**hx-esp32-cam-fpv** supports dual Wifi adapters to decrease packet loss ratio. Default launch script will launch GS in dual adapters mode if **wlan1** and **wlan2** are found in the system.
 
 ## Range 
 
