@@ -1129,7 +1129,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         sensor_t* s = esp_camera_sensor_get();
 
 #ifdef SENSOR_OV5640
-        s->set_colorbar(s, src.camera.ov5640HighFPS);
+        s->set_colorbar(s, src.camera.ov5640HighFPS?1:0);
 #else
         if ( src.camera.ov2640HighFPS && 
             ((src.camera.resolution == Resolution::VGA) ||
