@@ -22,7 +22,7 @@ Open source digital FPV system based on esp32cam.
 ## Features:
 - **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps
 - **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
-- **esp32s3 + ov5640**: 640x360 50fps, 640x480 50fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
+- **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
 - latency 10-30ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
@@ -161,7 +161,7 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 ## esp32s3sense + ov5640
 
-**ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 50fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
+**ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
@@ -280,7 +280,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 However, 1280x720 30fps requres too high bandwidth, so system has to set high compression levels which elliminates detais. Overall, 1024x576 30fps looks better. Both modes require 36Mbps+ wifi rate to provide benefits over 800x456.
 
-It is possible to enable 50Fps 640x360, 640x480 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV.
+It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV.
 
 While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too higher bandwidth for MJPEG stream. 
 
