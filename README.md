@@ -161,7 +161,7 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 ## esp32s3sense + ov5640
 
-**ov5640** camera offers 1024x576 30fps, 1280x720 30fps, less noisy sensor, much beter colors and contrast, good performance against sunlight.
+**ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 50fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
