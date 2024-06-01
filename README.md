@@ -159,7 +159,7 @@ Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation):
 
-## es32s3sense + ov5640
+## esp32s3sense + ov5640
 
 **ov5640** camera offers 1024x576 30fps, 1280x720 30fps, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
