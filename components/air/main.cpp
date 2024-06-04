@@ -1078,6 +1078,16 @@ offset-= MJPEG_PATTERN_SIZE/2;
 
                     size_t jpegSize = offset - frameStartOffset; 
 
+                    if ( (buffer->peek(offset-(frameStartOffset) != 0xFF ) )
+                    {
+LOG("logerr2");
+                    }
+
+                    if ( jpegSize < 8000 )
+                    {
+LOG("logerr3 %d %d %d", frameStartOffset, offset, jpegSize);
+                    }
+
                     uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
                     size_t jpegSize1 = jpegSize + filler + 8;
 
