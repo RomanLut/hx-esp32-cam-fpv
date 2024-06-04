@@ -159,19 +159,19 @@ TVMode vmodes[] = {
     },
     //XGA,    //1024x768
     {
-        1024,768,12,12,30,30
+        1024,768,12,30,12,30
     },
     //XGA16,    //1024x576
     {
-        1024,576,12,12,30,30
+        1024,576,12,30,12,30
     },
     //SXGA,   //1280x960
     {
-        1280,960,12,12,30,30
+        1280,960,12,30,12,30
     },
     //HD,   //1280x720
     {
-        1280,720,12,12,30,30
+        1280,720,12,30,12,30
     },
     //UXGA   //1600x1200
     {
@@ -848,82 +848,6 @@ bool findFrameStart(Circular_Buffer* buffer, uint32_t &offset, size_t data_avail
     );
 }
 
-/*
-//=============================================================================================
-//=============================================================================================
-bool findFrameEnd(Circular_Buffer* buffer, uint32_t &offset, size_t data_avail)
-{
-    uint32_t maxOffset = data_avail - MJPEG_PATTERN_SIZE*2;
-
-    bool foundZero = false;
-    while ( offset < maxOffset )
-    {
-        if ( buffer->peek(offset) == 0 )
-        {
-            foundZero = true;
-            break;
-        }
-        else
-        {
-            offset += MJPEG_PATTERN_SIZE / 2;
-        }
-    }
-
-    if ( !foundZero )
-    {
-        return false;
-    }
-
-    uint32_t offset0 = offset;
-
-    uint32_t count = 0;
-    //walk back until buffer contains zeros
-    while ( (offset > 3) && (buffer->peek(offset) == 0) )
-    {
-        offset--;
-        count++;
-
-        if ( count > (MJPEG_PATTERN_SIZE + 10))
-        {
-            //something wrong
-            //whole buffer is filled with zeros ?
-            offset = offset0+1; 
-            return false;
-        }
-    }
-    offset++;
-
-    if( 
-        (buffer->peek(offset-2) == 0xFF ) &&
-        (buffer->peek(offset-1) == 0xD9 )
-        )
-    {
-        //check how many zeros follows
-        uint32_t offset1 = offset0+1;
-        while ( ( count < MJPEG_PATTERN_SIZE / 2 ) && (buffer->peek(offset1) == 0))
-        {
-            offset1++;
-            count++;
-        }
-
-        if (count >= (MJPEG_PATTERN_SIZE / 2))
-        {
-            return true;
-        } 
-        else
-        {
-            offset = offset0 + 1;
-            return false;
-        }
-    }
-    else
-    {
-        offset = offset0 + 1;
-        return false;
-    }
-}
-*/
-
 //=============================================================================================
 //=============================================================================================
 void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle_t mux, uint8_t* sd_write_block, size_t& blockSize, size_t& fileSize, bool& done, bool& error)
@@ -1053,7 +977,7 @@ static void sd_write_proc(void*)
                             xSemaphoreGive(s_sd_slow_buffer_mux);
                             offset = 0;
                             s_stats.sd_drops++;
-LOG("FrameStartErr\n");
+                            LOG("Unable to find frame start\n");
                         }
                         break;
                     }
@@ -1064,8 +988,8 @@ LOG("FrameStartErr\n");
                 {
                     lookForFrameStart = true;
                     //offset points to FF D8 FF
-                    //offset-= MJPEG_PATTERN_SIZE;
-offset-= MJPEG_PATTERN_SIZE/2;
+                    //exclude zero patern
+                    offset-= MJPEG_PATTERN_SIZE;
                     frameCnt++;
 
                     //save data from frameStartOffset to offset
@@ -1078,16 +1002,6 @@ offset-= MJPEG_PATTERN_SIZE/2;
 
                     size_t jpegSize = offset - frameStartOffset; 
 
-                    if ( (buffer->peek(offset-(frameStartOffset) != 0xFF ) )
-                    {
-LOG("logerr2");
-                    }
-
-                    if ( jpegSize < 8000 )
-                    {
-LOG("logerr3 %d %d %d", frameStartOffset, offset, jpegSize);
-                    }
-
                     uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
                     size_t jpegSize1 = jpegSize + filler + 8;
 
@@ -1095,20 +1009,18 @@ LOG("logerr3 %d %d %d", frameStartOffset, offset, jpegSize);
                     uint8_t buf[8];
                     memcpy(buf, dcBuf, 4); 
                     memcpy(&buf[4], &jpegSize1, 4);
-
                     Circular_Buffer temp(buf, 8, 8);
                     storeBuffer( fd, 8, &temp, NULL, sd_write_block, blockSize, aviFileSize, done, error);
                     if (done) break;
 
+                    //store jpeg
                     storeBuffer( fd, jpegSize, s_sd_slow_buffer, s_sd_slow_buffer_mux, sd_write_block, blockSize, aviFileSize, done, error);
+                    dataAvail -= offset;
                     offset = 0;
                     if (done) break;
 
-                    memset(buf, 0xbb, 8); 
-                    Circular_Buffer temp2(buf, 8, 8);
-                    storeBuffer( fd, 8, &temp2, NULL, sd_write_block, blockSize, aviFileSize, done, error);
-
-                    memset(buf, 0xbb, 4); 
+                    //store filler
+                    memset(buf, 0, 4); 
                     Circular_Buffer temp1(buf, 4, 4);
                     storeBuffer( fd, filler, &temp1, NULL, sd_write_block, blockSize, aviFileSize, done, error);
 
@@ -1130,7 +1042,7 @@ LOG("logerr3 %d %d %d", frameStartOffset, offset, jpegSize);
                         offset = 0;
                         lookForFrameStart = true;
                         s_stats.sd_drops++;
-LOG("FrameEndErr %d %d\n", (int)frameStartOffset, (int)offset);
+                        LOG("Unable to find frame end\n");
                     }
                     break;
                 }
@@ -1158,7 +1070,7 @@ LOG("FrameEndErr %d %d\n", (int)frameStartOffset, (int)offset);
 
             while(true)
             {
-                size_t sz = writeAviIndex(sd_write_block, SD_WRITE_BLOCK_SIZE - blockSize);
+                size_t sz = writeAviIndex(sd_write_block + blockSize, SD_WRITE_BLOCK_SIZE - blockSize);
                 blockSize += sz;
                 if ( (blockSize == SD_WRITE_BLOCK_SIZE) || (sz == 0)) //flush block or write leftover
                 {
@@ -1413,9 +1325,6 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         LOG("Wifi channel changed from %d to %d\n", (int)dst.wifi_channel, (int)src.wifi_channel);
         nvs_args_set("channel", src.wifi_channel);
         ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.wifi_channel, WIFI_SECOND_CHAN_NONE));
-
-        //s_air_record = false;
-        //s_restart_time = esp_timer_get_time() + 2000000;
     }
 
     if (dst.camera.fps_limit != src.camera.fps_limit)

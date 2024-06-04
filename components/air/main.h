@@ -74,7 +74,7 @@
 #endif
 
 //write raw MJPEG stream instead of avi
-#define WRITE_RAW_MJPEG_STREAM
+//#define WRITE_RAW_MJPEG_STREAM
 
 //===============================================================
 //===============================================================
