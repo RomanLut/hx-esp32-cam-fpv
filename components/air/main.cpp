@@ -47,13 +47,16 @@
 
 #include "osd.h"
 #include "msp.h"
+#include "avi.h"
 
 #include "vcd_profiler.h"
 
 #include "jpeg_parser.h"
+#include "util.h"
 
 static int s_stats_last_tp = -10000;
 
+#define MJPEG_PATTERN_SIZE 128 
 
 /////////////////////////////////////////////////////////////////////////
 
@@ -115,6 +118,67 @@ static int s_uart_verbose = 1;
 static bool s_air_record = false;
 
 static uint64_t s_shouldRestartRecording;
+
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint8_t FPS2640;
+    uint8_t FPS5640;
+    uint8_t highFPS2640;
+    uint8_t highFPS5640;
+} TVMode;
+
+TVMode vmodes[] = {
+    //QVGA,   //320x240
+    { 
+        320,240,60,60,60,60
+    },
+    //CIF,    //400x296
+    {
+        400,296,60,60,60,60
+    },
+    //HVGA,   //480x320
+    {
+        480,320,30,30,30,30
+    },
+    //VGA,    //640x480
+    {
+        640,480,30,30,40,50
+    },
+    //VGA16,    //640x360
+    {
+        640,360,30,30,40,50
+    },
+    //SVGA,   //800x600
+    {
+        800,600,30,30,30,30
+    },
+    //SVGA16,  //800x456
+    {
+        800,456,30,30,40,50
+    },
+    //XGA,    //1024x768
+    {
+        1024,768,12,12,30,30
+    },
+    //XGA16,    //1024x576
+    {
+        1024,576,12,12,30,30
+    },
+    //SXGA,   //1280x960
+    {
+        1280,960,12,12,30,30
+    },
+    //HD,   //1280x720
+    {
+        1280,720,12,12,30,30
+    },
+    //UXGA   //1600x1200
+    {
+        1600,1200,10,10,10,10
+    }
+};
+
 
 //=============================================================================================
 //=============================================================================================
@@ -724,21 +788,198 @@ static void sd_write_proc(void*)
 }
 #else
 
+
+//=============================================================================================
+//=============================================================================================
+bool findFrameStart(Circular_Buffer* buffer, uint32_t &offset, size_t data_avail) 
+{
+    if ( data_avail <= MJPEG_PATTERN_SIZE*2 ) return false;
+
+    uint32_t maxOffset = data_avail - MJPEG_PATTERN_SIZE*2;
+
+    bool foundZero = false;
+    while ( offset < maxOffset )
+    {
+        if ( buffer->peek(offset) == 0 )
+        {
+            foundZero = true;
+            break;
+        }
+        else
+        {
+            offset += MJPEG_PATTERN_SIZE / 2;
+        }
+    }
+
+    if ( !foundZero )
+    {
+        return false;
+    }
+
+    uint32_t offset1 = offset-1;
+
+    //walk front until buffer contains zeros
+    uint32_t count = 0;
+    while ( (buffer->peek(offset) == 0) )
+    {
+        offset++;
+        count++;
+
+        if ( offset > (data_avail - 4) )
+        {
+            //something wrong
+            //whole buffer is filled with zeros ?
+            return false;
+        }
+    }
+
+    //count zeros back
+    while ( ( count < MJPEG_PATTERN_SIZE / 2 ) && (offset1 > 0) && (buffer->peek(offset1) == 0) )
+    {
+        offset1--;
+        count++;
+    }
+
+    return ( 
+        (count >= MJPEG_PATTERN_SIZE / 2) && 
+        (buffer->peek(offset) == 0xFF ) &&
+        (buffer->peek(offset+1) == 0xD8 ) &&
+        (buffer->peek(offset+2) == 0xFF ) 
+    );
+}
+
+/*
+//=============================================================================================
+//=============================================================================================
+bool findFrameEnd(Circular_Buffer* buffer, uint32_t &offset, size_t data_avail)
+{
+    uint32_t maxOffset = data_avail - MJPEG_PATTERN_SIZE*2;
+
+    bool foundZero = false;
+    while ( offset < maxOffset )
+    {
+        if ( buffer->peek(offset) == 0 )
+        {
+            foundZero = true;
+            break;
+        }
+        else
+        {
+            offset += MJPEG_PATTERN_SIZE / 2;
+        }
+    }
+
+    if ( !foundZero )
+    {
+        return false;
+    }
+
+    uint32_t offset0 = offset;
+
+    uint32_t count = 0;
+    //walk back until buffer contains zeros
+    while ( (offset > 3) && (buffer->peek(offset) == 0) )
+    {
+        offset--;
+        count++;
+
+        if ( count > (MJPEG_PATTERN_SIZE + 10))
+        {
+            //something wrong
+            //whole buffer is filled with zeros ?
+            offset = offset0+1; 
+            return false;
+        }
+    }
+    offset++;
+
+    if( 
+        (buffer->peek(offset-2) == 0xFF ) &&
+        (buffer->peek(offset-1) == 0xD9 )
+        )
+    {
+        //check how many zeros follows
+        uint32_t offset1 = offset0+1;
+        while ( ( count < MJPEG_PATTERN_SIZE / 2 ) && (buffer->peek(offset1) == 0))
+        {
+            offset1++;
+            count++;
+        }
+
+        if (count >= (MJPEG_PATTERN_SIZE / 2))
+        {
+            return true;
+        } 
+        else
+        {
+            offset = offset0 + 1;
+            return false;
+        }
+    }
+    else
+    {
+        offset = offset0 + 1;
+        return false;
+    }
+}
+*/
+
+//=============================================================================================
+//=============================================================================================
+void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle_t mux, uint8_t* sd_write_block, size_t& blockSize, size_t& fileSize, bool& done, bool& error)
+{
+    while (count > 0 )
+    {
+        size_t len = std::min<size_t>(count, SD_WRITE_BLOCK_SIZE - blockSize);
+        
+        if (mux != NULL ) xSemaphoreTake(mux, portMAX_DELAY);
+        buffer->read( sd_write_block + blockSize, len);
+        if (mux != NULL ) xSemaphoreGive(mux);
+        count -= len;
+        blockSize += len;
+
+        if (blockSize == SD_WRITE_BLOCK_SIZE)
+        {
+            if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
+            {
+                LOG("Error while writing! Stopping session\n");
+                done = true;
+                error = true;
+                SDError = true;
+                break;
+            }
+            fileSize += SD_WRITE_BLOCK_SIZE;
+            blockSize = 0;
+            s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
+        }
+    }
+}
+
 //=============================================================================================
 //=============================================================================================
 //this will write data from the slow queue to AVI file
 static void sd_write_proc(void*)
 {
-    //for fast SD writes, buffer has to be in DMA enabled memory
-    uint32_t blockSize = 0;
+    //frames are separated by MJPEG_PATTERN_SIZE zeros
+    //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
+    //MJPEG_PATTERN_SIZE is 128 bytes, so we can check for zero every 64th byte instead of every byte to find pattern
 
     while (true)
     {
-        if (!s_air_record)
+        if (!s_air_record || (s_shouldRestartRecording > esp_timer_get_time()))
         {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+            //flush frames with possibly different resolution
+            xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+            size_t dataAvail = s_sd_slow_buffer->size();
+            s_sd_slow_buffer->skip(dataAvail);
+            xSemaphoreGive(s_sd_slow_buffer_mux);
+
             continue;
         }
+
+        s_shouldRestartRecording = 0;
 
         int fd = open_sd_file();
         if ( fd == -1)
@@ -748,13 +989,37 @@ static void sd_write_proc(void*)
             vTaskDelay(1000 / portTICK_PERIOD_MS); 
             continue;
         }
+        
+        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+#ifdef SENSOR_OV5640
+        uint8_t fps = s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+#else
+        uint8_t fps = s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+#endif        
+        uint16_t frameWidth = v->width;
+        uint16_t frameHeight = v->height;
+
+        LOG("%dx%d %dfps\n", frameWidth, frameHeight, fps);
+
+        prepAviIndex();
 
         bool error = false; 
         bool done = false;
-        blockSize = 0;
+        size_t blockSize = AVI_HEADER_LEN; //start with a header
+        size_t aviFileSize = AVI_HEADER_LEN;
+        bool lookForFrameStart = true;
+        uint32_t offset = 0;
+        uint32_t frameStartOffset = 0;
+        uint32_t frameCnt = 0;
         while (!done)
         {
             ulTaskNotifyTake(pdTRUE, 1000 / portTICK_PERIOD_MS); //wait for notification
+
+            if ( s_shouldRestartRecording != 0) 
+            {
+                done = true;
+                break;
+            }
 
             if (!s_air_record)
             {
@@ -763,64 +1028,152 @@ static void sd_write_proc(void*)
                 continue;
             }
 
-            //for simplification of parsing, 
-            //wait untill buffer is filled at least to 300kb to ensure that we have one jpeg in buffer for sure
             xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-            bool hasEnoughData = s_sd_slow_buffer->size() >= MAX_JPEG_LOOKAHEAD;
+            size_t dataAvail = s_sd_slow_buffer->size();
             xSemaphoreGive(s_sd_slow_buffer_mux);
 
-            if (!hasEnoughData) continue;
-
-            JpegInfo info;
-            if ( find_jpeg_in_buffer1(*s_sd_slow_buffer, MAX_JPEG_LOOKAHEAD, &info) == 0 )
+            //consume all data
+            while ( true )
             {
-
-                LOG("Frame %d %d %d %d\n", info.offset, info.size, info.width, info.height);
-
-                xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                s_sd_slow_buffer->skip(info.offset);
-                xSemaphoreGive(s_sd_slow_buffer_mux);
-
-                size_t count = info.size;
-                while (count > 0 )
+                if ( lookForFrameStart )
                 {
-                    size_t len = std::min<size_t>(count, SD_WRITE_BLOCK_SIZE - blockSize);
-                    
-                    xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                    s_sd_slow_buffer->read( sd_write_block + blockSize, len);
-                    xSemaphoreGive(s_sd_slow_buffer_mux);
-                    count -= len;
-                    blockSize += len;
-
-                    if (blockSize == SD_WRITE_BLOCK_SIZE)
+                    if ( findFrameStart( s_sd_slow_buffer, offset, dataAvail ))
                     {
-                        if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
+                        lookForFrameStart = false;
+                        //offset points to FF D8 FF
+                        frameStartOffset = offset;
+                    }
+                    else
+                    {
+                        if ( offset > 150*1024)
                         {
-                            LOG("Error while writing! Stopping session\n");
-                            done = true;
-                            error = true;
-                            SDError = true;
-                            break;
+                            //something wrong
+                            xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                            s_sd_slow_buffer->skip(offset);
+                            xSemaphoreGive(s_sd_slow_buffer_mux);
+                            offset = 0;
+                            s_stats.sd_drops++;
+LOG("FrameStartErr\n");
                         }
-                        blockSize = 0;
-                        s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
+                        break;
                     }
                 }
 
-                if (done) break;
-            }
-            else
-            {
-                LOG("Skipping \n");
+                //next frame start
+                if ( findFrameStart( s_sd_slow_buffer, offset, dataAvail ))
+                {
+                    lookForFrameStart = true;
+                    //offset points to FF D8 FF
+                    //offset-= MJPEG_PATTERN_SIZE;
+offset-= MJPEG_PATTERN_SIZE/2;
+                    frameCnt++;
 
-                xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                s_sd_slow_buffer->skip(MAX_JPEG_LOOKAHEAD);
-                xSemaphoreGive(s_sd_slow_buffer_mux);
+                    //save data from frameStartOffset to offset
+                    if ( frameStartOffset > 0 )
+                    {
+                        xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                        s_sd_slow_buffer->skip(frameStartOffset);
+                        xSemaphoreGive(s_sd_slow_buffer_mux);
+                    }
+
+                    size_t jpegSize = offset - frameStartOffset; 
+
+                    uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
+                    size_t jpegSize1 = jpegSize + filler + 8;
+
+                    // add avi frame header
+                    uint8_t buf[8];
+                    memcpy(buf, dcBuf, 4); 
+                    memcpy(&buf[4], &jpegSize1, 4);
+
+                    Circular_Buffer temp(buf, 8, 8);
+                    storeBuffer( fd, 8, &temp, NULL, sd_write_block, blockSize, aviFileSize, done, error);
+                    if (done) break;
+
+                    storeBuffer( fd, jpegSize, s_sd_slow_buffer, s_sd_slow_buffer_mux, sd_write_block, blockSize, aviFileSize, done, error);
+                    offset = 0;
+                    if (done) break;
+
+                    memset(buf, 0xbb, 8); 
+                    Circular_Buffer temp2(buf, 8, 8);
+                    storeBuffer( fd, 8, &temp2, NULL, sd_write_block, blockSize, aviFileSize, done, error);
+
+                    memset(buf, 0xbb, 4); 
+                    Circular_Buffer temp1(buf, 4, 4);
+                    storeBuffer( fd, filler, &temp1, NULL, sd_write_block, blockSize, aviFileSize, done, error);
+
+                    buildAviIdx(jpegSize1); // save avi index for frame
+
+                    if (frameCnt == (DVR_MAX_FRAMES-1))
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    if ( (offset - frameStartOffset) > 150*1024)
+                    {
+                        //something wrong
+                        xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                        s_sd_slow_buffer->skip(offset);
+                        xSemaphoreGive(s_sd_slow_buffer_mux);
+                        offset = 0;
+                        lookForFrameStart = true;
+                        s_stats.sd_drops++;
+LOG("FrameEndErr %d %d\n", (int)frameStartOffset, (int)offset);
+                    }
+                    break;
+                }
             }
+
+            if (frameCnt == (DVR_MAX_FRAMES-1))
+            {
+                LOG("Max frames count reached: %d. Restarting session\n", frameCnt);
+                break;
+            }
+
+            if (aviFileSize > 50 * 1024 * 1024)
+            {
+                LOG("Max file size reached: %d. Restarting session\n", aviFileSize);
+                break;
+            }
+
+            if (done) break;
         }
         
         if (!error)
         {
+            // save avi index
+            finalizeAviIndex(frameCnt);
+
+            while(true)
+            {
+                size_t sz = writeAviIndex(sd_write_block, SD_WRITE_BLOCK_SIZE - blockSize);
+                blockSize += sz;
+                if ( (blockSize == SD_WRITE_BLOCK_SIZE) || (sz == 0)) //flush block or write leftover
+                {
+                    if (write(fd, sd_write_block, blockSize) < 0 )
+                    {
+                        LOG("Error while writing! Stopping session\n");
+                        done = true;
+                        error = true;
+                        SDError = true;
+                        break;
+                    }
+                    blockSize = 0;
+                }
+                
+                if ( sz == 0)
+                {
+                    break;
+                }
+            }
+
+            // save avi header at start of file
+            buildAviHdr( fps, frameWidth, frameHeight, frameCnt );
+
+            lseek(fd, 0, SEEK_SET); // start of file
+            write(fd, aviHeader, AVI_HEADER_LEN); 
             fsync(fd);
             close(fd);
 
@@ -908,12 +1261,20 @@ static void sd_enqueue_proc(void*)
     }
 }
 
-IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
+IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
     bool ok = s_sd_fast_buffer.write(data, size);
 
-#ifdef PROFILE_CAMERA_DATA    
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+    if ( ok && addFrameStartPattern ) 
+    {
+        ok = s_sd_fast_buffer.writeBytes(0, MJPEG_PATTERN_SIZE);
+    }
+#endif
+
+#ifdef PROFILE_CAMERA_DATA
     s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100) );
 #endif
 
@@ -1012,7 +1373,6 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
 
-    bool newSession = false;
     if (dst.sessionId != src.sessionId)
     {
         dst.sessionId = src.sessionId;
@@ -1193,6 +1553,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
 
+            case Resolution::COUNT:
             break;
 
         }
@@ -1770,12 +2131,24 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #endif
         uint8_t* clrSrc = (uint8_t*)src;
 
-        if ( s_video_frame_started && (s_video_full_frame_size == 0) && (src[0] != 0xff || src[stride] != 0xd8))
+        if ( s_video_frame_started && (s_video_full_frame_size == 0) )
         {
-            //broken frame data, no start marker
-            //we probably missed the start of the frame. Have to skip it.
-            cam_ovf_count++; 
-            s_video_frame_started = false;
+            if (src[0] != 0xff || src[stride] != 0xd8)
+            {
+                //broken frame data, no start marker
+                //we probably missed the start of the frame. Have to skip it.
+                cam_ovf_count++; 
+                s_video_frame_started = false;
+            }
+            else
+            {
+#ifdef DVR_SUPPORT
+                if (s_air_record)
+                {
+                    add_to_sd_fast_buffer(clrSrc, 0, true);
+                }
+#endif
+            }
         }
 
         if (s_video_frame_started)
@@ -1784,7 +2157,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
             //check if we missed last block due to VSYNK near the end of prev (last) block
             // if block starts with 16 zero bytes - it is either not filled at all (ov2640)
-            //o is fully filled with zeros(ov5640)
+            //or is fully filled with zeros(ov5640)
             const uint8_t* src1 = src;
             int i;
             for ( i = 0; i < 16; i++ )
@@ -1804,12 +2177,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             {
 #ifdef BOARD_XIAOS3SENSE
                 //ov5640: check if 16 bytes at the end of the block are zero
-               const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
-               if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
-               {
+                const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
+                if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
+                {
                     //zeros at the end - block has to contain end marker
                     last = true;
-               }
+                }
 #endif
                 if (last) //find the end marker for JPEG. Data after that can be discarded
                 {
@@ -1842,7 +2215,6 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
 
             s_lastByte_ff = count > 0 ? src[count-1] == 0xFF : false;
-
             while (count > 0)
             {
                 if (s_video_frame_data_size >= MAX_VIDEO_DATA_PAYLOAD_SIZE) //flush prev data?
@@ -1936,7 +2308,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef DVR_SUPPORT
                 if (s_air_record)
                 {
-                    add_to_sd_fast_buffer(start_ptr, c);
+                    add_to_sd_fast_buffer(start_ptr, c, false);
                 }
 #endif
             }  //while count>0
@@ -1951,7 +2323,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             {
                 if ( s_video_full_frame_size  < 2000)
                 {
-                    //probably boroken frame - too small
+                    //probably broken frame - too small
                     cam_ovf_count++;
                 }
 
@@ -2216,6 +2588,11 @@ extern "C" void app_main()
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
 
 #ifdef DVR_SUPPORT
+
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+    prepAviBuffers();
+#endif    
 
     xSemaphoreGive(s_sd_fast_buffer_mux);
     xSemaphoreGive(s_sd_slow_buffer_mux);

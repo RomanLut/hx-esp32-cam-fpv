@@ -46,6 +46,25 @@ bool Circular_Buffer::write(const void* data, size_t size)
     return true;
 }
 
+bool Circular_Buffer::writeBytes(uint8_t b, size_t size)
+{
+    if (size >= get_space_left())
+        return false;
+
+    size_t idx = (m_start + m_size) % m_capacity;
+
+    if (idx + size <= m_capacity) //no wrap
+        memset(m_data + idx, b, size);
+    else //wrap
+    {
+        size_t first = m_capacity - idx;
+        memset(m_data + idx, b, first);
+        memset(m_data, b, size - first);
+    }
+    m_size += size;
+    return true;
+}
+
 bool Circular_Buffer::read(void* dst, size_t size)
 {
     if (m_size < size)

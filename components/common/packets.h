@@ -84,9 +84,10 @@ enum class Resolution : uint8_t
     SVGA16,  //800x456
     XGA,    //1024x768
     XGA16,    //1024x576
-    SXGA,   //1280x1024
+    SXGA,   //1280x960
     HD,   //1280x720
     UXGA,   //1600x1200
+    COUNT
 };
 
 #define FEC_K 6
