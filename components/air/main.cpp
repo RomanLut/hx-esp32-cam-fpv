@@ -1003,7 +1003,7 @@ static void sd_write_proc(void*)
                     size_t jpegSize = offset - frameStartOffset; 
 
                     uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
-                    size_t jpegSize1 = jpegSize + filler + 8;
+                    size_t jpegSize1 = jpegSize + filler;
 
                     // add avi frame header
                     uint8_t buf[8];

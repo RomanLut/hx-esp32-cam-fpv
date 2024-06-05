@@ -57,8 +57,8 @@ uint8_t aviHeader[AVI_HEADER_LEN] = { // AVI header template
   0x28, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x80, 0x02, 0x00, 0x00, 0xe0, 0x01, 0x00, 0x00,
   0x01, 0x00, 0x18, 0x00, 0x4D, 0x4A, 0x50, 0x47, 0x00, 0x84, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x4E, 0x46, 0x4F,
-  0x10, 0x00, 0x00, 0x00, 0x6A, 0x61, 0x6D, 0x65, 0x73, 0x7A, 0x61, 0x68, 0x61, 0x72, 0x79, 0x20,
-  0x76, 0x36, 0x30, 0x20, 0x4C, 0x49, 0x53, 0x54, 0x00, 0x01, 0x0E, 0x00, 0x6D, 0x6F, 0x76, 0x69,
+  0x10, 0x00, 0x00, 0x00,  'h',  'x',  '-',  'e',  's',  'p',  '3',  '2',  '-',  'c',  'a',  'm',
+   '-',  'f',  'p',  'v', 0x4C, 0x49, 0x53, 0x54, 0x00, 0x01, 0x0E, 0x00, 0x6D, 0x6F, 0x76, 0x69,
 };
 
 struct frameSizeStruct 
@@ -101,18 +101,23 @@ void prepAviIndex()
 void buildAviHdr(uint8_t FPS, int frameWidth, int frameHeight, uint16_t frameCnt ) 
 {
   // update AVI header template with file specific details
-  size_t aviSize = moviSize + AVI_HEADER_LEN + ((CHUNK_HDR+IDX_ENTRY) * frameCnt); // AVI content size 
+  size_t aviSize = moviSize + AVI_HEADER_LEN + (CHUNK_HDR+IDX_ENTRY) * frameCnt + 8 - 8; // AVI content size excluding riff header (+8 idx header -8 riff header)
   // update aviHeader with relevant stats
+
+/*
+  ESP_LOGE("AVI","moviSize %d\n", moviSize);
+  ESP_LOGE("AVI","Filesize %d\n", aviSize);
+  ESP_LOGE("AVI","Framecount %d\n", frameCnt);
+*/
   memcpy(aviHeader+4, &aviSize, 4);
   uint32_t usecs = (uint32_t)round(1000000.0f / FPS); // usecs_per_frame 
   memcpy(aviHeader+0x20, &usecs, 4); 
   memcpy(aviHeader+0x30, &frameCnt, 2);
   memcpy(aviHeader+0x8C, &frameCnt, 2);
   memcpy(aviHeader+0x84, &FPS, 1);
-  //uint32_t dataSize = moviSize + (frameCnt * CHUNK_HDR) + 4; 
-  //memcpy(aviHeader+0x12E, &dataSize, 4); // data size 
 
-  //memcpy(aviHeader+0x100, zeroBuf, 4); // no audio for timelapse
+  uint32_t dataSize = moviSize + frameCnt*CHUNK_HDR + 4; 
+  memcpy(aviHeader+0xe8, &dataSize, 4);
 
   // apply video framesize to avi header
   memcpy(aviHeader+0x40, &frameWidth, 2);
@@ -147,7 +152,7 @@ size_t writeAviIndex(uint8_t* clientBuf, size_t buffSize)
   // called repeatedly from closeAvi() until return 0
   if (idxPtr < indexLen) 
   {
-    if (indexLen-idxPtr > buffSize) 
+    if ((indexLen-idxPtr) > buffSize) 
     {
       memcpy(clientBuf, idxBuf+idxPtr, buffSize);
       idxPtr += buffSize;
@@ -156,13 +161,12 @@ size_t writeAviIndex(uint8_t* clientBuf, size_t buffSize)
     else 
     {
       // final part of index
-      size_t final = indexLen-idxPtr;
-      memcpy(clientBuf, idxBuf+idxPtr, final);
+      size_t finalPart = indexLen-idxPtr;
+      memcpy(clientBuf, idxBuf+idxPtr, finalPart);
       idxPtr = indexLen;
-      return final;
+      return finalPart;
     }
   }
-  idxPtr = 0;
   return 0;
 }
   
