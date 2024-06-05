@@ -18,6 +18,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth
+- [ ] sound recording (esp32s3sense)?
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
 
