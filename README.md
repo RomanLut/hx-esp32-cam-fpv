@@ -16,6 +16,8 @@ Open source digital FPV system based on esp32cam.
 - [ ] investigate frame droping
 - [ ] improve frame dropping with retranmission ?
 - [ ] Camera OSD elements position configuration
+- [ ] telemetry logging
+- [ ] telemetry sharing on RPI Bluetooth
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
 
@@ -84,7 +86,7 @@ Let’s say honest: we expect at least HD resolution from the digital fpv system
 Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - air unit and ground station video recording
  - digital OSD
- - (Mavlink) stream
+ - Mavlink telemetry and RC
  - telemetry logging
  - absence of analog noise on image
  
