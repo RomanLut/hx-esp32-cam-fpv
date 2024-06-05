@@ -5,7 +5,7 @@ SRCS := src/main.cpp \
 	src/droid_sans_font.cpp \
 	src/osd.cpp \
 	src/utils/lodepng.cpp \
-	src/utils/util.cpp \
+	../components/common/util.cpp \
 	src/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
 	src/Comms.cpp \
