@@ -67,7 +67,7 @@ It's then uploaded to texture and shown on screen.
 
 The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional stream for telemetry (FEC encoded).
 
-Here is a video shot at 30 FPS at 800x456 with ov2640 sensor with 120 degeee lens (video converted from the source mjpeg):
+Here is a video shot at 30 FPS at 800x456 with ov2640 sensor with 120 degeee lens:
 
 https://github.com/RomanLut/esp32-cam-fpv/assets/11955117/970a7ee9-467e-46fb-91a6-caa74871fc3b
 
