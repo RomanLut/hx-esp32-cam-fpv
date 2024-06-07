@@ -375,7 +375,7 @@ Various PCB antenas for 2.4Ghz can be considered (not tested):
 
 ![alt text](doc/images/pcb_antena.jpg "pcb antena")
 
-The best choice for GS is pair of 5dBi dipoles. 
+The best choice for GS is pair of 5dBi dipoles or 5dbi dipole + BetaFPV Moxon Antenna.
 
 It is important that all antenas should be mounded **VERTICALLY**.
 
@@ -391,7 +391,9 @@ Do not power wifi card or **ESP32** without antena attached; it can damage outpu
 
 ## Range 
 
-1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+**2dbi dipole on plane, 5dbi dipoles on GS:** 1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+
+**2dbi dipole on plane, 5dbi dipole + BetaFPV Moxon Antenna on GS:** 2km at 24Mbps, 900m at 36Mbps.
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
