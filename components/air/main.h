@@ -76,6 +76,8 @@
 //write raw MJPEG stream instead of avi
 //#define WRITE_RAW_MJPEG_STREAM
 
+//#define TEST_AVI_FRAMES
+
 //===============================================================
 //===============================================================
 //for XIAO ESP32S3 Sense

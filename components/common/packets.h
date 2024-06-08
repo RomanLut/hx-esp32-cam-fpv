@@ -90,6 +90,17 @@ enum class Resolution : uint8_t
     COUNT
 };
 
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint8_t FPS2640;
+    uint8_t FPS5640;
+    uint8_t highFPS2640;
+    uint8_t highFPS5640;
+} TVMode;
+
+extern TVMode vmodes[];
+
 #define FEC_K 6
 #define FEC_N 12
 

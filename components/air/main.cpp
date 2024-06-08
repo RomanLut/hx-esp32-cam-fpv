@@ -56,7 +56,7 @@
 
 static int s_stats_last_tp = -10000;
 
-#define MJPEG_PATTERN_SIZE 128 
+#define MJPEG_PATTERN_SIZE 512 
 
 /////////////////////////////////////////////////////////////////////////
 
@@ -95,6 +95,7 @@ static uint16_t SDFreeSpaceGB16 = 0;
 static uint8_t cam_ovf_count = 0;
 
 int32_t s_dbg;
+uint16_t s_framesCounter = 0;
 
 #ifdef UART_MAVLINK
 
@@ -118,67 +119,6 @@ static int s_uart_verbose = 1;
 static bool s_air_record = false;
 
 static uint64_t s_shouldRestartRecording;
-
-typedef struct {
-    uint16_t width;
-    uint16_t height;
-    uint8_t FPS2640;
-    uint8_t FPS5640;
-    uint8_t highFPS2640;
-    uint8_t highFPS5640;
-} TVMode;
-
-TVMode vmodes[] = {
-    //QVGA,   //320x240
-    { 
-        320,240,60,60,60,60
-    },
-    //CIF,    //400x296
-    {
-        400,296,60,60,60,60
-    },
-    //HVGA,   //480x320
-    {
-        480,320,30,30,30,30
-    },
-    //VGA,    //640x480
-    {
-        640,480,30,30,40,50
-    },
-    //VGA16,    //640x360
-    {
-        640,360,30,30,40,50
-    },
-    //SVGA,   //800x600
-    {
-        800,600,30,30,30,30
-    },
-    //SVGA16,  //800x456
-    {
-        800,456,30,30,40,50
-    },
-    //XGA,    //1024x768
-    {
-        1024,768,12,30,12,30
-    },
-    //XGA16,    //1024x576
-    {
-        1024,576,12,30,12,30
-    },
-    //SXGA,   //1280x960
-    {
-        1280,960,12,30,12,30
-    },
-    //HD,   //1280x720
-    {
-        1280,720,12,30,12,30
-    },
-    //UXGA   //1600x1200
-    {
-        1600,1200,10,10,10,10
-    }
-};
-
 
 //=============================================================================================
 //=============================================================================================
@@ -886,7 +826,9 @@ static void sd_write_proc(void*)
 {
     //frames are separated by MJPEG_PATTERN_SIZE zeros
     //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
-    //MJPEG_PATTERN_SIZE is 128 bytes, so we can check for zero every 64th byte instead of every byte to find pattern
+    //MJPEG_PATTERN_SIZE is 512 bytes, so we can check for zero every 256th byte instead of every byte to find pattern
+
+    uint16_t lastFrameCounter =0;
 
     while (true)
     {
@@ -986,6 +928,18 @@ static void sd_write_proc(void*)
                 //next frame start
                 if ( findFrameStart( s_sd_slow_buffer, offset, dataAvail ))
                 {
+#ifdef TEST_AVI_FRAMES                    
+                    uint16_t fc = s_sd_slow_buffer->peek(offset + 15);
+                    fc <<= 8;
+                    fc |=  s_sd_slow_buffer->peek(offset + 14);
+
+                    static uint16_t prevFrameCounter;
+                    if (prevFrameCounter+1 !=fc )
+                    {
+                        LOG("Frame: %d+1 != %d\n", prevFrameCounter, fc);
+                    } 
+                    prevFrameCounter = fc;
+#endif
                     lookForFrameStart = true;
                     //offset points to FF D8 FF
                     //exclude zero patern
@@ -2019,21 +1973,24 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
     if (data == nullptr) //start frame
     {
-        //limit fps
-        int64_t n = esp_timer_get_time();
-        int64_t send_dt = n - s_video_last_sent_tp;
-        if (send_dt >= s_video_target_frame_dt)
+        if (  !s_video_frame_started )
         {
-            s_video_last_sent_tp = n;
+            //limit fps
+            int64_t n = esp_timer_get_time();
+            int64_t send_dt = n - s_video_last_sent_tp;
+            if (send_dt >= s_video_target_frame_dt)
+            {
+                s_video_last_sent_tp = n;
 
-            s_video_frame_started = true;
+                s_video_frame_started = true;
 
-            s_video_frame_data_size = 0;
-            s_video_part_index = 0;
+                s_video_frame_data_size = 0;
+                s_video_part_index = 0;
 
-            s_video_full_frame_size = 0;
-            
-            s_lastByte_ff = false;
+                s_video_full_frame_size = 0;
+                
+                s_lastByte_ff = false;
+            }
         }
     }
     else 
@@ -2136,16 +2093,6 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             s_lastByte_ff = count > 0 ? src[count-1] == 0xFF : false;
             while (count > 0)
             {
-                if (s_video_frame_data_size >= MAX_VIDEO_DATA_PAYLOAD_SIZE) //flush prev data?
-                {
-                    //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
-                    send_air2ground_video_packet(false);
-                    s_video_frame_data_size = 0;
-                    s_video_part_index++;
-                }
-
-                //LOG("Add: %d %d %d %d\n", s_video_frame_index, s_video_part_index, count, s_video_frame_data_size);
-
                 //fill the buffer
                 uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
                 uint8_t* start_ptr = packet_data + sizeof(Air2Ground_Video_Packet) + s_video_frame_data_size;
@@ -2224,9 +2171,27 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 src += c;
 #endif
 
+                if (s_video_frame_data_size == MAX_VIDEO_DATA_PAYLOAD_SIZE) 
+                {
+                    //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
+                    send_air2ground_video_packet(false);
+                    s_video_frame_data_size = 0;
+                    s_video_part_index++;
+                }
+
+                //LOG("Add: %d %d %d %d\n", s_video_frame_index, s_video_part_index, count, s_video_frame_data_size);
+
 #ifdef DVR_SUPPORT
                 if (s_air_record)
                 {
+#ifdef TEST_AVI_FRAMES
+                    if ( s_video_full_frame_size == c )
+                    {
+                        s_framesCounter++;
+                        start_ptr[14] = s_framesCounter & 0xff;
+                        start_ptr[15] = s_framesCounter >> 8;
+                    }
+#endif            
                     add_to_sd_fast_buffer(start_ptr, c, false);
                 }
 #endif
@@ -2235,16 +2200,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
         //////////////////
 
-        if (last)
+        if (last)  //note: can occur multiple times during frame
         {
             //end of frame - send leftover
             if ( s_video_frame_started )
             {
-                if ( s_video_full_frame_size  < 2000)
-                {
-                    //probably broken frame - too small
-                    cam_ovf_count++;
-                }
+                s_video_frame_started = false;
 
                 //LOG("Finish: %d %d\n", s_video_frame_index, s_video_frame_data_size);
                 if (s_video_frame_data_size > 0) //left over
@@ -2252,48 +2213,53 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     send_air2ground_video_packet(true);
                 }
 
-                s_video_frame_started = false;
-                s_video_frame_index++;
-            }
-
-            //end of frame - stats, camera settings, osd, mavlink
-            if ( s_video_full_frame_size > 0)
-            {
-                if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min > s_video_full_frame_size) )
+                if ( s_video_full_frame_size  < 2000)
                 {
-                    s_stats.camera_frame_size_min = s_video_full_frame_size;
-                } 
+                    //probably broken frame - too small
+                    cam_ovf_count++;
+                }
 
-                if ( s_stats.camera_frame_size_max < s_video_full_frame_size )
+                //end of frame - stats, camera settings, osd, mavlink
+                if ( s_video_full_frame_size > 0)
                 {
-                    s_stats.camera_frame_size_max = s_video_full_frame_size;
-                } 
+                    if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min > s_video_full_frame_size) )
+                    {
+                        s_stats.camera_frame_size_min = s_video_full_frame_size;
+                    } 
 
-                recalculateFrameSizeQualityK(s_video_full_frame_size);
-                applyAdaptiveQuality();
-                s_stats.fec_spin_count += s_fec_spin_count;
-                s_fec_spin_count = 0;
+                    if ( s_stats.camera_frame_size_max < s_video_full_frame_size )
+                    {
+                        s_stats.camera_frame_size_max = s_video_full_frame_size;
+                    } 
+
+                    recalculateFrameSizeQualityK(s_video_full_frame_size);
+                    applyAdaptiveQuality();
 #ifdef PROFILE_CAMERA_DATA    
-                s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
+                    s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
 #endif
-                handle_ground2air_config_packetEx2(false);
+                    s_stats.fec_spin_count += s_fec_spin_count;
+                    s_fec_spin_count = 0;
+#ifdef PROFILE_CAMERA_DATA    
+                    s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
+#endif
+                    handle_ground2air_config_packetEx2(false);
 
-                if ( (g_osd.isChanged() || (s_osdUpdateCounter == 15)) && !g_osd.isLocked() )
-                {
-                    send_air2ground_osd_packet();
-                    s_osdUpdateCounter = 0;
-                }
-                else
-                {
-                    s_osdUpdateCounter++;
-                }
+                    if ( (g_osd.isChanged() || (s_osdUpdateCounter == 15)) && !g_osd.isLocked() )
+                    {
+                        send_air2ground_osd_packet();
+                        s_osdUpdateCounter = 0;
+                    }
+                    else
+                    {
+                        s_osdUpdateCounter++;
+                    }
 
 #ifdef UART_MAVLINK
-                send_air2ground_data_packet();
+                    send_air2ground_data_packet();
 #endif
-#ifdef PROFILE_CAMERA_DATA    
-                s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
-#endif
+                }
+
+                s_video_frame_index++;
             }
         }
 
