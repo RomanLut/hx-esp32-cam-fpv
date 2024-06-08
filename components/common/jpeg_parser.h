@@ -14,3 +14,5 @@ typedef struct {
 } JpegInfo;
 
 int find_jpeg_in_buffer(Circular_Buffer& buffer, size_t buffer_size, JpegInfo *jpeg_info);
+
+bool getJPEGDimensions(uint8_t* buffer, int& width, int& height, int maxSearchLength);
