@@ -165,7 +165,6 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 ## esp32s3sense + ov5640
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
-![alt text](doc/images/shell_14_main.jpg "shell_14_main") ![alt text](doc/images/shell_14_tube.jpg "shell_14_tube")
 
 **ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
@@ -376,7 +375,7 @@ Various PCB antenas for 2.4Ghz can be considered (not tested):
 
 ![alt text](doc/images/pcb_antena.jpg "pcb antena")
 
-The best choice for GS is pair of 5dBi dipoles. 
+The best choice for GS is pair of 5dBi dipoles or 5dbi dipole + BetaFPV Moxon Antenna.
 
 It is important that all antenas should be mounded **VERTICALLY**.
 
@@ -392,7 +391,9 @@ Do not power wifi card or **ESP32** without antena attached; it can damage outpu
 
 ## Range 
 
-1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+**2dbi dipole on plane, 5dbi dipoles on GS:** 1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+
+**2dbi dipole on plane, 5dbi dipole + BetaFPV Moxon Antenna on GS:** 2km at 24Mbps, 900m at 36Mbps.
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
