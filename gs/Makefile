@@ -13,6 +13,9 @@ SRCS := src/main.cpp \
 	src/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \
+	../components/common/avi.cpp \
+	../components/common/packets.cpp \
+	../components/common/jpeg_parser.cpp \
 	src/fmt/format.cc \
 	src/fmt/os.cc \
 	src/socket.cpp \

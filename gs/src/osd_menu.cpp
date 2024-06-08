@@ -264,7 +264,14 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
             s_SDDetected && !s_SDError? "Ok" : "?", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
             s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f
         );
+        this->drawStatus( buf );
+    }
 
+    {
+        char buf[256];
+        sprintf( buf, "GS SD: %s %.2fGB/%.2fGB##status1", 
+        s_GSSDFreeSpaceBytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
+        s_GSSDFreeSpaceBytes/(1024.0f*1024*1024), s_GSSDTotalSpaceBytes/(1024.0f*1024*1024)); 
         this->drawStatus( buf );
     }
 
@@ -343,7 +350,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
     else
     {
-        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 6) )
+        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
         {
             config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
             saveGround2AirConfig(config);
@@ -352,7 +359,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 
 /*
     {
-        if ( this->drawMenuItem( config.camera.hmirror ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 5) )
+        if ( this->drawMenuItem( config.camera.hmirror ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 6.7) )
         {
             config.camera.hmirror = !config.camera.hmirror;
         }

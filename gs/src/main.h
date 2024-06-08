@@ -38,6 +38,10 @@
 
 #define CHECK_GL_ERRORS
 
+//#ifdef WRITE_RAW_MJPEG_STREAM
+
+#define GS_SD_MIN_FREE_SPACE_BYTES (20*1024*1024)
+
 #if defined(CHECK_GL_ERRORS)
 #define GLCHK(X) \
 do { \
@@ -129,6 +133,8 @@ extern bool s_SDSlow;
 extern bool s_SDError;
 extern bool bRestartRequired;
 extern bool bRestart;
+extern uint64_t s_GSSDTotalSpaceBytes;
+extern uint64_t s_GSSDFreeSpaceBytes;
 extern Clock::time_point restart_tp;
 extern Clock::time_point s_last_packet_tp;
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);

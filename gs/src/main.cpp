@@ -1,5 +1,7 @@
 #include "main.h"
 
+#include <sys/statvfs.h>
+
 #include "Comms.h"
 #include "Clock.h"
 #include "IHAL.h"
@@ -23,6 +25,8 @@
 #include <random>
 
 #include "socket.h"
+#include "avi.h"
+#include "jpeg_parser.h"
 
 #ifdef TEST_LATENCY
 extern "C"
@@ -279,6 +283,9 @@ bool s_SDError = false;
 bool s_isOV5640 = false;
 bool s_isDual = false;
 
+uint64_t s_GSSDTotalSpaceBytes = 0;
+uint64_t s_GSSDFreeSpaceBytes = 0;
+
 bool s_debugWindowVisisble = false;
 
 bool s_noPing = false;
@@ -299,6 +306,132 @@ GSStats s_gs_stats;
 GSStats s_last_gs_stats;
 
 static Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
+
+uint8_t s_avi_fps;
+uint16_t s_avi_frameWidth;
+uint16_t s_avi_frameHeight;
+uint32_t s_avi_frameCnt;
+bool s_avi_ov2640HighFPS;
+bool s_avi_ov5640HighFPS;
+
+// Function to get filesystem statistics
+void getFilesystemStats(const char *path, unsigned long long *total, unsigned long long *free) {
+    struct statvfs stat;
+
+    // Perform statvfs on the given path
+    if (statvfs(path, &stat) != 0) {
+        perror("statvfs");
+        exit(EXIT_FAILURE);
+    }
+
+    // Calculate total and free space
+    *total = (unsigned long long) stat.f_frsize * stat.f_blocks;
+    *free = (unsigned long long) stat.f_frsize * stat.f_bfree;
+}
+//===================================================================================
+//===================================================================================
+void updateGSSdFreeSpace() 
+{
+    struct statvfs stat;
+    statvfs(".", &stat);
+    s_GSSDTotalSpaceBytes = (unsigned long long) stat.f_frsize * stat.f_blocks;
+    s_GSSDFreeSpaceBytes = (unsigned long long) stat.f_frsize * stat.f_bfree;
+}
+
+//===================================================================================
+//===================================================================================
+void toggleGSRecording( int width, int height)
+{
+    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+
+    s_groundstation_config.record = !s_groundstation_config.record;
+
+    if(s_groundstation_config.record)
+    {
+        if ( s_GSSDFreeSpaceBytes < GS_SD_MIN_FREE_SPACE_BYTES) 
+        {
+            s_groundstation_config.record = false;
+            return;
+        }
+
+        auto time=std::time({});
+#ifdef WRITE_RAW_MJPEG_STREAM 
+        char filename[]="yyyy-mm-dd-hh-mm-ss.mjpeg";
+        std::strftime(filename, sizeof(filename), "%Y-%m-%d-%H-%M-%S.mjpeg", std::localtime(&time));
+        s_groundstation_config.record_file=fopen(filename,"wb+");
+#else        
+        char filename[]="yyyy-mm-dd-hh-mm-ss.avi";
+        std::strftime(filename, sizeof(filename), "%Y-%m-%d-%H-%M-%S.avi", std::localtime(&time));
+
+        prepAviIndex();
+
+        s_avi_frameCnt = 0;
+
+        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+
+        if ( width != 0 )
+        {
+            for (size_t i = 0; i < (int)Resolution::COUNT; i++) 
+            {
+                if (vmodes[i].width == width && vmodes[i].height == height) 
+                {
+                    v = &vmodes[i];
+                    break;
+                }
+            }
+        }
+
+        if (s_isOV5640)
+        {
+            s_avi_fps = s_ground2air_config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+        }
+        else
+        {
+            s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+        }
+
+        s_avi_frameWidth = v->width;
+        s_avi_frameHeight = v->height;
+        s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
+        s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
+
+        LOGI("{}x{} {}fps\n", s_avi_frameWidth, s_avi_frameHeight, s_avi_fps);
+
+        s_groundstation_config.record_file = fopen(filename,"wb+");
+        fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file); 
+
+#endif        
+        LOGI("start record:{}",std::string(filename));
+    }
+    else
+    {
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+        finalizeAviIndex(s_avi_frameCnt);
+
+        size_t SD_WRITE_BLOCK_SIZE = 8192;
+        uint8_t sd_write_block[SD_WRITE_BLOCK_SIZE];
+        while(true)
+        {
+            size_t sz = writeAviIndex(sd_write_block, SD_WRITE_BLOCK_SIZE);
+            if ( sz == 0) break;
+            fwrite(sd_write_block, sz, 1, s_groundstation_config.record_file);
+        }
+
+        // save avi header at start of file
+        buildAviHdr( s_avi_fps, s_avi_frameWidth, s_avi_frameHeight, s_avi_frameCnt );
+
+        fseek(s_groundstation_config.record_file, 0, SEEK_SET); // start of file
+        fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file) ; 
+#endif
+
+        fflush(s_groundstation_config.record_file);
+        fclose(s_groundstation_config.record_file);
+        s_groundstation_config.record_file=nullptr;
+    }
+
+    updateGSSdFreeSpace();
+}
 
 //===================================================================================
 //===================================================================================
@@ -576,9 +709,59 @@ static void comms_thread_proc()
                         s_decoder.decode_data(video_frame.data(), video_frame.size());
                         if(s_groundstation_config.record)
                         {
+#ifdef WRITE_RAW_MJPEG_STREAM                            
                             std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
                             fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
+#else
+
+                            int width, height;
+                            if ( getJPEGDimensions(video_frame.data(), width, height, 2048) )
+                            {
+                                //LOGI("Received frame {}, {}", width, height);
+
+                                if ( 
+                                    (width != s_avi_frameWidth) || 
+                                    (height != s_avi_frameHeight) ||
+                                    ( s_avi_ov2640HighFPS != s_ground2air_config_packet.camera.ov2640HighFPS ) ||
+                                    ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
+                                )
+                                {
+                                    toggleGSRecording(0,0); //stop
+                                    toggleGSRecording(width,height); //start
+                                }
+
+                                {
+                                    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+                                    uint16_t jpegSize = video_frame.size();
+                                    uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
+                                    size_t jpegSize1 = jpegSize + filler;
+                                    uint8_t buf[8];
+                                    memcpy(buf, dcBuf, 4); 
+                                    memcpy(&buf[4], &jpegSize1, 4);
+
+                                    fwrite(buf,8,1,s_groundstation_config.record_file);
+                                    fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
+
+                                    memset(buf, 0, 4); 
+                                    fwrite(buf,filler,1,s_groundstation_config.record_file);
+                                    
+                                    buildAviIdx(jpegSize1); // save avi index for frame
+                                    s_avi_frameCnt++;
+                                }
+
+                                if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
+                                {
+                                    toggleGSRecording(0,0); //stop
+                                    toggleGSRecording(width,height); //start
+                                }
+                            }
+                            else
+                            {
+                                LOGI("Received frame - unknown size!");
+                            }
+#endif                            
                         }
+
                         if(s_groundstation_config.socket_fd>0)
                         {
                             send_data_to_udp(s_groundstation_config.socket_fd,video_frame.data(),video_frame.size());
@@ -782,29 +965,6 @@ void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, f
     draw_list->AddImageQuad(tex_id, pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
 }
 
-//===================================================================================
-//===================================================================================
-void toggleGSRecording()
-{
-    s_groundstation_config.record = !s_groundstation_config.record;
-
-    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-    if(s_groundstation_config.record)
-    {
-        auto time=std::time({});
-        char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
-        std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
-        s_groundstation_config.record_file=fopen(filename,"wb+");
-
-        LOGI("start record:{}",std::string(filename));
-    }
-    else
-    {
-        fflush(s_groundstation_config.record_file);
-        fclose(s_groundstation_config.record_file);
-        s_groundstation_config.record_file=nullptr;
-    }
-}
 
 //===================================================================================
 //===================================================================================
@@ -812,9 +972,12 @@ void exitApp()
 {
     if (s_groundstation_config.record)
     {
+        toggleGSRecording(0,0);
+        /*
         std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
         fflush(s_groundstation_config.record_file);
         fclose(s_groundstation_config.record_file); 
+        */
     }
     abort();
 }
@@ -965,6 +1128,19 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("!NO PING!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( s_SDSlow )
+            {
+                //!SD SLOW!
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!SD SLOW!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1658,7 +1834,7 @@ int run(char* argv[])
                 ImGui::SameLine();
                 if (ImGui::Button("GS Record"))
                 {
-                    toggleGSRecording();
+                    toggleGSRecording(0,0);
                 }
 
                 ImGui::SameLine();
@@ -1679,6 +1855,9 @@ int run(char* argv[])
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
                     s_isOV5640 ? "OV5640" : "OV2640");
+                ImGui::Text("GS SD: %s %.2fGB/%.2fGB", 
+                        s_GSSDFreeSpaceBytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
+                        s_GSSDFreeSpaceBytes/(1024.0f*1024*1024), s_GSSDTotalSpaceBytes/(1024.0f*1024*1024));
             }
             ImGui::End();
         } //debug window
@@ -1744,7 +1923,7 @@ int run(char* argv[])
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
         {
-            toggleGSRecording();
+            toggleGSRecording(0,0);
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
@@ -1879,6 +2058,8 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
     ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
     ini["gs"]["fec_n"] = std::to_string((int)config.fec_codec_n);
+    ini["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
+    ini["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     s_iniFile.write(ini);
 }
 
@@ -1982,6 +2163,16 @@ int main(int argc, const char* argv[])
         if (temp != "") s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
     }
 
+    {
+        std::string& temp = ini["gs"]["ov2640_high_fps"];
+        if (temp != "") s_ground2air_config_packet.camera.ov2640HighFPS = atoi(temp.c_str()) != 0;
+    }
+
+    {
+        std::string& temp = ini["gs"]["ov5640_high_fps"];
+        if (temp != "") s_ground2air_config_packet.camera.ov5640HighFPS = atoi(temp.c_str()) != 0;
+    }
+
     for(int i=1;i<argc;++i){
         auto temp = std::string(argv[i]);
         auto next = i!=argc-1? std::string(argv[i+1]):std::string("");
@@ -2060,7 +2251,14 @@ int main(int argc, const char* argv[])
     {
         return -1;
     }
-#endif    
+#endif
+
+#ifdef WRITE_RAW_MJPEG_STREAM
+#else
+    prepAviBuffers();
+#endif
+
+     updateGSSdFreeSpace();
 
      s_hal->set_vsync(s_groundstation_config.vsync, false);
 

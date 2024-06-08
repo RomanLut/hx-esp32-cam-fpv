@@ -3,8 +3,10 @@
 #include <cstring>
 #include <math.h>
 
+#ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#endif
 
 /* AVI file format:
 header:
@@ -72,7 +74,7 @@ struct frameSizeStruct
 
 static size_t idxPtr;
 static size_t idxOffset;
-static size_t moviSize;
+size_t moviSize;
 static size_t indexLen;
 
 
@@ -80,11 +82,15 @@ static size_t indexLen;
 //=============================================================================================
 void prepAviBuffers() 
 {
+#ifdef ESP_PLATFORM
   idxBuf = (uint8_t*)heap_caps_malloc((DVR_MAX_FRAMES+1)*IDX_ENTRY, MALLOC_CAP_SPIRAM);
   if ( !idxBuf )
   {
     ESP_LOGE("AVI","Unable to allocate AVI buffer");
   }
+#else  
+  idxBuf = (uint8_t*)malloc((DVR_MAX_FRAMES+1)*IDX_ENTRY);
+#endif  
 }
 
 //=============================================================================================
