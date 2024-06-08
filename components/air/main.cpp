@@ -1116,7 +1116,6 @@ static void sd_enqueue_proc(void*)
 #ifdef PROFILE_CAMERA_DATA    
             s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100));
 #endif
-
             xSemaphoreGive(s_sd_slow_buffer_mux);
 
             xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
