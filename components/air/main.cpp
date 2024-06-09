@@ -1580,12 +1580,17 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 #ifdef UART_MAVLINK
 //=============================================================================================
 //=============================================================================================
+//this currently called every frame: 50...11 fps
+//30 fps: 30 * 128 = 3840 bytes/sec or 38400 baud
+//11 fps: 11 * 128 - 1408 = 14080 baud
+//todo: increase max mavlink payload size to 1K. Packets are 1.4K anyway. With 128 bytes we can not push 115200 mavlink stream currently.
+//also UART RX ring buffer of 512 can not handle 115200 at 11 fps
 IRAM_ATTR void send_air2ground_data_packet()
 {
     int avail = MAX_TELEMETRY_PAYLOAD_SIZE - s_mavlinkOutBufferCount;
     if ( avail > 0 )
     {
-        size_t rs;
+        size_t rs = 0;
         ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MAVLINK, &rs) );
         if ( rs > avail ) rs = avail;
 
@@ -2529,7 +2534,7 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, UART1_RX_BUFFER_SIZE, UART1_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, TXD1_PIN, RXD1_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
 #endif
@@ -2548,8 +2553,7 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
-    //ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));  //crashes esp32s3 ???
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, 256, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, UART2_RX_BUFFER_SIZE, UART2_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
 #endif
@@ -2604,7 +2608,7 @@ extern "C" void app_main()
             s_stats = Stats();
         }
 
-        vTaskDelay(10);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         //esp_task_wdt_reset();
 
         update_status_led();
@@ -2650,7 +2654,10 @@ extern "C" void app_main()
 */
 
 #ifdef UART_MSP_OSD
-    g_msp.loop();
+        //msp.loop() should be called every ~10ms
+        //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
+        //with UART RX buffer of 512 we are save with periods 10...40ms
+        g_msp.loop();
 #endif
 
         if ((s_restart_time!=0) && ( esp_timer_get_time()>s_restart_time))

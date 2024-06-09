@@ -46,7 +46,7 @@ void MSP::dispatchMessage(uint8_t expected_checksum)
   }
   else
   {
-    //LOG("code: %d - crc failed\n", this->code);
+    LOG("code: %d - crc failed\n", this->code);
     //this.packet_error++;
     //$('span.packet-error').html(this.packet_error);
   }
@@ -58,18 +58,18 @@ void MSP::dispatchMessage(uint8_t expected_checksum)
 //======================================================
 void MSP::decode()
 {
-  static unsigned char data[1024];
-  size_t rs;
+  static unsigned char data[UART_RX_BUFFER_SIZE_MSP_OSD];
+  size_t rs = 0;
   ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MSP_OSD, &rs) );
   if ( rs == 0 ) return;
-  if ( rs > 1024) rs = 1024;
+  if ( rs > UART_RX_BUFFER_SIZE_MSP_OSD) rs = UART_RX_BUFFER_SIZE_MSP_OSD;
   //Note: if uart_read_bytes() can not read specified number of bytes, it returns error.
   int len = uart_read_bytes(UART_MSP_OSD, data,rs, 0);
   //ESP_ERROR_CHECK(len);  sometimes returns error
   if (len <= 0) return;
-  
+
   for (int i = 0; i < len; i++)
-  {
+    {
     switch (this->decoderState)
     {
     case DS_IDLE: // sync char 1
