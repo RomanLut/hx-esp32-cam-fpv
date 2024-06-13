@@ -19,6 +19,10 @@ while [ $elapsed -lt $timeout ]; do
 
 # Check if wlan2 is available
     if ip link show wlan2 &> /dev/null; then
+      echo "wlan2 found..."
+      sudo ip link set wlan2 down
+      sudo iw dev wlan2 set type monitor
+      sudo ip link set wlan2 up
       sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs -fullscreen 1 -sm 1 -rx wlan1 wlan2 -tx wlan1
     else
       sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs -fullscreen 1 -sm 1 -rx wlan1 -tx wlan1
