@@ -170,9 +170,9 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
-800x600 30fps recorded al low light with ov5640 camera
+800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
 
-https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9eb7385b-b47f-4ec0-ae13-ca0b842a68b2
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
 
 
