@@ -26,6 +26,8 @@ extern "C"
 //======================================================
 FontWalksnail::FontWalksnail(const char* fileName)
 {
+  this->loaded = false;
+
   unsigned char* image = 0;
   unsigned width, height;
 
@@ -45,13 +47,15 @@ FontWalksnail::FontWalksnail(const char* fileName)
   this->charWidth = width;
   this->charHeight = height / 512;
 
-  if ((this->charWidth == OSD_CHAR_WIDTH_24) && (this->charHeight != OSD_CHAR_HEIGHT_24))
+  int charsCount = 512;
+
+  if ( this->charHeight != OSD_CHAR_HEIGHT_24 )
   {
-    LOGE("Unexpected image size: {}\n", fileName);
-    return;
+    this->charHeight = height / 256;
+    charsCount = 256;
   }
 
-  if ((this->charWidth == OSD_CHAR_WIDTH_36) && (this->charHeight != OSD_CHAR_HEIGHT_36))
+  if ((this->charWidth == OSD_CHAR_WIDTH_24) && (this->charHeight != OSD_CHAR_HEIGHT_24))
   {
     LOGE("Unexpected image size: {}\n", fileName);
     return;
@@ -63,7 +67,7 @@ FontWalksnail::FontWalksnail(const char* fileName)
 
   memset((void*)buffer, 0, this->fontTextureWidth * this->fontTextureHeight * 4);
 
-  for (int charIndex = 0; charIndex < 512; charIndex++)
+  for (int charIndex = 0; charIndex < charsCount; charIndex++)
   {
     int ix = 0;
     int iy = charIndex * this->charHeight;
@@ -87,6 +91,7 @@ FontWalksnail::FontWalksnail(const char* fileName)
         pt += 4;
       }
     }
+    this->loaded = true;
   }
 
 /*  
@@ -117,6 +122,8 @@ FontWalksnail::FontWalksnail(const char* fileName)
 //======================================================
 FontWalksnail::~FontWalksnail()
 {
+  GLCHK(glBindTexture(GL_TEXTURE_2D, 0)); 
+  GLCHK(glDeleteTextures(1, &this->fontTextureId));
 }
 
 //======================================================

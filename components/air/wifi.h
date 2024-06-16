@@ -34,10 +34,12 @@ extern TaskHandle_t s_wifi_rx_task;
 
 constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 
+//use as much memory as available
+//leave ~5k for SD library to initialize correctly
 #ifdef BOARD_XIAOS3SENSE
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 70000;  //have extra 6+7kb, but crashes if buffer is changed to 60k?
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;
 #else
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;  //use as much free space as possible
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 60000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));

@@ -5,7 +5,7 @@
 		},
 		{
 			"name": "components",
-			"path": "../components/"
+			"path": "../components"
 		}
 
 	],
@@ -92,7 +92,8 @@
 			"numbers": "cpp",
 			"semaphore": "cpp",
 			"stop_token": "cpp",
-			"cinttypes": "cpp"
+			"cinttypes": "cpp",
+			"codecvt": "cpp"
 		}
 	}
 }

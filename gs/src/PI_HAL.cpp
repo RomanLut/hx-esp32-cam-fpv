@@ -750,9 +750,14 @@ void PI_HAL::set_fullscreen( bool b )
     m_impl->fullscreen = b;
 }
 
-void PI_HAL::set_vsync( bool b )
+void PI_HAL::set_vsync( bool b, bool apply )
 {
     m_impl->vsync = b;
+    if ( apply )
+    {
+        SDL_GL_SetSwapInterval(m_impl->vsync ? 1 : 0 ); // Enable vsync
+    }
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

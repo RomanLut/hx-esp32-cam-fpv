@@ -26,7 +26,8 @@
 			"functional": "cpp",
 			"*.tcc": "cpp",
 			"stdint.h": "c",
-			"random": "cpp"
+			"random": "cpp",
+			"ostream": "cpp"
 		}
 	}
 }

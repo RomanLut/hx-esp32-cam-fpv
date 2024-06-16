@@ -4,6 +4,7 @@
 
 #define DEFAULT_WIFI_CHANNEL 7
 
+#define FW_VERSION "0.1"
 #define PACKET_VERSION 1
 
 #pragma pack(push, 1) // exact fit - no padding
@@ -83,10 +84,22 @@ enum class Resolution : uint8_t
     SVGA16,  //800x456
     XGA,    //1024x768
     XGA16,    //1024x576
-    SXGA,   //1280x1024
+    SXGA,   //1280x960
     HD,   //1280x720
     UXGA,   //1600x1200
+    COUNT
 };
+
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint8_t FPS2640;
+    uint8_t FPS5640;
+    uint8_t highFPS2640;
+    uint8_t highFPS5640;
+} TVMode;
+
+extern TVMode vmodes[];
 
 #define FEC_K 6
 #define FEC_N 12
@@ -135,6 +148,9 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
         bool hmirror = false;
         bool vflip = false;
         bool dcw = true;
+        bool ov2640HighFPS = false;
+        bool ov5640HighFPS = false;
+        bool ov5640NightMode = false;
     };
     Camera camera;
 };

@@ -535,7 +535,7 @@ uint8_t getMinWlanOutgoingQueueUsageFrame()
 
     v = s_min_wlan_outgoing_queue_size_frame;
 
-    if ( s_min_wlan_outgoing_queue_size_seen < v )  //-1 is handled Ok
+    if ( ( v !=-1 ) && (s_min_wlan_outgoing_queue_size_seen < v) )
     {
         s_min_wlan_outgoing_queue_size_seen = v;
     }

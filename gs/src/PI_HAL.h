@@ -31,7 +31,7 @@ public:
     void set_width( int w );
     void set_height( int h );
     void set_fullscreen( bool b );
-    void set_vsync( bool b );
+    void set_vsync( bool b, bool apply );
 
 private:
     struct Impl;

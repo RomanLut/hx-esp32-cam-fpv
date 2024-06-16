@@ -3,6 +3,11 @@
 #include <cassert>
 #include <cstring>
 
+#define UART_RX_BUFFER_SIZE_MSP_OSD      512
+#define UART_TX_BUFFER_SIZE_MSP_OSD      256
+
+#define UART_RX_BUFFER_SIZE_MAVLINK      512
+#define UART_TX_BUFFER_SIZE_MAVLINK      256
 
 //===============================================================
 //For esp32cam
@@ -17,6 +22,8 @@
 //   STATUS LED2: 4 (existing FLASH LED)
 
 #define UART_MSP_OSD UART_NUM_2
+#define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
 #define CAMERA_MODEL_AI_THINKER
 #define DVR_SUPPORT
@@ -47,7 +54,12 @@
 //   STATUS LED: 4 (existing FLASH LED)
 
 #define UART_MAVLINK UART_NUM_1
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
+
 #define UART_MSP_OSD UART_NUM_2
+#define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
 #define CAMERA_MODEL_AI_THINKER
 #define DVR_SUPPORT
@@ -88,11 +100,15 @@
 //  REC BUTTON: GPIO0  (existing flash button)
 //  STATUS LED: GPIO1
 
-//define to use mavlink telemetry on UART2 
-#define UART_MAVLINK UART_NUM_2
-
 //define to use DisplayPort OSD on UART1
 #define UART_MSP_OSD UART_NUM_1
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+
+//define to use mavlink telemetry on UART2 
+#define UART_MAVLINK UART_NUM_2
+#define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
 #define CAMERA_MODEL_XIAO_ESP32S3
 #define DVR_SUPPORT
@@ -113,6 +129,13 @@
 //----------------------
 
 #endif
+//===============================================================
+
+//write raw MJPEG stream instead of avi
+//#define WRITE_RAW_MJPEG_STREAM
+
+//#define TEST_AVI_FRAMES
+
 //===============================================================
 
 

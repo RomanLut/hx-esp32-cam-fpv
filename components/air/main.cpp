@@ -47,11 +47,16 @@
 
 #include "osd.h"
 #include "msp.h"
+#include "avi.h"
 
 #include "vcd_profiler.h"
 
+#include "jpeg_parser.h"
+#include "util.h"
+
 static int s_stats_last_tp = -10000;
 
+#define MJPEG_PATTERN_SIZE 512 
 
 /////////////////////////////////////////////////////////////////////////
 
@@ -61,6 +66,7 @@ static uint8_t s_video_part_index = 0;
 static bool s_video_frame_started = false;
 static size_t s_video_full_frame_size = 0;
 static uint8_t s_osdUpdateCounter = 0;
+static bool s_lastByte_ff = false;
 
 static int s_actual_capture_fps = 0;
 
@@ -72,8 +78,6 @@ static int s_max_frame_size = 0;
 static int s_sharpness = 20;
 
 static int64_t s_video_last_sent_tp = esp_timer_get_time();
-static int64_t s_video_last_acquired_tp = esp_timer_get_time();
-static bool s_video_skip_frame = false;
 static int64_t s_video_target_frame_dt = 0;
 static uint8_t s_max_wlan_outgoing_queue_usage = 0;
 static uint8_t s_min_wlan_outgoing_queue_usage_seen = 0;
@@ -89,6 +93,9 @@ static bool SDError = false;
 static uint16_t SDTotalSpaceGB16 = 0;
 static uint16_t SDFreeSpaceGB16 = 0;
 static uint8_t cam_ovf_count = 0;
+
+int32_t s_dbg;
+uint16_t s_framesCounter = 0;
 
 #ifdef UART_MAVLINK
 
@@ -111,7 +118,7 @@ static int s_uart_verbose = 1;
 
 static bool s_air_record = false;
 
-static bool s_shouldRestartRecording = false;
+static uint64_t s_shouldRestartRecording;
 
 //=============================================================================================
 //=============================================================================================
@@ -327,13 +334,6 @@ void init_failure()
 SemaphoreHandle_t s_sd_fast_buffer_mux = xSemaphoreCreateBinary();
 SemaphoreHandle_t s_sd_slow_buffer_mux = xSemaphoreCreateBinary();
 
-auto _init_result = []() -> bool
-{
-  xSemaphoreGive(s_sd_fast_buffer_mux);
-  xSemaphoreGive(s_sd_slow_buffer_mux);
-  return true;
-}();
-
 ////////////////////////////////////////////////////////////////////////////////////
 
 static TaskHandle_t s_sd_write_task = nullptr;
@@ -359,20 +359,23 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
 // this RAM block and write from it directly. This results in several MB/s write speed performance which is good enough.
-//ESP32S3: 2048  - 1.2 MB/s
-//ESP32S3: 6*512 - 1.5 MB/s
-//ESP32S3: 4096  - 1.8 MB/s *
-//ESP32S3: 10*512- 1.9 MB/s
-//ESP32S3: 8192  - 2.5 MB/s
-//ESP32S3: 20*512- 2.5 MB/s
+//ESP32S3: 2048  - ~1.2 MB/s
+//ESP32S3: 6*512 - ~1.5 MB/s
+//ESP32S3: 4096  - ~1.4...1.8 MB/s 
+//ESP32S3: 10*512- ~1.9 MB/s
+//ESP32S3: 8192  - 1.9...2.5 MB/s
+//ESP32S3: 20*512- ~2.5 MB/s
 //ESP32S3: 4096 SPI RAM - 0.38 MB/s
 
 //ESP32 2096: 0.9 MB/s
 //ESP32 6*512:1 MB/s
-//ESP32 4096: 1.6 MB/s *
+//ESP32 4096: 1.6 MB/s 
 //ESP32 12*512:1.5 MB/s  ???
 //ESP32 8192: 1.9 MB/s
-static constexpr size_t SD_WRITE_BLOCK_SIZE = 4096;
+static constexpr size_t SD_WRITE_BLOCK_SIZE = 8192;
+
+//for fast SD writes, buffer has to be in DMA enabled memory
+static uint8_t* sd_write_block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
 
 /*
@@ -548,7 +551,11 @@ static bool init_sd()
     char buffer[64];
     for (uint32_t i = 0; i < 100000; i++)
     {
+#ifdef WRITE_RAW_MJPEG_STREAM 
         sprintf(buffer, "/sdcard/v%03lu_000.mpg", (long unsigned int)i);
+#else        
+        sprintf(buffer, "/sdcard/v%03lu_000.avi", (long unsigned int)i);
+#endif        
         FILE* f = fopen(buffer, "rb");
         if (f)
         {
@@ -565,7 +572,12 @@ static bool init_sd()
 static int open_sd_file()
 {
     char buffer[64];
+#ifdef WRITE_RAW_MJPEG_STREAM
     sprintf(buffer, "/sdcard/v%03lu_%03lu.mpg", (long unsigned int)s_sd_next_session_id, (long unsigned int)s_sd_next_segment_id);
+#else
+    sprintf(buffer, "/sdcard/v%03lu_%03lu.avi", (long unsigned int)s_sd_next_session_id, (long unsigned int)s_sd_next_segment_id);
+#endif
+
     int fd = open(buffer, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
     if (fd == -1)
@@ -582,21 +594,21 @@ static int open_sd_file()
 }
 
 
+#ifdef WRITE_RAW_MJPEG_STREAM
 //=============================================================================================
 //=============================================================================================
-//this will write data from the slow queue to file
+//this will write data from the slow queue to raw MJPEG file
 static void sd_write_proc(void*)
 {
-    //for fast SD writes, buffer has to be in DMA enabled memory
-    uint8_t* block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
-
     while (true)
     {
-        if (!s_air_record)
+        if (!s_air_record || (s_shouldRestartRecording > esp_timer_get_time()))
         {
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
+        
+        s_shouldRestartRecording = 0;
 
         int fd = open_sd_file();
         if ( fd == -1)
@@ -618,6 +630,9 @@ static void sd_write_proc(void*)
 
         bool error = false; 
         bool done = false;
+        bool syncFrameStart = true;
+        int offset = 0;
+
         while (!done)
         {
             ulTaskNotifyTake(pdTRUE, 1000 / portTICK_PERIOD_MS); //wait for notification
@@ -631,14 +646,16 @@ static void sd_write_proc(void*)
                     break;
                 }
 
-                if ( s_shouldRestartRecording ) 
+                if ( s_shouldRestartRecording != 0) 
                 {
-                    s_shouldRestartRecording = false;
                     done = true;
+                    break;
                 }
 
+                int len = SD_WRITE_BLOCK_SIZE - offset;
+
                 xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
-                bool read = s_sd_slow_buffer->read(block, SD_WRITE_BLOCK_SIZE);
+                bool read = s_sd_slow_buffer->read(&(sd_write_block[offset]), len);
 #ifdef PROFILE_CAMERA_DATA    
                 s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100 ));
 #endif
@@ -648,27 +665,52 @@ static void sd_write_proc(void*)
                     break; //not enough data, wait
                 }
 
-                if ( !done )
+                if ( syncFrameStart )
                 {
-                    if (write(fd, block, SD_WRITE_BLOCK_SIZE) < 0 )
+                    while ( (len >= 3) && ((sd_write_block[offset] != 0xff) || (sd_write_block[offset+1] != 0xd8) || (sd_write_block[offset+2] != 0xff))) 
                     {
-                        LOG("Error while writing! Stopping session\n");
-                        done = true;
-                        error = true;
-                        SDError = true;
-                        break;
+                        offset++;
+                        len--;
                     }
-                    s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
-                    s_sd_file_size += SD_WRITE_BLOCK_SIZE;
-                    if (s_sd_file_size > 50 * 1024 * 1024)
+
+                    if ( len < 3 ) 
                     {
-                        LOG("Max file size reached: %d. Restarting session\n", s_sd_file_size);
-                        done = true;
-                        break;
+                        offset = 0;
+                        continue;
+                    }
+                    else
+                    {
+                        //LOG("Sync = %d %d 0x%02x 0x%02x\n", offset, len, (int)sd_write_block[offset], (int)sd_write_block[offset+1]);
+                        syncFrameStart = false;
+                        if ( offset > 0 )
+                        {
+                            memcpy(sd_write_block, sd_write_block+offset, len);
+                            offset = len;
+                            continue;
+                        }
                     }
                 }
-            }
-        }
+
+                offset = 0;
+                
+                if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
+                {
+                    LOG("Error while writing! Stopping session\n");
+                    done = true;
+                    error = true;
+                    SDError = true;
+                    break;
+                }
+                s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
+                s_sd_file_size += SD_WRITE_BLOCK_SIZE;
+                if (s_sd_file_size > 50 * 1024 * 1024)
+                {
+                    LOG("Max file size reached: %d. Restarting session\n", s_sd_file_size);
+                    done = true;
+                    break;
+                }
+            }  //while true -consume all buffer
+        }  //while !done
 
         if (!error)
         {
@@ -684,6 +726,346 @@ static void sd_write_proc(void*)
         }
     }
 }
+#else
+
+
+//=============================================================================================
+//=============================================================================================
+bool findFrameStart(Circular_Buffer* buffer, uint32_t &offset, size_t data_avail) 
+{
+    if ( data_avail <= MJPEG_PATTERN_SIZE*2 ) return false;
+
+    uint32_t maxOffset = data_avail - MJPEG_PATTERN_SIZE*2;
+
+    bool foundZero = false;
+    while ( offset < maxOffset )
+    {
+        if ( buffer->peek(offset) == 0 )
+        {
+            foundZero = true;
+            break;
+        }
+        else
+        {
+            offset += MJPEG_PATTERN_SIZE / 2;
+        }
+    }
+
+    if ( !foundZero )
+    {
+        return false;
+    }
+
+    uint32_t offset1 = offset-1;
+
+    //walk front until buffer contains zeros
+    uint32_t count = 0;
+    while ( (buffer->peek(offset) == 0) )
+    {
+        offset++;
+        count++;
+
+        if ( offset > (data_avail - 4) )
+        {
+            //something wrong
+            //whole buffer is filled with zeros ?
+            return false;
+        }
+    }
+
+    //count zeros back
+    while ( ( count < MJPEG_PATTERN_SIZE / 2 ) && (offset1 > 0) && (buffer->peek(offset1) == 0) )
+    {
+        offset1--;
+        count++;
+    }
+
+    return ( 
+        (count >= MJPEG_PATTERN_SIZE / 2) && 
+        (buffer->peek(offset) == 0xFF ) &&
+        (buffer->peek(offset+1) == 0xD8 ) &&
+        (buffer->peek(offset+2) == 0xFF ) 
+    );
+}
+
+//=============================================================================================
+//=============================================================================================
+void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle_t mux, uint8_t* sd_write_block, size_t& blockSize, size_t& fileSize, bool& done, bool& error)
+{
+    while (count > 0 )
+    {
+        size_t len = std::min<size_t>(count, SD_WRITE_BLOCK_SIZE - blockSize);
+        
+        if (mux != NULL ) xSemaphoreTake(mux, portMAX_DELAY);
+        buffer->read( sd_write_block + blockSize, len);
+        if (mux != NULL ) xSemaphoreGive(mux);
+        count -= len;
+        blockSize += len;
+
+        if (blockSize == SD_WRITE_BLOCK_SIZE)
+        {
+            if (write(fd, sd_write_block, SD_WRITE_BLOCK_SIZE) < 0 )
+            {
+                LOG("Error while writing! Stopping session\n");
+                done = true;
+                error = true;
+                SDError = true;
+                break;
+            }
+            fileSize += SD_WRITE_BLOCK_SIZE;
+            blockSize = 0;
+            s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
+        }
+    }
+}
+
+//=============================================================================================
+//=============================================================================================
+//this will write data from the slow queue to AVI file
+static void sd_write_proc(void*)
+{
+    //frames are separated by MJPEG_PATTERN_SIZE zeros
+    //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
+    //MJPEG_PATTERN_SIZE is 512 bytes, so we can check for zero every 256th byte instead of every byte to find pattern
+
+    uint16_t lastFrameCounter =0;
+
+    while (true)
+    {
+        if (!s_air_record || (s_shouldRestartRecording > esp_timer_get_time()))
+        {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+            //flush frames with possibly different resolution
+            xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+            size_t dataAvail = s_sd_slow_buffer->size();
+            s_sd_slow_buffer->skip(dataAvail);
+            xSemaphoreGive(s_sd_slow_buffer_mux);
+
+            continue;
+        }
+
+        s_shouldRestartRecording = 0;
+
+        int fd = open_sd_file();
+        if ( fd == -1)
+        {
+            s_air_record = false;
+            SDError = true;
+            vTaskDelay(1000 / portTICK_PERIOD_MS); 
+            continue;
+        }
+        
+        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+#ifdef SENSOR_OV5640
+        uint8_t fps = s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+#else
+        uint8_t fps = s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+#endif        
+        uint16_t frameWidth = v->width;
+        uint16_t frameHeight = v->height;
+
+        LOG("%dx%d %dfps\n", frameWidth, frameHeight, fps);
+
+        prepAviIndex();
+
+        bool error = false; 
+        bool done = false;
+        size_t blockSize = AVI_HEADER_LEN; //start with a header
+        size_t aviFileSize = AVI_HEADER_LEN;
+        bool lookForFrameStart = true;
+        uint32_t offset = 0;
+        uint32_t frameStartOffset = 0;
+        uint32_t frameCnt = 0;
+        while (!done)
+        {
+            ulTaskNotifyTake(pdTRUE, 1000 / portTICK_PERIOD_MS); //wait for notification
+
+            if ( s_shouldRestartRecording != 0) 
+            {
+                done = true;
+                break;
+            }
+
+            if (!s_air_record)
+            {
+                LOG("Done recording, closing file\n", s_sd_file_size);
+                done = true;
+                continue;
+            }
+
+            xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+            size_t dataAvail = s_sd_slow_buffer->size();
+            xSemaphoreGive(s_sd_slow_buffer_mux);
+
+            //consume all data
+            while ( true )
+            {
+                if ( lookForFrameStart )
+                {
+                    if ( findFrameStart( s_sd_slow_buffer, offset, dataAvail ))
+                    {
+                        lookForFrameStart = false;
+                        //offset points to FF D8 FF
+                        frameStartOffset = offset;
+                    }
+                    else
+                    {
+                        if ( offset > 150*1024)
+                        {
+                            //something wrong
+                            xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                            s_sd_slow_buffer->skip(offset);
+                            xSemaphoreGive(s_sd_slow_buffer_mux);
+                            offset = 0;
+                            s_stats.sd_drops++;
+                            LOG("Unable to find frame start\n");
+                        }
+                        break;
+                    }
+                }
+
+                //next frame start
+                if ( findFrameStart( s_sd_slow_buffer, offset, dataAvail ))
+                {
+#ifdef TEST_AVI_FRAMES                    
+                    uint16_t fc = s_sd_slow_buffer->peek(offset + 15);
+                    fc <<= 8;
+                    fc |=  s_sd_slow_buffer->peek(offset + 14);
+
+                    static uint16_t prevFrameCounter;
+                    if (prevFrameCounter+1 !=fc )
+                    {
+                        LOG("Frame: %d+1 != %d\n", prevFrameCounter, fc);
+                    } 
+                    prevFrameCounter = fc;
+#endif
+                    lookForFrameStart = true;
+                    //offset points to FF D8 FF
+                    //exclude zero patern
+                    offset-= MJPEG_PATTERN_SIZE;
+                    frameCnt++;
+
+                    //save data from frameStartOffset to offset
+                    if ( frameStartOffset > 0 )
+                    {
+                        xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                        s_sd_slow_buffer->skip(frameStartOffset);
+                        xSemaphoreGive(s_sd_slow_buffer_mux);
+                    }
+
+                    size_t jpegSize = offset - frameStartOffset; 
+
+                    uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
+                    size_t jpegSize1 = jpegSize + filler;
+
+                    // add avi frame header
+                    uint8_t buf[8];
+                    memcpy(buf, dcBuf, 4); 
+                    memcpy(&buf[4], &jpegSize1, 4);
+                    Circular_Buffer temp(buf, 8, 8);
+                    storeBuffer( fd, 8, &temp, NULL, sd_write_block, blockSize, aviFileSize, done, error);
+                    if (done) break;
+
+                    //store jpeg
+                    storeBuffer( fd, jpegSize, s_sd_slow_buffer, s_sd_slow_buffer_mux, sd_write_block, blockSize, aviFileSize, done, error);
+                    dataAvail -= offset;
+                    offset = 0;
+                    if (done) break;
+
+                    //store filler
+                    memset(buf, 0, 4); 
+                    Circular_Buffer temp1(buf, 4, 4);
+                    storeBuffer( fd, filler, &temp1, NULL, sd_write_block, blockSize, aviFileSize, done, error);
+
+                    buildAviIdx(jpegSize1); // save avi index for frame
+
+                    if (frameCnt == (DVR_MAX_FRAMES-1))
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    if ( (offset - frameStartOffset) > 150*1024)
+                    {
+                        //something wrong
+                        xSemaphoreTake(s_sd_slow_buffer_mux, portMAX_DELAY);
+                        s_sd_slow_buffer->skip(offset);
+                        xSemaphoreGive(s_sd_slow_buffer_mux);
+                        offset = 0;
+                        lookForFrameStart = true;
+                        s_stats.sd_drops++;
+                        LOG("Unable to find frame end\n");
+                    }
+                    break;
+                }
+            }
+
+            if (frameCnt == (DVR_MAX_FRAMES-1))
+            {
+                LOG("Max frames count reached: %d. Restarting session\n", frameCnt);
+                break;
+            }
+
+            if (aviFileSize > 50 * 1024 * 1024)
+            {
+                LOG("Max file size reached: %d. Restarting session\n", aviFileSize);
+                break;
+            }
+
+            if (done) break;
+        }
+        
+        if (!error)
+        {
+            // save avi index
+            finalizeAviIndex(frameCnt);
+
+            while(true)
+            {
+                size_t sz = writeAviIndex(sd_write_block + blockSize, SD_WRITE_BLOCK_SIZE - blockSize);
+                blockSize += sz;
+                if ( (blockSize == SD_WRITE_BLOCK_SIZE) || (sz == 0)) //flush block or write leftover
+                {
+                    if (write(fd, sd_write_block, blockSize) < 0 )
+                    {
+                        LOG("Error while writing! Stopping session\n");
+                        done = true;
+                        error = true;
+                        SDError = true;
+                        break;
+                    }
+                    blockSize = 0;
+                }
+                
+                if ( sz == 0)
+                {
+                    break;
+                }
+            }
+
+            // save avi header at start of file
+            buildAviHdr( fps, frameWidth, frameHeight, frameCnt );
+
+            lseek(fd, 0, SEEK_SET); // start of file
+            write(fd, aviHeader, AVI_HEADER_LEN); 
+            fsync(fd);
+            close(fd);
+
+            updateSDInfo();
+        }
+        else
+        {
+            s_air_record = false;
+            //shutdown_sd();
+        }
+    }
+}
+
+
+#endif
+
 
 //=============================================================================================
 //=============================================================================================
@@ -734,7 +1116,6 @@ static void sd_enqueue_proc(void*)
 #ifdef PROFILE_CAMERA_DATA    
             s_profiler.set(PF_CAMERA_SD_SLOW_BUF, s_sd_slow_buffer->size() / (SD_SLOW_BUFFER_SIZE_PSRAM / 100));
 #endif
-
             xSemaphoreGive(s_sd_slow_buffer_mux);
 
             xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
@@ -755,13 +1136,20 @@ static void sd_enqueue_proc(void*)
     }
 }
 
-
-IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size)
+IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
     bool ok = s_sd_fast_buffer.write(data, size);
 
-#ifdef PROFILE_CAMERA_DATA    
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+    if ( ok && addFrameStartPattern ) 
+    {
+        ok = s_sd_fast_buffer.writeBytes(0, MJPEG_PATTERN_SIZE);
+    }
+#endif
+
+#ifdef PROFILE_CAMERA_DATA
     s_profiler.set(PF_CAMERA_SD_FAST_BUF, s_sd_fast_buffer.size() / (SD_FAST_BUFFER_SIZE / 100) );
 #endif
 
@@ -860,7 +1248,6 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
 
-    bool newSession = false;
     if (dst.sessionId != src.sessionId)
     {
         dst.sessionId = src.sessionId;
@@ -891,9 +1278,6 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         LOG("Wifi channel changed from %d to %d\n", (int)dst.wifi_channel, (int)src.wifi_channel);
         nvs_args_set("channel", src.wifi_channel);
         ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.wifi_channel, WIFI_SECOND_CHAN_NONE));
-
-        //s_air_record = false;
-        //s_restart_time = esp_timer_get_time() + 2000000;
     }
 
     if (dst.camera.fps_limit != src.camera.fps_limit)
@@ -961,17 +1345,37 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
-    s_shouldRestartRecording = dst.camera.resolution != src.camera.resolution;
-
 #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
     src.camera.aec2 = false;
 #endif
 
-    if (forceCameraSettings || (dst.camera.resolution != src.camera.resolution))
+    if (forceCameraSettings || 
+        (dst.camera.resolution != src.camera.resolution) || 
+        (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS ) || 
+        (src.camera.ov5640HighFPS != dst.camera.ov5640HighFPS )
+    )
     {
+        s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
         sensor_t* s = esp_camera_sensor_get();
+
+#ifdef SENSOR_OV5640
+        s->set_colorbar(s, src.camera.ov5640HighFPS?1:0);
+#else
+        if ( src.camera.ov2640HighFPS && 
+            ((src.camera.resolution == Resolution::VGA) ||
+            (src.camera.resolution == Resolution::VGA16) ||
+            (src.camera.resolution == Resolution::SVGA16)) 
+            )
+        {
+            s->set_xclk( s, LEDC_TIMER_0, 16 );
+        }
+        else
+        {
+            s->set_xclk( s, LEDC_TIMER_0, 12 );
+        }
+#endif
 
         switch (src.camera.resolution)
         {
@@ -1021,6 +1425,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
             case Resolution::UXGA: s->set_framesize(s, FRAMESIZE_UXGA); break;
 
+            case Resolution::COUNT:
             break;
 
         }
@@ -1175,12 +1580,17 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 #ifdef UART_MAVLINK
 //=============================================================================================
 //=============================================================================================
+//this currently called every frame: 50...11 fps
+//30 fps: 30 * 128 = 3840 bytes/sec or 38400 baud
+//11 fps: 11 * 128 - 1408 = 14080 baud
+//todo: increase max mavlink payload size to 1K. Packets are 1.4K anyway. With 128 bytes we can not push 115200 mavlink stream currently.
+//also UART RX ring buffer of 512 can not handle 115200 at 11 fps
 IRAM_ATTR void send_air2ground_data_packet()
 {
     int avail = MAX_TELEMETRY_PAYLOAD_SIZE - s_mavlinkOutBufferCount;
     if ( avail > 0 )
     {
-        size_t rs;
+        size_t rs = 0;
         ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MAVLINK, &rs) );
         if ( rs > avail ) rs = avail;
 
@@ -1251,9 +1661,15 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.version = PACKET_VERSION;
     packet.crc = 0;
 
+#ifdef DVR_SUPPORT
     packet.stats.SDDetected = s_sd_initialized ? 1: 0;
     packet.stats.SDSlow = s_last_stats.sd_drops ? 1: 0;
     packet.stats.SDError = SDError ? 1: 0;
+#else
+    packet.stats.SDDetected = 0;
+    packet.stats.SDSlow = 0;
+    packet.stats.SDError = 0;
+#endif    
     packet.stats.curr_wifi_rate = (uint8_t)s_wlan_rate;
 
     packet.stats.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
@@ -1403,11 +1819,11 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_air_record )
     {
 #ifdef BOARD_XIAOS3SENSE        
-        //1.8MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1800*1024 ) FECbandwidth = 1800*1024;
+        //1.9MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
 #else
-        //1.6MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1600*1024 ) FECbandwidth = 1600*1024;
+        //1.9MB/sec is practical maximum SD write speed 
+        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
 #endif
     }
     
@@ -1511,6 +1927,34 @@ IRAM_ATTR void applyAdaptiveQuality()
     }
 }
 
+/* 
+'bool last' does not mark last JPEG block reliably.
+
+ov2640: if VSYNC interrupt occurs near the end of the last block, we receive another 1Kb block of garbage.
+Note that ov2460 sends up zero bytes after FF D9 till 16 byte boundary, then a garbage to the end of the block, 
+so if we receive extra block, the end of proper 'last' block is filled by zeros after FF D9
+
+ov5640: we always receive up to 3 more zero 1kb blocks (uncertain: can we receive +7 blocks if VSYNK interrupt occurs at the end of 4th block?)
+The end of proper 'last' block is filled by zeros after FF D9 (up to 1 kb)
+
+There are two problems:
+1) As we may receive garbage block, searching for the end marker in garbage may lead to incorrect JPEG size calculation and inclusion of garbage bytes 
+  (possibly with misleading JPEG markers) in the stream.
+2) with 0v5640 we waste bandwidth for 1..3 1kb blocks, it's 10% video bandwidth wasted!
+
+Proper solution - jpeg chunks parsing - is possible but waste of CPU resources, because jpeg has to be processed byte-by-byte.
+
+We apply very fast workaround instead.
+
+We always zero first 16 bytes in the DMA buffer after processing.
+
+ov2640: instead of receiving garbage block, we receive block with 16 zeros at start. This way we know that the whole buffer has to be skipped; 
+jpeg is terminated already in the previous block. We waste only few bytes at the end of the block, which are filled by zeros.
+
+ov5640: we are able to finish frame at the first completely zero block,
+and even on the block wich has 16 zeros at end
+*/
+
 //=============================================================================================
 //=============================================================================================
 IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_t count, bool last)
@@ -1519,7 +1963,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     s_profiler.set(PF_CAMERA_DATA, 1);
 #endif
 
-    size_t stride=((cam_obj_t *)cam_obj)->dma_bytes_per_item;
+    size_t stride = ((cam_obj_t *)cam_obj)->dma_bytes_per_item;
 
     if ( getOVFFlagAndReset() )
     {
@@ -1531,55 +1975,128 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
         applyAdaptiveQuality();
     }
 
-    s_fec_encoder.lock();
     if (data == nullptr) //start frame
     {
-        s_video_frame_started = true;        
+        if (  !s_video_frame_started )
+        {
+            //limit fps
+            int64_t n = esp_timer_get_time();
+            int64_t send_dt = n - s_video_last_sent_tp;
+            if (send_dt >= s_video_target_frame_dt)
+            {
+                s_video_last_sent_tp = n;
+
+                s_video_frame_started = true;
+
+                s_video_frame_data_size = 0;
+                s_video_part_index = 0;
+
+                s_video_full_frame_size = 0;
+                
+                s_lastByte_ff = false;
+            }
+        }
     }
     else 
     {
-        if (!s_video_skip_frame)
-        {
+        s_fec_encoder.lock();
 
 #ifdef BOARD_ESP32CAM
-            //ESP32 - sample offset: 2, stride: 4
-            const uint8_t* src = (const uint8_t*)data + 2;  // jump to the sample1 of DMA element
-#endif
+        //ESP32 - sample offset: 2, stride: 4
+        const uint8_t* src = (const uint8_t*)data + 2;  // jump to the sample1 of DMA element
+#endif            
 #ifdef BOARD_XIAOS3SENSE
-            //ESP32S3 - sample offset: 0, stride: 1
-            const uint8_t* src = (const uint8_t*)data;
+        //ESP32S3 - sample offset: 0, stride: 1
+        const uint8_t* src = (const uint8_t*)data;  
 #endif
-            count /= stride;
-            if (last) //find the end marker for JPEG. Data after that can be discarded
+        uint8_t* clrSrc = (uint8_t*)src;
+
+        if ( s_video_frame_started && (s_video_full_frame_size == 0) )
+        {
+            if (src[0] != 0xff || src[stride] != 0xd8)
             {
-                const uint8_t* dptr = src + (count - 2) * stride;
-                while (dptr > src)
+                //broken frame data, no start marker
+                //we probably missed the start of the frame. Have to skip it.
+                cam_ovf_count++; 
+                s_video_frame_started = false;
+            }
+            else
+            {
+#ifdef DVR_SUPPORT
+                if (s_air_record)
                 {
-                    if (dptr[0] == 0xFF && dptr[stride] == 0xD9)
+                    add_to_sd_fast_buffer(clrSrc, 0, true);
+                }
+#endif
+            }
+        }
+
+        if (s_video_frame_started)
+        {
+            count /= stride;
+
+            //check if we missed last block due to VSYNK near the end of prev (last) block
+            // if block starts with 16 zero bytes - it is either not filled at all (ov2640)
+            //or is fully filled with zeros(ov5640)
+            const uint8_t* src1 = src;
+            int i;
+            for ( i = 0; i < 16; i++ )
+            {
+                if ( *src1 != 0 ) break;
+                src1 += stride;
+            }
+            
+            if ( i == 16 ) 
+            {
+                //we missed last block, this is next block after last
+                //the whole block should be skipped
+                last = true;
+                count = 0;
+            }
+            else 
+            {
+#ifdef BOARD_XIAOS3SENSE
+                //ov5640: check if 16 bytes at the end of the block are zero
+                const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
+                if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
+                {
+                    //zeros at the end - block has to contain end marker
+                    last = true;
+                }
+#endif
+                if (last) //find the end marker for JPEG. Data after that can be discarded
+                {
+                    //edge case - 0xFF at the end of prev block, 0xD9 on the start of this
+                    if ( s_lastByte_ff && (*src == 0xD9))
                     {
-                        count = (dptr - src) / stride + 2; //to include the 0xFFD9
-                        if ((count & 0x1FF) == 0)
-                            count += 1; 
-                        if ((count % 100) == 0)
-                            count += 1;
-                        break;
+                        count = 1;
                     }
-                    dptr -= stride;
+                    else
+                    {
+                        //search from the start of the block
+                        //tail of the block can contain end markers in garbage
+                        const uint8_t* dptr = src;
+                        const uint8_t* dptrEnd = src + (count - 2) * stride;
+                        while (dptr <= dptrEnd)
+                        {
+                            if (dptr[0] == 0xFF && dptr[stride] == 0xD9)
+                            {
+                                count = (dptr - src) / stride + 2; //to include the 0xFFD9
+                                if ((count & 0x1FF) == 0)
+                                    count += 1; 
+                                if ((count % 100) == 0)
+                                    count += 1;
+                                break;
+                            }
+                            dptr += stride;
+                        }
+                    }
                 }
             }
 
+            s_lastByte_ff = count > 0 ? src[count-1] == 0xFF : false;
             while (count > 0)
             {
-                if (s_video_frame_data_size >= MAX_VIDEO_DATA_PAYLOAD_SIZE) //flush prev data?
-                {
-                    //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
-                    send_air2ground_video_packet(false);
-                    s_video_frame_data_size = 0;
-                    s_video_part_index++;
-                }
-
-                //LOG("Add: %d %d %d %d\n", s_video_frame_index, s_video_part_index, count, s_video_frame_data_size);
-
                 //fill the buffer
                 uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
                 uint8_t* start_ptr = packet_data + sizeof(Air2Ground_Video_Packet) + s_video_frame_data_size;
@@ -1594,9 +2111,48 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
 #endif
 
+#ifdef BOARD_ESP32CAM
+                //ESP32 - sample offset: 2, stride: 4
                 size_t c8 = c >> 3;
+                
                 for (size_t i = c8; i > 0; i--)
                 {
+                    const uint8_t* src1  = src + 3*4;
+                    uint32_t temp;
+
+                    temp = *src1; 
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+
+                    *(uint32_t*)ptr = temp;
+                    ptr += 4;
+
+                    src1  = src + 7*4;
+
+                    temp = *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    src1 -= 4;
+
+                    temp = (temp << 8) | *src1;
+                    
+                    src += 8*4;
+
+                    *(uint32_t*)ptr = temp;
+                    ptr+=4;
+
+                    /*
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
@@ -1605,115 +2161,121 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
                     *ptr++ = *src; src += stride;
+                    */
                 }
                 for (size_t i = c - (c8 << 3); i > 0; i--)
                 {
                     *ptr++ = *src; src += stride;
                 }
+#endif
+
+#ifdef BOARD_XIAOS3SENSE
+                //ESP32S3 - sample offset: 0, stride: 1
+                memcpy( ptr, src, c);
+                src += c;
+#endif
+
+                if (s_video_frame_data_size == MAX_VIDEO_DATA_PAYLOAD_SIZE) 
+                {
+                    //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
+                    send_air2ground_video_packet(false);
+                    s_video_frame_data_size = 0;
+                    s_video_part_index++;
+                }
+
+                //LOG("Add: %d %d %d %d\n", s_video_frame_index, s_video_part_index, count, s_video_frame_data_size);
 
 #ifdef DVR_SUPPORT
                 if (s_air_record)
                 {
-                    add_to_sd_fast_buffer(start_ptr, c);
+#ifdef TEST_AVI_FRAMES
+                    if ( s_video_full_frame_size == c )
+                    {
+                        s_framesCounter++;
+                        start_ptr[14] = s_framesCounter & 0xff;
+                        start_ptr[15] = s_framesCounter >> 8;
+                    }
+#endif            
+                    add_to_sd_fast_buffer(start_ptr, c, false);
                 }
 #endif
-            }
-        }
+            }  //while count>0
+        }  //s_frame_started
 
         //////////////////
 
-        if (last && s_video_frame_started)
+        if (last)  //note: can occur multiple times during frame
         {
-            s_video_frame_started = false;
-
-            if ( s_video_full_frame_size  < 2000)
+            //end of frame - send leftover
+            if ( s_video_frame_started )
             {
-        cam_ovf_count++;
-            }
+                s_video_frame_started = false;
 
-            //frame pacing!
-            int64_t now = esp_timer_get_time();
+                //LOG("Finish: %d %d\n", s_video_frame_index, s_video_frame_data_size);
+                if (s_video_frame_data_size > 0) //left over
+                {
+                    send_air2ground_video_packet(true);
+                }
 
-            int64_t acquire_dt = now - s_video_last_acquired_tp;
-            s_video_last_acquired_tp = now;
+                if ( s_video_full_frame_size  < 2000)
+                {
+                    //probably broken frame - too small
+                    cam_ovf_count++;
+                }
 
-            int64_t send_dt = now - s_video_last_sent_tp;
-            if (send_dt < s_video_target_frame_dt) //limit fps
-            {
-                s_video_skip_frame = true;
-            }
-            else                
-            {
-                s_video_skip_frame = false;
-                s_video_last_sent_tp += std::max(s_video_target_frame_dt, acquire_dt);
-            }
+                //end of frame - stats, camera settings, osd, mavlink
+                if ( s_video_full_frame_size > 0)
+                {
+                    if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min > s_video_full_frame_size) )
+                    {
+                        s_stats.camera_frame_size_min = s_video_full_frame_size;
+                    } 
 
-/*
-            //dynamically decrease fps
-            if ( s_wlan_outgoing_queue.size() > s_wlan_outgoing_queue.capacity()  * 60 / 100)
-            {
-                s_video_skip_frame = true;
-            }
-*/
-            //////////////////
+                    if ( s_stats.camera_frame_size_max < s_video_full_frame_size )
+                    {
+                        s_stats.camera_frame_size_max = s_video_full_frame_size;
+                    } 
 
-            //LOG("Finish: %d %d\n", s_video_frame_index, s_video_frame_data_size);
-            if (s_video_frame_data_size > 0) //left over
-                send_air2ground_video_packet(true);
-
-            s_video_frame_data_size = 0;
-            if ( !s_video_skip_frame) s_video_frame_index++;
-            s_video_part_index = 0;
-        }
-
-        if ( last && (s_video_full_frame_size > 0))
-        {
-            if ( (s_stats.camera_frame_size_min == 0) || (s_stats.camera_frame_size_min > s_video_full_frame_size) )
-            {
-                s_stats.camera_frame_size_min = s_video_full_frame_size;
-            } 
-
-            if ( s_stats.camera_frame_size_max < s_video_full_frame_size )
-            {
-                s_stats.camera_frame_size_max = s_video_full_frame_size;
-            } 
-
-            recalculateFrameSizeQualityK(s_video_full_frame_size);
-            applyAdaptiveQuality();
-            s_video_full_frame_size = 0;
-            s_stats.fec_spin_count += s_fec_spin_count;
-            s_fec_spin_count = 0;
+                    recalculateFrameSizeQualityK(s_video_full_frame_size);
+                    applyAdaptiveQuality();
 #ifdef PROFILE_CAMERA_DATA    
-            s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
+                    s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
 #endif
+                    s_stats.fec_spin_count += s_fec_spin_count;
+                    s_fec_spin_count = 0;
+#ifdef PROFILE_CAMERA_DATA    
+                    s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
+#endif
+                    handle_ground2air_config_packetEx2(false);
 
-            handle_ground2air_config_packetEx2(false);
-
-            if ( (g_osd.isChanged() || (s_osdUpdateCounter == 15)) && !g_osd.isLocked() )
-            {
-                send_air2ground_osd_packet();
-                s_osdUpdateCounter = 0;
-            }
-            else
-            {
-                s_osdUpdateCounter++;
-            }
+                    if ( (g_osd.isChanged() || (s_osdUpdateCounter == 15)) && !g_osd.isLocked() )
+                    {
+                        send_air2ground_osd_packet();
+                        s_osdUpdateCounter = 0;
+                    }
+                    else
+                    {
+                        s_osdUpdateCounter++;
+                    }
 
 #ifdef UART_MAVLINK
-            send_air2ground_data_packet();
-#endif            
-
-        }
-    }
-
-    s_fec_encoder.unlock();
-
-#ifdef PROFILE_CAMERA_DATA    
-    if (last)
-    {
-        s_profiler.set(PF_CAMERA_FRAME_QUALITY, s_quality);
-    }
+                    send_air2ground_data_packet();
 #endif
+                }
+
+                s_video_frame_index++;
+            }
+        }
+
+        //zero start of the DMA block
+        for ( int i = 0; i < 16; i++ )
+        {
+            *clrSrc = 0;
+            clrSrc += stride;
+        }
+
+        s_fec_encoder.unlock();
+    }
 
 #ifdef PROFILE_CAMERA_DATA    
     s_profiler.set(PF_CAMERA_DATA, 0);
@@ -1746,7 +2308,7 @@ static void init_camera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 #ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 20000000;  //real frequency will be 80Mhz/3 = 26,666Mhz
+    config.xclk_freq_hz = 20000000;
 #else
     config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
@@ -1834,7 +2396,7 @@ extern "C" void app_main()
     //esp_task_wdt_init();
 
 #ifdef BOARD_XIAOS3SENSE
-    vTaskDelay(10000 / portTICK_PERIOD_MS);  //to see init messages
+    vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
     Ground2Air_Data_Packet& ground2air_data_packet = s_ground2air_data_packet;
@@ -1915,6 +2477,15 @@ extern "C" void app_main()
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
 
 #ifdef DVR_SUPPORT
+
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+    prepAviBuffers();
+#endif    
+
+    xSemaphoreGive(s_sd_fast_buffer_mux);
+    xSemaphoreGive(s_sd_slow_buffer_mux);
+
     init_sd();
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -1935,6 +2506,7 @@ extern "C" void app_main()
         }
     }
 
+    s_shouldRestartRecording =  esp_timer_get_time() + 2000000;
     {
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_write_proc, "SD Write", 4096, nullptr, 1, &s_sd_write_task, core);
@@ -1962,7 +2534,7 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, UART1_RX_BUFFER_SIZE, UART1_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, TXD1_PIN, RXD1_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
 #endif
@@ -1981,8 +2553,7 @@ extern "C" void app_main()
     };  
     // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
-    //ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, MAX_TELEMETRY_PAYLOAD_SIZE + 512, 256, 0, NULL, 0));  //crashes esp32s3 ???
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, 256, 256, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, UART2_RX_BUFFER_SIZE, UART2_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 
 #endif
@@ -2008,24 +2579,25 @@ extern "C" void app_main()
 
             s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
-            s_min_wlan_outgoing_queue_usage_seen = getMinWlanOutgoingQueueUsageSeen();          
+            s_min_wlan_outgoing_queue_usage_seen = getMinWlanOutgoingQueueUsageSeen();
             
             s_stats.wlan_error_count += s_fec_wlan_error_count;
             s_fec_wlan_error_count = 0;
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d\n",
+                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d %d\n",
                     s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count); 
+                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg); 
                 print_cpu_usage();
             }
 
             s_max_frame_size = 0;
+            s_dbg = 0;
 
             if ( s_stats.fec_spin_count > 0 )
             {
@@ -2036,7 +2608,7 @@ extern "C" void app_main()
             s_stats = Stats();
         }
 
-        vTaskDelay(10);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         //esp_task_wdt_reset();
 
         update_status_led();
@@ -2082,7 +2654,10 @@ extern "C" void app_main()
 */
 
 #ifdef UART_MSP_OSD
-    g_msp.loop();
+        //msp.loop() should be called every ~10ms
+        //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
+        //with UART RX buffer of 512 we are save with periods 10...40ms
+        g_msp.loop();
 #endif
 
         if ((s_restart_time!=0) && ( esp_timer_get_time()>s_restart_time))

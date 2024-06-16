@@ -12,8 +12,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "Clock.h"
+#include "IHAL.h"
 
 #include "Log.h"
+#include "ini.h"
 
 #include "packets.h"
 
@@ -35,6 +37,10 @@
 //#define TEST_DISPLAY_LATENCY
 
 #define CHECK_GL_ERRORS
+
+//#ifdef WRITE_RAW_MJPEG_STREAM
+
+#define GS_SD_MIN_FREE_SPACE_BYTES (20*1024*1024)
 
 #if defined(CHECK_GL_ERRORS)
 #define GLCHK(X) \
@@ -61,8 +67,11 @@ do { \
 enum class ScreenAspectRatio : int
 {
     STRETCH = 0,
-    ASPECT4X3 = 1,
-    ASPECT16X9 = 2
+    LETTERBOX = 1,
+    ASPECT5X4 = 2,
+    ASPECT4X3 = 3,
+    ASPECT16X9 = 4,
+    ASPECT16X10 = 5
 };
 
 //===================================================================================
@@ -76,6 +85,7 @@ struct TGroundstationConfig
     int wifi_channel;
     ScreenAspectRatio screenAspectRatio;
     bool stats;
+    bool vsync = true;
 };
 
 extern TGroundstationConfig s_groundstation_config;
@@ -85,13 +95,18 @@ extern TGroundstationConfig s_groundstation_config;
 struct GSStats
 {
     uint16_t outPacketCounter = 0;
-    uint16_t inPacketCounter = 0;
-    uint16_t inRejectedPacketCounter = 0;
+    uint16_t inPacketCounter[2] = {0,0};
 
-    uint8_t rssiDbm = 0;
+    uint32_t lastPacketIndex = 0;
+    uint32_t statsPacketIndex = 0;
+    uint16_t inDublicatedPacketCounter = 0;
+    uint16_t inUniquePacketCounter = 0;
+
+    uint32_t FECSuccPacketIndexCounter = 0;
+    uint32_t FECBlocksCounter = 0;
+
+    int8_t rssiDbm[2] = {0,0};
     uint8_t noiseFloorDbm = 0;
-    uint8_t antena1PacketsCounter = 0;
-    uint8_t antena2PacketsCounter = 0;
 
     uint8_t brokenFrames = 0;  //JPEG decoding errors
 
@@ -109,6 +124,7 @@ extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
 extern void exitApp();
 
 extern bool s_isOV5640;
+extern bool s_isDual;
 extern uint16_t s_SDTotalSpaceGB16;
 extern uint16_t s_SDFreeSpaceGB16;
 extern bool s_air_record;
@@ -117,7 +133,23 @@ extern bool s_SDSlow;
 extern bool s_SDError;
 extern bool bRestartRequired;
 extern bool bRestart;
+extern uint64_t s_GSSDTotalSpaceBytes;
+extern uint64_t s_GSSDFreeSpaceBytes;
 extern Clock::time_point restart_tp;
+extern Clock::time_point s_last_packet_tp;
+extern void applyWifiChannel(Ground2Air_Config_Packet& config);
+extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
 
+extern const char* resolutionName2640[];
+extern const char* resolutionName2640Hi[];
+extern const char* resolutionName5640[];
+extern const char* resolutionName5640Hi[];
+extern const char* resolutionName2640a[];
+extern const char* resolutionName2640Hia[];
+extern const char* resolutionName5640a[];
+extern const char* resolutionName5640Hia[];
 
-extern const char* resolutionName[];
+extern mINI::INIStructure ini;
+extern mINI::INIFile s_iniFile;
+
+extern std::unique_ptr<IHAL> s_hal;

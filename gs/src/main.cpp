@@ -1,5 +1,7 @@
 #include "main.h"
 
+#include <sys/statvfs.h>
+
 #include "Comms.h"
 #include "Clock.h"
 #include "IHAL.h"
@@ -23,8 +25,8 @@
 #include <random>
 
 #include "socket.h"
-
-#include "ini.h"
+#include "avi.h"
+#include "jpeg_parser.h"
 
 #ifdef TEST_LATENCY
 extern "C"
@@ -54,6 +56,134 @@ const char* resolutionName[] =
     "1024x576",
     "1280x960",
     "1280x720",
+    "1600x1200"
+};
+
+const char* resolutionName2640[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 30fps",
+    "640x360 30fps",
+    "800x600 30fps",
+    "800x456 30fps",
+    "1024x768",
+    "1024x576 13fps",
+    "1280x960",
+    "1280x720 13fps",
+    "1600x1200"
+};
+
+const char* resolutionName2640Hi[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 40fps",
+    "640x360 40fps",
+    "800x600 30fps",
+    "800x456 40fps",
+    "1024x768",
+    "1024x576 13fps",
+    "1280x960",
+    "1280x720 13fps",
+    "1600x1200"
+};
+
+const char* resolutionName5640[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 30fps",
+    "640x360 30fps",
+    "800x600 30fps",
+    "800x456 30fps",
+    "1024x768",
+    "1024x576 30fps",
+    "1280x960",
+    "1280x720 30fps",
+    "1600x1200"
+};
+
+const char* resolutionName5640Hi[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 40fps",
+    "640x360 50fps",
+    "800x600 30fps",
+    "800x456 50fps",
+    "1024x768",
+    "1024x576 30fps",
+    "1280x960",
+    "1280x720 30fps",
+    "1600x1200"
+};
+
+const char* resolutionName2640a[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 30fps (4:3)",
+    "640x360 30fps (16:9)",
+    "800x600 30fps (4:3)",
+    "800x456 30fps (16:9)",
+    "1024x768",
+    "1024x576 13fps (16:9)",
+    "1280x960",
+    "1280x720 13fps (16:9)",
+    "1600x1200"
+};
+
+const char* resolutionName2640Hia[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 40fps (4:3)",
+    "640x360 40fps (16:9)",
+    "800x600 30fps (4:3)",
+    "800x456 40fps (16:9)",
+    "1024x768",
+    "1024x576 13fps (16:9)",
+    "1280x960",
+    "1280x720 13fps (16:9)",
+    "1600x1200"
+};
+
+const char* resolutionName5640a[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 30fps (4:3)",
+    "640x360 30fps (16:9)",
+    "800x600 30fps (4:3)",
+    "800x456 30fps (16:9)",
+    "1024x768",
+    "1024x576 30fps (16:9)",
+    "1280x960",
+    "1280x720 30fps (16:9)",
+    "1600x1200"
+};
+
+const char* resolutionName5640Hia[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 40fps (4:3)",
+    "640x360 50fps (16:9)",
+    "800x600 30fps (4:3)",
+    "800x456 50fps (16:9)",
+    "1024x768",
+    "1024x576 30fps (16:9)",
+    "1280x960",
+    "1280x720 30fps (16:9)",
     "1600x1200"
 };
 
@@ -151,10 +281,17 @@ bool s_SDDetected = false;
 bool s_SDSlow = false;
 bool s_SDError = false;
 bool s_isOV5640 = false;
+bool s_isDual = false;
+
+uint64_t s_GSSDTotalSpaceBytes = 0;
+uint64_t s_GSSDFreeSpaceBytes = 0;
 
 bool s_debugWindowVisisble = false;
 
 bool s_noPing = false;
+
+Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milliseconds(10000);
+Clock::time_point s_last_packet_tp = Clock::now();
 
 Stats s_frame_stats;
 Stats s_frameParts_stats;
@@ -163,12 +300,138 @@ Stats s_frameQuality_stats;
 Stats s_dataSize_stats;
 Stats s_queueUsage_stats;
 
-OSD g_osd;
-
 static AirStats s_last_airStats;
 
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
+
+static Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
+
+uint8_t s_avi_fps;
+uint16_t s_avi_frameWidth;
+uint16_t s_avi_frameHeight;
+uint32_t s_avi_frameCnt;
+bool s_avi_ov2640HighFPS;
+bool s_avi_ov5640HighFPS;
+
+// Function to get filesystem statistics
+void getFilesystemStats(const char *path, unsigned long long *total, unsigned long long *free) {
+    struct statvfs stat;
+
+    // Perform statvfs on the given path
+    if (statvfs(path, &stat) != 0) {
+        perror("statvfs");
+        exit(EXIT_FAILURE);
+    }
+
+    // Calculate total and free space
+    *total = (unsigned long long) stat.f_frsize * stat.f_blocks;
+    *free = (unsigned long long) stat.f_frsize * stat.f_bfree;
+}
+//===================================================================================
+//===================================================================================
+void updateGSSdFreeSpace() 
+{
+    struct statvfs stat;
+    statvfs(".", &stat);
+    s_GSSDTotalSpaceBytes = (unsigned long long) stat.f_frsize * stat.f_blocks;
+    s_GSSDFreeSpaceBytes = (unsigned long long) stat.f_frsize * stat.f_bfree;
+}
+
+//===================================================================================
+//===================================================================================
+void toggleGSRecording( int width, int height)
+{
+    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+
+    s_groundstation_config.record = !s_groundstation_config.record;
+
+    if(s_groundstation_config.record)
+    {
+        if ( s_GSSDFreeSpaceBytes < GS_SD_MIN_FREE_SPACE_BYTES) 
+        {
+            s_groundstation_config.record = false;
+            return;
+        }
+
+        auto time=std::time({});
+#ifdef WRITE_RAW_MJPEG_STREAM 
+        char filename[]="yyyy-mm-dd-hh-mm-ss.mjpeg";
+        std::strftime(filename, sizeof(filename), "%Y-%m-%d-%H-%M-%S.mjpeg", std::localtime(&time));
+        s_groundstation_config.record_file=fopen(filename,"wb+");
+#else        
+        char filename[]="yyyy-mm-dd-hh-mm-ss.avi";
+        std::strftime(filename, sizeof(filename), "%Y-%m-%d-%H-%M-%S.avi", std::localtime(&time));
+
+        prepAviIndex();
+
+        s_avi_frameCnt = 0;
+
+        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+
+        if ( width != 0 )
+        {
+            for (size_t i = 0; i < (int)Resolution::COUNT; i++) 
+            {
+                if (vmodes[i].width == width && vmodes[i].height == height) 
+                {
+                    v = &vmodes[i];
+                    break;
+                }
+            }
+        }
+
+        if (s_isOV5640)
+        {
+            s_avi_fps = s_ground2air_config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+        }
+        else
+        {
+            s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+        }
+
+        s_avi_frameWidth = v->width;
+        s_avi_frameHeight = v->height;
+        s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
+        s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
+
+        LOGI("{}x{} {}fps\n", s_avi_frameWidth, s_avi_frameHeight, s_avi_fps);
+
+        s_groundstation_config.record_file = fopen(filename,"wb+");
+        fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file); 
+
+#endif        
+        LOGI("start record:{}",std::string(filename));
+    }
+    else
+    {
+#ifdef WRITE_RAW_MJPEG_STREAM 
+#else
+        finalizeAviIndex(s_avi_frameCnt);
+
+        size_t SD_WRITE_BLOCK_SIZE = 8192;
+        uint8_t sd_write_block[SD_WRITE_BLOCK_SIZE];
+        while(true)
+        {
+            size_t sz = writeAviIndex(sd_write_block, SD_WRITE_BLOCK_SIZE);
+            if ( sz == 0) break;
+            fwrite(sd_write_block, sz, 1, s_groundstation_config.record_file);
+        }
+
+        // save avi header at start of file
+        buildAviHdr( s_avi_fps, s_avi_frameWidth, s_avi_frameHeight, s_avi_frameCnt );
+
+        fseek(s_groundstation_config.record_file, 0, SEEK_SET); // start of file
+        fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file) ; 
+#endif
+
+        fflush(s_groundstation_config.record_file);
+        fclose(s_groundstation_config.record_file);
+        s_groundstation_config.record_file=nullptr;
+    }
+
+    updateGSSdFreeSpace();
+}
 
 //===================================================================================
 //===================================================================================
@@ -234,8 +497,10 @@ static void comms_thread_proc()
             total_data = 0;
             min_rssi = 0;
 
+            s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
             s_gs_stats = GSStats();
+            s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
 
             last_stats_tp = Clock::now();
         }
@@ -338,10 +603,18 @@ static void comms_thread_proc()
                 break;
             }
 
+            s_last_packet_tp = Clock::now();
+
             rx_data.rssi = (int16_t)s_comms.get_input_dBm();
 
             //filter bad packets
             Air2Ground_Header& air2ground_header = *(Air2Ground_Header*)rx_data.data.data();
+
+            if ( air2ground_header.version != PACKET_VERSION )
+            {
+                s_incompatibleFirmwareTime = Clock::now();
+                break;
+            }
 
             uint32_t packet_size = air2ground_header.size;
             if (air2ground_header.type == Air2Ground_Header::Type::Video)
@@ -436,9 +709,59 @@ static void comms_thread_proc()
                         s_decoder.decode_data(video_frame.data(), video_frame.size());
                         if(s_groundstation_config.record)
                         {
+#ifdef WRITE_RAW_MJPEG_STREAM                            
                             std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
                             fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
+#else
+
+                            int width, height;
+                            if ( getJPEGDimensions(video_frame.data(), width, height, 2048) )
+                            {
+                                //LOGI("Received frame {}, {}", width, height);
+
+                                if ( 
+                                    (width != s_avi_frameWidth) || 
+                                    (height != s_avi_frameHeight) ||
+                                    ( s_avi_ov2640HighFPS != s_ground2air_config_packet.camera.ov2640HighFPS ) ||
+                                    ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
+                                )
+                                {
+                                    toggleGSRecording(0,0); //stop
+                                    toggleGSRecording(width,height); //start
+                                }
+
+                                {
+                                    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+                                    uint16_t jpegSize = video_frame.size();
+                                    uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
+                                    size_t jpegSize1 = jpegSize + filler;
+                                    uint8_t buf[8];
+                                    memcpy(buf, dcBuf, 4); 
+                                    memcpy(&buf[4], &jpegSize1, 4);
+
+                                    fwrite(buf,8,1,s_groundstation_config.record_file);
+                                    fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
+
+                                    memset(buf, 0, 4); 
+                                    fwrite(buf,filler,1,s_groundstation_config.record_file);
+                                    
+                                    buildAviIdx(jpegSize1); // save avi index for frame
+                                    s_avi_frameCnt++;
+                                }
+
+                                if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
+                                {
+                                    toggleGSRecording(0,0); //stop
+                                    toggleGSRecording(width,height); //start
+                                }
+                            }
+                            else
+                            {
+                                LOGI("Received frame - unknown size!");
+                            }
+#endif                            
                         }
+
                         if(s_groundstation_config.socket_fd>0)
                         {
                             send_data_to_udp(s_groundstation_config.socket_fd,video_frame.data(),video_frame.size());
@@ -572,29 +895,44 @@ static inline ImVec2 ImRotate(const ImVec2& v, float cos_a, float sin_a)
 void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& x2, int& y2)
 {
     bool videoAspect16x9 = s_decoder.isAspect16x9();
+
+    float videoAspect = videoAspect16x9 ? 16.0f / 9.0f : 4.0f/3.0f;
+
+    ImVec2 screenSize = ImGui::GetIO().DisplaySize;
+    float screenAspect = screenSize.x/screenSize.y;
     
-    if ( 
-        (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) || 
-        (videoAspect16x9 == (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X9)) 
-    )
+    if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT5X4 )
+    {
+        screenAspect =  5.0f / 4.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT4X3 )
+    {
+        screenAspect =  4.0f / 3.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X9 )
+    {
+        screenAspect =  16.0f / 9.0f;
+    }
+    else if (  s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT16X10 )
+    {
+        screenAspect =  16.0f / 10.0f;
+    } 
+    
+    if (  (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) ||  ((int)(videoAspect*100 + 0.5) == (int)(screenAspect*100 + 0.5f)) )
     {
         //no scale or stretch
         x1 = 0; y1 = 0; x2 = width; y2 = height;
     }
-    else if ( videoAspect16x9 )
+    else if ( videoAspect > screenAspect )
     {
-        //16x9 on 4x3 screen
-        //16/9   16/12
-        //screen = 12 image 9
-        int h1 = height * 9 / 12;
+        //fe.e 16x9 on 4x3
+        int h1 = (int)(height * screenAspect / videoAspect + 0.5f);
         x1 = 0; y1 = (height - h1) / 2; x2 = width; y2 = y1 + h1;
     }
     else
     {
-        //4x3 on 16x9 screen
-        //12/9   16/9   
-        //screen = 16 image 12
-        int w1 = width * 12 / 16;
+        //f.e. 4x3 on 16x9
+        int w1 = (int)(width * videoAspect / screenAspect + 0.5f);
         x1 = (width - w1) / 2; y1 = 0; x2 = x1 + w1; y2 = height;
     }
 }
@@ -627,29 +965,6 @@ void ImageRotated(ImTextureID tex_id, ImVec2 center, ImVec2 size, float angle, f
     draw_list->AddImageQuad(tex_id, pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
 }
 
-//===================================================================================
-//===================================================================================
-void toggleGSRecording()
-{
-    s_groundstation_config.record = !s_groundstation_config.record;
-
-    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-    if(s_groundstation_config.record)
-    {
-        auto time=std::time({});
-        char filename[]="yyyy-mm-dd-hh:mm:ss.mjpeg";
-        std::strftime(filename, sizeof(filename), "%F-%T.mjpeg", std::localtime(&time));
-        s_groundstation_config.record_file=fopen(filename,"wb+");
-
-        LOGI("start record:{}",std::string(filename));
-    }
-    else
-    {
-        fflush(s_groundstation_config.record_file);
-        fclose(s_groundstation_config.record_file);
-        s_groundstation_config.record_file=nullptr;
-    }
-}
 
 //===================================================================================
 //===================================================================================
@@ -657,9 +972,12 @@ void exitApp()
 {
     if (s_groundstation_config.record)
     {
+        toggleGSRecording(0,0);
+        /*
         std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
         fflush(s_groundstation_config.record_file);
         fclose(s_groundstation_config.record_file); 
+        */
     }
     abort();
 }
@@ -673,6 +991,23 @@ float calcLossRatio( int outCount, int inCount)
     if ( loss <= 0 ) return 0;
     return (loss * 100.0f)/ outCount;
 }
+
+//===================================================================================
+//===================================================================================
+void applyWifiChannel(Ground2Air_Config_Packet& config)
+{
+    config.wifi_channel = s_groundstation_config.wifi_channel;
+    s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+}
+
+//===================================================================================
+//===================================================================================
+void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
+{
+    config.wifi_channel = s_groundstation_config.wifi_channel;
+    s_comms.setChannel (s_groundstation_config.wifi_channel);
+}
+
 
 //===================================================================================
 //===================================================================================
@@ -695,7 +1030,12 @@ int run(char* argv[])
 
     size_t video_frame_count = 0;
 
-    g_osd.init();
+    {
+        g_osd.init();
+
+        std::string& temp = ini["gs"]["osd_font"] ;
+        g_osd.loadFont( temp != "" ? temp.c_str() : "INAV_default_24.png" );
+    }
 
     Clock::time_point last_stats_tp = Clock::now();
     Clock::time_point last_tp = Clock::now();
@@ -792,6 +1132,19 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
+            if ( s_SDSlow )
+            {
+                //!SD SLOW!
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!SD SLOW!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
             if ( s_air_record )
             {
                 //AIR REC
@@ -814,6 +1167,30 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("GS");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            //Incompatible firmware
+            if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
+            {
+                ImGui::PushID(1);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!Incompatible Air Unit firmware. Please update!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            //OSD Font error
+            if (g_osd.isFontError())
+            {
+                ImGui::PushID(1);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("!Displayport OSD Font Unexpected Format!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -915,7 +1292,7 @@ int run(char* argv[])
                         ImGui::Text("GSInPacketRate");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_gs_stats.inPacketCounter);
+                        ImGui::Text("%d+%d", s_last_gs_stats.inPacketCounter[0], s_last_gs_stats.inPacketCounter[1]);
                     }
 
                     {
@@ -923,13 +1300,76 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSPacketLossRatio");
+                        ImGui::Text("GSPacketLossRatio1");
 
                         ImGui::TableSetColumnIndex(1);
 
-                        ImGui::Text("%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter));
+                        ImGui::Text("%.1f,%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[0]),
+                            calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[1]));
+                    }
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSExpectedPktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex) /12 * config.fec_codec_n);
                     }
 
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSUniquePktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", s_last_gs_stats.inUniquePacketCounter);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSDublicatedPktRate");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%d", s_last_gs_stats.inDublicatedPacketCounter);
+                    }
+*/
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GSPacketLossRatio2");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
+                    }
+/*
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("FECSuccIndex");
+
+                        ImGui::TableSetColumnIndex(1);
+
+                        uint32_t blocksCount = s_last_gs_stats.FECBlocksCounter;
+                        if ( blocksCount == 0 ) blocksCount = 1;
+                        ImGui::Text("%.1f", s_last_gs_stats.FECSuccPacketIndexCounter * 1.0f / blocksCount);
+                    }
+*/
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
@@ -968,10 +1408,21 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS RSSI");
+                        ImGui::Text("GS RSSI 1");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm);
+                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm[0]);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS RSSI 2");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[1]);
                     }
 
                     {
@@ -998,29 +1449,6 @@ int run(char* argv[])
                     }
 */
 
-/*
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS Antena1 pkts");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena1PacketsCounter);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS Antena2 pkts");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", -s_last_gs_stats.antena2PacketsCounter);
-                    }
-*/
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
@@ -1178,13 +1606,22 @@ int run(char* argv[])
                     }
                 }
                 {
+                    bool pending = s_change_channel < Clock::now() + std::chrono::hours(1);
+                    ImGui::BeginDisabled( pending);
+                    if (ImGui::Button("APPLY"))
+                    {
+                        //start sending new channel to air, restart after 2 seconds
+                        applyWifiChannel(config);
+                    }
+                    ImGui::EndDisabled();
+
                     int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 93); 
                     ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
                     if ( ch != s_groundstation_config.wifi_channel)
                     {
                         saveGroundStationConfig();
-                        bRestartRequired = true;
                     }
                 }
                 {
@@ -1197,9 +1634,26 @@ int run(char* argv[])
                         saveGround2AirConfig(config);
                     }
                 }
+                
+                if ( s_isOV5640 )
+
                 {
+                    if ( ImGui::Checkbox("ov5640HiFPS", &config.camera.ov5640HighFPS) )
+                    {
+                        saveGround2AirConfig(config);
+                    }
+                }
+                else
+                {
+                    if ( ImGui::Checkbox("ov2640HiFPS", &config.camera.ov2640HighFPS) )
+                    {
+                        saveGround2AirConfig(config);
+                    }
+                }
+                {
+                    ImGui::SameLine();
                     int value = (int)config.camera.resolution;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
+                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 198); 
                     ImGui::SliderInt("Resolution", &value, 0, 11);
                     if ( config.camera.resolution != (Resolution)value )
                     {
@@ -1329,7 +1783,7 @@ int run(char* argv[])
                 {
                     int ch = (int)s_groundstation_config.screenAspectRatio;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Letterbox", &ch, 0, 2);
+                    ImGui::SliderInt("Letterbox", &ch, 0, 5);
                     if ( ch != (int)s_groundstation_config.screenAspectRatio)
                     {
                         s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
@@ -1364,6 +1818,12 @@ int run(char* argv[])
                     config.profile2_btn++;
                 }
                 ImGui::SameLine();
+                if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
+                {
+                    s_hal->set_vsync(s_groundstation_config.vsync, true);
+                    saveGroundStationConfig();
+                }
+                ImGui::SameLine();
                 ImGui::Checkbox("Stats", &s_groundstation_config.stats);
 
                 if ( ImGui::Button("Air Record") )
@@ -1374,13 +1834,12 @@ int run(char* argv[])
                 ImGui::SameLine();
                 if (ImGui::Button("GS Record"))
                 {
-                    toggleGSRecording();
+                    toggleGSRecording(0,0);
                 }
 
                 ImGui::SameLine();
                 if (ImGui::Button("Restart"))
                 {
-                    //send channel change command to receiver, then restart
                     restart_tp = Clock::now();
                     bRestart = true;
                 }
@@ -1396,6 +1855,9 @@ int run(char* argv[])
                     s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
                     s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
                     s_isOV5640 ? "OV5640" : "OV2640");
+                ImGui::Text("GS SD: %s %.2fGB/%.2fGB", 
+                        s_GSSDFreeSpaceBytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
+                        s_GSSDFreeSpaceBytes/(1024.0f*1024*1024), s_GSSDTotalSpaceBytes/(1024.0f*1024*1024));
             }
             ImGui::End();
         } //debug window
@@ -1403,6 +1865,11 @@ int run(char* argv[])
         if ( ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle))
         {
             s_debugWindowVisisble = !s_debugWindowVisisble;
+        }
+
+        if ( ImGui::IsKeyPressed(ImGuiKey_S))
+        {
+            s_groundstation_config.stats = !s_groundstation_config.stats;
         }
 
         bool resetRes = false;
@@ -1456,7 +1923,7 @@ int run(char* argv[])
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
         {
-            toggleGSRecording();
+            toggleGSRecording(0,0);
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
@@ -1466,14 +1933,26 @@ int run(char* argv[])
 
         if ( bRestart ) 
         {
-            //start sending new channel to air, restart after 3 seconds
-            config.wifi_channel = s_groundstation_config.wifi_channel;
-            if (Clock::now() - restart_tp >= std::chrono::milliseconds(3000)) 
+            if (Clock::now() - restart_tp >= std::chrono::milliseconds(100)) 
             {
                 bRestart = false;
                 execv(argv[0],argv);
             }
         } 
+
+        if ( Clock::now() > s_change_channel )
+        {
+            if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < 300 )
+            {
+                //still not changed - wait
+                s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+            }
+            else
+            {
+                s_change_channel = Clock::now() + std::chrono::hours(10000);
+                s_comms.setChannel (s_groundstation_config.wifi_channel);
+            }
+        }
 
         std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
         s_ground2air_config_packet = config;
@@ -1579,6 +2058,8 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
     ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
     ini["gs"]["fec_n"] = std::to_string((int)config.fec_codec_n);
+    ini["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
+    ini["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     s_iniFile.write(ini);
 }
 
@@ -1593,10 +2074,10 @@ int main(int argc, const char* argv[])
     s_iniFile.read(ini);
 
     Comms::RX_Descriptor rx_descriptor;
-    rx_descriptor.interfaces = {"wlan1mon"};
+    rx_descriptor.interfaces = {"wlan1"};
 
     Comms::TX_Descriptor tx_descriptor;
-    tx_descriptor.interface = "wlan1mon";
+    tx_descriptor.interface = "wlan1";
 
     s_hal.reset(new PI_HAL());
 
@@ -1629,7 +2110,12 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["screen_aspect_ratio"];
-        if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 2 );
+        if (temp != "") s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)clamp( atoi(temp.c_str()), 0, 5 );
+    }
+
+    {
+        std::string& temp = ini["gs"]["vsync"];
+        if (temp != "") s_groundstation_config.vsync = atoi(temp.c_str()) !=0 ;
     }
 
     {
@@ -1669,12 +2155,22 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["wifi_rate"];
-        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_G_36M_ODFM );
+        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
     }
 
     {
         std::string& temp = ini["gs"]["fec_n"];
         if (temp != "") s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
+    }
+
+    {
+        std::string& temp = ini["gs"]["ov2640_high_fps"];
+        if (temp != "") s_ground2air_config_packet.camera.ov2640HighFPS = atoi(temp.c_str()) != 0;
+    }
+
+    {
+        std::string& temp = ini["gs"]["ov5640_high_fps"];
+        if (temp != "") s_ground2air_config_packet.camera.ov5640HighFPS = atoi(temp.c_str()) != 0;
     }
 
     for(int i=1;i<argc;++i){
@@ -1717,7 +2213,7 @@ int main(int argc, const char* argv[])
             i++;
         }else if(temp=="-vsync"){
             check_argval("vsync");
-            s_hal->set_vsync(std::stoi(next) > 0);
+            s_groundstation_config.vsync = std::stoi(next) > 0;
             i++;
         }else if(temp=="-sm"){
             check_argval("sm");
@@ -1725,8 +2221,8 @@ int main(int argc, const char* argv[])
             i++;
         }else if(temp=="-help"){
             printf("gs -option val -option val\n");
-            printf("-rx <rx_interface1> <rx_interface2>, default: wlan0mon single interface\n");
-            printf("-tx <tx_interface>, default: wlan0mon\n");
+            printf("-rx <rx_interface1> <rx_interface2>, default: wlan1 single interface\n");
+            printf("-tx <tx_interface>, default: wlan1\n");
             printf("-p <gd_ip>, default: disabled\n");
             printf("-n <rx_fec_n>, 7...12, default: 12\n");
             printf("-ch <wifi_channel>, default: 7\n");
@@ -1743,7 +2239,7 @@ int main(int argc, const char* argv[])
     }
 
     rx_descriptor.coding_k = s_ground2air_config_packet.fec_codec_k;
-    rx_descriptor.coding_n = s_ground2air_config_packet.fec_codec_n;
+    rx_descriptor.coding_n = 12;//s_ground2air_config_packet.fec_codec_n;
     rx_descriptor.mtu = s_ground2air_config_packet.fec_codec_mtu;
 
     tx_descriptor.coding_k = 2;
@@ -1755,7 +2251,16 @@ int main(int argc, const char* argv[])
     {
         return -1;
     }
-#endif    
+#endif
+
+#ifdef WRITE_RAW_MJPEG_STREAM
+#else
+    prepAviBuffers();
+#endif
+
+     updateGSSdFreeSpace();
+
+     s_hal->set_vsync(s_groundstation_config.vsync, false);
 
     if (!s_hal->init())
         return -1;
@@ -1767,10 +2272,9 @@ int main(int argc, const char* argv[])
     if (!s_comms.init(rx_descriptor, tx_descriptor))
         return -1;
 
-    for (const auto& itf: rx_descriptor.interfaces)
-    {
-        system(fmt::format("iwconfig {} channel {}", itf, s_groundstation_config.wifi_channel).c_str());
-    }
+    s_isDual = rx_descriptor.interfaces.size() > 1;
+
+    s_comms.setChannel( s_groundstation_config.wifi_channel );
 
     int result = run((char **)argv);
 

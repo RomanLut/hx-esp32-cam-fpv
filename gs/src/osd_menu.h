@@ -22,7 +22,9 @@ enum class OSDMenuId
     WifiChannel,
     Restart,
     FEC,
-    GSSettings
+    GSSettings,
+    OSDFont,
+    Search
 };
 
 //=======================================================
@@ -43,7 +45,12 @@ private:
     int selectedItem;
     int itemsCount;
     int keyHandled;
-    int backMenuItem;
+
+    std::vector<OSDMenuId> backMenuIds;
+    std::vector<int> backMenuItems;
+
+    Clock::time_point search_tp = Clock::now();
+    bool searchDone;
 
     int bWidth;
     int sWidth;
@@ -54,6 +61,9 @@ private:
     void drawStatus( const char* caption );
 
     bool exitKeyPressed();
+
+    void goForward(OSDMenuId newMenuId, int newItem);
+    void goBack();
 
     void drawMainMenu(Ground2Air_Config_Packet& config);
     void drawCameraSettingsMenu(Ground2Air_Config_Packet& config);
@@ -70,6 +80,8 @@ private:
     void drawRestartMenu(Ground2Air_Config_Packet& config);
     void drawFECMenu(Ground2Air_Config_Packet& config);
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawOSDFontMenu(Ground2Air_Config_Packet& config);
+    void drawSearchMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;

@@ -46,6 +46,25 @@ bool Circular_Buffer::write(const void* data, size_t size)
     return true;
 }
 
+bool Circular_Buffer::writeBytes(uint8_t b, size_t size)
+{
+    if (size >= get_space_left())
+        return false;
+
+    size_t idx = (m_start + m_size) % m_capacity;
+
+    if (idx + size <= m_capacity) //no wrap
+        memset(m_data + idx, b, size);
+    else //wrap
+    {
+        size_t first = m_capacity - idx;
+        memset(m_data + idx, b, first);
+        memset(m_data, b, size - first);
+    }
+    m_size += size;
+    return true;
+}
+
 bool Circular_Buffer::read(void* dst, size_t size)
 {
     if (m_size < size)
@@ -63,6 +82,16 @@ bool Circular_Buffer::read(void* dst, size_t size)
     size_t first = m_capacity - m_start;
     memcpy(dst, m_data + m_start, first);
     memcpy((uint8_t*)dst + first, m_data, size - (first));
+    m_start = (m_start + size) % m_capacity;
+    m_size -= size;
+    return true;
+}
+
+bool Circular_Buffer::skip(size_t size)
+{
+    if (m_size < size)
+        return false;
+
     m_start = (m_start + size) % m_capacity;
     m_size -= size;
     return true;
@@ -100,4 +129,10 @@ void Circular_Buffer::clear()
 {
     m_start = 0;
     m_size = 0;
+}
+
+uint8_t Circular_Buffer::peek( size_t offset)
+{
+    offset = (m_start + offset) % m_capacity;
+    return this->m_data[offset];
 }

@@ -179,6 +179,10 @@ struct Comms::RX
     std::mutex block_queue_mutex;
     std::deque<Block_ptr> block_queue;
 
+    std::mutex received_packet_ids_mutex;
+    std::deque<uint32_t> received_packet_ids;
+    uint32_t lastPacketIdByInterface[2];
+
     Clock::time_point last_block_tp = Clock::now();
     Clock::time_point last_packet_tp = Clock::now();
 
@@ -449,7 +453,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
             case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
                 prh.input_dBm = *(int8_t*)rti.this_arg;
-                s_gs_stats.rssiDbm = -*(int8_t*)rti.this_arg; 
+                s_gs_stats.rssiDbm[pcap.index] = *(int8_t*)rti.this_arg; 
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
@@ -457,8 +461,8 @@ bool Comms::process_rx_packet(PCap& pcap)
                 s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
                 break;
 
+            /*
             case IEEE80211_RADIOTAP_ANTENNA:
-            {
                 if ((uint8_t*)rti.this_arg == 0 ) 
                 {
                     s_gs_stats.antena1PacketsCounter++;
@@ -467,7 +471,8 @@ bool Comms::process_rx_packet(PCap& pcap)
                 {
                     s_gs_stats.antena2PacketsCounter++;
                 }
-            }
+                break;
+            */
 
             case IEEE80211_RADIOTAP_FLAGS:
                 prh.radiotap_flags = *rti.this_arg;
@@ -501,12 +506,38 @@ bool Comms::process_rx_packet(PCap& pcap)
             m_best_input_dBm = std::max(best_input_dBm, prh.input_dBm);
         }
 
-        {
-            RX& rx = m_impl->rx;
+        s_gs_stats.inPacketCounter[pcap.index]++;
 
-            Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
-            uint32_t block_index = header.block_index;
-            uint32_t packet_index = header.packet_index;
+        Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
+        uint32_t block_index = header.block_index;
+        uint32_t packet_index = header.packet_index;
+
+        uint32_t packetOrderIndex = block_index * m_rx_descriptor.coding_n + packet_index;
+        s_gs_stats.lastPacketIndex = packetOrderIndex;
+
+        RX& rx = m_impl->rx;
+        rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
+        
+        {
+            std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
+
+            auto it = std::lower_bound(rx.received_packet_ids.begin(), rx.received_packet_ids.end(), packetOrderIndex);
+            if (it == rx.received_packet_ids.end() || *it != packetOrderIndex) 
+            {
+                rx.received_packet_ids.insert(it, packetOrderIndex);
+                s_gs_stats.inUniquePacketCounter++;
+            }
+            else
+            {
+                s_gs_stats.inDublicatedPacketCounter++;
+            }
+
+            uint32_t tooOldIds = std::max(rx.lastPacketIdByInterface[0],rx.lastPacketIdByInterface[1])-100;
+            it = std::lower_bound(rx.received_packet_ids.begin(), rx.received_packet_ids.end(), tooOldIds);
+            rx.received_packet_ids.erase(rx.received_packet_ids.begin(), it);
+        }
+
+        {
             if (packet_index >= m_rx_descriptor.coding_n)
             {
                 LOGE("packet index out of range: {} > {}", packet_index, m_rx_descriptor.coding_n);
@@ -551,7 +582,7 @@ bool Comms::process_rx_packet(PCap& pcap)
                 auto iter = std::lower_bound(block->fec_packets.begin(), block->fec_packets.end(), packet_index, [](RX::Packet_ptr const& l, uint32_t index) { return l->index < index; });
                 if (iter != block->fec_packets.end() && (*iter)->index == packet_index)
                 {
-                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index * m_coding_k + packet_index);
+                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index *m_rx_descriptor.coding_n + packet_index);
                     return true;
                 }
                 else
@@ -562,12 +593,13 @@ bool Comms::process_rx_packet(PCap& pcap)
                 auto iter = std::lower_bound(block->packets.begin(), block->packets.end(), packet_index, [](RX::Packet_ptr const& l, uint32_t index) { return l->index < index; });
                 if (iter != block->packets.end() && (*iter)->index == packet_index)
                 {
-                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index * m_coding_k + packet_index);
+                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index * m_rx_descriptor.coding_n + packet_index);
                     return true;
                 }
                 else
                     block->packets.insert(iter, packet);
             }
+
         }
 
         //m_impl->rx_queue.enqueue(payload, bytes);
@@ -884,7 +916,6 @@ void Comms::rx_thread_proc(size_t index)
         int n = select(30, &readset, nullptr, nullptr, &to);
         if (n != 0 && FD_ISSET(pcap.rx_pcap_selectable_fd, &readset))
         {
-            s_gs_stats.inPacketCounter++;
             process_rx_packet(pcap);
         }
     }
@@ -1165,6 +1196,8 @@ void Comms::process_rx_packets()
         //entire block received
         if (block->packets.size() >= coding_k)
         {
+            s_gs_stats.FECBlocksCounter++;
+                
             //sanity check - this should not happen
             for (size_t i = 0; i < block->packets.size(); i++)
             {
@@ -1183,6 +1216,12 @@ void Comms::process_rx_packets()
         if (block->packets.size() + block->fec_packets.size() >= coding_k)
         {
             //auto start = Clock::now();
+
+            s_gs_stats.FECBlocksCounter++;
+
+            auto c = std::max_element(block->fec_packets.begin(), block->fec_packets.end(), 
+                    [](RX::Packet_ptr const& a, RX::Packet_ptr const& b)  { return a->index < b->index; });
+            s_gs_stats.FECSuccPacketIndexCounter += (*c)->index;
 
             std::array<unsigned int, 32> indices;
             size_t primary_index = 0;
@@ -1322,6 +1361,14 @@ void Comms::process()
         m_data_stats_rate = static_cast<size_t>(static_cast<float>(m_data_stats_data_accumulated) / d);
         m_data_stats_data_accumulated = 0;
         m_data_stats_last_tp = now;
+    }
+}
+
+void Comms::setChannel(int ch)
+{
+    for (const auto& itf:m_rx_descriptor.interfaces)
+    {
+        system(fmt::format("iwconfig {} channel {}", itf, ch).c_str());
     }
 }
 

@@ -879,7 +879,7 @@ void Fec_Codec::decoder_task_proc()
         }
 
         {
-            //entire block received
+            //all original packets are received, no fec decoding required
             if (m_decoder.block_packets.size() >= m_descriptor.coding_k)
             {
                 DECODER_LOG("1: Complete block\n");

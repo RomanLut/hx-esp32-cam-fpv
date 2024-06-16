@@ -5,7 +5,7 @@ SRCS := src/main.cpp \
 	src/droid_sans_font.cpp \
 	src/osd.cpp \
 	src/utils/lodepng.cpp \
-	src/utils/util.cpp \
+	../components/common/util.cpp \
 	src/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
 	src/Comms.cpp \
@@ -13,6 +13,9 @@ SRCS := src/main.cpp \
 	src/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \
+	../components/common/avi.cpp \
+	../components/common/packets.cpp \
+	../components/common/jpeg_parser.cpp \
 	src/fmt/format.cc \
 	src/fmt/os.cc \
 	src/socket.cpp \
@@ -61,7 +64,7 @@ INCLUDE  := -Isrc \
 	-I$(IMGUI_DIR)/backends
 
 # C++ flags
-CXXFLAGS := -std=c++17  `sdl2-config --cflags` -O3 -DNDEBUG -ffast-math -funroll-loops -Wall $(INCLUDE)
+CXXFLAGS := -std=c++17 `sdl2-config --cflags` -O3 -DNDEBUG -ffast-math -funroll-loops -Wall $(INCLUDE)
 CXXFLAGS += -DIMGUI_IMPL_OPENGL_ES2
 CFLAGS = $(CXXFLAGS)
 
@@ -71,7 +74,7 @@ CFLAGS = $(CXXFLAGS)
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lbcm_host -lbrcmGLESv2 -lbrcmEGL -lts
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lGLESv2 -lturbojpeg -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lepoxy
 LDFLAGS := -L/usr/lib/aarch64-linux-gnu/ -L/usr/lib/ -L/opt/vc/lib/ 
-LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 
+LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs
 
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td
