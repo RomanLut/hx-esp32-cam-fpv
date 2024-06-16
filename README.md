@@ -8,12 +8,13 @@ Open source digital FPV system based on esp32cam.
 - [x] documentation
 - [x] test ov5640 sensor
 - [x] better diagnostic tools
-- [ ] write proper format .avi on air and ground (seek support)
+- [x] write proper format .avi on air and ground (seek support)
 - [x] font selection for Displayport OSD
 - [x] air unit channel search
-- [ ] release prebuilt images and firmware
 - [x] test dual wifi cards performance
-- [ ] investigate frame droping
+- [ ] build dual wifi RPI GS
+- [ ] release prebuilt images and firmware
+- [ ] radxa 3w GS
 - [ ] improve frame dropping with retranmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
@@ -38,7 +39,8 @@ Open source digital FPV system based on esp32cam.
 - **esp32s3sense** with **ov5640** camera _(recommended for FPV: has 50fps modes)_
 
 **Ground station:**
-- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
+- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card. Dual **rtl8812au** are recommended for FPV.
+  
 
 
 ## Original project
@@ -169,6 +171,12 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 **ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
+
+800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
+
+
 
 STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
 
