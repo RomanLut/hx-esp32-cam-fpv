@@ -39,7 +39,8 @@ Open source digital FPV system based on esp32cam.
 - **esp32s3sense** with **ov5640** camera _(recommended for FPV: has 50fps modes)_
 
 **Ground station:**
-- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card
+- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card. Dual **rtl8812au** are recommended for FPV.
+  
 
 
 ## Original project
