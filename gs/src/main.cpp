@@ -2155,7 +2155,7 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["wifi_rate"];
-        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_G_36M_ODFM );
+        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
     }
 
     {
