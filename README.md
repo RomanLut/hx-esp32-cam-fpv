@@ -8,12 +8,13 @@ Open source digital FPV system based on esp32cam.
 - [x] documentation
 - [x] test ov5640 sensor
 - [x] better diagnostic tools
-- [ ] write proper format .avi on air and ground (seek support)
+- [x] write proper format .avi on air and ground (seek support)
 - [x] font selection for Displayport OSD
 - [x] air unit channel search
-- [ ] release prebuilt images and firmware
 - [x] test dual wifi cards performance
-- [ ] investigate frame droping
+- [ ] build dual wifi RPI GS
+- [ ] release prebuilt images and firmware
+- [ ] radxa 3w GS
 - [ ] improve frame dropping with retranmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
