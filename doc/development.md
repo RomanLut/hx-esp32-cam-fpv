@@ -33,7 +33,7 @@ Wifi load           | Air unit wifi queue usage in %
 
 ![alt text](images/vcd_profiling.png "vcd_profiling.png")
 
- GS code contains profiler which can write frame timing in VCD format to SD card.
+ Air unit code contains profiler which can write frame timing in VCD format to SD card.
 
  VCD file can than be viewed in tools like [Wavetrace](https://www.wavetrace.io/) (available as VSCode extension) or [VCDrom](https://vc.drom.io/).
 
