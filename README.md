@@ -208,7 +208,9 @@ STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
  A number of OSD fonts are included. User fonts can be placed in ```/gs/assets/osd_fonts/``` - 24 pixels wide png format.
  
- ![alt text](doc/images/displayport_osd.jpg "displayport_osd")
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-aac6-2929c9d3661e
+
+
 
 # Mavlink
 
