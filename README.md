@@ -56,9 +56,7 @@ The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been
 
 The wifi data is sent using packet injection which is possible on **ESP32** platform. Data is sent with forward error correction encoding (FEC) which allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
 
-The air unit can also record the video straight from the camera to the SD card. The format is a rudimentary MJPEG without any header so when playing back the FPS will be whatever your player will decide (todo: write proper AVI format).
-
-There is a significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The video quality of air unit recording is the same as on GS (no recompression is done).
+The air unit can also record the video straight from the camera to the SD card. There is a significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The video quality of air unit recording is the same as on GS (no recompression is done).
 
 The size of JPEG images vary a lot depending on number of details in the view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
 
@@ -103,10 +101,10 @@ For FPV Glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters 
 
 The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
 - extremely low air unit price
-- tiny size (esp32s3sense)
+- tiny air unit size (esp32s3sense)
 - low latency
 - low power consumption (less then 300mA at 5V)
-- ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted
+- **ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
 
 # Building
 
@@ -162,7 +160,7 @@ Internal yellow LED conflicts with SD card and thus can not be used for indicati
 
 Existing **Boot** button is used to start/stop air unit recording.
 
-A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation):
+A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
 ## esp32s3sense + ov5640
 
@@ -224,12 +222,12 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-
 
 From left to right:
  - RSSI in Dbm
- - Average wifi queue usage. Should be below 50%. Look for free wifi channel if getting higher
+ - Average wifi queue usage. Should be below 50%. Look for free wifi channel if it turns red constantly
  - actual MJPEG stream bandwidth in Mbps (without FEC encoding). Wifi stream bandwwith = MJPEG stream bandwidth * FEC_n / FEC_k
  - resolution
  - FPS
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
- - ```AIR``` Air unit is recrding video to SD card
+ - ```AIR``` Air unit is recording video to SD card
  - ```GS``` GS is recording video to SD card
 
 # OSD Menu
@@ -287,19 +285,19 @@ Any resolution lower then 640x360, despite high frame rate (60fps with 320x240),
 
 **ov2640** can capture 1280x720 at 13 FPS. Image looks Ok on 7" screen, but FPS is definitely is lower then acceptable level for FPV.
 
-It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work with all sensor.
+It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work. If it does not work - try with another sensor.
 
 **OV5640**
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
 
-800x456 image looks much better on **ov5640** compared tp **2640** thanks to highger sensor quality and less noise.
+800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
 
 However, 1280x720 30fps requres too high bandwidth, so system has to set high compression levels which elliminates detais. Overall, 1024x576 30fps looks better. Both modes require 36Mbps+ wifi rate to provide benefits over 800x456.
 
-It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV.
+It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
-While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too higher bandwidth for MJPEG stream. 
+While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too high bandwidth for MJPEG stream. 
 
 **Note: ov5640** does not support **vertical image flip**.
 
@@ -307,7 +305,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 ![alt text](doc/images/ov2640_lens.jpg "ov2640 lens")
 
-Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 lens to be used on UAV.
+Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 or 160 lens to be used on UAV.
 
 Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
@@ -315,7 +313,7 @@ Note that "nigh version" sensor do not have IR filter and show distorted colors.
 
 # Wifi channel
 
-Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna. In the crowded wifi environment, best channel is the one not used by other devices. System may not be able to push frames on bisy channel at all (high wifi queue usage will be shown on OSD).
+Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna. In the crowded wifi environment, best channel is the one not used by other devices. System may not be able to push frames on busy channel at all (high wifi queue usage will be shown on OSD).
 
 ## Wifi rate
 
@@ -389,7 +387,7 @@ The best choice for GS is pair of 5dBi dipoles or 5dbi dipole + BetaFPV Moxon An
 
 It is important that all antenas should be mounded **VERTICALLY**.
 
-**esp32cam** PCB antena can not provide range more the a few metters. 
+**esp32cam** PCB antena can not provide range more then a few metters. 
 
 Note: **esp32cam** board requires soldering resistor to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
@@ -441,9 +439,9 @@ Latency is in range 10-30ms for all resolutions at 30fps. From technological sid
 
 ![alt text](doc/images/gs_internal_wifi.jpg "gs internal wifi")
 
-**NEXMON** drivers https://github.com/seemoo-lab/nexmon offer monitor mode and packet injection for internal wifi card of Raspberry Pi. Original idea was to build extremely cheap ground station based on Raspberry Pi with internal antena replaced by dipople.
+**NEXMON** drivers https://github.com/seemoo-lab/nexmon offer monitor mode and packet injection for internal wifi card of Raspberry Pi. Original idea was to build extremely cheap ground station based on Raspberry Pi with internal antena replaced by dipole.
 
-Unfortunatelly these attempts was unsuccessfull.
+Unfortunatelly these attempts were unsuccessfull.
 
 **NEXMON** drivers do support monitor mode and are used in Kali Linux builds for Rapsberry Pi. Unfortunatelly, to many packets are missed while listening for high-bandwidth stream. Packet injection barely works; few packets can be sent which  might be enough for wifi deauth, but not for sending data stream. Attempts to use packet injection crash the driver. Attempts to send packets lead to lossing 70% of incoming packets. Packet injection is disabled in the last builds of Kali Linux.
 
@@ -466,7 +464,7 @@ Lesons learned:
 
 Sensors can be bought with flex cables of various length.
 
-Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Flex cable wires cary high frequency (10Mhz) digital signals which produce a lot of RF noise. GPS sensor mounted in less then 7cm from **esp32cam** was jammed completely. Micro plane does not have a lot of space to separate GPS sensor from **esp32cam**. Even moved to the end of the wing (15cmaway from **esp32cam**) it still barely found any satellites. **esp32cam** and flex cable shielding improved situation a little bit, but not enough to trust GPS sensor and try a range testing. 
+Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Flex cable wires cary high frequency (10Mhz) digital signals which produce a lot of RF noise. GPS sensor mounted in less then 7cm from **esp32cam** was jammed completely. Micro plane does not have a lot of space to separate GPS sensor from **esp32cam**. Even moved to the end of the wing (15cm away from **esp32cam**) it still barely found any satellites. **esp32cam** and flex cable shielding improved situation a little bit, but not enough to trust GPS sensor and try a range testing. 
 
 **esp32cam** with long flex cable has been replaced with compact **esp32s3sense** board.
 
