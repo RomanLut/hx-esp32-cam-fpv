@@ -93,12 +93,12 @@ The downside is high JPEG compression, no WDR, distorted colors, low light sensi
 
 For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. Frame droping is not comfortable for FPV. **esp32s3sense + ov5640** offers 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
 
-**hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems in terms of image qulity.
+**hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems in terms of image quality.
 
 The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
-- extremely low air unit price
+- minimal air unit price
 - tiny air unit size (esp32s3sense)
-- low latency
+- low latency (actually a winner for the moment!)
 - low power consumption (less then 300mA at 5V)
 - **ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
 
