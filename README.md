@@ -80,9 +80,7 @@ Do not expect a lot from this system. It all starts with a cheap camera (ov2640)
 
 Secondly, esp32 is not capable of video encoding, which means that video stream is sent as a sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
 
-Image looks Ok on 7” screen, but not more.
-
-Let’s say honest: we expect at least HD resolution from the digital fpv system. All in all, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. It looses even against best analog system. 
+Due to low resolution, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. 
 
 Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - air unit and ground station video recording
@@ -91,13 +89,11 @@ Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - telemetry logging
  - absence of analog noise on image
  
-The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, jerky framerate.
+The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, frame droping.
 
-**esp32cam** is ok for 7" GS screen.
+For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. Frame droping is not comfortable for FPV. **esp32s3sense + ov5640** offers 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
 
-For FPV Glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. 30Fps is not comfortable for FPV. **esp32s3sense + ov5640** offer 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
-
-**hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems.
+**hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems in terms of image qulity.
 
 The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
 - extremely low air unit price
