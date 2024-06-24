@@ -409,6 +409,10 @@ Tested on inav microplane: https://www.youtube.com/watch?v=GYB-UckucRA
 
 ![alt text](doc/images/dfminispirit.jpg "df mini spirit")
 
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
+
+
 # Drivers 
 
 I am still searching for the best **RTL8812au** drivers for this project.
