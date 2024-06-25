@@ -117,11 +117,11 @@ Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam
 Configuration is selected in [main.h](https://github.com/RomanLut/esp32-cam-fpv/blob/b63eb884e7c1e2ced3711dce53f20f102a39b4fc/components/air/main.h#L12) before building air unit firmware.
 
 
-**Displayport MSP OSD + REC button**
+## Air Unit Variant 1: Displayport MSP OSD + REC button
 
 ![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
 
-**Displayport MSP OSD + Mavlink**
+## Air Unit Variant 2: Displayport MSP OSD + Mavlink
 
 ![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
 
@@ -138,7 +138,7 @@ Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or re
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-## esp32s3sense
+## Air Unit Variant 3: esp32s3sense
 
 STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
 
@@ -158,7 +158,7 @@ Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
-## esp32s3sense + ov5640
+## Air Unit Variant 4: esp32s3sense + ov5640
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
 
@@ -182,7 +182,11 @@ Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30m
 
 Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
-STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624580
+STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+
+## Ground Station Varian 1: Single rtl8812au
+
+Single wifi card is Ok for GS with LCD monitor.
 
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
@@ -194,7 +198,27 @@ STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
 ![alt text](doc/images/gs.jpg "gs")
 
-**TODO**
+
+## Ground Station Varian 2: Dual rtl8812au
+
+Dual wifi cards variant benefit less frame dropping.
+
+![alt text](doc/images/gs2_glasses.jpg "gs2_glasses")
+
+![alt text](doc/images/gs2_drawing.jpg "gs2_drawing")
+
+![alt text](doc/images/gs2_wifi_usb.jpg "gs2_wifi_usb")
+
+A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
+
+Small rtl8812au cards are used.
+
+![alt text](doc/images/gs2_overview.jpg "gs2_overview")
+
+Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90 degree adapters are recommended instead.
+
+![alt text](doc/images/moxon.jpg "moxon")
+
 
 # Displayport MSP OSD
 
