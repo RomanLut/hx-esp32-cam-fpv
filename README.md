@@ -307,7 +307,7 @@ Any resolution lower then 640x360, despite high frame rate (60fps with 320x240),
 
 It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work. If it does not work - try with another sensor.
 
-**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made with almost the same light conditions:
+**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
 
 800x456 30fps 26Mbit with ov2640 camera 120 degree lens:
 
