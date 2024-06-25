@@ -15,7 +15,7 @@ Open source digital FPV system based on esp32cam.
 - [x] build dual wifi RPI GS
 - [ ] release prebuilt images and firmware
 - [ ] radxa 3w GS
-- [ ] improve frame dropping with retranmission ?
+- [ ] improve frame dropping with retransmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth
