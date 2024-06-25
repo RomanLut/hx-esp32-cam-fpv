@@ -12,7 +12,7 @@ Open source digital FPV system based on esp32cam.
 - [x] font selection for Displayport OSD
 - [x] air unit channel search
 - [x] test dual wifi cards performance
-- [ ] build dual wifi RPI GS
+- [x] build dual wifi RPI GS
 - [ ] release prebuilt images and firmware
 - [ ] radxa 3w GS
 - [ ] improve frame dropping with retranmission ?
