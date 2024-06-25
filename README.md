@@ -429,6 +429,7 @@ Tested on inav microplane: https://www.youtube.com/watch?v=GYB-UckucRA
 
 ![alt text](doc/images/dfminispirit.jpg "df mini spirit")
 
+800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
