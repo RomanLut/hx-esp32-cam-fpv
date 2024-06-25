@@ -379,8 +379,6 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-Even with this settings and good connection frames are still lost sometimes, which is something which should investiaged further (**TODO**).
-
 ## Wifi card
 
 This **RTL8812au** card is recommended for the project:
