@@ -20,7 +20,7 @@ OSD::OSD()
 void OSD::clear()
 {
     memset( &this->buffer, 0, OSD_BUFFER_SIZE );
-    this->lockCounter = 30; //lock for 30 seconds max (30 fps update)
+    this->lockCounter = 30; //lock for 30 frames max (30 fps update)
 }
 
 //==============================================================
