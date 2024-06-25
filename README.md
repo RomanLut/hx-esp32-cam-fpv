@@ -307,6 +307,12 @@ Any resolution lower then 640x360, despite high frame rate (60fps with 320x240),
 
 It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work. If it does not work - try with another sensor.
 
+**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made with almost the same light conditions:
+
+800x456 30fps 26Mbit with ov2640 camera 120 degree lens:
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
+
 **OV5640**
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
@@ -320,6 +326,10 @@ It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**.
 While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too high bandwidth for MJPEG stream. 
 
 **Note: ov5640** does not support **vertical image flip**.
+
+800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
 ## Lens 
 
@@ -426,10 +436,6 @@ Range is limited by **ESP32** output power (100mW 20dB) and highly depends on an
 Tested on inav microplane: https://www.youtube.com/watch?v=GYB-UckucRA
 
 ![alt text](doc/images/dfminispirit.jpg "df mini spirit")
-
-800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
-
-https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
 
 # Drivers 
