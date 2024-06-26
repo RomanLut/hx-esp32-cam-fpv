@@ -199,7 +199,7 @@ Single wifi card is Ok for GS with LCD monitor.
 ![alt text](doc/images/gs.jpg "gs")
 
 
-## Ground Station Varian 2: Dual rtl8812au
+## Ground Station Variant 2: Dual rtl8812au
 
 Dual wifi cards variant benefit less frame dropping.
 
@@ -211,7 +211,7 @@ Dual wifi cards variant benefit less frame dropping.
 
 A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
 
-Small rtl8812au cards are used.
+Small rtl8812au cards are used. AV output is reserved for future use.
 
 ![alt text](doc/images/gs2_overview.jpg "gs2_overview")
 
