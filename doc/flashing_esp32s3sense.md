@@ -1,17 +1,13 @@
-# Flashing esp32cam
-
-**esp32-cam** with **esp32-cam-mb** adapter is recommended.
-
-Experienced users who connect **esp32cam** using USB-UART adapter should enter flashing mode by holding **Boot** button and pressing **Reset** button before starting flashing.
+# Flashing esp32s3sense
 
 ## Flashing using online tool
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
 * Navigate to https://esp.huhn.me/
-* Connect esp32-cam-mb adapter to USB, click **[Connect]**, select USB UART of **esp32cam**
+* Connect esp32s3sense to USB, click **[Connect]**, select USB UART of **esp32s3sense**
 * Add firmware files as shown on screenshot:
  
-![alt text](images/espwebtool.png "espwebtool.png")
+![alt text](images/espwebtool.png "espwebtool_s3sense.png")
 
 * Make sure addresses are filled corectly
 * Click **[Program]**
@@ -20,14 +16,14 @@ Experienced users who connect **esp32cam** using USB-UART adapter should enter f
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
 * Download and uncommpress Flash Download tools https://www.espressif.com/en/support/download/other-tools
-* Start Flash Download Tools, select esp32:
+* Start Flash Download Tools, select esp32s3:
 
-![alt text](images/flash_download_tool_esp32.png "flash_download_tool_esp32.png")
+![alt text](images/flash_download_tool_esp32s3.png "flash_download_tool_esp32s3.png")
  
-* Connect esp32-cam-mb adapter to USB
+* Connect **esp32s3sense** to USB
 * Add firmware files as shown on screenshot:
  
-![alt text](images/flash_download_tool_files.png "flash_download_tool_files.png")
+![alt text](images/flash_download_tool_files.png "flash_download_tool_files_s3sense.png")
 
 * Make sure checkboxes are selected
 * Make sure addresses are filled corectly
@@ -41,21 +37,17 @@ Experienced users who connect **esp32cam** using USB-UART adapter should enter f
  
 * Clone repository: ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
-* Open project: esp32-cam-fpv\air_firmware_esp32cam\esp32-cam-fpv-esp32cam.code-workspace 
+* Open project: esp32-cam-fpv\air_firmware_esp32s3sense\esp32-cam-fpv-esp32s3sense.code-workspace  (or other for ov5640)
 
 * Let PlatformIO install all components
 
-* Uncomment desired configuration section in: https://github.com/RomanLut/hx-esp32-cam-fpv/blob/e7ba5a247c40c10a1967982f36ea29345682fbf2/components/air/main.h#L17
-
-* Connect esp32cam to USB
+* Connect **esp32s3sense** to USB
 
 * Click **[PlatformIO: Upload]** on bottom toolbar.
 
 # Over the Air update (OTA)
 
-When esp32cam is installed on UAV, it would require desoldering to update firmware. 
-
-There is easie alternative way using Over The Air update (OTA). It is possible only in configuration 1 which has REC button.
+It is also possible to upgrade firwware over wifi.
 
 Hold REC button while powering up to enter OTA mode. Alternatively, hold REC button and press reset button. 
 
