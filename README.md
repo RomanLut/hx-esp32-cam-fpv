@@ -12,10 +12,10 @@ Open source digital FPV system based on esp32cam.
 - [x] font selection for Displayport OSD
 - [x] air unit channel search
 - [x] test dual wifi cards performance
-- [ ] build dual wifi RPI GS
+- [x] build dual wifi RPI GS
 - [ ] release prebuilt images and firmware
 - [ ] radxa 3w GS
-- [ ] improve frame dropping with retranmission ?
+- [ ] improve frame dropping with retransmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth
@@ -45,9 +45,9 @@ Open source digital FPV system based on esp32cam.
 
 ## Original project
 
-**esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs.
+**esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs. 
 
-The goal of this fork is to develop fpv system for small inav-based plane.
+The goal of this fork is to develop fpv system for small inav-based plane, startng from the prof-of-concept code of **jeanlemotan**.
 
 # Theory
 **ESP32** is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**) and is passed directly to the wifi and written to the SD card (if the DVR is enabled).
@@ -117,11 +117,11 @@ Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam
 Configuration is selected in [main.h](https://github.com/RomanLut/esp32-cam-fpv/blob/b63eb884e7c1e2ced3711dce53f20f102a39b4fc/components/air/main.h#L12) before building air unit firmware.
 
 
-**Displayport MSP OSD + REC button**
+## Air Unit Variant 1: Displayport MSP OSD + REC button
 
 ![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
 
-**Displayport MSP OSD + Mavlink**
+## Air Unit Variant 2: Displayport MSP OSD + Mavlink
 
 ![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
 
@@ -138,7 +138,7 @@ Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or re
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-## esp32s3sense
+## Air Unit Variant 3: esp32s3sense
 
 STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
 
@@ -158,7 +158,7 @@ Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
-## esp32s3sense + ov5640
+## Air Unit Variant 4: esp32s3sense + ov5640
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
 
@@ -182,7 +182,11 @@ Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30m
 
 Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
-STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624580
+STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+
+## Ground Station Varian 1: Single rtl8812au
+
+Single wifi card is Ok for GS with LCD monitor.
 
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
@@ -194,7 +198,27 @@ STL files for 3D printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
 ![alt text](doc/images/gs.jpg "gs")
 
-**TODO**
+
+## Ground Station Variant 2: Dual rtl8812au
+
+Dual wifi cards variant benefit less frame dropping.
+
+![alt text](doc/images/gs2_glasses.jpg "gs2_glasses")
+
+![alt text](doc/images/gs2_drawing.jpg "gs2_drawing")
+
+![alt text](doc/images/gs2_wifi_usb.jpg "gs2_wifi_usb")
+
+A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
+
+Small rtl8812au cards are used. AV output is reserved for future use.
+
+![alt text](doc/images/gs2_overview.jpg "gs2_overview")
+
+Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90 degree adapters are recommended instead.
+
+![alt text](doc/images/moxon.jpg "moxon")
+
 
 # Displayport MSP OSD
 
@@ -283,6 +307,12 @@ Any resolution lower then 640x360, despite high frame rate (60fps with 320x240),
 
 It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work. If it does not work - try with another sensor.
 
+**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
+
+800x456 30fps 26Mbit with ov2640 camera 120 degree lens:
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
+
 **OV5640**
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
@@ -296,6 +326,10 @@ It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**.
 While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too high bandwidth for MJPEG stream. 
 
 **Note: ov5640** does not support **vertical image flip**.
+
+800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
+
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
 ## Lens 
 
@@ -355,8 +389,6 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-Even with this settings and good connection frames are still lost sometimes, which is something which should investiaged further (**TODO**).
-
 ## Wifi card
 
 This **RTL8812au** card is recommended for the project:
@@ -404,9 +436,6 @@ Range is limited by **ESP32** output power (100mW 20dB) and highly depends on an
 Tested on inav microplane: https://www.youtube.com/watch?v=GYB-UckucRA
 
 ![alt text](doc/images/dfminispirit.jpg "df mini spirit")
-
-
-https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
 
 # Drivers 
