@@ -109,13 +109,12 @@ The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are:
 
 ## Air Unit
 
-Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
-
 ## esp32cam
+
+Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
 
 **esp32cam** does not have enough free pins. Two configurations are available currently.
 Configuration is selected in [main.h](https://github.com/RomanLut/esp32-cam-fpv/blob/b63eb884e7c1e2ced3711dce53f20f102a39b4fc/components/air/main.h#L12) before building air unit firmware.
-
 
 ## Air Unit Variant 1: Displayport MSP OSD + REC button
 
@@ -138,7 +137,11 @@ Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or re
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-## Air Unit Variant 3: esp32s3sense
+## esp32s3sense
+
+Flashing esp32s3sense firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
+
+## Air Unit Variant 3: esp32s3sense + ov2640
 
 STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
 
@@ -234,7 +237,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-
 
  Can be used for RC and for downlink telemetry. Setup 115200 UART. 
  
- This is transparent bidirectional stream sent with FEC encoding (Groun2Air: k=2,n=3, Air2Ground: k=6,n=12).
+ This is transparent bidirectional stream sent with FEC encoding (Groun2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
 
 # Camera OSD Elements
 
