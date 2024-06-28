@@ -3,10 +3,12 @@
 
 Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-image
 
-- Install modified pishrink.sh on your Raspberry Pi and copy it to the /usr/local/bin folder by typing: 
+- Install modified pishrink.sh on your Raspberry Pi and copy it to the ```/usr/local/bin``` folder by typing: 
 
-```wget https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh```
+```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
+
 ```sudo chmod +x pishrink.sh```
+
 ```sudo mv pishrink.sh /usr/local/bin```
 
 - Check the mount point path of your USB drive by entering:
