@@ -237,7 +237,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-
 
  Can be used for RC and for downlink telemetry. Setup 115200 UART. 
  
- This is transparent bidirectional stream sent with FEC encoding (Groun2Air: k=2,n=3, Air2Ground: k=6,n=12).
+ This is transparent bidirectional stream sent with FEC encoding (Groun2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
 
 # Camera OSD Elements
 
