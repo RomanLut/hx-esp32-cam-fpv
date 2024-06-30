@@ -1,8 +1,6 @@
 
 # Making image file from SD card for release
 
-Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-image
-
 - Install modified pishrink.sh on your Raspberry Pi and copy it to the ```/usr/local/bin``` folder by typing: 
 
 ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
@@ -31,3 +29,7 @@ Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-imag
 ```sudo pishrink.sh -z -a espvrx.img```
 
 ```sudo umount /mnt/usb1```
+
+# References
+
+How to Back Up Your Raspberry Pi as a Disk Image https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-image
