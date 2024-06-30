@@ -41,5 +41,5 @@ sdkconfig.old
 air_firmware/build
 .vscode
 /air_firmware/sdkconfig.dev
-gs/2024-02-10-02:06:21.mjpeg
 gs/gs.ini
+release
