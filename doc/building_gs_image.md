@@ -151,7 +151,7 @@ Save and reboot.
 
 # Updating groundstation image
 
-Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to ap using internal wifi card.
+Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to access point using internal wifi card.
 
 To update groundstation software, pull updates from '''release''' branch:
 
