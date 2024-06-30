@@ -81,6 +81,8 @@ Save and reboot.
 
 * Download **esp32-cam-fpv** repository:
  
+  ```cd /home/pi/```
+ 
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
   
 * Adding GPIO keys support:
@@ -224,6 +226,8 @@ Save and reboot.
 * Download **esp32-cam-fpv** repository:
 
   Clone eiither stable version (release branch):
+
+  ```cd /home/pi/```
 
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
