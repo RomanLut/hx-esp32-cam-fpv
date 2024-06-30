@@ -282,7 +282,7 @@ Save and reboot.
 
 * Build SDL to run without X11: https://lektiondestages.art.blog/2020/03/18/compiling-sdl2-image-mixer-ttf-for-the-raspberry-pi-without-x11/
 
-* Build esp32-cam-fpv origical docs: https://github.com/jeanlemotan/esp32-cam-fpv/blob/main/README.md
+* Build esp32-cam-fpv original project docs: https://github.com/jeanlemotan/esp32-cam-fpv/blob/main/README.md
 
 * AddX11 app to autostart: https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup/method-2-autostart
 
