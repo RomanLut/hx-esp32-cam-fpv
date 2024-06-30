@@ -127,7 +127,7 @@ Save and reboot.
 
   (exit using SPACE)
 
-* [Optional] Pair bluetooth mouse to be able to access debug interface with it:
+* [Optional] Pair bluetooth mouse to be able to access OSD menu or debug interface with it:
   * ```bluetoothctl```
   * ```scan on```
   * put mouse into pairing mode, find out address
