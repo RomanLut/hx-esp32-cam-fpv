@@ -24,10 +24,10 @@ Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-imag
 
 - Create image from SD card to USB drive:
 
-```pi@raspberrypi:~ $ sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvtx.img bs=1M```
+```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M```
 
 ```cd /mnt/usb1```
 
-```sudo pishrink.sh -z -a espvtx.img```
+```sudo pishrink.sh -z -a espvrx.img```
 
 ```sudo umount /mnt/usb1```
