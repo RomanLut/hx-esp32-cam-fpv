@@ -127,7 +127,7 @@ Save and reboot.
 
   (exit using SPACE)
 
-* [Optional] Currently debug user interface is available only; a mouse is required if you want to change any settings. This means you have to use USB hub on Raspberry Pi Zero 2W. Alternativelly it is possible to pair bluetooth mouse:
+* [Optional] Pair bluetooth mouse to be able to access debug interface with it:
   * ```bluetoothctl```
   * ```scan on```
   * put mouse into pairing mode, find out address
