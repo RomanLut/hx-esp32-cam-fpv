@@ -2,7 +2,11 @@
 # Making image file from SD card for release
 - Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on 32GB SD Card
  
-- Insert SD card into PRI 2W and complile rtl8812au driver.
+- Insert SD card into PRI 2W and compile rtl8812au driver.
+
+- * start ```sudo raspi-config``` and change the following options:
+  * **Advanced options -> GL Driver -> Fake KMS**
+  * **Advanced options -> Compositor -> disable compositor**
 
 - Insert SD card and 64GB  Flash drive into RPI4.
 
