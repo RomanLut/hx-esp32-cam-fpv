@@ -32,8 +32,8 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 * start ```sudo raspi-config``` and change the following options:
   * **Display Options -> Resolution -> 1280x720x60Hz**
   * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
-  * **For Raspberry PI 2W: Advanced options -> GL Driver -> Fake KMS**
-  * **For Raspberry PI 2W: Advanced options -> Compositor -> disable compositor**
+  * **[For Raspberry PI Zero 2W]: Advanced options -> GL Driver -> Fake KMS**
+  * **[For Raspberry PI Zero 2W]: Advanced options -> Compositor -> disable compositor**
   
 Save and reboot.
 
