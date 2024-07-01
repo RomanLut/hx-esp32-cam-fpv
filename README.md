@@ -183,7 +183,9 @@ Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30m
 
 ## Ground Station
 
-Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+Preparing SD Card for GS from pre-built image: [/doc/building_gs_image.md](/doc/prebuilt_gs_image.md)
+
+Ok building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
 STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
