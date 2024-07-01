@@ -27,6 +27,7 @@
 - Mount usbdrive:
 
 ```sudo mkdir -p /mnt/usb1```
+
 ```sudo mount /dev/sda1 /mnt/usb1```
 
 - Create image from SD card to USB drive:
