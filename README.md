@@ -380,11 +380,11 @@ Frame data flows throught a number of queues, which can easily be overloaded due
 
 Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compressoin level and each coefficient can increase it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
 
-Additionally, compression level is limited when air unit DVR is enabled; it is 1.2MB/sec frame data for **ESP32** and 1.6MB/sec for **esp32s3sense**. Theoretically, compression level can be better on 36Mbps+ wifi rate if DVR is stopped.
+Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 1.9MB/sec frame data for **ESP32/esp32s3sense**. 
 
-Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). This is most limiting factor.
+Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). **This is the most limiting factor**.
 
 Adaptive compression is key component of **hx-esp32-cam-fpv**. Without adaptive compression, compression level have to be set to so low quality, that system became unusable.
 
