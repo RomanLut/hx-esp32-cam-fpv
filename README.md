@@ -179,7 +179,7 @@ STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingivers
 
 ## Current consumption
 
-Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
+Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
 
 ## Ground Station
 
