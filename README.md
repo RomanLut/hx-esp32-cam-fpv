@@ -344,7 +344,7 @@ Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely sh
 
 Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
-Note that "night version" sensor do not have IR filter and show distorted colors.
+Note that "night version" sensor does not have IR filter and shows distorted colors under sunlight (buy a proper sensor!).
 
 # Wifi channel
 
