@@ -189,7 +189,7 @@ Or building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
 STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
-## Ground Station Varian 1: Single rtl8812au
+## Ground Station Variant 1: Single rtl8812au
 
 Single wifi card is Ok for GS with LCD monitor.
 
