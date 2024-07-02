@@ -264,7 +264,7 @@ OSD Menu can be navigated with **GPIO Joystick**, keyboard or mouse.
 Key                                                    | Function
 ------------------------------------------------------ | -------------
 Joystick Center, Enter, Right Click                    | Open OSD menu
-Joystick Right, * REC, Esc, Right Click, R, G          | Close OSD Menu
+Joystick Right, Air REC, GS REC,Esc, Right Click, R, G | Close OSD Menu
 Joystick Center, Joytsick Right, Enter, Left Click     | Select menu item
 Joystick Up, Arrow Up                                  | Select previous menu item
 Joystick Down, Arrow Down                              | Select next menu item
