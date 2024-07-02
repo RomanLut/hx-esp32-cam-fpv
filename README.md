@@ -14,8 +14,8 @@ Open source digital FPV system based on esp32cam.
 - [x] test dual wifi cards performance
 - [x] build dual wifi RPI GS
 - [ ] release prebuilt images and firmware
+- [ ] cinematic mode: 1280x720x30fps recording with maximum quality on air unit, with low framerate transmission to GS
 - [ ] radxa 3w GS
-- [ ] improve frame dropping with retransmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth
