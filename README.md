@@ -254,6 +254,7 @@ From left to right:
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
  - ```AIR``` Air unit is recording video to SD card
  - ```GS``` GS is recording video to SD card
+ - ```!SD SLOW!``` SD card on AIR unit is too slow to record video, frames are skipped
 
 # OSD Menu
 
