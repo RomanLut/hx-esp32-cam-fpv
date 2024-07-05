@@ -518,3 +518,6 @@ See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/do
 
   Currently there is no pairing procedure; GS will receive signal from any air unit. As project is in early development state, it is assumed that there are single Air Unit and single GS in the area. If you ever try to test multiple systems, make sure channels are separated at least by 3, so that GS will not hear other air unit.
 
+* What if packet lost and FEC can not recover?
+
+  Then the whole frame is lost. That's why FEC is set to high redundancy by default.
