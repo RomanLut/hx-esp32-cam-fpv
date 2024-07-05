@@ -25,7 +25,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] Meta Quest 2 GS
 
 ## Features:
-- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps
+- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps+
 - **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
@@ -514,5 +514,7 @@ See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/do
   
   No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
+* Do I need to pair Air unit and GS?
 
+  Currently there is no pairing procedure; GS will receive signal from any air unit. As project is in early development state, it is assumed that there are single Air Unit and single GS in the area. If you ever try to test multiple systems, make sure channels are separated at least by 3, so that GS will not hear other air unit.
 
