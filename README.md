@@ -14,13 +14,16 @@ Open source digital FPV system based on esp32cam.
 - [x] test dual wifi cards performance
 - [x] build dual wifi RPI GS
 - [x] release prebuilt images and firmware
-- [ ] cinematic mode: 1280x720x30fps recording with maximum quality on air unit, with low framerate transmission to GS
+- [ ] HQ DVR mode: 1280x720x30fps recording with maximum quality on air unit, with low framerate transmission to GS
 - [ ] radxa 3w GS
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth
 - [ ] sound recording (esp32s3sense)?
+- [ ] difital pan, zoom
+- [ ] fisheye correction shader, vignetting correction shader
 - [ ] pairing
+- [ ] EIS
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
 
@@ -370,7 +373,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (1.4Mb/sec write speed instead of 1.2Mb/sec).
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec in 1 bit mode is more then Wifi can transfer, for SD writing speed is not a limiting factor for now.
 
 ## Adaptive compression
 
