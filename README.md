@@ -15,6 +15,8 @@ Open source digital FPV system based on esp32cam.
 - [x] build dual wifi RPI GS
 - [x] release prebuilt images and firmware
 - [ ] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [ ] measure latency properly
+- [ ] stydy which components introduce latency
 - [ ] radxa 3w GS
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
@@ -32,7 +34,7 @@ Open source digital FPV system based on esp32cam.
 - **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
-- latency 10-30ms
+- latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
 - on-board and groundstation video recording
@@ -104,7 +106,6 @@ For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wi
 The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
 - minimal air unit price
 - tiny air unit size (esp32s3sense)
-- low latency (actually a winner for the moment!)
 - low power consumption (less then 300mA at 5V)
 - **ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
 
@@ -468,7 +469,7 @@ Note that some optimizations important for other open source digital FPV systems
 
 ## Latency
 
-Latency is in range 10-30ms for all resolutions at 30fps. From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission. 
+Latency is in range 90-110ms for all resolutions at 30 and 50fps. This is still to be double checked because esp32 simply does not have memory to buffer more then 30ms. From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission, expected latency should be in range 40-80ms.
 
 **Raspberry Pi Zero 2W** GS with 60Hz TV:
 
