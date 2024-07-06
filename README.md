@@ -1,7 +1,7 @@
 # hx-esp32-cam-fpv
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
-- [x] Mavlink RC
+- [x] Mavlink telemetry and RC
 - [x] Displayport MSP OSD
 - [x] GPIO Joystick
 - [x] OSD Menu
