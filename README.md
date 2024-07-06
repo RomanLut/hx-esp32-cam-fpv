@@ -28,7 +28,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] Meta Quest 2 GS
 
 ## Features:
-- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps+
+- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps, 1280x720 12fps
 - **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
