@@ -51,7 +51,7 @@ Open source digital FPV system based on esp32cam.
 
 **esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs. 
 
-The goal of this fork is to develop fpv system for small inav-based plane, startng from the prof-of-concept code of **jeanlemotan**.
+The goal of this fork is to develop fpv system for small inav-based plane, starting from the prof-of-concept code of **jeanlemotan**.
 
 # Theory
 **ESP32** is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**) and is passed directly to the wifi and written to the SD card (if the DVR is enabled).
