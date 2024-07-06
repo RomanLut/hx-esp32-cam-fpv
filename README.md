@@ -20,7 +20,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
-- [ ] difital pan, zoom
+- [ ] digital pan, zoom
 - [ ] fisheye correction shader, vignetting correction shader
 - [ ] pairing
 - [ ] EIS
