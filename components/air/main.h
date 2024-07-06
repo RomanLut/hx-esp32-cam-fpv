@@ -138,6 +138,8 @@
 
 //===============================================================
 
+#define MAX_SD_WRITE_SPEED_ESP32   (1900*1024)
+#define MAX_SD_WRITE_SPEED_ESP32S3 (1900*1024)
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
@@ -280,3 +282,4 @@
 ////////////////////////////////////////////////////////////////////////////////////
 
 
+extern bool isHQDVRMode();

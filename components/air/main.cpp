@@ -1545,15 +1545,13 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 //=============================================================================================
 IRAM_ATTR void send_air2ground_video_packet(bool last)
 {
-    if (last)
-        s_stats.video_frames++;
     s_stats.video_data += s_video_frame_data_size;
 
     uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
 
-    if(!packet_data){
+    if(!packet_data)
+    {
         LOG("no data buf!\n");
-        return ;
     }
 
     Air2Ground_Video_Packet& packet = *(Air2Ground_Video_Packet*)packet_data;
@@ -1789,6 +1787,13 @@ IRAM_ATTR int calculateAdaptiveQualityValue()
 
 //=============================================================================================
 //=============================================================================================
+IRAM_ATTR bool isHQDVRMode()
+{
+    return s_ground2air_config_packet2.camera.resolution == Resolution::HD;
+}
+
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
     if ( video_full_frame_size > s_max_frame_size )
@@ -1819,11 +1824,18 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_air_record )
     {
 #ifdef BOARD_XIAOS3SENSE        
-        //1.9MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
+        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32S3;
 #else
-        //1.9MB/sec is practical maximum SD write speed 
-        if ( FECbandwidth > 1900*1024 ) FECbandwidth = 1900*1024;
+        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32;
+#endif
+    }
+
+    if ( isHQDVRMode() )
+    {
+#ifdef BOARD_XIAOS3SENSE        
+        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32S3;
+#else
+        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32;
 #endif
     }
     
@@ -1862,8 +1874,12 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     if ( s_quality_framesize_K2 > 1.0f ) s_quality_framesize_K2 = 1.0f;
     */
 
-    //K3 - wifi queue
+    if ( isHQDVRMode() )
+    {
+        s_quality_framesize_K2 = 1;
+    }
 
+    //K3 - wifi queue
     if ( (s_stats.wlan_error_count > 0) || (s_fec_spin_count > 0) || (s_fec_wlan_error_count > 0))
     {
         s_quality_framesize_K3 = 0; //we overloaded wifi buffer. drop quality immediatelly, we do not want to loose more frames
@@ -1895,6 +1911,11 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     }
     if ( s_quality_framesize_K3 < 0) s_quality_framesize_K3 = 0;
     else if ( s_quality_framesize_K3 > 1) s_quality_framesize_K3 = 1;
+
+    if ( isHQDVRMode() )
+    {
+        s_quality_framesize_K3 = 1;
+    }
 }
 
 //=============================================================================================
@@ -1994,6 +2015,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_video_full_frame_size = 0;
                 
                 s_lastByte_ff = false;
+            }
+
+            if ( !isHQDVRMode() || (s_wlan_outgoing_queue_usage < 5))
+            {
+                s_encoder_output_ovf_flag = false;
             }
         }
     }
@@ -2178,7 +2204,13 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 if (s_video_frame_data_size == MAX_VIDEO_DATA_PAYLOAD_SIZE) 
                 {
                     //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
-                    send_air2ground_video_packet(false);
+                    //if wifi send queue was overloaded, do not send frame data till the end of the frame. 
+                    //Frame is lost anyway. 
+                    //Let fec_encoder and wifi to send leftover and start with emtpy queues at the next camera frame.
+                    if (!s_encoder_output_ovf_flag)
+                    { 
+                        send_air2ground_video_packet(false);
+                    }
                     s_video_frame_data_size = 0;
                     s_video_part_index++;
                 }
@@ -2211,8 +2243,10 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             {
                 s_video_frame_started = false;
 
+                s_stats.video_frames++;
+
                 //LOG("Finish: %d %d\n", s_video_frame_index, s_video_frame_data_size);
-                if (s_video_frame_data_size > 0) //left over
+                if ((s_video_frame_data_size > 0) && !s_encoder_output_ovf_flag) //left over
                 {
                     send_air2ground_video_packet(true);
                 }

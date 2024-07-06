@@ -43,8 +43,8 @@
 #define PF9_NAME "fec_spin"
 #define PF10_NAME "wifi_spin"
 #define PF11_NAME "wifi_done_cb"
-#define PF12_NAME "wifi_ovf"
-#define PF13_NAME "fec_ovf"
+#define PF12_NAME "fec_ovf"
+#define PF13_NAME "wifi_ovf"
 #define PF14_NAME "cam_ovf"
 #define PF15_NAME "sd_ovf"
 

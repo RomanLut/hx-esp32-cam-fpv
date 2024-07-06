@@ -31,6 +31,9 @@ constexpr size_t STACK_SIZE = 4096;
 int s_fec_spin_count = 0;
 int s_fec_wlan_error_count = 0;
 
+//set when fec_encoder is unable to add encoded packet to wifi send queue
+int s_encoder_output_ovf_flag = false;
+
 #pragma pack(push, 1)
 
 struct Packet_Header
@@ -442,6 +445,7 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
 #ifdef PROFILE_CAMERA_DATA    
                             s_profiler.toggle(PF_CAMERA_WIFI_OVF);
 #endif
+                            s_encoder_output_ovf_flag = true;
                             break;
                         }
 
@@ -515,6 +519,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 #ifdef PROFILE_CAMERA_DATA    
                                 s_profiler.toggle(PF_CAMERA_WIFI_OVF);
 #endif
+                                s_encoder_output_ovf_flag = true;
                                 break;
                             }
                         }
