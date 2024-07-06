@@ -89,11 +89,11 @@ Due to low resolution, **esp32-cam-fpv** competes with cheap analog 5.8 AIO came
 Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - air unit and ground station video recording
  - digital OSD
- - Mavlink telemetry and RC
+ - (Mavlink) telemetry and RC
  - telemetry logging
  - absence of analog noise on image
  
-The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, frame droping.
+The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity(ov2640), varying quality of sensor and lenses, frame droping.
 
 For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. Frame droping is not comfortable for FPV. **esp32s3sense + ov5640** offers 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
 
