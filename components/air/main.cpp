@@ -97,6 +97,8 @@ static uint8_t cam_ovf_count = 0;
 int32_t s_dbg;
 uint16_t s_framesCounter = 0;
 
+static bool s_initialized = false;
+
 #ifdef UART_MAVLINK
 
 //constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
@@ -1980,6 +1982,8 @@ and even on the block wich has 16 zeros at end
 //=============================================================================================
 IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_t count, bool last)
 {
+    if ( !s_initialized ) return count;
+
 #ifdef PROFILE_CAMERA_DATA    
     s_profiler.set(PF_CAMERA_DATA, 1);
 #endif
@@ -2508,7 +2512,12 @@ extern "C" void app_main()
         nvs_args_set("channel", DEFAULT_WIFI_CHANNEL);
     }
 
+    //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
+
+    //allocates 16kb dma buffer. Allocate ASAP until memory is not fragmented.
+    init_camera();
+
 
 #ifdef DVR_SUPPORT
 
@@ -2593,7 +2602,6 @@ extern "C" void app_main()
 #endif
 
 
-    init_camera();
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
 
@@ -2603,6 +2611,8 @@ extern "C" void app_main()
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
     LOG("WIFI channel: %d\n", s_ground2air_config_packet.wifi_channel );
+
+    s_initialized = true;
 
     while (true)
     {

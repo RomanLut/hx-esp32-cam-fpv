@@ -37,9 +37,9 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 //use as much memory as available
 //leave ~5k for SD library to initialize correctly
 #ifdef BOARD_XIAOS3SENSE
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 100000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 106000;
 #else
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 60000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 95000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));
