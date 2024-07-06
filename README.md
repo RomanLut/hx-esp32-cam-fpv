@@ -54,7 +54,7 @@ Open source digital FPV system based on esp32cam.
 The goal of this fork is to develop fpv system for small inav-based plane, starting from the prof-of-concept code of **jeanlemotan**.
 
 # Theory
-**ESP32** is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**) and is passed directly to the wifi and written to the SD card (if the DVR is enabled).
+Wifi bandwidth is too small for uncompressed video streaming. **ESP32** is too slow for video encoding. MJPEG encoding is done by camera sensor module (**ov2640** or **ov5640**). Camera module continuously scans pixels and encodes rows as JPEG data which is received by **ESP32** at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**), written to the SD card (if the DVR is enabled), FEC encoded and passed directly to Wifi. 
 
 The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
 
@@ -71,6 +71,8 @@ The receiver is a **Raspberry PI Zero 2W** ... **Pi4**  with **Realtek 8812au**(
 The JPEG decoding is done with turbojpeg to lower latency and - based on the resolution - can take between 1 and 7 milliseconds.
 
 It's then uploaded to texture and shown on screen.
+
+OSD is drawn on top of the video with OpenGL ES.
 
 The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional stream for telemetry (FEC encoded).
 
