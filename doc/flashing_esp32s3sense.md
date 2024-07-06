@@ -52,7 +52,7 @@
 Sometimes after unsuccesfull flashing, **esp32s2sense** constantly reboots, and it is impossible to flash firmware because USB device disappears/appears in the system every two seconds.
 
 To resolve this problem:
-* Download and uncommpress Flash Download tools https://www.espressif.com/en/support/download/other-tools
+* Download and uncompress Flash Download tools https://www.espressif.com/en/support/download/other-tools
 * Start Flash Download Tools, select ```ESP32-S3```
 * Connect **esp32s3sense** to USB while holding ```BOOT```, release ```BOOT``` button
 * Click ```[Erase]```

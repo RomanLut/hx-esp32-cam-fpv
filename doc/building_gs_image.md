@@ -32,6 +32,8 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
 * start ```sudo raspi-config``` and change the following options:
   * **Display Options -> Resolution -> 1280x720x60Hz**
   * **Interface options -> Serial Port -> Shell: No, Hardware enable: Yes**
+  * **[For Raspberry PI Zero 2W]: Advanced options -> GL Driver -> Fake KMS**
+  * **[For Raspberry PI Zero 2W]: Advanced options -> Compositor -> disable compositor**
   
 Save and reboot.
 
@@ -81,6 +83,8 @@ Save and reboot.
 
 * Download **esp32-cam-fpv** repository:
  
+  ```cd /home/pi/```
+ 
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
   
 * Adding GPIO keys support:
@@ -125,7 +129,7 @@ Save and reboot.
 
   (exit using SPACE)
 
-* [Optional] Currently debug user interface is available only; a mouse is required if you want to change any settings. This means you have to use USB hub on Raspberry Pi Zero 2W. Alternativelly it is possible to pair bluetooth mouse:
+* [Optional] Pair bluetooth mouse to be able to access OSD menu or debug interface with it:
   * ```bluetoothctl```
   * ```scan on```
   * put mouse into pairing mode, find out address
@@ -149,7 +153,7 @@ Save and reboot.
 
 # Updating groundstation image
 
-Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to ap using internal wifi card.
+Groundstation software is started automatically. Once it is started, wifi connection is disabled. To be able to reconfigure image, unplug external wifi card. Image will boot and will keep connection to access point using internal wifi card.
 
 To update groundstation software, pull updates from '''release''' branch:
 
@@ -225,6 +229,8 @@ Save and reboot.
 
   Clone eiither stable version (release branch):
 
+  ```cd /home/pi/```
+
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
   Or unstable development version (master branch):
@@ -278,7 +284,7 @@ Save and reboot.
 
 * Build SDL to run without X11: https://lektiondestages.art.blog/2020/03/18/compiling-sdl2-image-mixer-ttf-for-the-raspberry-pi-without-x11/
 
-* Build esp32-cam-fpv origical docs: https://github.com/jeanlemotan/esp32-cam-fpv/blob/main/README.md
+* Build esp32-cam-fpv original project docs: https://github.com/jeanlemotan/esp32-cam-fpv/blob/main/README.md
 
 * AddX11 app to autostart: https://learn.sparkfun.com/tutorials/how-to-run-a-raspberry-pi-program-on-startup/method-2-autostart
 

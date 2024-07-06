@@ -1,9 +1,16 @@
 
 # Making image file from SD card for release
+- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on 32GB SD Card
+ 
+- Insert SD card into PRI 2W and compile rtl8812au driver.
 
-Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-image
+- * start ```sudo raspi-config``` and change the following options:
+  * **Advanced options -> GL Driver -> Fake KMS**
+  * **Advanced options -> Compositor -> disable compositor**
 
-- Install modified pishrink.sh on your Raspberry Pi and copy it to the ```/usr/local/bin``` folder by typing: 
+- Insert SD card and 64GB  Flash drive into RPI4.
+
+- Install modified pishrink.sh script and copy it to the ```/usr/local/bin``` folder by typing: 
 
 ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
 
@@ -20,14 +27,19 @@ Reference: https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-imag
 - Mount usbdrive:
 
 ```sudo mkdir -p /mnt/usb1```
+
 ```sudo mount /dev/sda1 /mnt/usb1```
 
 - Create image from SD card to USB drive:
 
-```pi@raspberrypi:~ $ sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvtx.img bs=1M```
+```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M```
 
 ```cd /mnt/usb1```
 
-```sudo pishrink.sh -z -a espvtx.img```
+```sudo pishrink.sh -z -a espvrx.img```
 
 ```sudo umount /mnt/usb1```
+
+# References
+
+How to Back Up Your Raspberry Pi as a Disk Image https://www.tomshardware.com/how-to/back-up-raspberry-pi-as-disk-image

@@ -1,7 +1,7 @@
 # hx-esp32-cam-fpv
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
-- [x] Mavlink RC
+- [x] Mavlink telemetry and RC
 - [x] Displayport MSP OSD
 - [x] GPIO Joystick
 - [x] OSD Menu
@@ -13,22 +13,28 @@ Open source digital FPV system based on esp32cam.
 - [x] air unit channel search
 - [x] test dual wifi cards performance
 - [x] build dual wifi RPI GS
-- [ ] release prebuilt images and firmware
+- [x] release prebuilt images and firmware
+- [ ] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [ ] measure latency properly
+- [ ] stydy which components introduce latency
 - [ ] radxa 3w GS
-- [ ] improve frame dropping with retransmission ?
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
-- [ ] telemetry sharing on RPI Bluetooth
+- [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
+- [ ] digital pan, zoom
+- [ ] fisheye correction shader, vignetting correction shader
+- [ ] pairing
+- [ ] EIS
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
 
 ## Features:
-- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 13fps, 1280x720 13fps
+- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps, 1280x720 12fps
 - **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
-- latency 10-30ms
+- latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
 - on-board and groundstation video recording
@@ -47,10 +53,10 @@ Open source digital FPV system based on esp32cam.
 
 **esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs. 
 
-The goal of this fork is to develop fpv system for small inav-based plane, startng from the prof-of-concept code of **jeanlemotan**.
+The goal of this fork is to develop fpv system for small inav-based plane, starting from the prof-of-concept code of **jeanlemotan**.
 
 # Theory
-**ESP32** is too slow for video encoding. The data is received from the camera module as JPEG at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**) and is passed directly to the wifi and written to the SD card (if the DVR is enabled).
+Wifi bandwidth is too small for uncompressed video streaming. **ESP32** is too slow for video encoding. MJPEG encoding is done by camera sensor module (**ov2640** or **ov5640**). Camera module continuously scans pixels and encodes rows as JPEG data which is received by **ESP32** at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**), written to the SD card (if the DVR is enabled), FEC encoded and passed directly to Wifi. 
 
 The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
 
@@ -67,6 +73,8 @@ The receiver is a **Raspberry PI Zero 2W** ... **Pi4**  with **Realtek 8812au**(
 The JPEG decoding is done with turbojpeg to lower latency and - based on the resolution - can take between 1 and 7 milliseconds.
 
 It's then uploaded to texture and shown on screen.
+
+OSD is drawn on top of the video with OpenGL ES.
 
 The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional stream for telemetry (FEC encoded).
 
@@ -85,11 +93,11 @@ Due to low resolution, **esp32-cam-fpv** competes with cheap analog 5.8 AIO came
 Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - air unit and ground station video recording
  - digital OSD
- - Mavlink telemetry and RC
+ - (Mavlink) telemetry and RC
  - telemetry logging
  - absence of analog noise on image
  
-The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity, varying quality of sensor and lenses, frame droping.
+The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity(ov2640), varying quality of sensor and lenses, frame droping.
 
 For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. Frame droping is not comfortable for FPV. **esp32s3sense + ov5640** offers 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
 
@@ -98,7 +106,6 @@ For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wi
 The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
 - minimal air unit price
 - tiny air unit size (esp32s3sense)
-- low latency (actually a winner for the moment!)
 - low power consumption (less then 300mA at 5V)
 - **ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
 
@@ -179,15 +186,17 @@ STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingivers
 
 ## Current consumption
 
-Both board consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
+Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
 
 ## Ground Station
 
-Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+Preparing SD Card for GS from pre-built image: [/doc/building_gs_image.md](/doc/prebuilt_gs_image.md)
+
+Or building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
 STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
-## Ground Station Varian 1: Single rtl8812au
+## Ground Station Variant 1: Single rtl8812au
 
 Single wifi card is Ok for GS with LCD monitor.
 
@@ -252,6 +261,7 @@ From left to right:
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
  - ```AIR``` Air unit is recording video to SD card
  - ```GS``` GS is recording video to SD card
+ - ```!SD SLOW!``` SD card on AIR unit is too slow to record video, frames are skipped
 
 # OSD Menu
 
@@ -262,7 +272,7 @@ OSD Menu can be navigated with **GPIO Joystick**, keyboard or mouse.
 Key                                                    | Function
 ------------------------------------------------------ | -------------
 Joystick Center, Enter, Right Click                    | Open OSD menu
-Joystick Right, * REC, Esc, Right Click, R, G          | Close OSD Menu
+Joystick Right, Air REC, GS REC,Esc, Right Click, R, G | Close OSD Menu
 Joystick Center, Joytsick Right, Enter, Left Click     | Select menu item
 Joystick Up, Arrow Up                                  | Select previous menu item
 Joystick Down, Arrow Down                              | Select next menu item
@@ -342,7 +352,7 @@ Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely sh
 
 Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
-Note that "nigh version" sensor do not have IR filter and show distorted colors.
+Note that "night version" sensor does not have IR filter and shows distorted colors under sunlight (buy a proper sensor!).
 
 # Wifi channel
 
@@ -366,7 +376,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (1.4Mb/sec write speed instead of 1.2Mb/sec).
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec in 1 bit mode is more then Wifi can transfer, for SD writing speed is not a limiting factor for now.
 
 ## Adaptive compression
 
@@ -378,11 +388,11 @@ Frame data flows throught a number of queues, which can easily be overloaded due
 
 Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compressoin level and each coefficient can increase it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.7 (70%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
 
-Additionally, compression level is limited when air unit DVR is enabled; it is 1.2MB/sec frame data for **ESP32** and 1.6MB/sec for **esp32s3sense**. Theoretically, compression level can be better on 36Mbps+ wifi rate if DVR is stopped.
+Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 1.9MB/sec frame data for **ESP32/esp32s3sense**. 
 
-Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). This is most limiting factor.
+Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). **This is the most limiting factor**.
 
 Adaptive compression is key component of **hx-esp32-cam-fpv**. Without adaptive compression, compression level have to be set to so low quality, that system became unusable.
 
@@ -459,7 +469,7 @@ Note that some optimizations important for other open source digital FPV systems
 
 ## Latency
 
-Latency is in range 10-30ms for all resolutions at 30fps. From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission. 
+Latency is in range 90-110ms for all resolutions at 30 and 50fps. This is still to be double checked because esp32 simply does not have memory to buffer more then 30ms. From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission, expected latency should be in range 40-80ms.
 
 **Raspberry Pi Zero 2W** GS with 60Hz TV:
 
@@ -510,5 +520,10 @@ See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/do
   
   No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
+* Do I need to pair Air unit and GS?
 
+  Currently there is no pairing procedure; GS will receive signal from any air unit. As project is in early development state, it is assumed that there are single Air Unit and single GS in the area. If you ever try to test multiple systems, make sure channels are separated at least by 3, so that GS will not hear other air unit.
 
+* What if packet lost and FEC can not recover?
+
+  Then the whole frame is lost. That's why FEC is set to high redundancy by default.
