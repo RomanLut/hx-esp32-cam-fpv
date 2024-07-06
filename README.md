@@ -18,7 +18,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] radxa 3w GS
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
-- [ ] telemetry sharing on RPI Bluetooth
+- [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
 - [ ] difital pan, zoom
 - [ ] fisheye correction shader, vignetting correction shader
