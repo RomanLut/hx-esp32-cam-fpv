@@ -37,7 +37,7 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 //use as much memory as available
 //leave ~5k for SD library to initialize correctly
 #ifdef BOARD_XIAOS3SENSE
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 106000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 101000;
 #else
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 95000;
 #endif
@@ -64,6 +64,10 @@ struct Stats
     uint16_t wlan_received_packets_dropped = 0;
     uint32_t video_data = 0;
     uint16_t video_frames = 0;
+    //video_frames count is not valid if camera overflow happened. 
+    //We still need expected vmode capture fps
+    //we estimate it as video_frames + ovf_count
+    uint16_t video_frames_expected = 0; 
     uint32_t sd_data = 0;
     uint32_t sd_drops = 0;
     

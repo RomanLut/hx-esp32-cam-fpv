@@ -69,6 +69,7 @@ static uint8_t s_osdUpdateCounter = 0;
 static bool s_lastByte_ff = false;
 
 static int s_actual_capture_fps = 0;
+static int s_actual_capture_fps_expected = 0;
 
 static int s_quality = 20;
 static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
@@ -349,7 +350,7 @@ static uint32_t s_sd_next_segment_id = 0;
 //the fast buffer is RAM and used to transfer data quickly from the camera callback to the slow, SPIRAM buffer. 
 //Writing directly to the SPIRAM buffer is too slow in the camera callback and causes lost frames, so I use this RAM buffer and a separate task (sd_enqueue_task) for that.
 static constexpr size_t SD_FAST_BUFFER_SIZE = 8192;
-Circular_Buffer s_sd_fast_buffer(new uint8_t[SD_FAST_BUFFER_SIZE], SD_FAST_BUFFER_SIZE);
+Circular_Buffer s_sd_fast_buffer((uint8_t*)heap_caps_malloc(SD_FAST_BUFFER_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL), SD_FAST_BUFFER_SIZE);
 
 //this slow buffer is used to buffer data that is about to be written to SD. The reason it's this big is because SD card write speed fluctuated a lot and 
 // sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enough buffer.
@@ -1164,7 +1165,7 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool 
     else
     {
         s_stats.sd_drops += size;
-#ifdef PROFILE_CAMERA_DATA    
+#ifdef PROFILE_CAMERA_DATA
         s_profiler.toggle(PF_CAMERA_SD_OVF);
 #endif
     }
@@ -1804,7 +1805,8 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
     }
     if ( video_full_frame_size == 0 ) return;
 
-    int fps = s_actual_capture_fps > 1 ? s_actual_capture_fps : 1;
+    int fps = s_actual_capture_fps_expected > 1 ? s_actual_capture_fps_expected : 10;
+    if (s_actual_capture_fps_expected < 15 ) s_actual_capture_fps_expected++;  //under low FPS mesaurements fluctuate. Enforce lower estimation.
 
     //K1 - wifi bandwidth
     //data rate available with current wifi rate
@@ -1997,6 +1999,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #endif
         s_quality_framesize_K3 = 0.05;
         cam_ovf_count++;
+        s_stats.video_frames_expected++;
         applyAdaptiveQuality();
     }
 
@@ -2048,6 +2051,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 //broken frame data, no start marker
                 //we probably missed the start of the frame. Have to skip it.
                 cam_ovf_count++; 
+                s_stats.video_frames_expected++;
                 s_video_frame_started = false;
             }
             else
@@ -2248,6 +2252,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_video_frame_started = false;
 
                 s_stats.video_frames++;
+                s_stats.video_frames_expected++;
 
                 //LOG("Finish: %d %d\n", s_video_frame_index, s_video_frame_data_size);
                 if ((s_video_frame_data_size > 0) && !s_encoder_output_ovf_flag) //left over
@@ -2259,6 +2264,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 {
                     //probably broken frame - too small
                     cam_ovf_count++;
+                    s_stats.video_frames_expected++;
                 }
 
                 //end of frame - stats, camera settings, osd, mavlink
@@ -2346,7 +2352,7 @@ static void init_camera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 #ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 20000000;
+    config.xclk_freq_hz = 12000000;
 #else
     config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
@@ -2604,6 +2610,7 @@ extern "C" void app_main()
 
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
 
     handle_ground2air_config_packetEx1( s_ground2air_config_packet);
     handle_ground2air_config_packetEx2( true);
@@ -2622,6 +2629,7 @@ extern "C" void app_main()
             s_stats_last_tp = millis();
 
             s_actual_capture_fps = (int)(s_stats.video_frames)* 1000 / dt;
+            s_actual_capture_fps_expected = (int)(s_stats.video_frames_expected)* 1000 / dt;
             s_max_wlan_outgoing_queue_usage = getMaxWlanOutgoingQueueUsage();
             s_min_wlan_outgoing_queue_usage_seen = getMinWlanOutgoingQueueUsageSeen();
             
@@ -2630,10 +2638,10 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d, D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d %d\n",
+                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d %d\n",
                     s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
-                    s_actual_capture_fps, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
+                    s_actual_capture_fps, s_actual_capture_fps_expected, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
                     s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg); 

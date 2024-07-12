@@ -11,6 +11,8 @@
 
 #include "vcd_profiler.h"
 
+//todo: use fec codec property instead
+extern bool isHQDVRMode();
 
 static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                            10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -433,11 +435,11 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
 #ifdef PROFILE_CAMERA_DATA    
                         s_profiler.set(PF_CAMERA_FEC_SPIN,1);
 #endif
-                        taskYIELD();  
+                        if (!isHQDVRMode()) taskYIELD();
 #ifdef PROFILE_CAMERA_DATA    
                         s_profiler.set(PF_CAMERA_FEC_SPIN,0);
 #endif
-                        if ( uxQueueMessagesWaiting(m_encoder.packet_pool) < 2 )
+                        if ( (uxQueueMessagesWaiting(m_encoder.packet_pool) < 2) || isHQDVRMode())
                         {
                             //fec input queue will be filled soon
                             //no sense to wait, wlan is too slow
@@ -507,11 +509,11 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 #ifdef PROFILE_CAMERA_DATA    
                             s_profiler.set(PF_CAMERA_FEC_SPIN,1);
 #endif
-                            taskYIELD();
+                            if (!isHQDVRMode()) taskYIELD();
 #ifdef PROFILE_CAMERA_DATA    
                             s_profiler.set(PF_CAMERA_FEC_SPIN,0);
 #endif
-                            if ( uxQueueMessagesWaiting(m_encoder.packet_pool) < 2 )
+                            if ( (uxQueueMessagesWaiting(m_encoder.packet_pool) < 2) || isHQDVRMode() )
                             {
                                 //fec input queue will be filled soon
                                 //no sense to wait, wlan is too slow
