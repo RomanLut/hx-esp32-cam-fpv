@@ -2352,7 +2352,7 @@ static void init_camera()
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
 #ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 12000000;
+    config.xclk_freq_hz = 20000000;
 #else
     config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
 #endif    
