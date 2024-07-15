@@ -506,6 +506,12 @@ Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Fle
 
 See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
 
+# References
+
+ * Getting Started with Seeed Studio XIAO ESP32S3 (Sense) https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/ 
+
+
+
 # FAQ
 
 * Can original **Raspberry Pi Zero W** be used as GS?
