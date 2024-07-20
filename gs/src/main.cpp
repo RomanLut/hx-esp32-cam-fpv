@@ -232,7 +232,7 @@ Comms s_comms;
 Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
-int fdUART;
+int fdUART = -1;
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -530,6 +530,7 @@ static void comms_thread_proc()
         }
 
 #ifdef USE_MAVLINK
+        if (fdUART != -1)
         {
             std::lock_guard<std::mutex> lg(s_ground2air_data_packet_mutex);
             auto& data = s_ground2air_data_packet;
@@ -789,6 +790,8 @@ static void comms_thread_proc()
             else if (air2ground_header.type == Air2Ground_Header::Type::Telemetry)
             {
 #ifdef USE_MAVLINK
+              if (fdUART != -1)
+              {
                 if (packet_size > rx_data.size)
                 {
                     LOGE("Telemetry frame: data too big: {} > {}", packet_size, rx_data.size);
@@ -817,6 +820,7 @@ static void comms_thread_proc()
 
                 write(fdUART, ((uint8_t*)&air2ground_data_packet) + sizeof(Air2Ground_Data_Packet), payload_size);
                 out_tlm_size += payload_size;
+              }
 #endif
             }
             else if (air2ground_header.type == Air2Ground_Header::Type::OSD)
@@ -1997,6 +2001,11 @@ int run(char* argv[])
 bool init_uart()
 {
     fdUART = open("/dev/serial0", O_RDWR);
+    if (fdUART == -1)
+    {
+      printf("Can't open /dev/serial0\n");
+      return false;
+    }
 
     struct termios tty;
     if(tcgetattr(fdUART, &tty) != 0) 
@@ -2247,10 +2256,7 @@ int main(int argc, const char* argv[])
     tx_descriptor.mtu = GROUND2AIR_DATA_MAX_SIZE;
 
 #ifdef USE_MAVLINK
-    if ( !init_uart())
-    {
-        return -1;
-    }
+    init_uart();
 #endif
 
 #ifdef WRITE_RAW_MJPEG_STREAM

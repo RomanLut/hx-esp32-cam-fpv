@@ -195,6 +195,8 @@ Preparing SD Card for GS from pre-built image: [/doc/building_gs_image.md](/doc/
 
 Or building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
 
+Or building and running the Ground Station application on a Fedora Linux desktop (no Raspberry Pi required): [/doc/building_gs_fedora.md](/doc/building_gs_fedora.md)
+
 STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ## Ground Station Variant 1: Single rtl8812au
