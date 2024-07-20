@@ -233,6 +233,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
+std::string serialPortName = "/dev/serial0";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -2000,10 +2001,10 @@ int run(char* argv[])
 //===================================================================================
 bool init_uart()
 {
-    fdUART = open("/dev/serial0", O_RDWR);
+    fdUART = open(serialPortName.c_str(), O_RDWR);
     if (fdUART == -1)
     {
-      printf("Can't open /dev/serial0\n");
+      printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
       return false;
     }
 
@@ -2185,50 +2186,80 @@ int main(int argc, const char* argv[])
     for(int i=1;i<argc;++i){
         auto temp = std::string(argv[i]);
         auto next = i!=argc-1? std::string(argv[i+1]):std::string("");
-        auto check_argval = [&next](std::string arg_name){
+        auto check_argval = [&next](std::string arg_name)
+        {
             if(next==""){throw std::string("please input correct ")+arg_name;}
         };
-        if(temp=="-tx"){
+        
+        if(temp=="-tx")
+        {
             check_argval("tx");
             tx_descriptor.interface = next; 
             i++;
-        }else if(temp=="-p"){
+        }
+#ifdef USE_MAVLINK
+        else if(temp=="-serial")
+        {
+            check_argval("serial");
+            serialPortName = next; 
+            i++;
+        }
+#endif
+        else if(temp=="-p")
+        {
             check_argval("port");
             s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
             i++;
-        }else if(temp=="-n"){
+        }
+        else if(temp=="-n")
+        {
             check_argval("n");
             s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( std::stoi(next), FEC_K+1, FEC_N ); 
             i++;
             LOGI("set rx fec_n to {}",s_ground2air_config_packet.fec_codec_n);
-        }else if(temp=="-rx"){
+        }
+        else if(temp=="-rx")
+        {
             rx_descriptor.interfaces.clear();
-        }else if(temp=="-ch"){
+        }
+        else if(temp=="-ch")
+        {
             check_argval("ch");
             s_groundstation_config.wifi_channel = std::stoi(next);
             config.wifi_channel = s_groundstation_config.wifi_channel;
             i++;
-        }else if(temp=="-w"){
+        }
+        else if(temp=="-w")
+        {
             check_argval("w");
             s_hal->set_width(std::stoi(next));
             i++;
-        }else if(temp=="-h"){
+        }
+        else if(temp=="-h")
+        {
             check_argval("h");
             s_hal->set_height(std::stoi(next));
             i++;
-        }else if(temp=="-fullscreen"){
+        }
+        else if(temp=="-fullscreen")
+        {
             check_argval("fullscreen");
             s_hal->set_fullscreen(std::stoi(next) > 0);
             i++;
-        }else if(temp=="-vsync"){
+        }
+        else if(temp=="-vsync")
+        {
             check_argval("vsync");
             s_groundstation_config.vsync = std::stoi(next) > 0;
             i++;
-        }else if(temp=="-sm"){
+        }
+        else if(temp=="-sm")
+        {
             check_argval("sm");
             rx_descriptor.skip_mon_mode_cfg = std::stoi(next) > 0;
             i++;
-        }else if(temp=="-help"){
+        }
+        else if(temp=="-help"){
             printf("gs -option val -option val\n");
             printf("-rx <rx_interface1> <rx_interface2>, default: wlan1 single interface\n");
             printf("-tx <tx_interface>, default: wlan1\n");
@@ -2240,9 +2271,14 @@ int main(int argc, const char* argv[])
             printf("-fullscreen <1/0>, default: 1\n");
             printf("-vsync <1/0>, default: 1\n");
             printf("-sm <1/0>, skip configuring monitor mode, default: 0\n");
+#ifdef USE_MAVLINK
+            printf("-serial <serial_port>, serial port for telemetry, default: /dev/serial0\n");
+#endif            
             printf("-help\n");
             return 0;
-        }else{
+        }
+        else
+        {
             rx_descriptor.interfaces.push_back(temp);
         }
     }
