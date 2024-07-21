@@ -1,7 +1,7 @@
 
 # Running Ground Station software on Ubuntu desktop
 
-This instruction describes steps for running Ground Station software on Ubuntu desktop (f.e. old notebook or Raspberry Pi).
+This instruction describes steps for running Ground Station software on Ubuntu desktop (f.e. old x86_64 notebook or Raspberry Pi).
 
 For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps.
 
