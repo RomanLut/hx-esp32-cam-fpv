@@ -13,7 +13,7 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
 * Download Ubuntu Desktop image https://ubuntu.com/download/desktop
 
-* Write image to USB stick 
+* Write image to USB stick. Use at least 12GB flash drive to be able to allocate at least 2GB for persistent storage.
  
    Use Rufus on Windows https://rufus.ie/ 
 
@@ -41,7 +41,7 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
   ```./autogen.sh```
 
-  ```./configure
+  ```./configure```
 
   ```make -j4```
 
@@ -83,10 +83,10 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
    ```sudo airmon-ng check kill```
   
-   ```./gs -rx **wlp3s0** -tx **wlp3s0** -fullscreen 1```
+   ```sudo ./gs -rx wlp3s0 -tx wlp3s0 -fullscreen 1```
 
 * If it prints "Does not support monitor mode", try with  ```-sm 1``` parameter:
 
-   ```./gs -rx **wlp3s0** -tx **wlp3s0** -fullscreen 1 -sm 1```
+   ```sudo ./gs -rx wlp3s0 -tx wlp3s0 -fullscreen 1 -sm 1```
 
 Use ```./gs -help``` to see available command line parameters.
