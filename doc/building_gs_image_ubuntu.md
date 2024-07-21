@@ -17,7 +17,7 @@ Internal wifi card may work or may not. It works for me with **Intel 6300 AGN ca
  
    Use Rufus on Windows https://rufus.ie/ 
 
-   Set "Persistent partition size" at least 1Gb to enable persistent storage on Live USB image.
+   Set "Persistent partition size" at least 2Gb to enable persistent storage on Live USB image.
 
    Detailed description: https://itsfoss.com/ubuntu-persistent-live-usb/
 
