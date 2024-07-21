@@ -9,7 +9,7 @@ For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install
 
 External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
 
-Internal wifi card may work or may not. It works for me with Intel 6257 card.
+Internal wifi card may work or may not. It works for me with **Intel 6300 AGN card**.
 
 * Download Ubuntu Desktop image https://ubuntu.com/download/desktop
 
