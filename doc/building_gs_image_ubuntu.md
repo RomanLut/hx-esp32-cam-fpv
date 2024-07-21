@@ -5,7 +5,7 @@ This instruction describes steps for running Ground Station software on Ubuntu d
 
 For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps.
 
-For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card.
+For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card. Then jump to "Install required packages" step.
 
 External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
 
@@ -21,21 +21,13 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
    Detailed description: https://itsfoss.com/ubuntu-persistent-live-usb/
 
-* Boot from USB
+* Boot from USB stick
 
-* Install rtl8812au driver:
+* On Notebook: Select **Try Ubuntu**
 
-  ```cd /home/pi/```
+* Pass initial Ubuntu configuration, setup wifi connection to internet
 
-  ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
-  
-  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
-
-  ```cd rtl8812au```
-
-  ```sudo ./dkms-install.sh```
-
-* Install required packages: '''sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev dkms git aircrack-ng'''
+* Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev dkms git aircrack-ng```
 
 * Install and compile SDL library. We have to build library to run application without desktop.
  
@@ -49,27 +41,52 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
   ```./autogen.sh```
 
-  ```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
+  ```./configure
 
   ```make -j4```
 
   ```sudo make install```
 
+* Install rtl8812au driver:
+
+  ```cd ~```
+
+  ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
+  
+  ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
+
+  ```cd rtl8812au```
+
+  ```sudo ./dkms-install.sh```
+
 * Download **esp32-cam-fpv** repository:
  
-  ```cd /home/pi/```
+  ```cd ~```
  
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
 
-  ```cd /home/pi/```
-
-    ```cd esp32-cam-fpv```
+  ```cd esp32-cam-fpv```
 
   ```cd gs```
 
   ```make -j4```
 
+* Check name of Wifi card interface:
 
-**TODO**
+  ```sudo airmon-ng```
+
+   Note name of Wifi card **Interface**, f.e. **wlp3s0**
+
+* Launch Ground Station software:
+
+   ```sudo airmon-ng check kill```
+  
+   ```./gs -rx **wlp3s0** -tx **wlp3s0** -fullscreen 1```
+
+* If it prints "Does not support monitor mode", try with  ```-sm 1``` parameter:
+
+   ```./gs -rx **wlp3s0** -tx **wlp3s0** -fullscreen 1 -sm 1```
+
+Use ```./gs -help``` to see available command line parameters.
