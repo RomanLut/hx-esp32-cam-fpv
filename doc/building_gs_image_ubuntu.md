@@ -21,15 +21,13 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 
    Detailed description: https://itsfoss.com/ubuntu-persistent-live-usb/
 
-* Boot from USB stick
-
-* On Notebook: Select **Try Ubuntu**
+* Boot from USB stick, Select **Try Ubuntu**
 
 * Pass initial Ubuntu configuration, setup wifi connection to internet
 
 * Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev dkms git aircrack-ng```
 
-* Install and compile SDL library. We have to build library to run application without desktop.
+* Install and compile SDL library.
  
   ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
@@ -82,10 +80,14 @@ Internal wifi card may work or may not. It works for me with Intel 6257 card.
 * Launch Ground Station software:
 
    ```sudo airmon-ng check kill```
+
+  ```sudo airmon-ng start wlp3s0```
+
+     (on this step interface may be renamed to wlan0mon. If it does, use wlan0mon in the next steps)
   
    ```sudo ./gs -rx wlp3s0 -tx wlp3s0 -fullscreen 1```
 
-* If it prints "Does not support monitor mode", try with  ```-sm 1``` parameter:
+* If it prints "Interface does not support monitor mode", try with  ```-sm 1``` parameter:
 
    ```sudo ./gs -rx wlp3s0 -tx wlp3s0 -fullscreen 1 -sm 1```
 
