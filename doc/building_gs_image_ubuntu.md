@@ -1,13 +1,15 @@
 
-# Running Ground station onUbuntu desktop
+# Running Ground Station software on Ubuntu desktop
 
-This instruction describes steps for running Ground Station on Ubuntu desktop (f.e. old notebook or Raspberry Pi).
+This instruction describes steps for running Ground Station software on Ubuntu desktop (f.e. old notebook or Raspberry Pi).
 
-It starts from building live USB flash image. If you want to run image onexisting system, just skip first steps.
+For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps.
 
 External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
 
 Internal wifi card may work or may not. It works for me with Intel 6257 card.
+
+For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview
 
 * Download Ubuntu Desktop image https://ubuntu.com/download/desktop
 
