@@ -31,9 +31,10 @@ Open source digital FPV system based on esp32cam.
 - [ ] Meta Quest 2 GS
 
 ## Features:
-- **ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps, 1280x720 12fps
-- **ov2640 with overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
-- **esp32s3 + ov5640**: 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps, 1280x720 30fps 
+- **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
+- **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
+- **esp32s3 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
+- HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
 - up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
 - latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
@@ -268,6 +269,7 @@ From left to right:
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
  - ```AIR``` Air unit is recording video to SD card
  - ```GS``` GS is recording video to SD card
+ - ```HQ DVR``` HQ DVR mode enabled
  - ```!SD SLOW!``` SD card on AIR unit is too slow to record video, frames are skipped
 
 # OSD Menu
