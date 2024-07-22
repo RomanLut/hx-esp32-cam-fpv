@@ -80,7 +80,10 @@ _init_mul_table(void) {
   int i, j;
 
 #ifdef ESP_PLATFORM      
+    //performance is 20-30% slower with PSRAM, but we need internal memory desperately for the wifi output buffer
+	//review: precalculate and place in flash? (4 byte access?)
       gf_mul_table = (gf_mul_table_p)heap_caps_malloc(256*256, MALLOC_CAP_SPIRAM);
+      //gf_mul_table = (gf_mul_table_p)heap_caps_malloc(256*256, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
 #else
       gf_mul_table = (gf_mul_table_p)malloc( 256*256 );
 #endif

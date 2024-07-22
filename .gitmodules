@@ -3,7 +3,3 @@
 	path = gs/src/imgui
 	url = https://github.com/ocornut/imgui.git
 
-[submodule "components/esp32-camera"]
-	path = components/esp32-camera
-	url = https://github.com/RomanLut/esp32-camera.git
-	branch = for-esp-cam-fpv

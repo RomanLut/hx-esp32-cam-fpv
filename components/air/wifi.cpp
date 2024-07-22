@@ -1,3 +1,5 @@
+#include "main.h"
+
 #include "wifi.h"
 #include "esp_log.h"
 #include "structures.h"
@@ -28,6 +30,7 @@ TaskHandle_t s_wifi_tx_task = nullptr;
 TaskHandle_t s_wifi_rx_task = nullptr;
 Stats s_stats;
 Stats s_last_stats;
+uint8_t s_wlan_outgoing_queue_usage = 0;
 
 static void (*ground2air_config_packet_handler)(Ground2Air_Config_Packet& src)=nullptr;
 static void (*ground2air_data_packet_handler)(Ground2Air_Data_Packet& src)=nullptr;
@@ -68,6 +71,8 @@ IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
         xTaskNotifyGive(s_wifi_rx_task); //notify task
 }
 
+//===========================================================================================
+//===========================================================================================
 IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 {
     if (s_ground2air_config_packet.wifi_power == 0) return true;
@@ -92,6 +97,8 @@ IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
     end_writing_wlan_outgoing_packet(packet);
 
     size_t qs = s_wlan_outgoing_queue.size();
+    size_t c = s_wlan_outgoing_queue.capacity();
+    s_wlan_outgoing_queue_usage = qs * 100 / c;
 
 #ifdef PROFILE_CAMERA_DATA    
     s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
@@ -147,7 +154,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
             {
                 memcpy(packet.ptr, WLAN_IEEE_HEADER_AIR2GROUND, WLAN_IEEE_HEADER_SIZE);
 
-                size_t spins = 0;
+                size_t spins = isHQDVRMode() ? 10000 : 0;
                 while (packet.ptr)
                 {
 #ifdef PROFILE_CAMERA_DATA    
@@ -167,8 +174,11 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                         xSemaphoreTake(s_wlan_outgoing_mux, portMAX_DELAY);
                         end_reading_wlan_outgoing_packet(packet);
 
-#ifdef PROFILE_CAMERA_DATA    
                         size_t qs = s_wlan_outgoing_queue.size();
+                        size_t c = s_wlan_outgoing_queue.capacity();
+                        s_wlan_outgoing_queue_usage = qs * 100 / c;
+
+#ifdef PROFILE_CAMERA_DATA    
                         s_profiler.set(PF_CAMERA_WIFI_QUEUE, qs / 1024);
 #endif
                         if ( (s_min_wlan_outgoing_queue_size_frame == -1) || ( s_min_wlan_outgoing_queue_size_frame > qs ) )
@@ -303,10 +313,17 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
 {
     xSemaphoreGive(s_wlan_incoming_mux);
     xSemaphoreGive(s_wlan_outgoing_mux);
+
+
+    //allocates WLAN_INCOMING_BUFFER_SIZE(1kb) + WLAN_OUTGOING_BUFFER_SIZE(65kb) RAM
     init_queues(WLAN_INCOMING_BUFFER_SIZE, WLAN_OUTGOING_BUFFER_SIZE);
+
+    //~30kb + ~65KB PSRAM
     setup_fec(s_ground2air_config_packet.fec_codec_k, s_ground2air_config_packet.fec_codec_n, s_ground2air_config_packet.fec_codec_mtu,
                 add_to_wlan_outgoing_queue,add_to_wlan_incoming_queue);
 
+
+    //allocates 118-32 kb RAM!!!
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     //ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_ap_handler, NULL, NULL));
 
@@ -319,6 +336,7 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
         ESP_ERROR_CHECK(esp_wifi_set_mode(ESP_WIFI_MODE));
     }
 
+    //~1.5kb RAM
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 

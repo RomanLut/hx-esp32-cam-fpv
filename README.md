@@ -14,9 +14,10 @@ Open source digital FPV system based on esp32cam.
 - [x] test dual wifi cards performance
 - [x] build dual wifi RPI GS
 - [x] release prebuilt images and firmware
-- [ ] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [.] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [.] provide intructions for building GS on Ubuntu
 - [ ] measure latency properly
-- [ ] stydy which components introduce latency
+- [ ] study which components introduce latency
 - [ ] radxa 3w GS
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
@@ -190,13 +191,17 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station
 
-Preparing SD Card for GS from pre-built image: [/doc/building_gs_image.md](/doc/prebuilt_gs_image.md)
+Preparing SD Card for Raspberry PI GS from pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
 
-Or building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+Building Raspberry PI GS image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
 
-STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+Building and running Ground Station software on a Fedora Linux desktop (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/building_gs_on_fedora.md)
 
-## Ground Station Variant 1: Single rtl8812au
+Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook or Raspberry Pi): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+
+STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+
+## Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
 
 Single wifi card is Ok for GS with LCD monitor.
 
@@ -211,7 +216,7 @@ Single wifi card is Ok for GS with LCD monitor.
 ![alt text](doc/images/gs.jpg "gs")
 
 
-## Ground Station Variant 2: Dual rtl8812au
+## Ground Station Variant 2: Raspberry PI Zero 2W, Dual rtl8812au
 
 Dual wifi cards variant benefit less frame dropping.
 
@@ -513,6 +518,12 @@ Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Fle
 # Development
 
 See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
+
+# References
+
+ * Getting Started with Seeed Studio XIAO ESP32S3 (Sense) https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/ 
+
+
 
 # FAQ
 

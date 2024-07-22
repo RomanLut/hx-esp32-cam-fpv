@@ -27,7 +27,8 @@
 			"*.tcc": "cpp",
 			"stdint.h": "c",
 			"random": "cpp",
-			"ostream": "cpp"
+			"ostream": "cpp",
+			"cstdint": "cpp"
 		}
 	}
 }
