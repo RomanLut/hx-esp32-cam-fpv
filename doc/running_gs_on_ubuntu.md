@@ -1,15 +1,15 @@
 
 # Running Ground Station software on Ubuntu desktop
 
-This instruction describes steps for running Ground Station software on Ubuntu desktop (f.e. old x86_64 notebook or Raspberry Pi).
+This instruction describes steps for running Ground Station software on Ubuntu desktop 22.04 (f.e. old x86_64 notebook or Raspberry Pi or Radxa Zero 3W).
 
-For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps untill "Install required packages".
+## Notebook 
 
 External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
 
 Internal wifi card may work or may not. It works for me with **Intel 6300 AGN card**.
 
-For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card. Then jump to "Install required packages" step.
+If you want to run software on the existing system, just skip following steps untill "Install required packages".
 
 * Download Ubuntu Desktop image https://ubuntu.com/download/desktop
 
@@ -24,6 +24,19 @@ For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install
 * Boot from USB stick, Select **Try Ubuntu**
 
 * Pass initial Ubuntu configuration, setup wifi connection to internet
+
+
+## Raspberry Pi
+
+Follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card. Then jump to "Install required packages" step.
+
+
+## Radxa Zero 3W
+
+Tested with Ubuntu Desktop which can be downloaded here https://github.com/Joshua-Riek/ubuntu-rockchip/releases/tag/v2.2.1
+
+
+# Steps 
 
 * Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms aircrack-ng```
 
