@@ -176,11 +176,11 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
 
-**ov5640** on **esp32s3sense** camera offers 640x360 50fps, 640x480 40fps, 800x456 50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
+**ov5640** on **esp32s3sense** camera offers 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
-800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
+800x456 30fps 26Mbit, **esp32sesense + ov5640** camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -341,7 +341,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-
 
 800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
 
-However, 1280x720 30fps requres too high bandwidth, so system has to set high compression levels which elliminates detais. Overall, 1024x576 30fps looks better. Both modes require 36Mbps+ wifi rate to provide benefits over 800x456.
+1024x576 30fps requires 36Mbps+ wifi rate to provide benefits over 800x456.
 
 It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
@@ -352,6 +352,16 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
+
+## HQ DVR Mode
+
+While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. In practice, it looks worse then 1024x576.
+
+Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode: video is saved with best possible quality limited by SD card performance only on Air unit, while frames are sent as fast as link allows (usually 5-10 FPS).
+
+Mode is usefull for recording video which can be watched on big screen.
+
+https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 ## Lens 
 
