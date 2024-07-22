@@ -48,7 +48,7 @@ Open source digital FPV system based on esp32cam.
 
 **Ground station:**
 - **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card. Dual **rtl8812au** are recommended for FPV.
-  
+- GS Software also can be run on x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W on Ubuntu.
 
 
 ## Original project
@@ -198,7 +198,7 @@ Preparing SD Card for Raspberry PI GS from pre-built image: [doc/prebuilt_gs_ima
 
 Building Raspberry PI GS image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
 
-Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook or Raspberry Pi): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
 
 Building and running Ground Station software on a Fedora Linux desktop (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
