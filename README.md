@@ -200,7 +200,7 @@ Building Raspberry PI GS image : [/doc/building_gs_image_rpi.md](/doc/building_g
 
 Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
 
-Building and running Ground Station software on a Fedora Linux desktop (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
+Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
 STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
