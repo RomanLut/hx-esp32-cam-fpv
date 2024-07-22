@@ -1013,6 +1013,12 @@ void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
     s_comms.setChannel (s_groundstation_config.wifi_channel);
 }
 
+//===================================================================================
+//===================================================================================
+bool isHQDVRMode()
+{
+    return s_ground2air_config_packet.camera.resolution == Resolution::HD;
+}
 
 //===================================================================================
 //===================================================================================
@@ -1172,6 +1178,19 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("GS");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            //GS REC
+            if ( isHQDVRMode() )
+            {
+                ImGui::SameLine();
+                ImGui::PushID(1);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("HQ DVR");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
