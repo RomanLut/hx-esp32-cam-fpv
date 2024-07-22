@@ -14,8 +14,8 @@ Open source digital FPV system based on esp32cam.
 - [x] test dual wifi cards performance
 - [x] build dual wifi RPI GS
 - [x] release prebuilt images and firmware
-- [.] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
-- [.] provide intructions for building GS on Ubuntu
+- [x] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [x] provide manual for running GS software on Ubuntu
 - [ ] measure latency properly
 - [ ] study which components introduce latency
 - [ ] radxa 3w GS
