@@ -15,6 +15,7 @@ Open source digital FPV system based on esp32cam.
 - [x] build dual wifi RPI GS
 - [x] release prebuilt images and firmware
 - [ ] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
+- [ ] provide intructions for building GS on Ubuntu
 - [ ] measure latency properly
 - [ ] stydy which components introduce latency
 - [ ] radxa 3w GS
@@ -193,6 +194,8 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 Preparing SD Card for GS from pre-built image: [/doc/building_gs_image.md](/doc/prebuilt_gs_image.md)
 
 Or building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+
+Or building and running the Ground Station application on a Fedora Linux desktop (no Raspberry Pi required): [/doc/building_gs_fedora.md](/doc/building_gs_fedora.md)
 
 STL files for 3D printing enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
