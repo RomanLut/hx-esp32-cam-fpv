@@ -1,4 +1,4 @@
-# Building groundstation image
+# Building Ground Station image for Raspberry Pi
 
 This process is tested on Raspberry Pi Zero 2W and Raspberry Pi 4B 2GB. Other in-beetween models should also work. Raspberry Pi Zero W and 1 are not supported (too low performance).
 
@@ -166,7 +166,7 @@ To update groundstation software, pull updates from '''release''' branch:
   ```make```
 
 
-# Building ground station development image
+# Building Ground Station development image for Raspberry Pi
 
 Development image is based on desktop environment. Raspberry Pi 4B 2-4GB is recommented for development. 
 
