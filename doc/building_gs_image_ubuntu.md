@@ -3,13 +3,13 @@
 
 This instruction describes steps for running Ground Station software on Ubuntu desktop (f.e. old x86_64 notebook or Raspberry Pi).
 
-For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps.
-
-For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card. Then jump to "Install required packages" step.
+For notebook, it starts from building live USB flash drive. If you want to run image on the existing system, just skip first steps untill "Install required packages".
 
 External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
 
 Internal wifi card may work or may not. It works for me with **Intel 6300 AGN card**.
+
+For Raspberry Pi, follow these steps https://ubuntu.com/tutorials/how-to-install-ubuntu-desktop-on-raspberry-pi-4#1-overview to prepare Ubuntu SD card. Then jump to "Install required packages" step.
 
 * Download Ubuntu Desktop image https://ubuntu.com/download/desktop
 
@@ -25,32 +25,12 @@ Internal wifi card may work or may not. It works for me with **Intel 6300 AGN ca
 
 * Pass initial Ubuntu configuration, setup wifi connection to internet
 
-* Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev dkms git aircrack-ng```
-
-* Install and compile SDL library.
- 
-  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
-
-  ```tar zxf SDL2-2.0.18.tar.gz```
-
-  ```rm SDL2-2.0.18.tar.gz```
-
-  ```cd SDL2-2.0.18```
-
-  ```./autogen.sh```
-
-  ```./configure```
-
-  ```make -j4```
-
-  ```sudo make install```
+* Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms aircrack-ng```
 
 * Install rtl8812au driver:
 
   ```cd ~```
 
-  ```git config --global http.postBuffer 350000000``` (For Raspberry PI Zero 2W)
-  
   ```git clone -b v5.2.20-rssi-fix-but-sometimes-crash https://github.com/svpcom/rtl8812au/```
 
   ```cd rtl8812au```
@@ -64,6 +44,8 @@ Internal wifi card may work or may not. It works for me with **Intel 6300 AGN ca
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
+
+  ```cd ~```
 
   ```cd esp32-cam-fpv```
 
@@ -79,11 +61,21 @@ Internal wifi card may work or may not. It works for me with **Intel 6300 AGN ca
 
 * Launch Ground Station software:
 
+  Kill NetworkManager:
+  
    ```sudo airmon-ng check kill```
+
+   OR request NetworkManager to do not manage your adapter:
+
+   ```nmcli dev set wlp3s0 managed no```
+
+  Switch interface into monitor mode:  
 
   ```sudo airmon-ng start wlp3s0```
 
      (on this step interface may be renamed to wlan0mon. If it does, use wlan0mon in the next steps)
+
+  Run GS software:
   
    ```sudo ./gs -rx wlp3s0 -tx wlp3s0 -fullscreen 1```
 
