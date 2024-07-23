@@ -29,6 +29,7 @@ while [ $elapsed -lt $timeout ]; do
     fi
 
 #reconnect wlan0 to access point
+    sudo systemctl restart networking
     sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
 
     exit 0
