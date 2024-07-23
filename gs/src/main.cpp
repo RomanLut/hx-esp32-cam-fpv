@@ -2202,15 +2202,41 @@ int main(int argc, const char* argv[])
         if (temp != "") s_ground2air_config_packet.camera.ov5640HighFPS = atoi(temp.c_str()) != 0;
     }
 
-    for(int i=1;i<argc;++i){
+    for(int i=1;i<argc;++i)
+    {
         auto temp = std::string(argv[i]);
         auto next = i!=argc-1? std::string(argv[i+1]):std::string("");
         auto check_argval = [&next](std::string arg_name)
         {
-            if(next==""){throw std::string("please input correct ")+arg_name;}
+            if ( next == "" ) 
+            {
+                std::string er = std::string("Please provide correct argument for -") + arg_name;
+                LOGE(er);
+                throw er;
+            }
         };
-        
-        if(temp=="-tx")
+
+        auto check_argval_int = [&next](std::string arg_name)
+        {
+            if ( next == "" ) 
+            {
+                std::string er = std::string("Please provide correct argument for -") + arg_name;
+                LOGE(er);
+                throw er;
+            }
+            try
+            {
+                std::stoi(next);
+            }
+            catch(std::invalid_argument& e)
+            {
+                std::string er = std::string("Please provide correct argument for -") + arg_name;
+                LOGE(er);
+                throw er;
+            }
+        };
+
+        if( temp == "-tx" )
         {
             check_argval("tx");
             tx_descriptor.interface = next; 
@@ -2226,13 +2252,13 @@ int main(int argc, const char* argv[])
 #endif
         else if(temp=="-p")
         {
-            check_argval("port");
+            check_argval_int("port");
             s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
             i++;
         }
         else if(temp=="-n")
         {
-            check_argval("n");
+            check_argval_int("n");
             s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( std::stoi(next), FEC_K+1, FEC_N ); 
             i++;
             LOGI("set rx fec_n to {}",s_ground2air_config_packet.fec_codec_n);
@@ -2243,38 +2269,38 @@ int main(int argc, const char* argv[])
         }
         else if(temp=="-ch")
         {
-            check_argval("ch");
+            check_argval_int("ch");
             s_groundstation_config.wifi_channel = std::stoi(next);
             config.wifi_channel = s_groundstation_config.wifi_channel;
             i++;
         }
         else if(temp=="-w")
         {
-            check_argval("w");
+            check_argval_int("w");
             s_hal->set_width(std::stoi(next));
             i++;
         }
         else if(temp=="-h")
         {
-            check_argval("h");
+            check_argval_int("h");
             s_hal->set_height(std::stoi(next));
             i++;
         }
         else if(temp=="-fullscreen")
         {
-            check_argval("fullscreen");
+            check_argval_int("fullscreen");
             s_hal->set_fullscreen(std::stoi(next) > 0);
             i++;
         }
         else if(temp=="-vsync")
         {
-            check_argval("vsync");
+            check_argval_int("vsync");
             s_groundstation_config.vsync = std::stoi(next) > 0;
             i++;
         }
         else if(temp=="-sm")
         {
-            check_argval("sm");
+            check_argval_int("sm");
             rx_descriptor.skip_mon_mode_cfg = std::stoi(next) > 0;
             i++;
         }
@@ -2322,6 +2348,13 @@ int main(int argc, const char* argv[])
      updateGSSdFreeSpace();
 
      s_hal->set_vsync(s_groundstation_config.vsync, false);
+
+    //preffer 1024x768 if screen aspect ratio is set to 4:3
+     if ( s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT4X3 )
+     {
+        s_hal->set_width( 1024 );
+        s_hal->set_height( 768 );
+     }
 
     if (!s_hal->init())
         return -1;
