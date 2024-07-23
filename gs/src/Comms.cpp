@@ -655,6 +655,7 @@ bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor
         if (pcap_set_rfmon(pcap.pcap, 1) < 0)
         {
             LOGE("Error setting pcap_set_rfmon: {}", pcap_geterr(pcap.pcap));
+            LOGE("Try running with -sm 1 flag\n");
             return false;
         }
     }
@@ -678,6 +679,7 @@ bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor
     if (res < 0)
     {
         LOGE("Error in pcap_activate: {}", pcap_geterr(pcap.pcap));
+        LOGE("Try running under root account.");
         return false;
     }
     else if (res == PCAP_WARNING_PROMISC_NOTSUP)
