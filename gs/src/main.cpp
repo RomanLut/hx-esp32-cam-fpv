@@ -2349,13 +2349,14 @@ int main(int argc, const char* argv[])
 
      s_hal->set_vsync(s_groundstation_config.vsync, false);
 
+/*
     //preffer 1024x768 if screen aspect ratio is set to 4:3
      if ( s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT4X3 )
      {
         s_hal->set_width( 1024 );
         s_hal->set_height( 768 );
      }
-
+*/
     if (!s_hal->init())
         return -1;
 
