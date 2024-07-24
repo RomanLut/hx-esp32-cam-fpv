@@ -3,10 +3,9 @@
 
   Raspberry Pi 4 is recommented for development.
  
-  Building GS image : [/doc/building_gs_image.md](/doc/building_gs_image.md)
+  Building GS development image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md#building-ground-station-development-image-for-raspberry-pi)
 
- **todo**
-
+ 
 # Development UI
 
 Development UI is enabled with **d** key or **middle mouse click**.
@@ -61,3 +60,6 @@ pf.sd_slow_buf      | Size of SD card PSRAM queue in %
 ps.sd_ovf           | Toggled every time any SD card queue overflows
 
 
+# Considerations
+
+ GS application is based on SDL2. Application uses OpenGL ES API. In environment without desktop, KMSDRM should provide hardware OpenGL ES acceleration.
