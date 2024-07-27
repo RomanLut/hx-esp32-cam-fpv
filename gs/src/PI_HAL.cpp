@@ -75,7 +75,7 @@ struct PI_HAL::Impl
     uint32_t width = 1280;
     uint32_t height = 720;
 
-    bool fullscreen = false;
+    bool fullscreen = true;
     bool vsync = true;
 
     std::mutex context_mutex;

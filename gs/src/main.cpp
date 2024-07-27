@@ -2094,6 +2094,139 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
+std::string exec(const char* cmd) 
+{
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) 
+    {
+        throw std::runtime_error("popen() failed!");
+    }
+
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) 
+    {
+        result += buffer.data();
+    }
+
+    return result;
+}
+
+//===================================================================================
+//===================================================================================
+std::string toLower(const std::string& str) 
+{
+    std::string lower_str = str;
+    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
+    return lower_str;
+}
+
+//===================================================================================
+//===================================================================================
+std::vector<std::string> getInterfacesWithChipset(const std::string& output) 
+{
+    std::istringstream iss(output);
+    std::string line;
+    std::vector<std::string> interfaces;
+
+    // Iterate through each line of the output
+    while (std::getline(iss, line)) 
+    {
+        std::istringstream line_stream(line);
+        std::string phy, interface, driver, chipset;
+
+        //std::cout << "-----\n" << std::endl;
+        //std::cout << line << "\n" << std::endl;
+
+        // Parse the columns
+        line_stream >> phy >> interface >> driver;
+        std::getline(line_stream, chipset);
+
+        //std::cout << phy << "\n" << std::endl;
+        //std::cout << interface << "\n" << std::endl;
+        //std::cout << driver << "\n" << std::endl;
+        //std::cout << chipset << "\n" << std::endl;
+
+        std::string driver_lower = toLower(driver);
+        std::string chipset_lower = toLower(chipset);
+
+        // Check if the chipset matches the target chipset (case-insensitive)
+        if ( 
+                (chipset_lower.find("8812") != std::string::npos ) ||
+                (chipset_lower.find("9271") != std::string::npos ) ||
+                (driver_lower.find("rtl88") != std::string::npos ) ||
+                (driver_lower.find("ath9k") != std::string::npos ) 
+            ) 
+        {
+            //std::cout << chipset_lower << "\n" << std::endl;
+            //std::cout << interface << "\n" << std::endl;
+            //std::cout << driver << "\n" << std::endl;
+            interfaces.push_back(interface);
+        }
+    }
+
+    return interfaces;
+}
+
+//===================================================================================
+//===================================================================================
+void findRXInterfacesEx(Comms::RX_Descriptor& rx_descriptor)
+{
+/*
+        "PHY     Interface       Driver          Chipset\n"
+        "phy0    wlan0           brcmfmac        Broadcom 43430\n"
+        "phy1    wlan1           rtl88xxau_wfb   Realtek Semiconductor Corp. RTL8812AU 802.11a/b/g/n/ac 2T2R DB WLAN Adapter\n";
+        "phy2    wlan2           ath9k_htc       Qualcomm Atheros Communications AR9271 802.11n"
+*/
+    std::string output = exec( "sudo airmon-ng");
+
+    //std::cout << "Command output:\n" << output << std::endl;
+
+    rx_descriptor.interfaces = getInterfacesWithChipset( output );
+}
+
+
+//===================================================================================
+//===================================================================================
+bool findRXInterfaces(Comms::RX_Descriptor& rx_descriptor)
+{
+    rx_descriptor.interfaces.clear();
+
+    for ( int i = 10; i >= 0; i-- )
+    {
+        findRXInterfacesEx(rx_descriptor);
+        if ( rx_descriptor.interfaces.size() != 0 ) break;
+        printf( "Waiting for wifi interface... %d\n", i );
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    if ( rx_descriptor.interfaces.size() == 0 ) return false;
+
+    printf("Found RX interface: %s\n", rx_descriptor.interfaces[0].c_str() );
+
+    for ( int i = 3; i >= 0; i-- )
+    {
+        rx_descriptor.interfaces.clear();
+        findRXInterfacesEx(rx_descriptor);
+        if ( rx_descriptor.interfaces.size() == 2 ) break;
+        printf( "Waiting for 2nd wifi interface... %d\n", i );
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    if ( rx_descriptor.interfaces.size() > 1 ) 
+    {
+        printf("Found RX interface: %s\n", rx_descriptor.interfaces[1].c_str() );
+    }
+    else
+    {
+        printf("Second RX interface not found.\n");
+    }
+
+    return rx_descriptor.interfaces.size() != 0;
+}
+
+//===================================================================================
+//===================================================================================
 int main(int argc, const char* argv[])
 {
     init_crc8_table();
@@ -2103,10 +2236,10 @@ int main(int argc, const char* argv[])
     s_iniFile.read(ini);
 
     Comms::RX_Descriptor rx_descriptor;
-    rx_descriptor.interfaces = {"wlan1"};
+    rx_descriptor.interfaces = {"auto"};
 
     Comms::TX_Descriptor tx_descriptor;
-    tx_descriptor.interface = "wlan1";
+    tx_descriptor.interface = "auto";
 
     s_hal.reset(new PI_HAL());
 
@@ -2256,13 +2389,14 @@ int main(int argc, const char* argv[])
             s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
             i++;
         }
+        /*
         else if(temp=="-n")
         {
             check_argval_int("n");
             s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( std::stoi(next), FEC_K+1, FEC_N ); 
             i++;
             LOGI("set rx fec_n to {}",s_ground2air_config_packet.fec_codec_n);
-        }
+        }*/
         else if(temp=="-rx")
         {
             rx_descriptor.interfaces.clear();
@@ -2306,16 +2440,16 @@ int main(int argc, const char* argv[])
         }
         else if(temp=="-help"){
             printf("gs -option val -option val\n");
-            printf("-rx <rx_interface1> <rx_interface2>, default: wlan1 single interface\n");
-            printf("-tx <tx_interface>, default: wlan1\n");
+            printf("-rx <rx_interface1> <rx_interface2>, f.e. wlan1 or wlan1 wlan2 default: auto\n");
+            printf("-tx <tx_interface>, f.e. wlan1 default: first rx interface\n");
             printf("-p <gd_ip>, default: disabled\n");
-            printf("-n <rx_fec_n>, 7...12, default: 12\n");
+            //printf("-n <rx_fec_n>, 7...12, default: 12\n");
             printf("-ch <wifi_channel>, default: 7\n");
             printf("-w <width>, default: 1280\n");
             printf("-h <width>, default: 720\n");
             printf("-fullscreen <1/0>, default: 1\n");
             printf("-vsync <1/0>, default: 1\n");
-            printf("-sm <1/0>, skip configuring monitor mode, default: 0\n");
+            printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
 #ifdef USE_MAVLINK
             printf("-serial <serial_port>, serial port for telemetry, default: /dev/serial0\n");
 #endif            
@@ -2328,8 +2462,23 @@ int main(int argc, const char* argv[])
         }
     }
 
+    if ( (rx_descriptor.interfaces.size() == 1) && ( rx_descriptor.interfaces[0] == "auto" ))
+    {
+        if ( !findRXInterfaces(rx_descriptor) )
+        {
+            printf("Unable to find RX interfaces\n");
+            return 0;
+        }
+    }
+
+    if ( ( tx_descriptor.interface == "auto" ) && ( rx_descriptor.interfaces.size() > 0 ) )
+    {
+        tx_descriptor.interface = rx_descriptor.interfaces[0];
+        printf("Using TX interface %s\n", tx_descriptor.interface.c_str());
+    }
+
     rx_descriptor.coding_k = s_ground2air_config_packet.fec_codec_k;
-    rx_descriptor.coding_n = 12;//s_ground2air_config_packet.fec_codec_n;
+    rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
     rx_descriptor.mtu = s_ground2air_config_packet.fec_codec_mtu;
 
     tx_descriptor.coding_k = 2;
@@ -2349,12 +2498,14 @@ int main(int argc, const char* argv[])
 
      s_hal->set_vsync(s_groundstation_config.vsync, false);
 
+/*
     //preffer 1024x768 if screen aspect ratio is set to 4:3
      if ( s_groundstation_config.screenAspectRatio == ScreenAspectRatio::ASPECT4X3 )
      {
         s_hal->set_width( 1024 );
         s_hal->set_height( 768 );
      }
+*/     
 
     if (!s_hal->init())
         return -1;

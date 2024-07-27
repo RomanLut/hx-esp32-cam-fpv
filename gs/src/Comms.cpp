@@ -750,6 +750,8 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
         return false;
     }
 
+    setMonitorMode(rx_descriptor.interfaces);
+
     m_rx_descriptor = rx_descriptor;
     m_rx_descriptor.mtu = std::min(rx_descriptor.mtu, MAX_USER_PACKET_SIZE);
 
@@ -1371,6 +1373,17 @@ void Comms::setChannel(int ch)
     for (const auto& itf:m_rx_descriptor.interfaces)
     {
         system(fmt::format("iwconfig {} channel {}", itf, ch).c_str());
+    }
+}
+
+void Comms::setMonitorMode(const std::vector<std::string> interfaces)
+{
+    for (const auto& itf:interfaces)
+    {
+        printf("Setting monitor mode on %s...\n", itf.c_str());
+        system(fmt::format("sudo ip link set {} down", itf).c_str());
+        system(fmt::format("sudo iw dev {} set type monitor", itf).c_str());
+        system(fmt::format("sudo ip link set {} up", itf).c_str());
     }
 }
 

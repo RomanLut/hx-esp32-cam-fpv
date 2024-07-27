@@ -31,7 +31,7 @@ public:
         uint32_t coding_k = 12;
         uint32_t coding_n = 20;
         size_t mtu = 1200;
-        bool skip_mon_mode_cfg = false;
+        bool skip_mon_mode_cfg = true;
     };
 
     bool init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_descriptor);
@@ -43,6 +43,7 @@ public:
     bool receive(void* data, size_t& size, bool& restoredByFEC);
 
     void setChannel(int ch);
+    void setMonitorMode(const std::vector<std::string> interfaces);
 
     size_t get_data_rate() const;
     int get_input_dBm() const;
