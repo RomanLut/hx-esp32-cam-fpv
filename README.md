@@ -16,9 +16,10 @@ Open source digital FPV system based on esp32cam.
 - [x] release prebuilt images and firmware
 - [x] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
 - [x] provide manual for running GS software on Ubuntu
+- [x] composite output on RPI GS (PAL/NTSC, support for FPV glasses without HTMI input)
 - [ ] measure latency properly
-- [ ] study which components introduce latency
 - [ ] radxa 3w GS
+- [ ] study which components introduce latency
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
@@ -203,6 +204,8 @@ Building and running Ground Station software on a Ubuntu desktop (x86_64 noteboo
 Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
 STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+
+Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)
 
 ## Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
 
