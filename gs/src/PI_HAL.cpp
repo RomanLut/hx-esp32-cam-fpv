@@ -309,46 +309,70 @@ bool PI_HAL::init_display_sdl()
 
     if (m_impl->fullscreen)
     {
-        // Desired display mode
-        SDL_DisplayMode desiredMode;
-        desiredMode.w = m_impl->width;
-        desiredMode.h = m_impl->height;
-        desiredMode.format = 0;  // Format 0 means any format
-        desiredMode.refresh_rate = 0;  // Refresh rate 0 means any refresh rate
-        desiredMode.driverdata = 0;  // Driverdata should be 0
-
-        // Closest display mode found
-        SDL_DisplayMode closestMode;
-
-        if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode)) 
+        int i = 0;
+        for ( ; i < 3; i++)
         {
-            printf("Display mode:");
-            printf("  Width: %d\n", closestMode.w);
-            printf("  Height: %d\n", closestMode.h);
-            printf("  Refresh Rate: %d\n", closestMode.refresh_rate);
-            printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(closestMode.format));            
+            // Desired display mode
+            SDL_DisplayMode desiredMode;
+            desiredMode.w = m_impl->width;
+            desiredMode.h = m_impl->height;
+            desiredMode.format = 0;  // Format 0 means any format
+            desiredMode.refresh_rate = 0;  // Refresh rate 0 means any refresh rate
+            desiredMode.driverdata = 0;  // Driverdata should be 0
 
-            m_impl->width = closestMode.w;
-            m_impl->height = closestMode.h;
+            // Closest display mode found
+            SDL_DisplayMode closestMode;
 
-            SDL_WindowFlags window_flags = (SDL_WindowFlags)(
-                SDL_WINDOW_FULLSCREEN | 
-                SDL_WINDOW_OPENGL | 
-                SDL_WINDOW_SHOWN | 
-                SDL_WINDOW_BORDERLESS );
-            m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
+            printf("Trying mode %d %d...\n", desiredMode.w, desiredMode.h);
 
-            if (SDL_SetWindowDisplayMode(m_impl->window, &closestMode) != 0) 
+            if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode)) 
             {
-                printf("SDL_SetWindowDisplayMode Error: %s\n", SDL_GetError());
-                SDL_DestroyWindow(m_impl->window);
-                SDL_Quit();
-                return false;
+                printf("Display mode:");
+                printf("  Width: %d\n", closestMode.w);
+                printf("  Height: %d\n", closestMode.h);
+                printf("  Refresh Rate: %d\n", closestMode.refresh_rate);
+                printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(closestMode.format));            
+
+                m_impl->width = closestMode.w;
+                m_impl->height = closestMode.h;
+
+                SDL_WindowFlags window_flags = (SDL_WindowFlags)(
+                    SDL_WINDOW_FULLSCREEN | 
+                    SDL_WINDOW_OPENGL | 
+                    SDL_WINDOW_SHOWN | 
+                    SDL_WINDOW_BORDERLESS );
+                m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
+
+                if (SDL_SetWindowDisplayMode(m_impl->window, &closestMode) != 0) 
+                {
+                    printf("SDL_SetWindowDisplayMode Error: %s\n", SDL_GetError());
+                    SDL_DestroyWindow(m_impl->window);
+                    SDL_Quit();
+                    return false;
+                }
+                break;
+            }
+            else
+            {
+                if ( i == 0 )
+                {
+                    //try PAL
+                    m_impl->width = 720;
+                    m_impl->height = 576;
+                }
+                else if ( i == 1 )
+                {
+                    //try NTSC
+                    m_impl->width = 720;
+                    m_impl->height = 480;
+                } 
             }
         }
-        else
+        
+        if ( i == 3 )
         {
-            printf("Can not find videomode %dx%d", m_impl->width, m_impl->height);
+            printf("Can not find videomode!" );
+            return false;
         }
     }
     else

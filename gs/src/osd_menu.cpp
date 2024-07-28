@@ -31,7 +31,10 @@ void OSDMenu::drawMenuTitle( const char* caption )
     this->itemsCount = 0;
     this->keyHandled = false;
 
-    ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
 }
 
 //=======================================================
@@ -256,7 +259,10 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     //this->drawMenuItem( "OSD...", 5);
 
-    ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
 
     {
         char buf[256];
