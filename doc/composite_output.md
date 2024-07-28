@@ -7,11 +7,17 @@ By default, RPI image is configured to use HDMI output with option in ```config.
 
 ```hdmi_force_hotplug=1```
 
-You can disable this option:   ```sudo nano /boot/config.txt``` (or edit ```config.txt``` on Windows PC).
+Composite output can be enabled either by running ```sudo raspi-config``` or by disabling this option: 
 
-Pi will try to output via HDMI. If no HDMI device is detected, it will fall back to composite video.
+```sudo nano /boot/config.txt``` (or edit ```config.txt``` on Windows PC).
 
-For composite output, default is NTSC. PAL mode can be enabled with:
+With ```hdmi_force_hotplug=0```, Pi will try to output via HDMI. If no HDMI device is detected, it will fall back to composite video.
+
+For Raspberry PI4 it is a little bit different. RPI4 has to be configured either for HDMI or Composite output with option:
+
+```enable_tvout=1```
+
+For composite output, default mode is NTSC. PAL mode can be enabled with:
 
 ```sdtv_mode=2```
 
