@@ -124,7 +124,8 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
 
     ImVec2 screenSize = ImGui::GetIO().DisplaySize;
 
-    ImGui::SetNextWindowPos(ImVec2(floor( (screenSize.x - windowWidth) / 2) , floor( (screenSize.y - windowHeight) /2 + 120 )), ImGuiCond_Always);
+    int offs = screenSize.y == 576 ? 100 : 120;
+    ImGui::SetNextWindowPos(ImVec2(floor( (screenSize.x - windowWidth) / 2) , floor( (screenSize.y - windowHeight) /2 + offs )), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));
     ImGui::Begin("OSD_MENU", NULL, ImGuiWindowFlags_NoResize |
                             ImGuiWindowFlags_NoMove |
