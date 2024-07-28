@@ -35,4 +35,4 @@ Note that NTSC is 720x480x60i and PAL is 720x576x50i  (interlaced). Composite ca
 So:
 
 1) PAL is prefferable
-2) there is no sense to use 1024x576 with composite output.
+2) There is no sense to use 1024x576 with composite output.
