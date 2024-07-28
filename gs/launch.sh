@@ -16,9 +16,9 @@ cd gs
 sudo airmon-ng check kill
 
 if is_desktop_running; then
-    sudo -E LD_LIBRARY_PATH=/usr/local/lib SDL_VIDEODRIVER=kmsdrm ./gs
-else
     sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs
+else
+    sudo -E LD_LIBRARY_PATH=/usr/local/lib SDL_VIDEODRIVER=kmsdrm ./gs
 fi
 
 
