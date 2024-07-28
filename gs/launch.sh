@@ -10,7 +10,11 @@ is_desktop_running() {
     fi
 }
 
-cd /home/pi/
+cd ~
+
+#for Raspberry
+cd pi
+
 cd esp32-cam-fpv
 cd gs
 sudo airmon-ng check kill
