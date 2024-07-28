@@ -42,3 +42,12 @@ So:
 
 1) PAL is prefferable
 2) There is no sense to use 1024x576 with composite output.
+
+
+Raspberry PI Zero 2W does not have composite video connector. It has to be soldered to pads:
+
+![alt text](doc/images/rpi2w_composite_pinout.png "rpi2w_composite_pinout.png")
+
+Raspberry PI 4 requires specific connector:
+
+![alt text](doc/images/rpi4_composite_pinout.png "rpi4_composite_pinout.png")
