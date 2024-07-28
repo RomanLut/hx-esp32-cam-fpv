@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd ~
+cd /home/pi/
 cd esp32-cam-fpv
 cd gs
 sudo airmon-ng check kill
