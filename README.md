@@ -159,6 +159,8 @@ STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
 ![alt text](doc/images/esp32s3sense_pinout.png "esp32s3sense_pinout.png")
 
+Note: Joystick and keys wiring is compatible with Ruby.
+
 ![alt text](doc/images/esp32s3sense_shell.jpg "esp32s3sense_shell") ![alt text](doc/images/esp32s3sense_shell1.jpg "esp32s3sense_shell1")
 
 ![alt text](doc/images/esp32s3sense_shell2.jpg "esp32s3sense_shell2") ![alt text](doc/images/esp32s3sense_shell3.jpg "esp32s3sense_shell3")
