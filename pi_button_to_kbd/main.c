@@ -68,7 +68,7 @@
 // Default edge detection. If the switch is active low, then we need the
 //   falling edge if we trigger on press. Or the rising edge if we trigger
 //   on release
-#define EDGE EDGE_FALLING
+#define EDGE EDGE_RISING
 
 // Set whether to write debug output
 #define DEBUG 0
@@ -106,13 +106,13 @@ unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENTER | UP, 0};
 // ...and here is the mapping from pins to keystrokes.
 Mapping mappings[] = 
   {
-  {5, key_left},
-  {6, key_right},
-  {13, key_up},
-  {19, key_down},
-  {26, key_enter},
-  {20, key_r},
-  {21, key_g},
+  {24, key_left},
+  {18, key_right},
+  {22, key_up},
+  {27, key_down},
+  {23, key_enter},
+  {17, key_r},
+  {4, key_g},
   // Add more here if required...
   {0, NULL}
   };
