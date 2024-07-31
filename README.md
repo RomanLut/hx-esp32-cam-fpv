@@ -211,7 +211,7 @@ Note that RPI ground station is configured to output HDMI only by default, but c
 
 Single wifi card is Ok for GS with LCD monitor.
 
-Note: Joystick and keys wiring is compatible with Ruby.
+Note: Joystick and keys wiring is compatible with Ruby. GS built for Ruby can be used with hx-esp32-fpv by swapping SD card.
 
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
