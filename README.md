@@ -236,9 +236,13 @@ Dual wifi cards variant benefit less frame dropping.
 
 A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
 
-Small rtl8812au cards are used. AV output is reserved for future use.
+Small rtl8812au cards are used. 
 
 ![alt text](doc/images/gs2_overview.jpg "gs2_overview")
+
+If required, AV output can be added to support glasses without HDMI input:
+
+![alt text](doc/images/gs2_av_output.jpg "gs2_av output")
 
 Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90 degree adapters are recommended instead.
 
