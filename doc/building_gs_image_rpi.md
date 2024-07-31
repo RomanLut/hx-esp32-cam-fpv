@@ -91,7 +91,7 @@ Save and reboot.
  
   ```sudo nano /boot/config.txt```
   
-  Add a line: ```gpio=5,6,13,19,20,21,26=pu```
+  Add a line: ```gpio=24,18,22,27,23,17,4=pd```
   
   Save and exit (Ctrl+X)
   

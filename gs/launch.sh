@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# Function to check if a desktop environment is running
+# Function to check if X11 or any desktop environment is running
 is_desktop_running() {
-    # Check for common desktop environment processes
-    if pgrep -x "gnome-shell" > /dev/null || pgrep -x "plasmashell" > /dev/null || pgrep -x "xfce4-session" > /dev/null || pgrep -x "mate-session" > /dev/null || pgrep -x "cinnamon" > /dev/null; then
+    if pgrep -x "Xorg" > /dev/null || pgrep -x "lxsession" > /dev/null; then
         return 0
     else
         return 1
@@ -13,7 +12,7 @@ is_desktop_running() {
 cd ~
 
 #for Raspberry
-cd pi
+cd /home/pi/
 
 cd esp32-cam-fpv
 cd gs
