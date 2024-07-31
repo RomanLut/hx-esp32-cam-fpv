@@ -240,10 +240,6 @@ Small rtl8812au cards are used.
 
 ![alt text](doc/images/gs2_overview.jpg "gs2_overview")
 
-If required, AV output can be added to support glasses without HDMI input:
-
-![alt text](doc/images/gs2_av_output.jpg "gs2_av output")
-
 Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90 degree adapters are recommended instead.
 
 ![alt text](doc/images/moxon.jpg "moxon")
