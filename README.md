@@ -19,6 +19,7 @@ Open source digital FPV system based on esp32cam.
 - [x] provide manual for running GS software on Ubuntu
 - [x] composite output on RPI GS (PAL/NTSC, support for FPV glasses without HTMI input)
 - [x] Joystick pinout compatible with Ruby
+- [ ] **Release 0.2.1**
 - [ ] measure latency properly
 - [ ] radxa 3w GS
 - [ ] study which components introduce latency
