@@ -195,25 +195,34 @@ STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingivers
 
 Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
 
+---------------------------------------------------------------------------------------------------------------------
+
 ## Ground Station
+
+### === Raspberri PI ===
 
 Preparing SD Card for Raspberry PI GS from pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
 
 Building Raspberry PI GS image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
 
+***Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)***
+
+***Please use HDMI output next to USB C connector on RPI4.***
+
+### === Ubuntu ===
 Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+
+### === Fedora Linux Workstation ===
 
 Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
-STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
-
-Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)
-
-## Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
+### Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
 
 Single wifi card is Ok for GS with LCD monitor.
 
 Note: Joystick and keys wiring is compatible with Ruby. GS built for Ruby can be used with hx-esp32-fpv by swapping SD card.
+
+STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
@@ -229,6 +238,8 @@ Note: Joystick and keys wiring is compatible with Ruby. GS built for Ruby can be
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Dual rtl8812au
 
 Dual wifi cards variant benefit less frame dropping.
+
+STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ![alt text](doc/images/gs2_glasses.jpg "gs2_glasses")
 
