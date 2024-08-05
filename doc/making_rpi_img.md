@@ -38,6 +38,8 @@
 
 ```sudo pishrink.sh -z -a espvrx.img```
 
+```cd ~```
+
 ```sudo umount /mnt/usb1```
 
 # References
