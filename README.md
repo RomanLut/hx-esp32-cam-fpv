@@ -388,6 +388,8 @@ https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 or 160 lens to be used on UAV.
 
+14mm 160 degree lens are recommended. 7mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
+
 Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
 Note that "night version" sensor does not have IR filter and shows distorted colors under sunlight (buy a proper sensor!).
