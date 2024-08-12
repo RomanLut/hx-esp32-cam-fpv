@@ -217,7 +217,7 @@ Building and running Ground Station software on a Ubuntu desktop (x86_64 noteboo
 
 Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
-### Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
+## Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
 
 Single wifi card is Ok for GS with LCD monitor.
 
