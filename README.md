@@ -184,7 +184,7 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
-800x456 30fps 26Mbit, **esp32sesense + ov5640** camera 160 degree lens:
+800x456 30fps 26Mbps, **esp32sesense + ov5640** camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -350,7 +350,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 **ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
 
-800x456 30fps 26Mbit with ov2640 camera 120 degree lens:
+800x456 30fps 26Mbps with ov2640 camera 120 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
@@ -368,7 +368,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps 26Mbit with ov5640 camera 160 degree lens:
+800x456 30fps 26Mbps with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
@@ -404,7 +404,7 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 1.2Mb/sec (esp32) and 1.6Mb/sec (esp32s3) should also be considered here for the air unit DVR.
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 0.8Mb/sec (esp32) and 1.8Mb/sec (esp32s3) should also be considered here for the air unit DVR.
 
 ## Wifi interferrence 
 
@@ -416,7 +416,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec in 1 bit mode is more then Wifi can transfer, for SD writing speed is not a limiting factor for now.
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec (~15Mbps) in 1 bit mode is more then Wifi can transfer in practice, so SD writing speed is not a limiting factor for now.
 
 ## Adaptive compression
 
@@ -430,7 +430,9 @@ Air unit calculates 3 coefficients which are used to adjust compression quality,
 
 Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
 
-Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 1.9MB/sec frame data for **ESP32/esp32s3sense**. 
+Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 0.8Mb/sec **ESP32** and 1.8Mb/sec for **esp32s3sense**. 
+
+**ESP32** can write at 1.9Mb/sec but can not keep up such speed due to high overall system load.
 
 Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). **This is the most limiting factor**.
 
