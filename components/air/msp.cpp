@@ -8,6 +8,7 @@
 
 #define MSP_PING_TIMEOUT_US           125000
 
+#define MSP_PROTOCOL_LOG_ERRORS
 #define JUMBO_FRAME_MIN_SIZE  255
 
 #define SYM_BEGIN       '$'
@@ -27,6 +28,10 @@ MSP g_msp;
 MSP::MSP()
 {
   this->lastPing = 0;
+  this->lastLoop = 0;
+  this->lastRC = 0;
+  this->lastRealRC = 0;
+  this->gotRCChannels = false;
 }
 
 //======================================================
@@ -41,12 +46,15 @@ void MSP::dispatchMessage(uint8_t expected_checksum)
 {
   if (this->message_checksum == expected_checksum)
   {
+    //LOG("code: %d - crc Ok, len=%d\n", this->code, this->message_length_expected);
     // message received, process
     this->processMessage();
   }
   else
   {
-    LOG("code: %d - crc failed\n", this->code);
+#ifdef MSP_PROTOCOL_LOG_ERRORS
+    LOG("code: %d - crc failed, len=%d\n", this->code, this->message_length_expected);
+#endif
     //this.packet_error++;
     //$('span.packet-error').html(this.packet_error);
   }
@@ -62,14 +70,25 @@ void MSP::decode()
   size_t rs = 0;
   ESP_ERROR_CHECK( uart_get_buffered_data_len(UART_MSP_OSD, &rs) );
   if ( rs == 0 ) return;
+
+#ifdef MSP_PROTOCOL_LOG_ERRORS
+  if ( rs == UART_RX_BUFFER_SIZE_MSP_OSD )
+  {
+    LOG("MSP Data len=%d\n", rs);  //likely overflow
+  }
+#endif
+
   if ( rs > UART_RX_BUFFER_SIZE_MSP_OSD) rs = UART_RX_BUFFER_SIZE_MSP_OSD;
   //Note: if uart_read_bytes() can not read specified number of bytes, it returns error.
   int len = uart_read_bytes(UART_MSP_OSD, data,rs, 0);
+
+  if ( len <=0 ) LOG("ret len=%d\n", rs);  //likely overflow
+
   //ESP_ERROR_CHECK(len);  sometimes returns error
   if (len <= 0) return;
 
   for (int i = 0; i < len; i++)
-    {
+  {
     switch (this->decoderState)
     {
     case DS_IDLE: // sync char 1
@@ -77,6 +96,12 @@ void MSP::decode()
       {
         this->decoderState = DS_PROTO_IDENTIFIER;
       }
+#ifdef MSP_PROTOCOL_LOG_ERRORS
+      else
+      {
+        LOG("Garbage data=%d\n", data[i]);
+      }
+#endif
       break;
 
     case DS_PROTO_IDENTIFIER: // sync char 2
@@ -146,6 +171,9 @@ void MSP::decode()
       else
       {
         //too large payload
+#ifdef MSP_PROTOCOL_LOG_ERRORS
+        LOG("Too large payload, len=%d\n", this->message_length_expected); 
+#endif
         this->decoderState = DS_IDLE;
       }
       break;
@@ -385,15 +413,51 @@ void MSP::sendPing()
 //======================================================
 void MSP::loop()
 {
+  int64_t now = esp_timer_get_time(); 
+  
+  int64_t delta = now - this->lastLoop;
+#ifdef MSP_PROTOCOL_LOG_ERRORS
+  if ( this->lastLoop && (delta > 30000) )
+  {
+    LOG("MSP:Loop() delta=%d", delta);
+  }
+#endif
+  this->lastLoop = now;
+
   this->decode();
   
-  int64_t now = esp_timer_get_time(); 
+  delta = now - this->lastRC;
+
+  if ( this->gotRCChannels || (this->lastRealRC && (delta > 90000) && ( delta < 300000)))
+  {
+    //int64_t delta2 = now - this->lastRealRC;
+    //if ((delta2> 100000) && (delta2 < 500000)) LOG("RC Delta=%d\n", (int)delta2);
+
+    if ( this->gotRCChannels )
+    {
+      this->gotRCChannels = false;
+      this->lastRealRC = now;
+    }
+
+    this->sendCommand(MSP_SET_RAW_RC, this->rcChannels, MSP_RC_CHANNELS_COUNT * 2);
+    this->lastPing = now + MSP_PING_TIMEOUT_US;
+    this->lastRC = now;
+    return;
+  }
 
   if ( now > this->lastPing )
   {
     this->sendPing();
     this->lastPing = now + MSP_PING_TIMEOUT_US;
   }
+}
+
+//======================================================
+//======================================================
+void MSP::setRCChannels(const uint16_t* data)
+{
+  memcpy( this->rcChannels, data, MSP_RC_CHANNELS_COUNT*2);
+  this->gotRCChannels = true;
 }
 
 #endif // UART_MSP_OSD

@@ -21,6 +21,11 @@
 #define MSP_FC_VARIANT    2
 #define MSP_DISPLAYPORT   182
 
+#define MSP_SET_RAW_RC    200
+
+#define MSP_RC_CHANNELS_COUNT  18
+
+
 #define MAX_MSP_MESSAGE 1024
 
 typedef enum
@@ -50,6 +55,13 @@ public:
   bool sendCommand(uint16_t messageID, void * payload, uint16_t size);
 
   int64_t lastPing;
+  int64_t lastLoop;
+  int64_t lastRC;
+  int64_t lastRealRC;
+
+  bool gotRCChannels;
+  uint16_t rcChannels[MSP_RC_CHANNELS_COUNT];
+  void setRCChannels(const uint16_t* data); //MSP_RC_CHANNELS_COUNT values
 
 private:
 

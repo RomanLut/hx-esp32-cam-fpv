@@ -54,6 +54,8 @@
 #include "jpeg_parser.h"
 #include "util.h"
 
+#include "hx_mavlink_parser.h"
+
 static int s_stats_last_tp = -10000;
 
 #define MJPEG_PATTERN_SIZE 512 
@@ -122,6 +124,10 @@ static int s_uart_verbose = 1;
 static bool s_air_record = false;
 
 static uint64_t s_shouldRestartRecording;
+
+#ifdef MAV2MSPRC
+ HXMavlinkParser mavlinkParserIn(true);
+#endif 
 
 //=============================================================================================
 //=============================================================================================
@@ -1530,6 +1536,23 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;        
+
+#ifdef MAV2MSPRC    
+    uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+    for ( int i = 0; i < s; i++ )
+    {
+        mavlinkParserIn.processByte(*dPtr++);
+        if ( mavlinkParserIn.gotPacket())
+        {
+            if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
+            {
+                const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
+                //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
+                g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+            }
+        }
+    }
+#endif
 
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
