@@ -56,6 +56,8 @@
 
 #include "hx_mavlink_parser.h"
 
+#include "temperature_sensor.h"
+
 static int s_stats_last_tp = -10000;
 
 #define MJPEG_PATTERN_SIZE 512 
@@ -2642,6 +2644,8 @@ extern "C" void app_main()
 
     LOG("WIFI channel: %d\n", s_ground2air_config_packet.wifi_channel );
 
+    temperature_sensor_init();
+
     s_initialized = true;
 
     while (true)
@@ -2681,6 +2685,9 @@ extern "C" void app_main()
 
             s_last_stats = s_stats;
             s_stats = Stats();
+
+            float t;
+            temperature_sensor_read(&t);
         }
 
         vTaskDelay(10 / portTICK_PERIOD_MS);
