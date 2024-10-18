@@ -59,6 +59,7 @@
 #include "temperature_sensor.h"
 
 static int s_stats_last_tp = -10000;
+static int s_last_osd_packet_tp = -10000;
 
 #define MJPEG_PATTERN_SIZE 512 
 
@@ -124,6 +125,9 @@ static int s_uart_verbose = 1;
  sdmmc_card_t* card = nullptr;
 
 static bool s_air_record = false;
+
+static bool s_camera_stopped = false;
+static bool s_camera_stopped_requested = false;
 
 static uint64_t s_shouldRestartRecording;
 
@@ -364,8 +368,6 @@ Circular_Buffer s_sd_fast_buffer((uint8_t*)heap_caps_malloc(SD_FAST_BUFFER_SIZE,
 // sometimes it pauses for a few hundred ms. So to avoid lost data, I have to buffer it into a big enough buffer.
 //The data is written to the sd card by the sd_write_task, in chunks of SD_WRITE_BLOCK_SIZE.
 static constexpr size_t SD_SLOW_BUFFER_SIZE_PSRAM = 3 * 1024 * 1024;
-//removeme: buffer is in RAM for esp32-vtx board
-static constexpr size_t SD_SLOW_BUFFER_SIZE_RAM = 32768;  
 Circular_Buffer* s_sd_slow_buffer = NULL;
 
 //Cannot write to SD directly from the slow, SPIRAM buffer as that causes the write speed to plummet. So instead I read from the slow buffer into
@@ -1529,6 +1531,8 @@ IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& 
     handle_ground2air_config_packetEx1(src);
 }
 
+static void init_camera();
+
 //===========================================================================================
 //===========================================================================================
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
@@ -1551,6 +1555,8 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                 const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                 //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
                 g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+
+                s_camera_stopped_requested = msg->chan12_raw > 1700;
             }
         }
     }
@@ -2468,19 +2474,15 @@ extern "C" void app_main()
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
-    Ground2Air_Data_Packet& ground2air_data_packet = s_ground2air_data_packet;
-    ground2air_data_packet.type = Ground2Air_Header::Type::Telemetry;
-    ground2air_data_packet.size = sizeof(ground2air_data_packet);
-
-    Ground2Air_Config_Packet& ground2air_config_packet = s_ground2air_config_packet;
-    ground2air_config_packet.type = Ground2Air_Header::Type::Config;
-    ground2air_config_packet.size = sizeof(ground2air_config_packet);
-    ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
-    s_ground2air_config_packet.sessionId = (uint16_t)esp_random();
-
-    srand(esp_timer_get_time());
-
     printf("Initializing...\n");
+
+    s_ground2air_data_packet.type = Ground2Air_Header::Type::Telemetry;
+    s_ground2air_data_packet.size = sizeof(s_ground2air_data_packet);
+
+    s_ground2air_config_packet.type = Ground2Air_Header::Type::Config;
+    s_ground2air_config_packet.size = sizeof(s_ground2air_config_packet);
+    s_ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    s_ground2air_config_packet.sessionId = (uint16_t)esp_random();
 
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
@@ -2495,7 +2497,7 @@ extern "C" void app_main()
 #endif
 
 #ifdef DVR_SUPPORT
-
+    //allocate big memory buffer for DVR recorder
     void* psb = heap_caps_malloc(SD_SLOW_BUFFER_SIZE_PSRAM, MALLOC_CAP_SPIRAM);
     if ( !!psb )
     {
@@ -2503,20 +2505,14 @@ extern "C" void app_main()
     }
     else 
     {
-        void* psb = new uint8_t[SD_SLOW_BUFFER_SIZE_RAM];
-        if ( psb == NULL)
-        {
-            printf("SD Slow buffer not allocated\n");
-            init_failure( );
-        }
-        s_sd_slow_buffer = new Circular_Buffer( (uint8_t*)psb, SD_SLOW_BUFFER_SIZE_RAM);
+        printf("SD Slow buffer not allocated\n");
+        init_failure( );
     }
-
 #endif
 
 #ifdef INIT_UART_0
-    //init debug uart
-    uart_config_t uart_config0 = {
+    uart_config_t uart_config0 = 
+    {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
@@ -2525,7 +2521,6 @@ extern "C" void app_main()
         .rx_flow_ctrl_thresh = 122,
         .source_clk = UART_SCLK_APB
     };  
-    // Configure UART parameters
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config0) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 256, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, TXD0_PIN, RXD0_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
@@ -2564,11 +2559,14 @@ extern "C" void app_main()
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    if ( getButtonState() ) 
+    //run file server is rec button is pressed on startup
+    if ( getButtonState() )
     {
         LOG("Starting file server...");
+
         vTaskSuspend(s_wifi_rx_task);
         vTaskSuspend(s_wifi_tx_task);
+
         setup_wifi_file_server();
 
         while (true)
@@ -2585,19 +2583,23 @@ extern "C" void app_main()
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_write_proc, "SD Write", 4096, nullptr, 1, &s_sd_write_task, core);
         if (res != pdPASS)
+        {
             LOG("Failed sd write task: %d\n", res);
+        }
     }
     {
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_enqueue_proc, "SD Enq", 1536, nullptr, 1, &s_sd_enqueue_task, core);
         if (res != pdPASS)
+        {
             LOG("Failed sd enqueue task: %d\n", res);
+        }
     }
 #endif
 
 #ifdef INIT_UART_1
-
-    uart_config_t uart_config1 = {
+    uart_config_t uart_config1 = 
+    {
         .baud_rate = UART1_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
@@ -2606,7 +2608,7 @@ extern "C" void app_main()
         .rx_flow_ctrl_thresh = 122,
         .source_clk = UART_SCLK_APB
     };  
-    // Configure UART parameters
+
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, UART1_RX_BUFFER_SIZE, UART1_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, TXD1_PIN, RXD1_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
@@ -2615,8 +2617,8 @@ extern "C" void app_main()
 
 //initialize UART2 after SD
 #ifdef INIT_UART_2
-
-    uart_config_t uart_config2 = {
+    uart_config_t uart_config2 = 
+    {
         .baud_rate = UART2_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
@@ -2625,13 +2627,11 @@ extern "C" void app_main()
         .rx_flow_ctrl_thresh = 122,
         .source_clk = UART_SCLK_APB
     };  
-    // Configure UART parameters
+
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, UART2_RX_BUFFER_SIZE, UART2_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-
 #endif
-
 
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
@@ -2688,6 +2688,44 @@ extern "C" void app_main()
 
             float t;
             temperature_sensor_read(&t);
+
+            if ( s_camera_stopped_requested != s_camera_stopped )
+            {
+                s_camera_stopped = s_camera_stopped_requested;
+                if ( s_camera_stopped )
+                {
+                    LOG("Camera stopped\n");
+                    esp_camera_deinit();
+                }
+                else
+                {
+                    LOG("Camera started\n");
+                    init_camera();
+                }
+            }
+        }
+
+        dt = millis() - s_last_osd_packet_tp;
+        if ( dt > 200 ) 
+        {
+            s_last_osd_packet_tp = millis();
+            
+            if ( s_camera_stopped )
+            {
+                s_fec_encoder.lock();
+
+                if ( !g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15)) )
+                {
+                    send_air2ground_osd_packet();
+                    s_osdUpdateCounter = 0;
+                }
+                else
+                {
+                    s_osdUpdateCounter++;
+                }
+                
+                s_fec_encoder.unlock();
+            }
         }
 
         vTaskDelay(10 / portTICK_PERIOD_MS);

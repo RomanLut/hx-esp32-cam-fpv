@@ -480,6 +480,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             if (sensor->status.colorbar == 0 )
             {
                 ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //15.3 mhz pclk
+                //ret = set_pll(sensor, false, 5, 1, 1, false, 2, true, 3);
             }
             else
             {

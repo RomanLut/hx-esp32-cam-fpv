@@ -13,7 +13,6 @@
 //For esp32cam
 #ifdef BOARD_ESP32CAM
 
-
 //---- CONFIG 1 -----
 //   Debug log is on UART0
 //   UART2:  MSP-OSD RX=13 TX=12
@@ -44,10 +43,9 @@
 #define REC_BUTTON_PIN  GPIO_NUM_3  //RX0
 //----------------------
 
-
 /*
 //---- CONFIG 2 -----
-//   Debug log on pin 33 (exiting LED)
+//   Debug log on pin 33 (existing LED)
 //   UART0:  Mavlink RX=3 TX=1 
 //   UART2:  MSP-OSD RX=13 TX=12
 //   NO REC BUTTON
@@ -277,9 +275,5 @@
 #else
 #error "Camera model not selected"
 #endif
-
-
-////////////////////////////////////////////////////////////////////////////////////
-
 
 extern bool isHQDVRMode();

@@ -7,8 +7,16 @@
 #define FW_VERSION "0.2"
 #define PACKET_VERSION 1
 
+#define FEC_K 6
+#define FEC_N 12
+
+constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the fec header size
+constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
+
 #pragma pack(push, 1) // exact fit - no padding
 
+//======================================================
+//======================================================
 enum class WIFI_Rate : uint8_t
 {
     /*  0 */ RATE_B_2M_CCK,
@@ -45,34 +53,8 @@ enum class WIFI_Rate : uint8_t
     /* 29 */ RATE_N_72M_MCS7_S,
 };
 
-static constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the fec header size
-
-///////////////////////////////////////////////////////////////////////////////////////
-
-constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
-
-struct Ground2Air_Header
-{
-    enum class Type : uint8_t
-    {
-        Telemetry,
-        Config,
-    };
-
-    Type type = Type::Telemetry; 
-    uint32_t size = 0;
-    uint8_t crc = 0;
-    uint8_t packet_version = PACKET_VERSION;
-};
-
-constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
-
-struct Ground2Air_Data_Packet : Ground2Air_Header
-{
-    uint8_t payload[GROUND2AIR_DATA_MAX_PAYLOAD_SIZE];
-};
-static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
-
+//======================================================
+//======================================================
 enum class Resolution : uint8_t
 {
     QVGA,   //320x240
@@ -90,7 +72,10 @@ enum class Resolution : uint8_t
     COUNT
 };
 
-typedef struct {
+//======================================================
+//======================================================
+typedef struct 
+{
     uint16_t width;
     uint16_t height;
     uint8_t FPS2640;
@@ -101,9 +86,35 @@ typedef struct {
 
 extern TVMode vmodes[];
 
-#define FEC_K 6
-#define FEC_N 12
+//======================================================
+//======================================================
+struct Ground2Air_Header
+{
+    enum class Type : uint8_t
+    {
+        Telemetry,
+        Config,
+    };
 
+    Type type = Type::Telemetry; 
+    uint32_t size = 0;
+    uint8_t crc = 0;
+    uint8_t packet_version = PACKET_VERSION;
+};
+
+
+constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
+
+//======================================================
+//======================================================
+struct Ground2Air_Data_Packet : Ground2Air_Header
+{
+    uint8_t payload[GROUND2AIR_DATA_MAX_PAYLOAD_SIZE];
+};
+static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
+
+//======================================================
+//======================================================
 struct Ground2Air_Config_Packet : Ground2Air_Header
 {
     uint8_t ping = 0; //used for latency measurement
@@ -135,7 +146,7 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
         bool awb_gain = true;
         uint8_t wb_mode = 0;//0 - 4
         bool aec = true; //automatic exposure control
-        bool aec2 = true; //enable aec DSP (better processing?)
+        bool aec2 = true; //enable aec DSP (better processing?). "Nigth mode" for ov5640.
         int8_t ae_level = 1;//-2 - 2, for aec=true
         uint16_t aec_value = 204;//0 - 1200 ISO, for aec=false
         bool agc = true;  //automatic gain control
@@ -156,8 +167,8 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
 };
 static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 
-///////////////////////////////////////////////////////////////////////////////////////
-
+//======================================================
+//======================================================
 struct Air2Ground_Header
 {
     enum class Type : uint8_t
@@ -174,6 +185,8 @@ struct Air2Ground_Header
     uint8_t crc = 0;
 };
 
+//======================================================
+//======================================================
 struct Air2Ground_Video_Packet : Air2Ground_Header
 {
     Resolution resolution;
@@ -185,6 +198,8 @@ struct Air2Ground_Video_Packet : Air2Ground_Header
 
 static_assert(sizeof(Air2Ground_Video_Packet) == 14, "");
 
+//======================================================
+//======================================================
 struct Air2Ground_Data_Packet : Air2Ground_Header
 {
 };
@@ -196,12 +211,16 @@ struct Air2Ground_Data_Packet : Air2Ground_Header
 
 #define OSD_BUFFER_SIZE (OSD_ROWS*OSD_COLS + OSD_ROWS*OSD_COLS_H)
 
+//======================================================
+//======================================================
 struct OSDBuffer
 {
     uint8_t screenLow[OSD_ROWS][OSD_COLS];
     uint8_t screenHigh[OSD_ROWS][OSD_COLS_H];
 };
 
+//======================================================
+//======================================================
 struct AirStats
 {
     uint8_t SDDetected : 1;
@@ -233,6 +252,8 @@ struct AirStats
     uint16_t outMavlinkRate; //b/s
 };
 
+//======================================================
+//======================================================
 struct Air2Ground_OSD_Packet : Air2Ground_Header
 {
     AirStats stats;
@@ -240,9 +261,6 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
 };
 
 static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MTU, "");
-
-
-///////////////////////////////////////////////////////////////////////////////////////
 
 #pragma pack(pop)
 

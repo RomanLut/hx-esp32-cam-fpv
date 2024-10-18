@@ -20,8 +20,8 @@ void temperature_sensor_init(void)
     ESP_LOGI(TAG, "Initializing temperature sensor");
     
     temperature_sensor_config_t temp_sensor = {
-        .range_min = 20,
-        .range_max = 100,
+        .range_min = 50,
+        .range_max = 125,
         .clk_src = TEMPERATURE_SENSOR_CLK_SRC_DEFAULT
     };
     
@@ -53,7 +53,7 @@ void temperature_sensor_read(float *temperature)
         return;
     }
     
-    ESP_LOGI(TAG, "Temperature: %.2f °C", *temperature);
+    ESP_LOGI(TAG, "Temperature: %.1f °C", *temperature);
 }
 
 #endif
