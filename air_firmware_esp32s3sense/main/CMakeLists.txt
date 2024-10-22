@@ -7,6 +7,7 @@ set(srcs
     ../../components/air/wifi.cpp 
     ../../components/air/osd.cpp 
     ../../components/air/msp.cpp 
+    ../../components/air/temperature_sensor.cpp 
 )
 
 idf_component_register(SRCS "${srcs}"
