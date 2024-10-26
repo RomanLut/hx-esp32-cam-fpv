@@ -380,6 +380,8 @@ Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode: video is saved with b
 
 Mode is usefull for recording video which can be watched on big screen.
 
+An example of DVR recording:
+
 https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 ## Lens 
