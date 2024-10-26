@@ -39,13 +39,15 @@ float s_wlan_power_dBm = s_ground2air_config_packet.wifi_power;
 
 //===========================================================================================
 //===========================================================================================
-void set_ground2air_config_packet_handler(void (*handler)(Ground2Air_Config_Packet& src)){
-    ground2air_config_packet_handler=handler;
+void set_ground2air_config_packet_handler(void (*handler)(Ground2Air_Config_Packet& src))
+{
+    ground2air_config_packet_handler = handler;
 }
 
 //===========================================================================================
 //===========================================================================================
-void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& src)){
+void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& src))
+{
     ground2air_data_packet_handler=handler;
 }
 
@@ -311,6 +313,8 @@ IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type))
 {
+    printf("Setup WIFI...\n");
+
     xSemaphoreGive(s_wlan_incoming_mux);
     xSemaphoreGive(s_wlan_outgoing_mux);
 

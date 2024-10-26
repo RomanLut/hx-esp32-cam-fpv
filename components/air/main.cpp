@@ -151,18 +151,71 @@ void initialize_status_led()
 #endif    
 }
 
+static bool s_last_flash_led_state = true;
+
 //=============================================================================================
 //=============================================================================================
-void initialize_flash_led()
+void enable_esp32cam_flash_led_pin( bool enabled )
 {
-#ifdef FLASH_LED_PIN
+#ifdef ESP32CAM_FLASH_LED_PIN
+    gpio_set_level(ESP32CAM_FLASH_LED_PIN, enabled ? 0: 1 );
+    s_last_flash_led_state = enabled;
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
+void initialize_esp32cam_flash_led_pin( bool enabled )
+{
+#ifdef ESP32CAM_FLASH_LED_PIN
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = 1ULL << FLASH_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
+
+    gpio_set_level(ESP32CAM_FLASH_LED_PIN, enabled ? 0: 1 );
+    s_last_flash_led_state = enabled;
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
+bool read_esp32cam_flash_led_pin()
+{
+#ifdef ESP32CAM_FLASH_LED_PIN
+    gpio_set_direction((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_MODE_INPUT );
+    gpio_set_pull_mode((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_PULLDOWN_ONLY); 
+    gpio_set_level((gpio_num_t)ESP32CAM_FLASH_LED_PIN,0);
+
+    bool state = gpio_get_level((gpio_num_t)ESP32CAM_FLASH_LED_PIN) == 1;
+
+    gpio_set_level((gpio_num_t)ESP32CAM_FLASH_LED_PIN, s_last_flash_led_state ? 0 : 1);
+    gpio_set_pull_mode((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_FLOATING); 
+    gpio_set_direction((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_MODE_OUTPUT );
+    
+    return state;
+#else    
+    return false;
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
+void initialize_flash_led_pin_button()
+{
+#ifdef ESP32CAM_FLASH_LED_PIN
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&io_conf);
+
+    gpio_set_level(ESP32CAM_FLASH_LED_PIN, 0 );
 #endif
 }
 
@@ -171,6 +224,8 @@ void initialize_flash_led()
 void initialize_rec_button()
 {
 #ifdef REC_BUTTON_PIN
+    printf("Init REC button...\n");
+
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_INPUT;
@@ -203,15 +258,8 @@ void set_status_led(bool enabled)
     gpio_set_level(STATUS_LED_PIN, enabled ? STATUS_LED_ON : STATUS_LED_OFF);
 #endif    
 
-#ifdef FLASH_LED_PIN
-    if ( enabled) 
-    {
-        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLUP_ONLY);    //SD D1, needed in 4-line mode only
-    }
-    else
-    {
-        gpio_set_pull_mode(FLASH_LED_PIN, GPIO_PULLDOWN_ONLY);    //SD D1, needed in 4-line mode only
-    }
+#ifdef ESP32CAM_FLASH_LED_PIN
+    enable_esp32cam_flash_led_pin(enabled);
 #endif    
 }
 
@@ -269,6 +317,11 @@ bool getButtonState()
     return gpio_get_level((gpio_num_t)REC_BUTTON_PIN) == 0;
 #endif
 
+
+#ifdef ESP32CAM_FLASH_LED_PIN
+    return read_esp32cam_flash_led_pin();
+#endif
+
     return false;
 }
 
@@ -281,6 +334,7 @@ void checkButton()
 
   if ( debounceTime > millis() ) return;
   bool buttonState = getButtonState();
+  debounceTime = millis() + 10;
   if ( buttonState != lastButtonState )
   {
     debounceTime = millis() + 100;
@@ -2363,6 +2417,8 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 //=============================================================================================
 static void init_camera()
 {
+    printf("Init camera...\n");
+
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -2489,7 +2545,7 @@ extern "C" void app_main()
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);
 
     initialize_status_led();
-    initialize_flash_led();
+    initialize_esp32cam_flash_led_pin(true);
     initialize_rec_button();
 
 #ifdef ENABLE_PROFILER
@@ -2511,6 +2567,7 @@ extern "C" void app_main()
 #endif
 
 #ifdef INIT_UART_0
+    printf("Init UART0...\n");
     uart_config_t uart_config0 = 
     {
         .baud_rate = 115200,
@@ -2541,7 +2598,7 @@ extern "C" void app_main()
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
 
-    //allocates 16kb dma buffer. Allocate ASAP until memory is not fragmented.
+    //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
     init_camera();
 
 
@@ -2559,7 +2616,7 @@ extern "C" void app_main()
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    //run file server is rec button is pressed on startup
+    //run file server i rec button is pressed on startup
     if ( getButtonState() )
     {
         LOG("Starting file server...");
@@ -2598,6 +2655,8 @@ extern "C" void app_main()
 #endif
 
 #ifdef INIT_UART_1
+    printf("Init UART1...\n");
+
     uart_config_t uart_config1 = 
     {
         .baud_rate = UART1_BAUDRATE,
@@ -2617,6 +2676,8 @@ extern "C" void app_main()
 
 //initialize UART2 after SD
 #ifdef INIT_UART_2
+    printf("Init UART2...\n");
+
     uart_config_t uart_config2 = 
     {
         .baud_rate = UART2_BAUDRATE,
@@ -2731,9 +2792,9 @@ extern "C" void app_main()
         vTaskDelay(10 / portTICK_PERIOD_MS);
         //esp_task_wdt_reset();
 
-        update_status_led();
-
         checkButton();
+
+        update_status_led();
 
 #ifdef ENABLE_PROFILER
         if ( s_profiler.full() || s_profiler.timedOut() )

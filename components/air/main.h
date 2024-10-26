@@ -11,44 +11,16 @@
 
 //===============================================================
 //For esp32cam
+
+//for development - enabled debug output on normal UART pins (1,3)
+//#define USBUART_DEBUG_OUTPUT
+
 #ifdef BOARD_ESP32CAM
 
-//---- CONFIG 1 -----
-//   Debug log is on UART0
-//   UART2:  MSP-OSD RX=13 TX=12
-//   REC BUTTON: 3 (RX0)
-//   STATUS LED1: 33 (existing LED)
-//   STATUS LED2: 4 (existing FLASH LED)
-
-#define UART_MSP_OSD UART_NUM_2
-#define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
-#define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
-
-#define CAMERA_MODEL_AI_THINKER
-#define DVR_SUPPORT
-
-#define INIT_UART_0
-#define TXD0_PIN    1
-#define RXD0_PIN    4  //moved from pin 3 to pin 4 to free pin 3 for a REC button
-
-#define INIT_UART_2
-#define TXD2_PIN    12   //should be low at boot!!!
-#define RXD2_PIN    13 
-#define UART2_BAUDRATE 115200
-
-#define STATUS_LED_PIN GPIO_NUM_33
-#define STATUS_LED_ON 0
-#define STATUS_LED_OFF 1
-#define FLASH_LED_PIN GPIO_NUM_4
-#define REC_BUTTON_PIN  GPIO_NUM_3  //RX0
-//----------------------
-
-/*
 //---- CONFIG 2 -----
 //   Debug log on pin 33 (existing LED)
 //   UART0:  Mavlink RX=3 TX=1 
 //   UART2:  MSP-OSD RX=13 TX=12
-//   NO REC BUTTON
 //   STATUS LED: 4 (existing FLASH LED)
 
 #define UART_MAVLINK UART_NUM_1
@@ -63,13 +35,27 @@
 #define DVR_SUPPORT
 
 #define INIT_UART_0
-#define TXD0_PIN    33
-#define RXD0_PIN    33
+#ifdef USBUART_DEBUG_OUTPUT
+#define TXD0_PIN    1
+#define RXD0_PIN    3
+#else
+//#define TXD0_PIN    33
+//#define RXD0_PIN    33
+#define TXD0_PIN    UART_PIN_NO_CHANGE
+#define RXD0_PIN    UART_PIN_NO_CHANGE
+#endif
+
 #define UART0_BAUDRATE 115200
 
 #define INIT_UART_1
+#ifdef USBUART_DEBUG_OUTPUT
+#define TXD1_PIN    UART_PIN_NO_CHANGE
+#define RXD1_PIN    UART_PIN_NO_CHANGE
+#else
 #define TXD1_PIN    1
 #define RXD1_PIN    3
+#endif
+
 #define UART1_BAUDRATE 115200
 
 #define INIT_UART_2
@@ -77,9 +63,11 @@
 #define RXD2_PIN    13 
 #define UART2_BAUDRATE 115200
 
-#define FLASH_LED_PIN GPIO_NUM_4
-//----------------------
-*/
+#define STATUS_LED_PIN GPIO_NUM_33
+#define STATUS_LED_ON 0
+#define STATUS_LED_OFF 1
+
+#define ESP32CAM_FLASH_LED_PIN GPIO_NUM_4  //shared pin for LED and REC button
 
 #endif
 
@@ -113,7 +101,7 @@
 #define STATUS_LED_PIN GPIO_NUM_1
 #define STATUS_LED_ON 1
 #define STATUS_LED_OFF 0
-#define REC_BUTTON_PIN  GPIO_NUM_0
+#define REC_BUTTON_PIN  GPIO_NUM_0 //dedicated REC button pin
 
 #define INIT_UART_1
 #define TXD1_PIN    GPIO_NUM_2 //D1

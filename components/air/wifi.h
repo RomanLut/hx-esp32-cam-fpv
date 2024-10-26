@@ -39,7 +39,7 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 #ifdef BOARD_XIAOS3SENSE
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 101000;
 #else
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 95000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 93000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));
