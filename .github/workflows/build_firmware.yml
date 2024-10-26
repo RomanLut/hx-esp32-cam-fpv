@@ -39,4 +39,4 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.project }}-firmware
-        path: ${{ matrix.project }}/.pio/build/${{ matrix.project }}/*.bin
+        path: ${{ matrix.project }}/.pio/build/**/*.bin
