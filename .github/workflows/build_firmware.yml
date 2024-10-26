@@ -1,0 +1,38 @@
+name: Build Firmware
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        project: [air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install PlatformIO lastest
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+
+    - name: Build firmware
+      run: |
+        platformio run -d ${{ matrix.project }}
+
+    - name: Upload firmware binaries
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ matrix.project }}-firmware
+        path: ${{ matrix.project }}/.pio/build/${{ matrix.project }}/*.bin
