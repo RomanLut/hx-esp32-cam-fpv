@@ -36,7 +36,7 @@ jobs:
         platformio run -d ${{ matrix.project }}
 
     - name: Upload firmware binaries
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.project }}-firmware
         path: ${{ matrix.project }}/.pio/build/**/*.bin
