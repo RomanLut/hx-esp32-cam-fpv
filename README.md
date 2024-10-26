@@ -450,9 +450,12 @@ This **RTL8812au** card is recommended for the project:
 
 ![alt text](doc/images/rtl8812au.jpg "rtl8812au")
 
-It can do high power output which is not important for **esp32cam-fpv**, but it comes with good 5dBi antenas which is the best purchase in summary.
+It can be powerd from 5V and comes with good 5dBi antenas which is the best purchase in summary.
 
 Other cards should also work but not tested.
+
+*Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the marked with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
+
 
 **AR9271** should also work but not tested. **RTL8812au** has antena diversity and thus is recommended over **AR9271**.
 
