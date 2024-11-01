@@ -460,6 +460,8 @@ fec_new(unsigned short k, unsigned short n) {
     if (fec_initialized == 0)
         init_fec ();
 
+    if (( n < 1 ) || ( k < 1 )) return  NULL;
+
     retval = (fec_t *) malloc (sizeof (fec_t));
     retval->k = k;
     retval->n = n;
