@@ -175,7 +175,7 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 
 * Write to SD card using Raspberry PI Imager https://www.raspberrypi.com/software/
 
-* Boot image. Finish confgiuration wizard: change password, connect to wifi, check "Screen has black border" checkbox, **make sure to update software**. Reboot.
+* Boot image. Finish configuration wizard: change password, connect to wifi, check "Screen has black border" checkbox, **make sure to update software**. Reboot.
 
 * Open terminal. Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
