@@ -51,7 +51,7 @@ Save and reboot.
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
 
-* Install and compile SDL library. We have to build library to run application without desktop.
+* Install and compile SDL library. We have to build SDL library to run application without desktop environment.
  
   ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
