@@ -11,7 +11,7 @@ Driver for AR9271 wifi card is included in the OS image and works without additi
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/
 
-* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
+* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network if you want to use ssh over wifi for the setup. Alternativelly, you can connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
 
 * Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool). Default credentials for prebilt image: ```pi``` ```1234```.
 
