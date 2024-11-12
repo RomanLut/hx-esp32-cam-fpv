@@ -39,7 +39,7 @@ Open source digital FPV system based on esp32cam.
 - **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
 - HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
-- up to 1km at 24Mbps, 600m at 36Mbps (line of sight)
+- up to 1km at 24Mbps (actual transfer rate is ~4-5Mbps total), 600m at 36Mbps (actual trasnfer rate is ~5-6Mbps total) (line of sight)
 - latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
@@ -184,7 +184,7 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
-800x456 30fps 26Mbps(actual ~5Mbps total), **esp32sesense + ov5640** camera 160 degree lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total), **esp32sesense + ov5640** camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -350,7 +350,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 **ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
 
-800x456 30fps 26Mbps(actual ~5Mbps total) with ov2640 camera 120 degree lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total) with ov2640 camera 120 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
@@ -360,7 +360,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-
 
 800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
 
-1024x576 30fps requires 36Mbps+(> ~6Mbps actual total) wifi rate to provide benefits over 800x456.
+1024x576 30fps requires 36Mbps+ ( > ~6Mbps actual trasnfer rate total ) wifi rate to provide benefits over 800x456.
 
 It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
@@ -368,7 +368,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps 26Mbps(~5Mbps actual total) with ov5640 camera 160 degree lens:
+800x456 30fps MCS3 26Mbps (~5Mbps actual trasnfer rate total) with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
@@ -402,11 +402,11 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 ## Wifi rate
 
-24Mbps seems to be a sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~4-5Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
+24Mbps or MCS3 26Mbps seems to be the sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~4-5Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec. Maximum SD write speed 0.8Mb/sec (esp32) and 1.8Mb/sec (esp32s3) should also be considered here for the air unit DVR.
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec (23Mbps). Maximum SD write speed 0.8Mb/sec (8Mbps) for **esp32** and 1.8Mb/sec (18Mbps) for **esp32s3** should also be considered here for the air unit DVR. 
 
 ## Wifi interferrence 
 
@@ -418,7 +418,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec (~15Mbps) in 1 bit mode is more then Wifi can transfer in practice, so SD writing speed is not a limiting factor for now.
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec (~19Mbps) in 1 bit mode is more then Wifi can transfer in practice, so SD writing speed is not a limiting factor for now.
 
 ## Adaptive compression
 
