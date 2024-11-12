@@ -184,7 +184,7 @@ A jumper should be soldered on **J3** to enable SD card usage (somehow it works 
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
 
-800x456 30fps 26Mbps, **esp32sesense + ov5640** camera 160 degree lens:
+800x456 30fps 26Mbps(actual ~5Mbps total), **esp32sesense + ov5640** camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -350,7 +350,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 **ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
 
-800x456 30fps 26Mbps with ov2640 camera 120 degree lens:
+800x456 30fps 26Mbps(actual ~5Mbps total) with ov2640 camera 120 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
@@ -360,7 +360,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-
 
 800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
 
-1024x576 30fps requires 36Mbps+ wifi rate to provide benefits over 800x456.
+1024x576 30fps requires 36Mbps+(> ~6Mbps actual total) wifi rate to provide benefits over 800x456.
 
 It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
@@ -368,7 +368,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps 26Mbps with ov5640 camera 160 degree lens:
+800x456 30fps 26Mbps(~5Mbps actual total) with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
@@ -402,7 +402,7 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 ## Wifi rate
 
-24Mbps seems to be a sweet spot which provides high bandwidth and range. 
+24Mbps seems to be a sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~4-5Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
