@@ -1,4 +1,4 @@
 #pragma once
 
-extern void gpio_button_start();
-extern void gpio_button_stop();
+extern void gpio_buttons_start();
+extern void gpio_buttons_stop();

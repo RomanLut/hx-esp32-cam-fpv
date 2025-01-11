@@ -2526,7 +2526,7 @@ int main(int argc, const char* argv[])
 
     int result = run((char **)argv);
 
-    gpio_button_stop();
+    gpio_buttons_stop();
 
     s_hal->shutdown();
 

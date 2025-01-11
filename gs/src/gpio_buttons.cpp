@@ -139,6 +139,9 @@ static std::thread poll_thread;
 
 static struct pollfd fdset[MAX_PINS];
 static struct pollfd fdset_base[MAX_PINS];
+static std::thread polling_thread;
+static int npins = 0;
+static int pins[MAX_PINS];
 
 /*======================================================================
   dbglog
@@ -394,7 +397,7 @@ static void button_pressed(int uinput_fd, int pin, int state)
 
 //======================================================================
 //======================================================================
-void polling_thread()
+void polling_thread_func()
 {
   time_t start = time(NULL);
   int bounce_time = BOUNCE_MSEC;
@@ -445,13 +448,9 @@ void polling_thread()
 
 //======================================================================
 //======================================================================
-void gpio_button_start()
+void gpio_buttons_start()
 {
-  dbglog("%s version " VERSION " starting\n", argv[0]);
   int pin = 0;
-
-  int npins = 0;
-  int pins[MAX_PINS];
 
   Mapping *m = &mappings[pin];
   while (m->pin != 0)
@@ -484,19 +483,17 @@ void gpio_button_start()
     fdset_base[i].events = POLLPRI;
   }
 
-  dbglog("Creating polling thread\n");
-  pool_thread = std::thread(polling_thread);
+  dbglog("Creating GPIO polling thread\n");
+  polling_thread = std::thread(polling_thread_func);
 
-  poll_thread.detach();
-
-  return 0;
+  polling_thread.detach();
 }
 
 //======================================================================
 //======================================================================
-void gpio_button_stop()
+void gpio_buttons_stop()
 {
-  poll_thread.join();
+  polling_thread.join();
   dbglog("GPIO Cleaning up\n");
   unexport_pins(pins, npins);
   close_uinput(uinput_fd);
