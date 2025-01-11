@@ -15,6 +15,7 @@
 #include <thread>
 #include "imgui_impl_opengl3.h"
 #include "util.h"
+#include "gpio_buttons.h"
 
 #include "stats.h"
 
@@ -2494,9 +2495,9 @@ int main(int argc, const char* argv[])
     prepAviBuffers();
 #endif
 
-     updateGSSdFreeSpace();
+   updateGSSdFreeSpace();
 
-     s_hal->set_vsync(s_groundstation_config.vsync, false);
+   s_hal->set_vsync(s_groundstation_config.vsync, false);
 
 /*
     //preffer 1024x768 if screen aspect ratio is set to 4:3
@@ -2521,7 +2522,11 @@ int main(int argc, const char* argv[])
 
     s_comms.setChannel( s_groundstation_config.wifi_channel );
 
+    gpio_buttons_start();
+
     int result = run((char **)argv);
+
+    gpio_button_stop();
 
     s_hal->shutdown();
 
