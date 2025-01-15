@@ -1,6 +1,6 @@
 
 # Making image file from SD card for release
-- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on 32GB SD Card
+- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **32GB** SD Card
  
 - Insert SD card into PRI 2W and compile rtl8812au driver.
 
@@ -8,7 +8,7 @@
   * **Advanced options -> GL Driver -> Fake KMS**
   * **Advanced options -> Compositor -> disable compositor**
 
-- Insert SD card and 64GB  Flash drive into RPI4.
+- Insert SD card into PRI4 or PRI2W.
 
 - Install modified pishrink.sh script and copy it to the ```/usr/local/bin``` folder by typing: 
 
@@ -22,13 +22,15 @@
 
 ```lsblk```
 
-- Insert NTFS formatted USB drive
+- Insert **64GB** Flash drive formatted to NTFS. We use 64GB flash drive, because it should have enought free space for 32GB SD Card image and a shrinked image.
 
 - Mount usbdrive:
 
 ```sudo mkdir -p /mnt/usb1```
 
 ```sudo mount /dev/sda1 /mnt/usb1```
+
+_(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 - Create image from SD card to USB drive:
 
