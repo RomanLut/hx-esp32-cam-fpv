@@ -34,7 +34,7 @@ _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 - Create image from SD card to USB drive:
 
-```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M```
+```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M status=progress```
 
 ```cd /mnt/usb1```
 
