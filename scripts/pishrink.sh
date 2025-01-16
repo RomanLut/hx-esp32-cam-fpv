@@ -109,14 +109,8 @@ do_expand_rootfs() {
   # Get the starting offset of the root partition
   PART_START=$(parted /dev/mmcblk0 -ms unit s p | grep "^${PART_NUM}" | cut -f 2 -d: | sed 's/[^0-9]//g')
   [ "$PART_START" ] || return 1
- 
-  # Get sector size
-  SECTOR_SIZE=$(cat /sys/block/mmcblk0/queue/hw_sector_size)
-
-  # Calculate the ending offset for a 10GB root partition
-  let ROOT_END=$PART_START+5*1024*1024*1024/$SECTOR_SIZE
-
-  # Modify the partition table to set the root partition to 10GB and add a FAT partition
+  # Return value will likely be error for fdisk as it fails to reload the
+  # partition table because the root fs is mounted
   fdisk /dev/mmcblk0 <<EOF
 p
 d
@@ -125,39 +119,10 @@ n
 p
 $PART_NUM
 $PART_START
-$ROOT_END
-n
-p
 
-
-t
-2
-b
 p
 w
 EOF
-
-  # Reload partition table
-  partprobe /dev/mmcblk0
-
-  # Format the new FAT partition
-  FAT_PART="/dev/mmcblk0p2"
-  if [ -b "$FAT_PART" ]; then
-    echo "Formatting $FAT_PART as FAT32..."
-    mkfs.vfat $FAT_PART
-    # Automatically mount the FAT partition
-    MOUNT_POINT="/mnt/recordings
-    mkdir -p "$MOUNT_POINT"
-    mount "$FAT_PART" "$MOUNT_POINT"
-    if [ $? -eq 0 ]; then
-      echo "FAT partition successfully mounted at $MOUNT_POINT."
-    else
-      echo "Failed to mount FAT partition."
-    fi
-  else
-    echo "Error: $FAT_PART does not exist. Please check the partition table."
-    return 1
-  fi
 
 cat <<EOF > /etc/rc.local &&
 #!/bin/sh
