@@ -98,58 +98,36 @@ function set_autoexpand() {
 cat <<\EOF1 > "$mountdir/etc/rc.local"
 #!/bin/bash
 do_expand_rootfs() {
-  ROOT_PART=$(mount | sed -n 's|^/dev/\(.*\) on / .*|\1|p')
 
-  PART_NUM=${ROOT_PART#mmcblk0p}
-  if [ "$PART_NUM" = "$ROOT_PART" ]; then
-    echo "$ROOT_PART is not an SD card. Don't know how to expand"
-    return 0
-  fi
-
-  # Get the starting offset of the root partition
-  PART_START=$(parted /dev/mmcblk0 -ms unit s p | grep "^${PART_NUM}" | cut -f 2 -d: | sed 's/[^0-9]//g')
-  [ "$PART_START" ] || return 1
-  # Return value will likely be error for fdisk as it fails to reload the
-  # partition table because the root fs is mounted
-  fdisk /dev/mmcblk0 <<EOF
+    #create partition 3 which takes all the rest available space on SD card
+    #by specifying wrong starting value of 60000 we enforce fdisk to propose starting sector after all partitions, not before all partitions
+    sudo fdisk /dev/mmcblk0 <<EOF
 p
-d
-$PART_NUM
 n
-p
-$PART_NUM
-$PART_START
 
-p
+
+60000
+
+
+
+
 w
 EOF
 
-cat <<EOF > /etc/rc.local &&
-#!/bin/sh
-echo "Expanding /dev/$ROOT_PART"
-resize2fs /dev/$ROOT_PART
-rm -f /etc/rc.local; cp -fp /etc/rc.local.bak /etc/rc.local && /etc/rc.local
+    sleep 2
 
-EOF
-reboot
-exit
+    NEW_PARTITION=/dev/mmcblk0p3
+
+    sudo mkfs.fat -F 32 $NEW_PARTITION
+
+    MOUNT_POINT="/mnt/recordings"
+    sudo mkdir -p $MOUNT_POINT  
+    sudo mount $NEW_PARTITION $MOUNT_POINT
+    UUID=$(sudo blkid -s UUID -o value $NEW_PARTITION)    
+    echo "UUID=$UUID /mnt/recordings vfat defaults,nofail 0 2" | sudo tee -a /etc/fstab > /dev/null
 }
-raspi_config_expand() {
-/usr/bin/env raspi-config --expand-rootfs
-if [[ $? != 0 ]]; then
-  return -1
-else
-  rm -f /etc/rc.local; cp -fp /etc/rc.local.bak /etc/rc.local
-  reboot
-  exit
-fi
-}
-raspi_config_expand
-echo "WARNING: Using backup expand..."
-sleep 5
 do_expand_rootfs
-echo "ERROR: Expanding failed..."
-sleep 5
+
 if [[ -f /etc/rc.local.bak ]]; then
   cp -fp /etc/rc.local.bak /etc/rc.local
   /etc/rc.local
@@ -160,6 +138,71 @@ EOF1
     chmod +x "$mountdir/etc/rc.local"
     fi
     umount "$mountdir"
+}
+
+zeroFillFreeSpace() {
+
+   LOOP_DEVICE=""
+
+   cleanup() {
+     if [[ -n "$LOOP_DEVICE" ]]; then
+       sudo losetup -d "$LOOP_DEVICE"
+     fi
+   }
+
+   trap cleanup EXIT
+
+   LOOP_DEVICE=$(sudo losetup --show -Pf "$img")
+
+   if [[ -z "$LOOP_DEVICE" ]]; then
+     exit 1
+   fi
+
+   echo "Using loop-device: $LOOP_DEVICE"
+
+   echo "Getting partition information..."
+   PARTITIONS=$(sudo lsblk -ln -o NAME,TYPE "$LOOP_DEVICE" | awk '$2 == "part" {print $1}')
+
+   if [[ -z "$PARTITIONS" ]]; then
+     echo "Partitions not found."
+     exit 1
+   fi
+
+   for PART in $PARTITIONS; do
+     PART_DEVICE="/dev/$PART"
+     MOUNT_DIR=$(mktemp -d)
+
+     echo "Processing partition: $PART_DEVICE"
+
+     # Check if the partition has a filesystem
+     if ! sudo blkid "$PART_DEVICE" > /dev/null 2>&1; then
+       echo "Warning: No filesystem found on partition $PART_DEVICE. Skipping."
+       rmdir "$MOUNT_DIR"
+       continue
+     fi
+
+     # Mount the partition
+     if ! sudo mount "$PART_DEVICE" "$MOUNT_DIR"; then
+       echo "Error: Failed to mount partition $PART_DEVICE. Skipping."
+       rmdir "$MOUNT_DIR"
+       continue
+     fi
+
+     # Write zeros to free space
+     sudo dd if=/dev/zero of="$MOUNT_DIR/fill_space" bs=1M status=progress conv=fsync
+
+     # Remove the temporary file to free space
+     sudo rm "$MOUNT_DIR/fill_space" || echo "Warning: Failed to delete temporary file on $PART_DEVICE."
+
+     # Unmount the partition
+     sudo umount "$MOUNT_DIR" || echo "Warning: Failed to unmount $PART_DEVICE."
+
+     # Remove the temporary directory
+     rmdir "$MOUNT_DIR"
+
+   done
+
+   echo "Zero-filling completed."
 }
 
 help() {
@@ -334,16 +377,10 @@ if [[ $currentsize -eq $minsize ]]; then
   exit 11
 fi
 
-#Add some free space to the end of the filesystem
-extra_space=$(($currentsize - $minsize))
-logVariables $LINENO extra_space
-for space in 5000 1000 100; do
-  if [[ $extra_space -gt $space ]]; then
-    minsize=$(($minsize + $space))
-    break
-  fi
-done
-logVariables $LINENO minsize
+# Add 1GB of extra space to the filesystem
+extra_space_blocks=$((1024 * 1024 * 1024 / blocksize))
+minsize=$(($minsize + $extra_space_blocks))
+logVariables $LINENO minsize extra_space_blocks
 
 #Shrink filesystem
 info "Shrinking filesystem"
@@ -402,6 +439,11 @@ if [[ -n $ziptool ]]; then
 	[[ $parallel == true ]] && options="${ZIP_PARALLEL_OPTIONS[$ziptool]}"
 	[[ -v $envVarname ]] && options="${!envVarname}" # if environment variable defined use these options
 	[[ $verbose == true ]] && options="$options -v" # add verbose flag if requested
+
+	# Wipe free space before compression
+    zeroFillFreeSpace
+
+
 
 	if [[ $parallel == true ]]; then
 		parallel_tool="${ZIP_PARALLEL_TOOL[$ziptool]}"
