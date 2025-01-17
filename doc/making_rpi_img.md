@@ -1,6 +1,6 @@
 
 # Making image file from SD card for release
-- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **32GB** SD Card
+- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **16GB** or **32BG** SD Card
  
 - Insert SD card into PRI 2W and compile rtl8812au driver.
 
