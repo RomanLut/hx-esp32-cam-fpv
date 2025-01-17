@@ -36,11 +36,7 @@ _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 ```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M status=progress```
 
-```cd /mnt/usb1```
-
-```sudo pishrink.sh -z -a espvrx.img```
-
-```cd ~```
+```sudo pishrink.sh -z -a /mnt/usb1/espvrx.img```
 
 ```sudo umount /mnt/usb1```
 
