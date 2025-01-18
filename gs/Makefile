@@ -5,6 +5,7 @@ SRCS := src/main.cpp \
 	src/droid_sans_font.cpp \
 	src/osd.cpp \
 	src/utils/lodepng.cpp \
+	src/utils/utils.cpp \
 	../components/common/util.cpp \
 	src/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
@@ -20,7 +21,7 @@ SRCS := src/main.cpp \
 	src/fmt/os.cc \
 	src/socket.cpp \
 	src/osd_menu.cpp \
-	src/gpio_buttons.cpp
+	src/gpio_buttons.cpp 
 	
 
 SRCS += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
