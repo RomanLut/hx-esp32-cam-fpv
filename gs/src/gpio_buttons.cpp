@@ -35,6 +35,8 @@
 #include <ctime>
 #include <sys/time.h>
 
+#include "utils.h"
+
 // Constants to use when we specify whether to detect the rising edge
 //   or falling edge of the GPIO state change
 #define EDGE_RISING 0x01
@@ -127,15 +129,16 @@ Mapping mappings_pi[] =
         // Add more here if required...
         {0, NULL}};
 
+//https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface
 Mapping mappings_radxa[] =
     {
-        {11, key_left},
-        {18, key_right},
-        {22, key_up},
-        {27, key_down},
-        {23, key_enter},
-        {17, key_r},
-        {4, key_g},
+        {98, key_left},   //Header pin 13
+        {101, key_right}, //Header pin 40
+        {105, key_up},    //Header pin 16
+        {106, key_down},  //Header pin 18
+        {97, key_enter},  //Header pin 11
+        {114, key_r},     //Header pin 32
+        {102, key_g},     //Header pin 38
         // Add more here if required...
         {0, NULL}};
 
@@ -465,6 +468,11 @@ void polling_thread_func()
 void gpio_buttons_start()
 {
   int pin = 0;
+
+  if ( isRadxaZero3() )
+  {
+    mappings = mappings_radxa;
+  }
 
   const Mapping *m = &mappings[pin];
   while (m->pin != 0)
