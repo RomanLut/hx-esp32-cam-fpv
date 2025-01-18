@@ -115,7 +115,7 @@ unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENTER | UP, 0};
 // unsigned int key_ctrl_r[] = {KEY_LEFTCTRL | DOWN, KEY_R | DOWN, KEY_R | UP, KEY_LEFTCTRL | UP, 0};
 
 // ...and here is the mapping from pins to keystrokes.
-Mapping mappings[] =
+Mapping mappings_pi[] =
     {
         {24, key_left},
         {18, key_right},
@@ -126,6 +126,20 @@ Mapping mappings[] =
         {4, key_g},
         // Add more here if required...
         {0, NULL}};
+
+Mapping mappings_radxa[] =
+    {
+        {11, key_left},
+        {18, key_right},
+        {22, key_up},
+        {27, key_down},
+        {23, key_enter},
+        {17, key_r},
+        {4, key_g},
+        // Add more here if required...
+        {0, NULL}};
+
+const Mapping* mappings = mappings_pi;
 
 static BOOL debug = DEBUG;
 
@@ -265,7 +279,7 @@ static int open_uinput(void)
     // We need to export all the key codes in the mapping table.
     // It doesn't hurt to export some more than once
     int p = 0;
-    Mapping *m = &mappings[p];
+    const Mapping *m = &mappings[p];
     while (m->pin != 0)
     {
       unsigned int *keystrokes = m->keys;
@@ -321,7 +335,7 @@ const Mapping *get_mapping(int pin)
 {
   Mapping *ret = NULL;
   int p = 0;
-  Mapping *m = &mappings[p];
+  const Mapping *m = &mappings[p];
   while (m->pin != 0)
   {
     if (pin == m->pin)
@@ -452,7 +466,7 @@ void gpio_buttons_start()
 {
   int pin = 0;
 
-  Mapping *m = &mappings[pin];
+  const Mapping *m = &mappings[pin];
   while (m->pin != 0)
   {
     pins[npins++] = m->pin;
