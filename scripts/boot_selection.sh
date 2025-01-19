@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#let LAN card get ip address (required on raspnberry)
+sudo systemctl start dhcpcd &
+
 # Variable to store detection result
 IS_RADXA=false
 
@@ -26,6 +29,8 @@ else
     QABUTTON1=17
     QABUTTON2=4
     HOME_DIRECTORY="/home/pi/"
+    sudo raspi-gpio set 17 ip pd
+    sudo raspi-gpio set 4 ip pd
 fi
 
 # Output the results
