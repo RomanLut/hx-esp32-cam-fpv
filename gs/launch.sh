@@ -49,6 +49,8 @@ else
     sudo -E LD_LIBRARY_PATH=/usr/local/lib SDL_VIDEODRIVER=kmsdrm ./gs
 fi
 
+#let LAN card get ip address (required if dhcpcd service is disabled)
+sudo systemctl start dhcpcd &
 
 #reconnect wlan0 to access point
 sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf

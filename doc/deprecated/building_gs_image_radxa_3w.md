@@ -62,7 +62,7 @@ UPDATE: Armiban Ubuntu minimum 22.04 image is not available at Armbian site anym
 
 * Check that everything works:
 
-  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
+  ```sudo /home/radxa/esp32-cam-fpv/gs/launch.sh```
 
   (exit using SPACE)
 

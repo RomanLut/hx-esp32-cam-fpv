@@ -1,8 +1,5 @@
 #!/bin/bash
 
-#let LAN card get ip address (required on raspnberry)
-sudo systemctl start dhcpcd &
-
 # Variable to store detection result
 IS_RADXA=false
 
