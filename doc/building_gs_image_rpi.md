@@ -11,7 +11,7 @@ Driver for AR9271 wifi card is included in the OS image and works without additi
 * Download distribution of Rapberri Pi OS (Buster 32bit) with 5.10.17-v7+ kernel:
 https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2021-05-28/
 
-* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network. Alternativelly, connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
+* Write to SD card using Raspberry PI Imager. In the tool, provide credentials to your wifi network if you want to use ssh over wifi for the setup. Alternativelly, you can connect PI to network using ethernet. If you do not have usb keyboard, make sure to enable SSH in services. You also have to change default login to enable SSH. https://www.raspberrypi.com/software/
 
 * Boot image. Default credentials: ```user: pi``` ```password: raspberry``` (you may have changed this in the tool). Default credentials for prebilt image: ```pi``` ```1234```.
 
@@ -51,7 +51,7 @@ Save and reboot.
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
 
-* Install and compile SDL library. We have to build library to run application without desktop.
+* Install and compile SDL library. We have to build SDL library to run application without desktop environment.
  
   ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
@@ -175,7 +175,7 @@ https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-2021-05-28/
 
 * Write to SD card using Raspberry PI Imager https://www.raspberrypi.com/software/
 
-* Boot image. Finish confgiuration wizard: change password, connect to wifi, check "Screen has black border" checkbox, **make sure to update software**. Reboot.
+* Boot image. Finish configuration wizard: change password, connect to wifi, check "Screen has black border" checkbox, **make sure to update software**. Reboot.
 
 * Open terminal. Check kernel version: ```uname -r``` Should be: ```5.10.103-v7l+```
 
