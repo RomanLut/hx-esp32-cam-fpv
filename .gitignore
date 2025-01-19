@@ -43,3 +43,4 @@ air_firmware/build
 /air_firmware/sdkconfig.dev
 gs/gs.ini
 release
+components/build
