@@ -19,12 +19,12 @@ fi
 
 # Assign values to QABUTTON1, QABUTTON2, and HOME_DIRECTORY based on IS_RADXA
 if $IS_RADXA; then
-    QABUTTON1=17
-    QABUTTON2=4
-    HOME_DIRECTORY="/home/radxa/"
-else
     QABUTTON1=114
     QABUTTON2=102
+    HOME_DIRECTORY="/home/radxa/"
+else
+    QABUTTON1=17
+    QABUTTON2=4
     HOME_DIRECTORY="/home/pi/"
 fi
 
