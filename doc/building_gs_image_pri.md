@@ -65,7 +65,7 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 
  Add line: ```/home/pi/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
-* Save adn reboot:
+* Save and reboot:
 
 ``` sudo reboot ```
 
