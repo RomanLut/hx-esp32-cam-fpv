@@ -18,14 +18,14 @@ if [ -f "$COMPATIBLE_FILE" ]; then
 fi
 
 # Assign values to QABUTTON1, QABUTTON2, and HOME_DIRECTORY based on IS_RADXA
-if $IS_RADXA; then
+if [ "$IS_RADXA" = true ]; then
     QABUTTON1=114
     QABUTTON2=102
-    HOME_DIRECTORY="/home/radxa/"
+    HOME_DIRECTORY="/home/radxa"
 else
     QABUTTON1=17
     QABUTTON2=4
-    HOME_DIRECTORY="/home/pi/"
+    HOME_DIRECTORY="/home/pi"
     sudo raspi-gpio set 17 ip pd
     sudo raspi-gpio set 4 ip pd
 fi
@@ -34,6 +34,21 @@ fi
 echo "IS_RADXA=$IS_RADXA"
 echo "QABUTTON1=$QABUTTON1"
 echo "QABUTTON2=$QABUTTON2"
+
+
+#Launch Ruby on first boot to install drivers
+# Define the path to the file
+FILE="$HOME_DIRECTORY/ruby/config/boot_count.cfg"
+
+# Check if the file does not exist
+if [ ! -f "$FILE" ]; then
+    echo "First boot"
+    echo "Launching Ruby..."
+    cd ${HOME_DIRECTORY}/ruby
+    ./ruby_start
+    exit
+fi
+
 
 # Export GPIOs as input
 sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/export"
@@ -53,11 +68,11 @@ fi
 # Check bootSelection.txt and execute appropriate script
 if [ -f "bootSelection.txt" ] && grep -q "ruby" bootSelection.txt; then
     echo "Launching Ruby..."
-    cd ${HOME_DIRECTORY}ruby
+    cd ${HOME_DIRECTORY}/ruby
     ./ruby_start
 else
     echo "Launching esp32-cam-fpv..."
-    cd ${HOME_DIRECTORY}esp32-cam-fpv/gs
+    cd ${HOME_DIRECTORY}/esp32-cam-fpv/gs
     ./launch.sh
 fi
 

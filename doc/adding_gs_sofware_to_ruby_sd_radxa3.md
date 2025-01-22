@@ -1,9 +1,26 @@
-# Building GS image for Radxa Zero 3W
+# Adding esp32-cam-fpv GS software to exiting Ruby SD Card using script
 
-Since release 0.3.1, esp32-cam-fpv images are based on RubyFPV images. 
+* Connect Radxa3 GS to LAN using USB-LAN adapter
 
-After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv GS.
+* Boot Ruby
 
+* Enable ssh in Ruby interface '''System\Network\Enable SSH'''
+
+* ssh to running Ruby GS. Credentials are ```pi/raspberry```
+
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
+
+* ```chmod +x install_on_ruby.sh```
+
+* ```./install_on_ruby.sh```
+
+* Wait until script finishes and reboots system to esp32-cam-fpv GS software.
+
+ssh connection should stay alive untill reboot.
+
+# Manually adding esp32-cam-fpv GS software to exiting Ruby SD Card
+
+  The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
 * Download lastest RubyFPV image for Radxa Zero 3W: https://rubyfpv.com/downloads.php
 
@@ -25,13 +42,11 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 
 * Download **esp32-cam-fpv** repository:
  
-  ```cd ~```
+  ```cd /home/radxa```
  
   ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
-
-  ```cd ~```
 
   ```cd esp32-cam-fpv```
 
@@ -58,11 +73,9 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 Connect Radxa GS to network using USB-LAN adapter
 
 To update groundstation software, pull updates from '''release''' branch:
-
-  ```cd esp32-cam-fpv```
-  
-  ```cd gs```
-  
+  ```cd /home/radxa/cd esp32-cam-fpv```
+ 
   ```git pull```
+  ```cd gs```
   
   ```make```
