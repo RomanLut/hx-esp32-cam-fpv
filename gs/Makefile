@@ -21,7 +21,8 @@ SRCS := src/main.cpp \
 	src/fmt/os.cc \
 	src/socket.cpp \
 	src/osd_menu.cpp \
-	src/gpio_buttons.cpp 
+	src/gpio_buttons.cpp \
+	src/cpu_temp.cpp 
 	
 
 SRCS += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp

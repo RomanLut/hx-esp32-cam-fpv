@@ -16,6 +16,7 @@
 #include "imgui_impl_opengl3.h"
 #include "util.h"
 #include "gpio_buttons.h"
+#include "cpu_temp.h"
 
 #include "stats.h"
 
@@ -532,6 +533,8 @@ static void comms_thread_proc()
             last_ping_sent_tp = Clock::now();
             sent_count++;
         }
+
+        g_CPUTemp.process();
 
 #ifdef USE_MAVLINK
         if (fdUART != -1)
@@ -1155,6 +1158,21 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("!SD SLOW!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( g_CPUTemp.getTemperature() >= 80 )
+            {
+                //GS temperature
+                char buf[32];
+                sprintf(buf, "%02d°C", (int)(g_CPUTemp.getTemperature()+0.5f));
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button(buf, ImVec2(65.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
