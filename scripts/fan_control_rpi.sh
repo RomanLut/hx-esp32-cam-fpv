@@ -58,8 +58,8 @@ Description=Fan Control Service
 After=multi-user.target
 
 [Service]
-StandardOutput=file:/var/log/fan_control_rpi.log
-StandardError=file:/var/log/fan_control_rpi_error.log
+StandardOutput=journal
+StandardError=journal
 Type=simple 
 ExecStart=/bin/bash $SCRIPT_PATH run
 Restart=always
@@ -158,7 +158,13 @@ run_service() {
     # Initialize the previous duty value to detect changes
     PREV_DUTY=-1
 
-    while true; do
+    # Variable to control the loop
+    RUNNING=true
+
+    # Trap termination signals
+    trap "echo 'Stopping service...'; RUNNING=false" SIGTERM SIGINT
+
+    while $RUNNING; do
         # Read the current CPU temperature in millidegrees
         TEMP=$(cat $DEV_TEMP)
 
@@ -196,6 +202,11 @@ run_service() {
         # Wait before checking the temperature again
         sleep 5
     done
+
+    # Disable PWM when exiting
+    echo "Disabling PWM..."
+    sudo sh -c "echo 0 > $DEV_ENABLE"
+    echo "Service stopped."
 }
 
 #===========================================

@@ -1,6 +1,7 @@
 #include "main.h"
 
 #include <sys/statvfs.h>
+#include <csignal>
 
 #include "Comms.h"
 #include "Clock.h"
@@ -1028,6 +1029,17 @@ bool isHQDVRMode()
 
 //===================================================================================
 //===================================================================================
+void signalHandler(int signal) 
+{
+    if (signal == SIGTERM || signal == SIGINT) 
+    {
+        std::cout << "Received termination signal. Exiting gracefully..." << std::endl;
+        exitApp();
+    }
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -2004,6 +2016,10 @@ int run(char* argv[])
     };
 
     s_hal->add_render_callback(f);
+
+ // Set up signal handling
+    std::signal(SIGTERM, signalHandler);
+    std::signal(SIGINT, signalHandler);    
 
     while (true)
     {
