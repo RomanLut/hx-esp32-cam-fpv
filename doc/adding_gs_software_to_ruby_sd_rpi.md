@@ -1,9 +1,27 @@
-# Building GS image for Raspberry Pi
+# Adding esp32-cam-fpv GS software to exiting Ruby SD Card using script
 
-Since release 0.3.1, esp32-cam-fpv images are based on RubyFPV images. 
+* Connect RPI GS to LAN using USB-LAN adapter
 
-After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv GS.
+* Boot Ruby
 
+* Enable ssh in Ruby interface '''System\Network\Enable SSH'''
+
+* ssh to running Ruby GS. Credentials are ```pi/raspberry```
+
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
+
+* ```chmod +x install_on_ruby.sh```
+
+* ```./install_on_ruby.sh```
+
+* Wait until script finishes and reboots system to esp32-cam-fpv GS software.
+
+Note that installation process may take ~1h on Raspberry pi 2w. ssh connection should stay alive untill reboot.
+
+
+# Manually adding esp32-cam-fpv GS software to exiting Ruby SD Card
+
+  The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
 * Download lastest RubyFPV image for Raspberry Pi: https://rubyfpv.com/downloads.php
 
@@ -11,9 +29,9 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 
 * Connect Raspberry PI GS to network using USB-LAN adapter
 
-* Boot image on Radxa GS. Wait untill Ruby interface boots fully.
+* Boot image on RPI GS. Wait untill Ruby interface boots fully.
 
-* ssh to Radxa GS. Credentials are ```pi/raspberry```
+* ssh to RPI GS. Credentials are ```pi/raspberry```
 
 * Actualise time:
 
@@ -24,6 +42,8 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng```
 
 * Install and compile SDL library.
+
+  ```cd ~```
  
   ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
 
@@ -65,7 +85,7 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 
  Add line: ```/home/pi/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
-* Save adn reboot:
+* Save and reboot:
 
 ``` sudo reboot ```
 
@@ -73,7 +93,7 @@ After adding modifications, user can switch beetween RubyFPV GS or esp32-cam-fpv
 
 # Updating groundstation image
 
-Connect Radxa GS to network using USB-LAN adapter
+Connect RPI GS to network using USB-LAN adapter
 
 To update groundstation software, pull updates from '''release''' branch:
 
