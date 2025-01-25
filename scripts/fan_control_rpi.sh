@@ -113,13 +113,11 @@ check_service_status() {
 start_service() {
     echo "Starting $SERVICE_NAME service..."
     sudo systemctl start "$SERVICE_NAME"
-    echo "$SERVICE_NAME service started."
 }
 
 stop_service() {
     echo "Stopping $SERVICE_NAME service..."
     sudo systemctl stop "$SERVICE_NAME"
-    echo "$SERVICE_NAME service stopped."
 }
 
 # Check if the script is run with the "install", "uninstall", "status", "start", or "stop" parameter
