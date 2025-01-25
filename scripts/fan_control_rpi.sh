@@ -1,6 +1,7 @@
 #PWM1
 #pin35 on the header
 
+#Add to boot/consfig.txt:
 #dtoverlay=pwm-2chan,pin2=19,func2=2
 
 #!/bin/bash
@@ -19,19 +20,19 @@ if [ ! -e $DEV_PWM ]; then
 fi
 
 # Set PWM period (frequency)
-PERIOD=1000000  # 1 kHz
+PERIOD=10000000  # 10 kHz
 echo $PERIOD > $DEV_PERIOD
 
 # Temperature thresholds (in millidegrees Celsius)
-TEMP_OFF=40000   # 40øC
-TEMP_LOW=50000   # 50øC
-TEMP_HIGH=60000  # 60øC
+TEMP_OFF=40000   # 50øC
+TEMP_LOW=50000   # 60øC
+TEMP_HIGH=60000  # 78øC
 
 # Corresponding duty cycles
 DUTY_OFF=0
-DUTY_LOW=300000   # 30% of PERIOD
-DUTY_HIGH=700000  # 70% of PERIOD
-DUTY_MAX=1000000  # 100% of PERIOD
+DUTY_LOW=4000000   # 40% of PERIOD
+DUTY_HIGH=7000000  # 70% of PERIOD
+DUTY_MAX=10000000  # 100% of PERIOD
 
 # Enable PWM
 echo 1 > $DEV_ENABLE
