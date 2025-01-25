@@ -22,7 +22,7 @@
 #===========================================
 
 # Duty cycles specified in percentages
-DUTY_MIN_PERCENT=20   # 20%
+DUTY_MIN_PERCENT=40   # 40%
 DUTY_MAX_PERCENT=100  # 100%
 
 # Temperature thresholds in degrees Celsius
@@ -30,7 +30,7 @@ TEMP_MIN_C=68    # Minimum temperature (degrees Celsius) for the fan to start
 TEMP_MAX_C=78    # Maximum temperature (degrees Celsius) for maximum fan speed
 
 # PWM Frequency in Hz
-PWM_FREQUENCY=30000  # 30KHz
+PWM_FREQUENCY=25  # 25Hz
 
 SERVICE_NAME="fan_control_rpi"
 SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME.service"
