@@ -435,9 +435,9 @@ bool Comms::process_rx_packet(PCap& pcap)
             return true;
         }
 
-        int n = 0;
         Penumbra_Radiotap_Header prh;
-        while ((n = ieee80211_radiotap_iterator_next(&rti)) == 0)
+        prh.input_dBm = -1000;
+        while (ieee80211_radiotap_iterator_next(&rti) == 0)
         {
 
             switch (rti.this_arg_index)
@@ -457,8 +457,7 @@ bool Comms::process_rx_packet(PCap& pcap)
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-                prh.input_dBm = *(int8_t*)rti.this_arg;
-                //s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
+                s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
                 break;
 
             /*
@@ -502,8 +501,11 @@ bool Comms::process_rx_packet(PCap& pcap)
         }
 
         {
-            int best_input_dBm = m_best_input_dBm;
-            m_best_input_dBm = std::max(best_input_dBm, prh.input_dBm);
+            if (prh.input_dBm > -1000)
+            {
+                int best_input_dBm = m_best_input_dBm;
+                m_best_input_dBm = std::max(best_input_dBm, prh.input_dBm);
+            }
         }
 
         s_gs_stats.inPacketCounter[pcap.index]++;
