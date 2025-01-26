@@ -98,24 +98,6 @@ Save and reboot.
   
   Save and exit (Ctrl+X)
   
-  ```cd /home/pi/```
-  
-  ```cd esp32-cam-fpv```
-  
-  ```cd pi_button_to_kbd```
-  
-  ```make```
-  
-  ```sudo make install```
-  
-  ```crontab -e```
-  
-  Add a line:
-  
-  ```@reboot sudo /usr/bin/pi-button-to-kbd```
-
-  Save and exit (Ctrl+X)
-
 * Build ground station software:
 
   ```cd /home/pi/```
@@ -146,7 +128,7 @@ Save and reboot.
 
   Add a line before before ```exit 0```
 
-  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh```
+  ```sudo /home/pi/esp32-cam-fpv/gs/launch.sh &```
 
   Exit and save (Ctrl+X):
 
@@ -246,26 +228,6 @@ Save and reboot.
   
   Add a line: ```gpio=24,18,22,27,23,17,4=pd```
   
-  Save and exit (Ctrl+X)
-  
-  ```cd /home/pi/```
-  
-  ```cd esp32-cam-fpv```
-  
-  ```cd pi_button_to_kbd```
-  
-  ```make```
-  
-  ```sudo make install```
-  
-  ```crontab -e```
-  
-  Add a line:
-  
-  ```@reboot sudo /usr/bin/pi-button-to-kbd```
-
-  Save and exit (Ctrl+X)
-
 * Build ground station software:
 
   ```cd /home/pi/```

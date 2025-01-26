@@ -104,3 +104,9 @@ To update groundstation software, pull updates from '''release''' branch:
   ```git pull```
   
   ```make```
+
+#Development
+
+ TMP folder was in Ruby image does not have enough space for VS code server installation. Type this comaands in terminal before connecting with VS Code:
+
+  ```sudo mount -o remount,size=100M /tmp```
