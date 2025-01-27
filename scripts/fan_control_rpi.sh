@@ -1,17 +1,19 @@
 #!/bin/bash
 #set -x
+
 #===========================================
 
-# PWM Output is at PIN35 on the header (PWM1)
+# PWM Output is on PIN35 on the header (PWM1)
 
-# Add to boot/config.txt:
+# Run to test:
+# ./fan_control_rpi.sh
+# Note: configure PWM beforehand - add to boot/config.txt:
 # dtoverlay=pwm-2chan,pin2=19,func2=2
 
-# Run:
-# ./fan_control_rpi.sh
 
 # Install as service:
 # ./fan_control_rpi.sh install
+# Also adds PWM configuration to boot/config.txt if missing.
 
 # Also:
 # ./fan_control_rpi.sh status
@@ -37,6 +39,59 @@ SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME.service"
 SCRIPT_PATH="/usr/local/bin/$SERVICE_NAME.sh"
 
 #===========================================
+
+configure_pwm() {
+    local config_file="/boot/config.txt"
+    local pwm_line="dtoverlay=pwm-2chan,pin2=19,func2=2"
+    local tmp_file="/tmp/config.tmp"
+    
+    # Check if config.txt exists
+    if ! sudo test -f "$config_file"; then
+        echo "Error: $config_file not found"
+        return 1
+    fi
+
+    # Check if the line already exists
+    if sudo grep -q "^$pwm_line" "$config_file"; then
+        echo "Ok, PWM configuration already exists in $config_file"
+        return 0
+    fi
+
+    # Create backup
+    sudo cp "$config_file" "${config_file}.backup"
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create backup"
+        return 1
+    fi
+    echo "Backup created at ${config_file}.backup"
+
+    # Find [all] section or create it if it doesn't exist
+    if ! sudo grep -q "^\[all\]" "$config_file"; then
+        echo -e "\n[all]" | sudo tee -a "$config_file" > /dev/null
+    fi
+
+    # Add the PWM configuration under [all] section
+    sudo awk -v pwm="$pwm_line" '
+        /^\[all\]/ {
+            print $0
+            print pwm
+            next
+        }
+        { print }
+    ' "$config_file" > "$tmp_file"
+
+    # Replace original file with new content
+    if sudo cp "$tmp_file" "$config_file"; then
+        rm "$tmp_file"
+        echo "PWM configuration added successfully to $config_file"
+        echo "Please reboot your Raspberry Pi for changes to take effect"
+        return 0
+    else
+        rm "$tmp_file"
+        echo "Error: Failed to update configuration"
+        return 1
+    fi
+}
 
 install_service() {
     echo "Installing $SERVICE_NAME service..."
@@ -75,6 +130,8 @@ EOF
     sudo systemctl start "$SERVICE_NAME"
 
     echo "$SERVICE_NAME service installed and started successfully!"
+
+	configure_pwm
 }
 
 uninstall_service() {
@@ -166,7 +223,7 @@ run_service() {
 
     while $RUNNING; do
         # Read the current CPU temperature in millidegrees
-        TEMP=$(cat $DEV_TEMP)
+        TEMP=$(cat "$DEV_TEMP")
 
         # Ensure TEMP is not empty
         if [ -z "$TEMP" ]; then

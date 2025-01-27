@@ -62,7 +62,9 @@ ssh connection should stay alive untill reboot.
 
  Add line: ```/home/radxa/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
-* Save adn reboot:
+* Run ```sudo rsetup```. Eable UART3 overlay: Hardware -> Manage overlays.
+
+* Save and reboot:
 
 ``` sudo reboot ```
 
