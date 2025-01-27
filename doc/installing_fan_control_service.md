@@ -1,14 +1,20 @@
-# Installing fan control sservice 
+# Installing fan control service 
 
-* Edit ```fan_control_rpi.sh``` : adjust PWM frequency ```PWM_FREQUENCY=`` and minimum PWM duty ratio ```DUTY_MIN_PERCENT=``` if required.
+* Configure PWM channel:
+
+  Raspberry Pi: Add to ```boot/config.txt``` at the end:  ```dtoverlay=pwm-2chan,pin2=19,func2=2```
+  Radxa Zero 3W: Enable PWM14-M0 overlay in rsetup
+
+* Edit ```fan_control.sh``` : adjust PWM frequency ```PWM_FREQUENCY=`` and minimum PWM duty ratio ```DUTY_MIN_PERCENT=``` if required.
+
+* Test:
+
+  ```fan_control.sh run```
 
 * Install service:
 
-  ```fan_control_rpi.sh install```
+  ```fan_control.sh install```
 
-* Add to ```boot/config.txt``` at the end:
-
-  ```dtoverlay=pwm-2chan,pin2=19,func2=2```
 
 
 # 2-wire fan
