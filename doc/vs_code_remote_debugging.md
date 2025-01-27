@@ -12,3 +12,7 @@ Visual Studio Code Remote Debugging
   ```df -h /tmp```
 
 - Lastest working VSCode version for kernel 5.10  is 1.89.1. If you want to use remote development, install this version manually and disable automatic agrades.
+
+- Reassign all files in the folder to user pi (in case Git have problems):
+ 
+  sudo chown -R pi:pi esp32-cam-fpv
