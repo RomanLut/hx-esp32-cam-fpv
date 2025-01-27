@@ -26,7 +26,7 @@ temperature_monitor_cycle='10'
 
 pwmchip_path="/sys/class/pwm/pwmchip${fan_pwm_chip}"
 if [ ! -d $pwmchip_path ]; then
-	echo "Need enale pwmchip${fan_pwm_chip} channel $fan_pwm_channel in rsetup!"
+	echo "Need enable PWM${fan_pwm_chip}-M$fan_pwm_channel in rsetup!"
 elif [ ! -d ${pwmchip_path}/pwm${fan_pwm_channel} ]; then
 	echo "export channel $fan_pwm_channel to pwmchip${fan_pwm_chip}"
 	echo $fan_pwm_channel > ${pwmchip_path}/export
