@@ -3,93 +3,103 @@
 
 #===========================================
 
-# PWM Output is on PIN35 on the header (PWM1)
+# Raspberry Pi: PWM Output is on PIN35 on the header (PWM1)
+#Radxa Zero 3W: PWM Output is on PIN7 on the header (PWM14-M0)
 
 # Run to test:
-# ./fan_control_rpi.sh
-# Note: configure PWM beforehand - add to boot/config.txt:
-# dtoverlay=pwm-2chan,pin2=19,func2=2
+# ./fan_control.sh
+# Note: configure PWM beforehand!
+# Raspberry Pi: add to boot/config.txt: dtoverlay=pwm-2chan,pin2=19,func2=2
+# Radxa Zero 3W: enable PWM14-M0 overlay in rsetup 
 
 
 # Install as service:
-# ./fan_control_rpi.sh install
-# Also adds PWM configuration to boot/config.txt if missing.
+# ./fan_control.sh install
+# Also adds PWM configuration to boot/config.txt if missing on Raspberry Pi. On Radxa Zero 3W, you have to manually enable PWM14-M0 overlay.
 
 # Also:
-# ./fan_control_rpi.sh status
-# ./fan_control_rpi.sh start
-# ./fan_control_rpi.sh stop
-# ./fan_control_rpi.sh uninstall
+# ./fan_control.sh status
+# ./fan_control.sh start
+# ./fan_control.sh stop
+# ./fan_control.sh uninstall
 
 #===========================================
 
 # Duty cycles specified in percentages
-DUTY_MIN_PERCENT=40   # 40%
+DUTY_MIN_PERCENT=20   # 40%
 DUTY_MAX_PERCENT=100  # 100%
 
 # Temperature thresholds in degrees Celsius
-TEMP_MIN_C=68    # Minimum temperature (degrees Celsius) for the fan to start
+TEMP_MIN_C=60    # Minimum temperature (degrees Celsius) for the fan to start
 TEMP_MAX_C=78    # Maximum temperature (degrees Celsius) for maximum fan speed
 
 # PWM Frequency in Hz
 PWM_FREQUENCY=25  # 25Hz
 
-SERVICE_NAME="fan_control_rpi"
+SERVICE_NAME="fan_control"
 SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME.service"
 SCRIPT_PATH="/usr/local/bin/$SERVICE_NAME.sh"
 
 #===========================================
 
 configure_pwm() {
-    local config_file="/boot/config.txt"
-    local pwm_line="dtoverlay=pwm-2chan,pin2=19,func2=2"
-    local tmp_file="/tmp/config.tmp"
-    
-    # Check if config.txt exists
-    if ! sudo test -f "$config_file"; then
-        echo "Error: $config_file not found"
-        return 1
-    fi
-
-    # Check if the line already exists
-    if sudo grep -q "^$pwm_line" "$config_file"; then
-        echo "Ok, PWM configuration already exists in $config_file"
-        return 0
-    fi
-
-    # Create backup
-    sudo cp "$config_file" "${config_file}.backup"
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to create backup"
-        return 1
-    fi
-    echo "Backup created at ${config_file}.backup"
-
-    # Find [all] section or create it if it doesn't exist
-    if ! sudo grep -q "^\[all\]" "$config_file"; then
-        echo -e "\n[all]" | sudo tee -a "$config_file" > /dev/null
-    fi
-
-    # Add the PWM configuration under [all] section
-    sudo awk -v pwm="$pwm_line" '
-        /^\[all\]/ {
-            print $0
-            print pwm
-            next
-        }
-        { print }
-    ' "$config_file" > "$tmp_file"
-
-    # Replace original file with new content
-    if sudo cp "$tmp_file" "$config_file"; then
-        rm "$tmp_file"
-        echo "PWM configuration added successfully to $config_file"
-        echo "Please reboot your Raspberry Pi for changes to take effect"
-        return 0
+    if [ "$IS_RADXA" = true ]; then
+        pwmchip_path="/sys/class/pwm/pwmchip14"
+        if [ ! -d $pwmchip_path ]; then
+	        echo "Please enable PWM14-M1 in rsetup!"
+	        return 1
+        fi    
     else
-        rm "$tmp_file"
-        echo "Error: Failed to update configuration"
-        return 1
+        local config_file="/boot/config.txt"
+        local pwm_line="dtoverlay=pwm-2chan,pin2=19,func2=2"
+        local tmp_file="/tmp/config.tmp"
+        
+        # Check if config.txt exists
+        if ! sudo test -f "$config_file"; then
+            echo "Error: $config_file not found"
+            return 1
+        fi
+
+        # Check if the line already exists
+        if sudo grep -q "^$pwm_line" "$config_file"; then
+            echo "Ok, PWM configuration already exists in $config_file"
+            return 0
+        fi
+
+        # Create backup
+        sudo cp "$config_file" "${config_file}.backup"
+        if [ $? -ne 0 ]; then
+            echo "Error: Failed to create backup"
+            return 1
+        fi
+        echo "Backup created at ${config_file}.backup"
+
+        # Find [all] section or create it if it doesn't exist
+        if ! sudo grep -q "^\[all\]" "$config_file"; then
+            echo -e "\n[all]" | sudo tee -a "$config_file" > /dev/null
+        fi
+
+        # Add the PWM configuration under [all] section
+        sudo awk -v pwm="$pwm_line" '
+            /^\[all\]/ {
+                print $0
+                print pwm
+                next
+            }
+            { print }
+        ' "$config_file" > "$tmp_file"
+
+        # Replace original file with new content
+        if sudo cp "$tmp_file" "$config_file"; then
+            rm "$tmp_file"
+            echo "PWM configuration added successfully to $config_file"
+            echo "Please reboot your Raspberry Pi for changes to take effect"
+            return 0
+        else
+            rm "$tmp_file"
+            echo "Error: Failed to update configuration"
+            return 1
+        fi
     fi
 }
 
@@ -183,18 +193,37 @@ stop_service() {
 }
 
 run_service() {
-    # Device paths
     DEV_TEMP="/sys/class/thermal/thermal_zone0/temp"
+
+if [ "$IS_RADXA" = true ]; then
+    DEV_PWM="/sys/class/pwm/pwmchip14/pwm0"
+
+    # Export pwm0 if not already available
+    if [ ! -e $DEV_PWM ]; then
+        sudo sh -c "echo 0 > /sys/class/pwm/pwmchip14/export"
+        sleep 1
+    fi
+
+else
     DEV_PWM="/sys/class/pwm/pwmchip0/pwm1"
-    DEV_ENABLE="$DEV_PWM/enable"
-    DEV_DUTY="$DEV_PWM/duty_cycle"
-    DEV_PERIOD="$DEV_PWM/period"
 
     # Export pwm1 if not already available
     if [ ! -e $DEV_PWM ]; then
         sudo sh -c "echo 1 > /sys/class/pwm/pwmchip0/export"
         sleep 1
     fi
+fi
+
+    # 
+    if [ ! -e $DEV_PWM ]; then
+        sudo "ERROR: PWM channel $DEV_PWM is not avaialble. Please setup PWM channel."
+        exit 1
+    fi
+
+    DEV_ENABLE="$DEV_PWM/enable"
+    DEV_DUTY="$DEV_PWM/duty_cycle"
+    DEV_PERIOD="$DEV_PWM/period"
+    DEV_EXPORT="$DEV_PWM/export"
 
     # Calculate PWM period in nanoseconds based on frequency
     PERIOD=$((1000000000 / PWM_FREQUENCY))  # Period in ns
@@ -267,6 +296,24 @@ run_service() {
 }
 
 #===========================================
+
+IS_RADXA=false
+
+# Path to the compatible file
+COMPATIBLE_FILE="/proc/device-tree/compatible"
+
+# Check if the compatible file exists
+if [ -f "$COMPATIBLE_FILE" ]; then
+    # Read the content of the file
+    COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
+
+    # Check if the content contains "radxa,zero3"
+    if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3w"; then
+        IS_RADXA=true
+    fi
+fi
+
+echo "IS_RADXA=$IS_RADXA"
 
 # Check if the script is run with the "install", "uninstall", "status", "start", "stop", or "run" parameter
 if [ "$1" == "install" ]; then
