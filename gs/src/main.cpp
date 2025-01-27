@@ -238,7 +238,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
-std::string serialPortName = isRadxaZero3() ? "/dev/ttyS1" : "/dev/serial0";
+std::string serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
