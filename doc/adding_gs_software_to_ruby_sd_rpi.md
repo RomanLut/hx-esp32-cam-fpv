@@ -81,7 +81,7 @@ Note that installation process may take ~1h on Raspberry pi 2w. ssh connection s
 
  ```sudo nano /root/.profile
  
- Comment out all lines starting from ```echo "Launching..."```
+* Comment out all lines starting from ```echo "Launching..."```
 
  Add line: ```/home/pi/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
@@ -93,9 +93,9 @@ Note that installation process may take ~1h on Raspberry pi 2w. ssh connection s
 
 # Updating groundstation image
 
-Connect RPI GS to network using USB-LAN adapter
+* Connect RPI GS to network using USB-LAN adapter
 
-To update groundstation software, pull updates from '''release''' branch:
+* To update groundstation software, pull updates from '''release''' branch:
 
   ```cd esp32-cam-fpv```
   
@@ -105,8 +105,13 @@ To update groundstation software, pull updates from '''release''' branch:
   
   ```make```
 
+#Notes
+
+* LAN is not initialized while GS software is running. Exit GS software to initialize LAN. 
+
+* If image is booted on Raspberry 4 once, it will not boot on Raspberry Pi Zero 2W anymore.
+ 
+
 #Development
 
- TMP folder was in Ruby image does not have enough space for VS code server installation. Type this comaands in terminal before connecting with VS Code:
-
-  ```sudo mount -o remount,size=100M /tmp```
+ See notes on development with RubyFPV based image: vs_code_remote_debugging.md 
