@@ -30,7 +30,7 @@ DUTY_MIN_PERCENT=20   # 40%
 DUTY_MAX_PERCENT=100  # 100%
 
 # Temperature thresholds in degrees Celsius
-TEMP_MIN_C=60    # Minimum temperature (degrees Celsius) for the fan to start
+TEMP_MIN_C=10    # Minimum temperature (degrees Celsius) for the fan to start
 TEMP_MAX_C=78    # Maximum temperature (degrees Celsius) for maximum fan speed
 
 # PWM Frequency in Hz
@@ -224,6 +224,7 @@ fi
     DEV_DUTY="$DEV_PWM/duty_cycle"
     DEV_PERIOD="$DEV_PWM/period"
     DEV_EXPORT="$DEV_PWM/export"
+    DEV_POLARITY="$DEV_PWM/polarity"
 
     # Calculate PWM period in nanoseconds based on frequency
     PERIOD=$((1000000000 / PWM_FREQUENCY))  # Period in ns
@@ -240,6 +241,7 @@ fi
 
     # Enable PWM
     sudo sh -c "echo 1 > $DEV_ENABLE"
+    sudo sh -c "echo 'normal' > $DEV_POLARITY"
 
     # Initialize the previous duty value to detect changes
     PREV_DUTY=-1
@@ -270,6 +272,7 @@ fi
             DUTY=$((DUTY_MIN + (TEMP - TEMP_MIN) * (DUTY_MAX - DUTY_MIN) / (TEMP_MAX - TEMP_MIN)))
         fi
 
+DUTY=5000000
         # Ensure duty cycle is within valid range
         if [ $DUTY -lt 0 ]; then
             DUTY=0
