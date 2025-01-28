@@ -26,11 +26,11 @@
 #===========================================
 
 # Duty cycles specified in percentages
-DUTY_MIN_PERCENT=20   # 40%
+DUTY_MIN_PERCENT=20   # 20%
 DUTY_MAX_PERCENT=100  # 100%
 
 # Temperature thresholds in degrees Celsius
-TEMP_TARGET_C=50   # Target temperature for gradual control
+TEMP_TARGET_C=60   # Target temperature for gradual control
 TEMP_OVERHEAT_C=80 # Overheat threshold for maximum speed
 
 # PWM Frequency in Hz
@@ -226,6 +226,9 @@ fi
     DEV_EXPORT="$DEV_PWM/export"
     DEV_POLARITY="$DEV_PWM/polarity"
 
+    # Margin for no adjustment in degrees Celsius
+    TEMP_MARGIN=1
+
     # Calculate PWM period in nanoseconds based on frequency
     PERIOD=$((1000000000 / PWM_FREQUENCY))  # Period in ns
     sudo sh -c "echo $PERIOD > $DEV_PERIOD"
@@ -263,25 +266,27 @@ fi
             continue
         fi
 
-        # Determine the appropriate duty cycle based on temperature
+        TEMP_DIFF=$((TEMP - TEMP_TARGET))
+
         if [ $TEMP -ge $TEMP_OVERHEAT ]; then
-            DUTY_CURRENT=$DUTY_MAX  # Set to maximum duty cycle
-        elif [ $TEMP -le $TEMP_TARGET ]; then
-            DUTY_CURRENT=$((DUTY_CURRENT - PERIOD * 5 / 100))  # Decrease by 5%
-            if [ $DUTY_CURRENT -lt $DUTY_MIN ]; then
-                DUTY_CURRENT=0  # Stop fan if below DUTY_MIN_PERCENT
-            fi
+            DUTY_CURRENT=$DUTY_MAX
+        elif [ ${TEMP_DIFF#-} -le $((TEMP_MARGIN * 1000)) ]; then
+            DUTY_CURRENT=$DUTY_CURRENT
         else
-            if [ $DUTY_CURRENT -lt $DUTY_MIN ]; then
-                DUTY_CURRENT=$DUTY_MIN  # Start fan from DUTY_MIN_PERCENT
+            STEP=$((PERIOD * 1 / 100))
+            if [ $TEMP_DIFF -gt 0 ]; then
+                DUTY_CURRENT=$((DUTY_CURRENT + STEP * (TEMP_DIFF / 1000)))
             else
-                DUTY_CURRENT=$((DUTY_CURRENT + PERIOD * 5 / 100))  # Increase by 5%
-                if [ $DUTY_CURRENT -gt $DUTY_MAX ]; then
-                    DUTY_CURRENT=$DUTY_MAX
-                fi
+                DUTY_CURRENT=$((DUTY_CURRENT + STEP * (TEMP_DIFF / 1000)))
+            fi
+
+            if [ $DUTY_CURRENT -lt 0 ]; then
+                DUTY_CURRENT=0
+            elif [ $DUTY_CURRENT -gt $DUTY_MAX ]; then
+                DUTY_CURRENT=$DUTY_MAX
             fi
         fi
-
+        
         # Ensure duty cycle is within valid range
         if [ $DUTY_CURRENT -lt 0 ]; then
             DUTY_CURRENT=0
@@ -289,13 +294,20 @@ fi
             DUTY_CURRENT=$PERIOD
         fi
 
-        # If the duty cycle has changed, update and print the values
-        if [ "$DUTY_CURRENT" -ne "$PREV_DUTY" ]; then
-            sudo sh -c "echo $DUTY_CURRENT > $DEV_DUTY"
-            PREV_DUTY=$DUTY_CURRENT
+        if [ $DUTY_CURRENT -lt $DUTY_MIN ]; then
+            DUTY_CURRENT1=0
+        else
+            DUTY_CURRENT1=$DUTY_CURRENT
         fi
 
-        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
+        # If the duty cycle has changed, update and print the values
+        if [ "$DUTY_CURRENT1" -ne "$PREV_DUTY" ]; then
+            sudo sh -c "echo $DUTY_CURRENT1 > $DEV_DUTY"
+            PREV_DUTY=$DUTY_CURRENT1
+        fi
+
+        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY_CURRENT1 * 100 / PERIOD))%"
+        echo "Temperature: $TEMP, Target: $TEMP_TARGET, Duty: $DUTY_CURRENT Duty1: $DUTY_CURRENT1"
 
         # Wait before checking the temperature again
         sleep 5
