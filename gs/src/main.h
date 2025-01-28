@@ -105,8 +105,8 @@ struct GSStats
     uint32_t FECSuccPacketIndexCounter = 0;
     uint32_t FECBlocksCounter = 0;
 
-    int8_t rssiDbm[2] = {0,0};
-    uint8_t noiseFloorDbm = 0;
+    int8_t rssiDbm[2] = {0,0};  //negative value of RSSI
+    int8_t noiseFloorDbm = 0; //negative value 
 
     uint8_t brokenFrames = 0;  //JPEG decoding errors
 

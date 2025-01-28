@@ -457,7 +457,7 @@ bool Comms::process_rx_packet(PCap& pcap)
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-                s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
+                s_gs_stats.noiseFloorDbm = *(int8_t*)rti.this_arg; 
                 break;
 
             /*
