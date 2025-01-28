@@ -30,8 +30,8 @@ DUTY_MIN_PERCENT=20   # 40%
 DUTY_MAX_PERCENT=100  # 100%
 
 # Temperature thresholds in degrees Celsius
-TEMP_MIN_C=10    # Minimum temperature (degrees Celsius) for the fan to start
-TEMP_MAX_C=78    # Maximum temperature (degrees Celsius) for maximum fan speed
+TEMP_TARGET_C=50   # Target temperature for gradual control
+TEMP_OVERHEAT_C=80 # Overheat threshold for maximum speed
 
 # PWM Frequency in Hz
 PWM_FREQUENCY=25  # 25Hz
@@ -216,7 +216,7 @@ fi
 
     # 
     if [ ! -e $DEV_PWM ]; then
-        sudo "ERROR: PWM channel $DEV_PWM is not avaialble. Please setup PWM channel."
+        echo "ERROR: PWM channel $DEV_PWM is not available. Please setup PWM channel."
         exit 1
     fi
 
@@ -231,13 +231,13 @@ fi
     sudo sh -c "echo $PERIOD > $DEV_PERIOD"
 
     # Convert temperature thresholds to millidegrees
-    TEMP_MIN=$((TEMP_MIN_C * 1000))
-    TEMP_MAX=$((TEMP_MAX_C * 1000))
+    TEMP_TARGET=$((TEMP_TARGET_C * 1000))
+    TEMP_OVERHEAT=$((TEMP_OVERHEAT_C * 1000))
 
     # Convert duty cycle percentages to actual values
     DUTY_MIN=$((PERIOD * DUTY_MIN_PERCENT / 100))
     DUTY_MAX=$((PERIOD * DUTY_MAX_PERCENT / 100))
-    DUTY_OFF=0  # Fan off
+    DUTY_CURRENT=0  # Fan off
 
     # Enable PWM
     sudo sh -c "echo 1 > $DEV_ENABLE"
@@ -264,29 +264,38 @@ fi
         fi
 
         # Determine the appropriate duty cycle based on temperature
-        if [ $TEMP -lt $TEMP_MIN ]; then
-            DUTY=$DUTY_OFF
-        elif [ $TEMP -ge $TEMP_MAX ]; then
-            DUTY=$DUTY_MAX
+        if [ $TEMP -ge $TEMP_OVERHEAT ]; then
+            DUTY_CURRENT=$DUTY_MAX  # Set to maximum duty cycle
+        elif [ $TEMP -le $TEMP_TARGET ]; then
+            DUTY_CURRENT=$((DUTY_CURRENT - PERIOD * 5 / 100))  # Decrease by 5%
+            if [ $DUTY_CURRENT -lt $DUTY_MIN ]; then
+                DUTY_CURRENT=0  # Stop fan if below DUTY_MIN_PERCENT
+            fi
         else
-            DUTY=$((DUTY_MIN + (TEMP - TEMP_MIN) * (DUTY_MAX - DUTY_MIN) / (TEMP_MAX - TEMP_MIN)))
+            if [ $DUTY_CURRENT -lt $DUTY_MIN ]; then
+                DUTY_CURRENT=$DUTY_MIN  # Start fan from DUTY_MIN_PERCENT
+            else
+                DUTY_CURRENT=$((DUTY_CURRENT + PERIOD * 5 / 100))  # Increase by 5%
+                if [ $DUTY_CURRENT -gt $DUTY_MAX ]; then
+                    DUTY_CURRENT=$DUTY_MAX
+                fi
+            fi
         fi
 
-DUTY=5000000
         # Ensure duty cycle is within valid range
-        if [ $DUTY -lt 0 ]; then
-            DUTY=0
-        elif [ $DUTY -gt $PERIOD ]; then
-            DUTY=$PERIOD
+        if [ $DUTY_CURRENT -lt 0 ]; then
+            DUTY_CURRENT=0
+        elif [ $DUTY_CURRENT -gt $PERIOD ]; then
+            DUTY_CURRENT=$PERIOD
         fi
 
         # If the duty cycle has changed, update and print the values
-        if [ "$DUTY" -ne "$PREV_DUTY" ]; then
-            sudo sh -c "echo $DUTY > $DEV_DUTY"
-            PREV_DUTY=$DUTY
+        if [ "$DUTY_CURRENT" -ne "$PREV_DUTY" ]; then
+            sudo sh -c "echo $DUTY_CURRENT > $DEV_DUTY"
+            PREV_DUTY=$DUTY_CURRENT
         fi
 
-        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY * 100 / PERIOD))%"
+        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
 
         # Wait before checking the temperature again
         sleep 5
