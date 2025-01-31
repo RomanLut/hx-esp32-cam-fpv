@@ -297,6 +297,7 @@ bool s_noPing = false;
 
 Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milliseconds(10000);
 Clock::time_point s_last_packet_tp = Clock::now();
+Clock::time_point s_last_stats_packet_tp = Clock::now();
 
 Stats s_frame_stats;
 Stats s_frameParts_stats;
@@ -472,7 +473,6 @@ static void comms_thread_proc()
     };
 
     RX_Data rx_data;
-
 
     while (true)
     {
@@ -869,6 +869,8 @@ static void comms_thread_proc()
                 s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
                 g_osd.update( &air2ground_osd_packet.buffer );
+
+                s_last_stats_packet_tp = Clock::now();
             }
             else
             {

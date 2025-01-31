@@ -379,10 +379,13 @@ bool PI_HAL::init_display_sdl()
     {
         SDL_DisplayMode mode;
         int res = SDL_GetCurrentDisplayMode(0, &mode);
-        if ( (m_impl->width > (uint32_t)mode.w) || (m_impl->height > (uint32_t)mode.h) )
+        if ( res == 0 )
         {
-            m_impl->width = mode.w;
-            m_impl->height = mode.h;
+            if ( (m_impl->width > (uint32_t)mode.w) || (m_impl->height > (uint32_t)mode.h) )
+            {
+                m_impl->width = mode.w;
+                m_impl->height = mode.h;
+            }
         }
 
         SDL_WindowFlags window_flags = (SDL_WindowFlags)(
