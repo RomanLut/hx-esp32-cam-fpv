@@ -122,7 +122,7 @@ static int s_uart_verbose = 1;
 
 /////////////////////////////////////////////////////////////////////////
 
- sdmmc_card_t* card = nullptr;
+sdmmc_card_t* card = nullptr;
 
 static bool s_air_record = false;
 
