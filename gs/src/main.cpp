@@ -269,7 +269,6 @@ mINI::INIStructure ini;
 mINI::INIFile s_iniFile("gs.ini");
 
 float video_fps = 0;
-int s_min_rssi = 0;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
@@ -459,7 +458,6 @@ static void comms_thread_proc()
     size_t out_tlm_size = 0;
     size_t total_data = 0;
     size_t total_data10 = 0;
-    int16_t min_rssi = 0;
 
     std::vector<uint8_t> video_frame;
     uint32_t video_frame_index = 0;
@@ -480,13 +478,13 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
-            LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size, min_rssi, 
+            LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size,
+                (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
                 ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
                 video_fps);
 
-            s_min_rssi = min_rssi;
             s_total_data = total_data;
 
             s_noPing = (ping_count == 0) || (std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count > 2000);
@@ -501,7 +499,6 @@ static void comms_thread_proc()
             out_tlm_size = 0;
             ping_count = 0;
             total_data = 0;
-            min_rssi = 0;
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
@@ -662,7 +659,6 @@ static void comms_thread_proc()
 
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
-                min_rssi = std::min(min_rssi, rx_data.rssi);
                 //LOGI("OK Video frame {}, {} {} - CRC OK {}. {}", air2ground_video_packet.frame_index, (int)air2ground_video_packet.part_index, payload_size, crc, rx_queue.size());
 
                 if ((air2ground_video_packet.frame_index + 200u < video_frame_index) ||                 //frame from the distant past? TX was restarted
@@ -823,7 +819,6 @@ static void comms_thread_proc()
                 }
 
                 total_data10 += rx_data.size;
-                min_rssi = std::min(min_rssi, rx_data.rssi);
                 //LOGI("OK Telemetry frame {} - CRC OK {}. {}", payload_size, crc, rx_queue.size());
 
                 write(fdUART, ((uint8_t*)&air2ground_data_packet) + sizeof(Air2Ground_Data_Packet), payload_size);
@@ -1017,7 +1012,14 @@ void applyWifiChannel(Ground2Air_Config_Packet& config)
 void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
 {
     config.wifi_channel = s_groundstation_config.wifi_channel;
-    s_comms.setChannel (s_groundstation_config.wifi_channel);
+    s_comms.setChannel(s_groundstation_config.wifi_channel);
+}
+
+//===================================================================================
+//===================================================================================
+void applyGSTxPower(Ground2Air_Config_Packet& config)
+{
+    s_comms.setTxPower(s_groundstation_config.txPower );
 }
 
 //===================================================================================
@@ -1080,15 +1082,46 @@ int run(char* argv[])
         {
 
             {
-                //RSSI
+                //RC RSSI
                 char buf[32];
-                sprintf(buf, "%d", (int)s_min_rssi );
+                sprintf(buf, "RC:%d", -((int)s_last_airStats.rssiDbm) );
 
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(60.0f, 0));
+                ImGui::Button(buf, ImVec2(120.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( !s_isDual )
+            {
+                //RSSI1
+                char buf[32];
+                sprintf(buf, "RSSI:%d", (int)s_last_gs_stats.rssiDbm[0] );
+
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(133.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+            else
+            {
+                //RSSI1:RSSI2
+                char buf[32];
+                sprintf(buf, "RSSI:%d/%d", (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1] );
+
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                ImGui::Button(buf, ImVec2(203.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1468,7 +1501,7 @@ int run(char* argv[])
                         ImGui::Text("GS RSSI 1");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_gs_stats.rssiDbm[0]);
+                        ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[0]);
                     }
 
                     {
@@ -1490,7 +1523,7 @@ int run(char* argv[])
                         ImGui::Text("GS Noise Floor");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_gs_stats.noiseFloorDbm);
+                        ImGui::Text("%d dbm", s_last_gs_stats.noiseFloorDbm);
                     }
 
 /*
@@ -1502,7 +1535,7 @@ int run(char* argv[])
                         ImGui::Text("GS SNR");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d db", (int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm );
+                        ImGui::Text("%d db", -((int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm) );
                     }
 */
 
@@ -1635,7 +1668,7 @@ int run(char* argv[])
         {
             char buf[256];
             sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %d%%..%d%% AQ:%d %s/%s###HAL", 
-            s_min_rssi, video_fps, s_lost_frame_count, 
+            ((int)s_last_gs_stats.rssiDbm[0] + (int)s_last_gs_stats.rssiDbm[1])/2, video_fps, s_lost_frame_count, 
             s_total_data/1024, 
             s_wifi_queue_min,s_wifi_queue_max,
             s_curr_quality,
@@ -2108,6 +2141,7 @@ void saveGroundStationConfig()
 {
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
+    ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     s_iniFile.write(ini);
 }
 
@@ -2295,7 +2329,7 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["wifi_channel"];
         int channel = atoi(temp.c_str());
-        if ((channel >= 1) && (channel <=13) )
+        if ((channel >= 1) && (channel <= 13) )
         {
             s_groundstation_config.wifi_channel = channel;
             config.wifi_channel = channel;
@@ -2304,6 +2338,19 @@ int main(int argc, const char* argv[])
         {
             s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
             config.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["tx_power"];
+        int txPower = atoi(temp.c_str());
+        if ((txPower >= MIN_TX_POWER) && (txPower <= MAX_TX_POWER) )
+        {
+            s_groundstation_config.txPower = txPower;
+        }
+        else
+        {
+            s_groundstation_config.txPower = DEFAULT_TX_POWER;
         }
     }
 
@@ -2559,6 +2606,7 @@ int main(int argc, const char* argv[])
     s_isDual = rx_descriptor.interfaces.size() > 1;
 
     s_comms.setChannel( s_groundstation_config.wifi_channel );
+    s_comms.setTxPower( s_groundstation_config.txPower );
 
     gpio_buttons_start();
 

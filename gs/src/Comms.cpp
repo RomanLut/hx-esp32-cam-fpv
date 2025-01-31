@@ -31,6 +31,7 @@ static std::vector<uint8_t> RADIOTAP_HEADER;
 static constexpr size_t SRC_MAC_LASTBYTE = 15;
 static constexpr size_t DST_MAC_LASTBYTE = 21;
 
+/*
 // Penumbra IEEE80211 header
 static uint8_t IEEE_HEADER[] =
 {
@@ -59,7 +60,7 @@ static uint8_t IEEE_HEADER[] =
     0x10,
     0x86,
 };
-
+*/
 
 #pragma pack(push, 1)
 
@@ -457,7 +458,7 @@ bool Comms::process_rx_packet(PCap& pcap)
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-                s_gs_stats.noiseFloorDbm = -*(int8_t*)rti.this_arg; 
+                s_gs_stats.noiseFloorDbm = *(int8_t*)rti.this_arg; 
                 break;
 
             /*
@@ -1165,7 +1166,7 @@ void Comms::process_rx_packets()
 {
     RX& rx = m_impl->rx;
     uint32_t coding_k = m_rx_descriptor.coding_k;
-    uint32_t coding_n = m_rx_descriptor.coding_n;
+    //uint32_t coding_n = m_rx_descriptor.coding_n;
 
     std::unique_lock<std::mutex> lg(rx.block_queue_mutex);
 
@@ -1375,6 +1376,14 @@ void Comms::setChannel(int ch)
     for (const auto& itf:m_rx_descriptor.interfaces)
     {
         system(fmt::format("iwconfig {} channel {}", itf, ch).c_str());
+    }
+}
+
+void Comms::setTxPower(int txPower)
+{
+    for (const auto& itf:m_rx_descriptor.interfaces)
+    {
+        system(fmt::format("iw dev {} set txpower fixed {}", itf, txPower * 100 ).c_str());
     }
 }
 

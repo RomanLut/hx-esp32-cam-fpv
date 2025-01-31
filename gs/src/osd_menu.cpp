@@ -3,6 +3,7 @@
 #include "util.h"
 #include "osd.h"
 #include "main.h"
+#include "Comms.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -155,6 +156,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawSearchMenu(config); break;
+        case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -868,6 +870,37 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
+void OSDMenu::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Tx Power" );
+    ImGui::Spacing();
+
+    bool bExit = false;
+
+    for ( int i = 0; i <= MAX_TX_POWER - MIN_TX_POWER; i++ )
+    {
+        char buf[12];
+        sprintf(buf, "%d dBm", i + MIN_TX_POWER);
+        if ( this->drawMenuItem( buf, i, true) )
+        {
+            if ( s_groundstation_config.txPower != (i + MIN_TX_POWER) )  
+            {
+                s_groundstation_config.txPower = ( i + MIN_TX_POWER );
+                saveGroundStationConfig();
+                applyGSTxPower(config);
+            }
+            bExit = true;
+        }
+    }
+
+    if ( bExit || this->exitKeyPressed() )
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
 void OSDMenu::drawFECMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> FEC" );
@@ -947,7 +980,17 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Exit To Shell", 3) )
+    {
+        char buf[256];
+        sprintf(buf, "TX Power: %d dBm##4", s_groundstation_config.txPower);
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
+        }
+    }
+
+
+    if ( this->drawMenuItem( "Exit To Shell", 4) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }

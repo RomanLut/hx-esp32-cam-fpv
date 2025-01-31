@@ -242,8 +242,8 @@ struct AirStats
     uint16_t outPacketRate;
     uint16_t inPacketRate;
     uint16_t inRejectedPacketRate;
-    uint8_t rssiDbm;
-    uint8_t noiseFloorDbm;
+    uint8_t rssiDbm;  //positive value in dbm
+    uint8_t noiseFloorDbm; //positive value in dbm
     uint8_t captureFPS;
     uint8_t cam_ovf_count;
     uint16_t cam_frame_size_min; //bytes
