@@ -113,6 +113,8 @@ struct GSStats
 
     int pingMinMS = 0;
     int pingMaxMS = 0;
+
+    int RCPeriodMax = -1;  //ms
 };
 
 extern GSStats s_gs_stats;

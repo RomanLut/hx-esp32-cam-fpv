@@ -30,6 +30,7 @@
 #include "socket.h"
 #include "avi.h"
 #include "jpeg_parser.h"
+#include "hx_mavlink_parser.h"
 
 #include "utils.h"
 
@@ -299,6 +300,8 @@ Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milli
 Clock::time_point s_last_packet_tp = Clock::now();
 Clock::time_point s_last_stats_packet_tp = Clock::now();
 
+Clock::time_point s_last_rc_command = Clock::now();
+
 Stats s_frame_stats;
 Stats s_frameParts_stats;
 Stats s_frameTime_stats;
@@ -320,8 +323,13 @@ uint32_t s_avi_frameCnt;
 bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
+static HXMavlinkParser mavlinkParserIn(true);
+
+//===================================================================================
+//===================================================================================
 // Function to get filesystem statistics
-void getFilesystemStats(const char *path, unsigned long long *total, unsigned long long *free) {
+void getFilesystemStats(const char *path, unsigned long long *total, unsigned long long *free) 
+{
     struct statvfs stat;
 
     // Perform statvfs on the given path
@@ -334,6 +342,7 @@ void getFilesystemStats(const char *path, unsigned long long *total, unsigned lo
     *total = (unsigned long long) stat.f_frsize * stat.f_blocks;
     *free = (unsigned long long) stat.f_frsize * stat.f_bfree;
 }
+
 //===================================================================================
 //===================================================================================
 void updateGSSdFreeSpace() 
@@ -545,6 +554,24 @@ static void comms_thread_proc()
 
             if ( n > 0 )
             {
+                uint8_t* dPtr = (uint8_t*)(&data.payload[s_tlm_size]);
+                for ( int i = 0; i < n; i++ )
+                {
+                    mavlinkParserIn.processByte(*dPtr++);
+                    if ( mavlinkParserIn.gotPacket())
+                    {
+                        if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
+                        {
+                            //const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
+                            //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
+                            Clock::time_point t = Clock::now();
+                            int dt = std::chrono::duration_cast<std::chrono::milliseconds>(t - s_last_rc_command).count();
+                            s_last_rc_command = t;
+                            s_gs_stats.RCPeriodMax = std::max(s_gs_stats.RCPeriodMax, dt);
+                        }
+                    }
+                }
+
                 s_tlm_size += n;
                 in_tlm_size += n;
             }
@@ -1086,13 +1113,13 @@ int run(char* argv[])
             {
                 //RC RSSI
                 char buf[32];
-                sprintf(buf, "RC:%d", -((int)s_last_airStats.rssiDbm) );
+                sprintf(buf, "AIR:%d", -((int)s_last_airStats.rssiDbm) );
 
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(120.0f, 0));
+                ImGui::Button(buf, ImVec2(128.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1101,14 +1128,14 @@ int run(char* argv[])
             {
                 //RSSI1
                 char buf[32];
-                sprintf(buf, "RSSI:%d", (int)s_last_gs_stats.rssiDbm[0] );
+                sprintf(buf, "GS:%d", (int)s_last_gs_stats.rssiDbm[0] );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(133.0f, 0));
+                ImGui::Button(buf, ImVec2(113.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1116,14 +1143,14 @@ int run(char* argv[])
             {
                 //RSSI1:RSSI2
                 char buf[32];
-                sprintf(buf, "RSSI:%d/%d", (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1] );
+                sprintf(buf, "GS:%d/%d", (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1] );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(203.0f, 0));
+                ImGui::Button(buf, ImVec2(183.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1618,6 +1645,19 @@ int run(char* argv[])
                         ImGui::Text("%d", s_last_gs_stats.brokenFrames);
                     }
 
+                    ImGui::EndTable();
+                }
+
+                ImGui::SetCursorPosX(10);
+                ImGui::SetCursorPosY(400);
+
+                if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 24.0f) ))
+                {
+                    ImGuiStyle& style = ImGui::GetStyle();
+                    ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
+ 
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f); 
+
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
@@ -1640,21 +1680,32 @@ int run(char* argv[])
                         ImGui::Text("%d b/s", s_last_airStats.outMavlinkRate);
                     }
 
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
-/*
-    uint16_t outPacketRate;
-    uint16_t inPacketRate;
-    uint8_t inPacketLostRatio;
-    uint8_t rssiDbm;
-    uint8_t snrDb;
-    uint8_t noiseFloorDbm;
-    uint8_t captureFPS;
-    uint8_t cam_ovf_count;
-    uint16_t inMavlinkRate; //b/s
-    uint16_t outMavlinkRate; //b/s
-*/
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("GS RC Period Max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", s_last_gs_stats.RCPeriodMax);
+                    }
+
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("AIR RC Period Max");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d ms", 0);
+                    }
+
                     ImGui::EndTable();
                 }
+
+
             }
 
             g_osd.draw();

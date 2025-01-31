@@ -507,7 +507,7 @@ bool PI_HAL::update_display()
         case SDL_FINGERDOWN:
         case SDL_FINGERUP:
         {
-            SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
+            //SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
             //io.MousePos = ImVec2(ev.x * m_impl->width, ev.y * m_impl->height);
             //io.MouseDown[0] = event.type == SDL_FINGERUP ? false : true;
             if(event.type == SDL_FINGERMOTION || event.type == SDL_FINGERDOWN ){
