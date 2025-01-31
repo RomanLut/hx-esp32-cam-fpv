@@ -1012,7 +1012,14 @@ void applyWifiChannel(Ground2Air_Config_Packet& config)
 void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
 {
     config.wifi_channel = s_groundstation_config.wifi_channel;
-    s_comms.setChannel (s_groundstation_config.wifi_channel);
+    s_comms.setChannel(s_groundstation_config.wifi_channel);
+}
+
+//===================================================================================
+//===================================================================================
+void applyGSTxPower(Ground2Air_Config_Packet& config)
+{
+    s_comms.setTxPower(s_groundstation_config.txPower );
 }
 
 //===================================================================================
@@ -2134,6 +2141,7 @@ void saveGroundStationConfig()
 {
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
+    ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     s_iniFile.write(ini);
 }
 
@@ -2321,7 +2329,7 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["wifi_channel"];
         int channel = atoi(temp.c_str());
-        if ((channel >= 1) && (channel <=13) )
+        if ((channel >= 1) && (channel <= 13) )
         {
             s_groundstation_config.wifi_channel = channel;
             config.wifi_channel = channel;
@@ -2330,6 +2338,19 @@ int main(int argc, const char* argv[])
         {
             s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
             config.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["tx_power"];
+        int txPower = atoi(temp.c_str());
+        if ((txPower >= MIN_TX_POWER) && (txPower <= MAX_TX_POWER) )
+        {
+            s_groundstation_config.txPower = txPower;
+        }
+        else
+        {
+            s_groundstation_config.txPower = DEFAULT_TX_POWER;
         }
     }
 
@@ -2585,6 +2606,7 @@ int main(int argc, const char* argv[])
     s_isDual = rx_descriptor.interfaces.size() > 1;
 
     s_comms.setChannel( s_groundstation_config.wifi_channel );
+    s_comms.setTxPower( s_groundstation_config.txPower );
 
     gpio_buttons_start();
 

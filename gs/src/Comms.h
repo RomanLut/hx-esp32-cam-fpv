@@ -7,6 +7,11 @@
 #include <functional>
 #include "Clock.h"
 
+#define MIN_TX_POWER 5
+#define DEFAULT_TX_POWER 20
+#define MAX_TX_POWER 71
+
+
 struct fec_t;
 
 class Comms
@@ -43,6 +48,7 @@ public:
     bool receive(void* data, size_t& size, bool& restoredByFEC);
 
     void setChannel(int ch);
+    void setTxPower(int txPower); //MIN_TX_POWER...MAX_TX_POWER
     void setMonitorMode(const std::vector<std::string> interfaces);
 
     size_t get_data_rate() const;

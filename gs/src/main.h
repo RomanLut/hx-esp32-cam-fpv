@@ -84,6 +84,7 @@ struct TGroundstationConfig
     std::mutex record_mutex;
     int wifi_channel;
     ScreenAspectRatio screenAspectRatio;
+    int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
     bool vsync = true;
 };
@@ -139,6 +140,7 @@ extern Clock::time_point restart_tp;
 extern Clock::time_point s_last_packet_tp;
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);
 extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
+extern void applyGSTxPower(Ground2Air_Config_Packet& config);
 
 extern const char* resolutionName2640[];
 extern const char* resolutionName2640Hi[];
