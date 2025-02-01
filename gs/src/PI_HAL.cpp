@@ -542,7 +542,7 @@ bool PI_HAL::update_display()
     int x1, y1, x2, y2;
     calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
 
-    ImGui::GetWindowDrawList()->AddImage((ImTextureID)g_VideoTexture,ImVec2(x1,y1),ImVec2(x2,y2));
+    ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),ImVec2(x1,y1),ImVec2(x2,y2));
 
     ImGui::End();
     
@@ -794,4 +794,3 @@ bool PI_HAL::process()
     update_ts();
     return update_display();
 }
-
