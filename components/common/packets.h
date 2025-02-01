@@ -4,8 +4,8 @@
 
 #define DEFAULT_WIFI_CHANNEL 7
 
-#define FW_VERSION "0.2"
-#define PACKET_VERSION 1
+#define FW_VERSION "0.3"
+#define PACKET_VERSION 2
 
 #define FEC_K 6
 #define FEC_N 12
@@ -227,18 +227,18 @@ struct AirStats
     uint8_t SDSlow : 1;
     uint8_t SDError : 1;
     uint8_t curr_wifi_rate :5; //WIFI_Rate
-
+//1
     uint8_t wifi_queue_min : 7;
     uint8_t air_record_state : 1;
-
+//2
     uint8_t wifi_queue_max;
-
+//3
     uint32_t SDFreeSpaceGB16 : 12;
     uint32_t SDTotalSpaceGB16 : 12;
     uint32_t curr_quality : 6;
     uint32_t wifi_ovf : 1;
     uint32_t isOV5640 : 1;
-
+//7
     uint16_t outPacketRate;
     uint16_t inPacketRate;
     uint16_t inRejectedPacketRate;
@@ -250,6 +250,33 @@ struct AirStats
     uint16_t cam_frame_size_max; //bytes
     uint16_t inMavlinkRate; //b/s
     uint16_t outMavlinkRate; //b/s
+//25
+    uint8_t RCPeriodMaxMS;
+//26
+    uint8_t wifiChannel : 4; //1...14
+    uint8_t resolution : 4;
+//27
+    uint8_t temperature : 7;  //degree C
+    uint8_t overheatTrottling : 1;
+//28
+    uint8_t suspend_ch : 5; //0 - disabled, 1...18
+    uint8_t highFps: 1;
+    uint8_t mavlink2mspRC : 1;
+    uint8_t suspended : 1;
+//29
+    uint8_t fec_codec_k : 4;
+    uint8_t in_session : 1; //1 if camera is currently actively communicating with some GS. Used in search.
+    uint8_t screenAspectRatio: 3;  
+//30
+    int16_t brightness : 3;  //-2 - 2
+    int16_t contrast : 3;    //-2 - 2
+    int16_t saturation : 3;  //-2 - 2
+    int16_t sharpness : 3;   //-2 - 3
+    int16_t ae_level: 3;     //-2 - 2, for aec=true
+    int16_t reserved: 1;  //-1...0
+//32
+
+//..39
 };
 
 //======================================================
