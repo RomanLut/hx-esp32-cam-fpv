@@ -17,6 +17,7 @@ SRCS := src/main.cpp \
 	../components/common/avi.cpp \
 	../components/common/packets.cpp \
 	../components/common/jpeg_parser.cpp \
+	../components/common/hx_mavlink_parser.cpp \
 	src/fmt/format.cc \
 	src/fmt/os.cc \
 	src/socket.cpp \

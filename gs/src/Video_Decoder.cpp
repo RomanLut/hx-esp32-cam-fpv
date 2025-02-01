@@ -262,7 +262,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         //LOGI("In size = {}, correct size = {}", _size, size);
 
-        auto start_tp = Clock::now();
+        //auto start_tp = Clock::now();
 
         int width, height;
         int inSubsamp, inColorspace;

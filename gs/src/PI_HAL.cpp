@@ -379,10 +379,13 @@ bool PI_HAL::init_display_sdl()
     {
         SDL_DisplayMode mode;
         int res = SDL_GetCurrentDisplayMode(0, &mode);
-        if ( (m_impl->width > (uint32_t)mode.w) || (m_impl->height > (uint32_t)mode.h) )
+        if ( res == 0 )
         {
-            m_impl->width = mode.w;
-            m_impl->height = mode.h;
+            if ( (m_impl->width > (uint32_t)mode.w) || (m_impl->height > (uint32_t)mode.h) )
+            {
+                m_impl->width = mode.w;
+                m_impl->height = mode.h;
+            }
         }
 
         SDL_WindowFlags window_flags = (SDL_WindowFlags)(
@@ -504,7 +507,7 @@ bool PI_HAL::update_display()
         case SDL_FINGERDOWN:
         case SDL_FINGERUP:
         {
-            SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
+            //SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
             //io.MousePos = ImVec2(ev.x * m_impl->width, ev.y * m_impl->height);
             //io.MouseDown[0] = event.type == SDL_FINGERUP ? false : true;
             if(event.type == SDL_FINGERMOTION || event.type == SDL_FINGERDOWN ){

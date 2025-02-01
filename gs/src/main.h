@@ -113,6 +113,8 @@ struct GSStats
 
     int pingMinMS = 0;
     int pingMaxMS = 0;
+
+    int RCPeriodMax = -1;  //ms
 };
 
 extern GSStats s_gs_stats;
@@ -138,6 +140,7 @@ extern uint64_t s_GSSDTotalSpaceBytes;
 extern uint64_t s_GSSDFreeSpaceBytes;
 extern Clock::time_point restart_tp;
 extern Clock::time_point s_last_packet_tp;
+extern Clock::time_point s_last_stats_packet_tp;
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);
 extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
 extern void applyGSTxPower(Ground2Air_Config_Packet& config);
