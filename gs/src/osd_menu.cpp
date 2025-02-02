@@ -989,8 +989,17 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    {
+        char buf[256];
+        sprintf(buf, "Toggle Statistics");
+        if ( this->drawMenuItem( buf, 4) )
+        {
+            s_groundstation_config.stats = !s_groundstation_config.stats;
+        }
+    }
 
-    if ( this->drawMenuItem( "Exit To Shell", 4) )
+
+    if ( this->drawMenuItem( "Exit To Shell", 5) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
