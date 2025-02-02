@@ -94,6 +94,7 @@ struct Ground2Air_Header
     {
         Telemetry,
         Config,
+        //todo: implement config and telemetry packet for uplink telemetry
     };
 
     Type type = Type::Telemetry; 

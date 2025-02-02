@@ -160,7 +160,7 @@ void FontWalksnail::drawChar(uint16_t code, int x1, int y1, int width, int heigh
         };
 
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddImageQuad((ImTextureID)this->fontTextureId, pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
+    draw_list->AddImageQuad(reinterpret_cast<ImTextureID>(this->fontTextureId), pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
 }
 
 //======================================================
@@ -198,6 +198,5 @@ void FontWalksnail::drawTest()
             ImVec2(0,0),ImVec2(1,0), ImVec2(1,1),ImVec2(0,1)
         };
 
-    draw_list->AddImageQuad((ImTextureID)this->fontTextureId, pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
+    draw_list->AddImageQuad(reinterpret_cast<ImTextureID>(this->fontTextureId), pos[0], pos[1], pos[2], pos[3], uvs[0], uvs[1], uvs[2], uvs[3], IM_COL32_WHITE);
 }
-

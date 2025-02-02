@@ -458,6 +458,7 @@ static void comms_thread_proc()
     Clock::time_point last_data_sent_tp = Clock::now();
     uint8_t last_sent_ping = 0;
     Clock::time_point last_ping_sent_tp = Clock::now();
+    Clock::time_point last_ping_received_tp = Clock::now();
     Clock::time_point last_frame_decoded = Clock::now();
     Clock::duration ping_min = std::chrono::seconds(999);
     Clock::duration ping_max = std::chrono::seconds(0);
@@ -496,7 +497,7 @@ static void comms_thread_proc()
 
             s_total_data = total_data;
 
-            s_noPing = (ping_count == 0) || (std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count > 2000);
+            s_noPing = ( Clock::now() - last_ping_received_tp ) >= std::chrono::milliseconds(2000);
             s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count();
             s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count();
 
@@ -533,7 +534,7 @@ static void comms_thread_proc()
             config.ping = last_sent_ping; 
             config.type = Ground2Air_Header::Type::Config;
             config.size = sizeof(config);
-            config.crc = 0;
+            config.crc = 0;  //do calculate crc with crc field = 0
             config.crc = crc8(0, &config, sizeof(config)); 
             s_comms.send(&config, sizeof(config), true);
             last_comms_sent_tp = Clock::now();
@@ -552,6 +553,8 @@ static void comms_thread_proc()
             int frb = GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - s_tlm_size;
             int n = read(fdUART, &(data.payload[s_tlm_size]), frb);
 
+            bool gotRCPacket = false;
+
             if ( n > 0 )
             {
                 uint8_t* dPtr = (uint8_t*)(&data.payload[s_tlm_size]);
@@ -568,6 +571,7 @@ static void comms_thread_proc()
                             int dt = std::chrono::duration_cast<std::chrono::milliseconds>(t - s_last_rc_command).count();
                             s_last_rc_command = t;
                             s_gs_stats.RCPeriodMax = std::max(s_gs_stats.RCPeriodMax, dt);
+                            gotRCPacket = true;
                         }
                     }
                 }
@@ -578,8 +582,9 @@ static void comms_thread_proc()
 
             if ( 
                 (s_tlm_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
+                gotRCPacket ||
                 ( 
-                    ( (s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(50)) 
+                    ( (s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(100)) 
                 )
             )
             {
@@ -677,7 +682,8 @@ static void comms_thread_proc()
                 if (air2ground_video_packet.pong == last_sent_ping)
                 {
                     last_sent_ping++;
-                    auto d = (Clock::now() - last_ping_sent_tp) / 2;
+                    last_ping_received_tp = Clock::now();
+                    auto d = (last_ping_received_tp - last_ping_sent_tp) / 2;
                     ping_min = std::min(ping_min, d);
                     ping_max = std::max(ping_max, d);
                     ping_avg += d;
@@ -1218,7 +1224,7 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("!NO PING!");
+                ImGui::Button("NO PING!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1231,22 +1237,7 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("!SD SLOW!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( g_CPUTemp.getTemperature() >= 80 )
-            {
-                //GS temperature
-                char buf[32];
-                sprintf(buf, "%02d°C", (int)(g_CPUTemp.getTemperature()+0.5f));
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button(buf, ImVec2(65.0f, 0));
+                ImGui::Button("SD SLOW!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1290,6 +1281,50 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
+            if ( g_CPUTemp.getTemperature() >= 80 )
+            {
+                //GS temperature
+                char buf[32];
+                sprintf(buf, "GS:%02d°C", (int)(g_CPUTemp.getTemperature()+0.5f));
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button(buf, ImVec2(110.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( s_last_airStats.temperature >= 110 )
+            {
+                //Camera temperature
+                char buf[32];
+                sprintf(buf, "Air:%02d°C", (int)(s_last_airStats.temperature));
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button(buf, ImVec2(137.0f, 0));
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( s_last_airStats.overheatTrottling != 0 )
+            {
+                //!SD SLOW!
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("OVERHEAT!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+
             //Incompatible firmware
             if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
             {
@@ -1297,7 +1332,7 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("!Incompatible Air Unit firmware. Please update!");
+                ImGui::Button("Incompatible Air Unit firmware. Please update!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1309,7 +1344,7 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("!Displayport OSD Font Unexpected Format!");
+                ImGui::Button("Displayport OSD Font Unexpected Format!");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
@@ -1628,7 +1663,7 @@ int run(char* argv[])
                         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Camera OVF");
+                        ImGui::Text("Camera Overflow");
 
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("%d", s_last_airStats.cam_ovf_count);
@@ -1699,7 +1734,21 @@ int run(char* argv[])
                         ImGui::Text("AIR RC Period Max");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d ms", 0);
+                        int v;
+                        if ( s_last_airStats.RCPeriodMax == 0 )
+                        {
+                            v = -1;
+                        }
+                        else if ( s_last_airStats.RCPeriodMax <= 100 )
+                        {
+                            v = s_last_airStats.RCPeriodMax;
+                        }
+                        else 
+                        {
+                            v = ((int)(s_last_airStats.RCPeriodMax - 101)) * 10;
+                        }
+
+                        ImGui::Text("%d ms", v);
                     }
 
                     ImGui::EndTable();
