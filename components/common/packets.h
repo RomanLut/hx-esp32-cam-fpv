@@ -94,6 +94,7 @@ struct Ground2Air_Header
     {
         Telemetry,
         Config,
+        //todo: implement config and telemetry packet for uplink telemetry
     };
 
     Type type = Type::Telemetry; 
@@ -251,7 +252,7 @@ struct AirStats
     uint16_t inMavlinkRate; //b/s
     uint16_t outMavlinkRate; //b/s
 //25
-    uint8_t RCPeriodMaxMS;
+    uint8_t RCPeriodMax;
 //26
     uint8_t wifiChannel : 4; //1...14
     uint8_t resolution : 4;
