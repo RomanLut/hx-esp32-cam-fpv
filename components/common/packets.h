@@ -251,12 +251,12 @@ struct AirStats
     uint16_t inMavlinkRate; //b/s
     uint16_t outMavlinkRate; //b/s
 //25
-    uint8_t RCPeriodMaxMS;
+    uint8_t RCPeriodMax;  //0 - no RC Packets detected, <1...100 - value in ms, 101...254 - period = (v - 101) * 10
 //26
     uint8_t wifiChannel : 4; //1...14
     uint8_t resolution : 4;
 //27
-    uint8_t temperature : 7;  //degree C
+    uint8_t temperature : 7;  //degree C. 0 - does not have temp sensor.
     uint8_t overheatTrottling : 1;
 //28
     uint8_t suspend_ch : 5; //0 - disabled, 1...18

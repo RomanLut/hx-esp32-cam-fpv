@@ -99,11 +99,15 @@ static bool SDError = false;
 static uint16_t SDTotalSpaceGB16 = 0;
 static uint16_t SDFreeSpaceGB16 = 0;
 static uint8_t cam_ovf_count = 0;
+static float s_camera_temperature = 0;
 
 int32_t s_dbg;
 uint16_t s_framesCounter = 0;
 
 static bool s_initialized = false;
+
+static uint32_t s_last_rc_packet_tp = 0;
+
 
 #ifdef UART_MAVLINK
 
@@ -131,9 +135,7 @@ static bool s_camera_stopped_requested = false;
 
 static uint64_t s_shouldRestartRecording;
 
-#ifdef MAV2MSPRC
- HXMavlinkParser mavlinkParserIn(true);
-#endif 
+HXMavlinkParser mavlinkParserIn(true);
 
 //=============================================================================================
 //=============================================================================================
@@ -1597,7 +1599,6 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;        
 
-#ifdef MAV2MSPRC    
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
     for ( int i = 0; i < s; i++ )
     {
@@ -1606,15 +1607,22 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
         {
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
             {
-                const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
-                //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
-                g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+                uint32_t t = (uint32_t)millis();
+                int d = t - s_last_rc_packet_tp;
+                s_last_rc_packet_tp = t;
+                if ( d > s_stats.RCPeriodMaxMS ) 
+                {
+                    s_stats.RCPeriodMaxMS = d;
+                }
 
-                s_camera_stopped_requested = msg->chan12_raw > 1700;
+                //const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
+                //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
+                //g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+
+                //s_camera_stopped_requested = msg->chan12_raw > 1700;
             }
         }
     }
-#endif
 
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
@@ -1780,6 +1788,28 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.stats.SDFreeSpaceGB16 = SDFreeSpaceGB16;
     packet.stats.SDTotalSpaceGB16 = SDTotalSpaceGB16;
     packet.stats.curr_quality = s_quality;
+
+    packet.stats.temperature = (uint8_t)(s_camera_temperature + 0.5f);
+    packet.stats.overheatTrottling = 0;
+
+    if ( s_last_stats.RCPeriodMaxMS < 0 )
+    {
+        packet.stats.RCPeriodMax = 0;
+    }
+    else if ( s_last_stats.RCPeriodMaxMS == 0 )
+    {
+        packet.stats.RCPeriodMax = 1;
+    }
+    else if ( s_last_stats.RCPeriodMaxMS <= 100 )
+    {
+        packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS;
+    }
+    else 
+    {
+        //s_last_stats.RCPeriodMaxMS can not be > 1000
+        //1000/10 + 101 < 255
+        packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS / 10 + 101;   
+    }
 
 #ifdef SENSOR_OV5640
     packet.stats.isOV5640 = 1;
@@ -2747,8 +2777,7 @@ extern "C" void app_main()
             s_last_stats = s_stats;
             s_stats = Stats();
 
-            float t;
-            temperature_sensor_read(&t);
+            temperature_sensor_read(&s_camera_temperature);
 
             if ( s_camera_stopped_requested != s_camera_stopped )
             {

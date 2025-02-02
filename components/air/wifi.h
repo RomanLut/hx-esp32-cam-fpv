@@ -54,7 +54,7 @@ uint8_t getMinWlanOutgoingQueueUsageSeen();
 uint8_t getMaxWlanOutgoingQueueUsageFrame();
 uint8_t getMinWlanOutgoingQueueUsageFrame();
 
-
+//todo: global stats, not wifi only. Move to separate header.
 struct Stats
 {
     uint32_t wlan_data_sent = 0;
@@ -83,6 +83,8 @@ struct Stats
 
     uint16_t camera_frame_size_min;
     uint16_t camera_frame_size_max;
+
+    int RCPeriodMaxMS = -1;
 };
 
 extern Stats s_stats;
