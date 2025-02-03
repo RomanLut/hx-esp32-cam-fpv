@@ -1116,6 +1116,8 @@ int run(char* argv[])
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav  | ImGuiWindowFlags_NoFocusOnAppearing);
         {
 
+            g_osd.draw();
+
             {
                 //RC RSSI
                 char buf[32];
@@ -1680,6 +1682,17 @@ int run(char* argv[])
                         ImGui::Text("%d", s_last_gs_stats.brokenFrames);
                     }
 
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Temperature GS/Air");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d°C/%d°C", (int)(g_CPUTemp.getTemperature()+0.5f), (int)(s_last_airStats.temperature));
+                    }
+
                     ImGui::EndTable();
                 }
 
@@ -1757,7 +1770,6 @@ int run(char* argv[])
 
             }
 
-            g_osd.draw();
         }
         ImGui::End();
         ImGui::PopStyleVar(2);
