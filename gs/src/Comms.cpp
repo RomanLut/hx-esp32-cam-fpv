@@ -1383,7 +1383,8 @@ void Comms::setTxPower(int txPower)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)
     {
-        system(fmt::format("iw dev {} set txpower fixed {}", itf, txPower * 100 ).c_str());
+        //iw dev wlan1 set txpower fixed -4500
+        system(fmt::format("iw dev {} set txpower fixed {}", itf, -(txPower * 100) ).c_str());
     }
 }
 

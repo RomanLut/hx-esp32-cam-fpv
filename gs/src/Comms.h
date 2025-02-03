@@ -8,7 +8,7 @@
 #include "Clock.h"
 
 #define MIN_TX_POWER 5
-#define DEFAULT_TX_POWER 20
+#define DEFAULT_TX_POWER 45
 #define MAX_TX_POWER 71
 
 
