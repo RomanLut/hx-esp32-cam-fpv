@@ -19,7 +19,6 @@
 
 #include "packets.h"
 
-
 #define USE_MAVLINK
 
 //When enabled, it will output a 4Hz pulse (50ms ON, 200ms OFF) on GPIO 17. This can be used to blink a LED pointing inside the camera.
@@ -87,6 +86,7 @@ struct TGroundstationConfig
     int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
     bool vsync = true;
+    std::string txInterface = "";
 };
 
 extern TGroundstationConfig s_groundstation_config;

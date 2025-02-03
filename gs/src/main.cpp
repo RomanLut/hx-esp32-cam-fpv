@@ -234,7 +234,6 @@ static const Resolution resolutionsList[] = { Resolution::VGA16, Resolution::VGA
 #define RESOLUTOINS_LIST_SIZE 6
 
 std::unique_ptr<IHAL> s_hal;
-Comms s_comms;
 Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
@@ -2256,6 +2255,7 @@ void saveGroundStationConfig()
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
+    ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
     s_iniFile.write(ini);
 }
 
@@ -2671,9 +2671,25 @@ int main(int argc, const char* argv[])
         }
     }
 
+    s_groundstation_config.txInterface = ini["gs"]["tx_interface"];
+    if (s_groundstation_config.txInterface == "")  s_groundstation_config.txInterface = "auto";
+
     if ( ( tx_descriptor.interface == "auto" ) && ( rx_descriptor.interfaces.size() > 0 ) )
     {
-        tx_descriptor.interface = rx_descriptor.interfaces[0];
+        bool found = false;
+        for ( unsigned int i = 0; i < rx_descriptor.interfaces.size(); i++ )
+        {
+            if ( rx_descriptor.interfaces[i] == s_groundstation_config.txInterface )
+            {
+                tx_descriptor.interface = s_groundstation_config.txInterface;
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            tx_descriptor.interface = rx_descriptor.interfaces[0];
+        }
         printf("Using TX interface %s\n", tx_descriptor.interface.c_str());
     }
 

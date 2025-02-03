@@ -157,6 +157,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawSearchMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
+        case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -880,7 +881,7 @@ void OSDMenu::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
     for ( int i = 0; i <= MAX_TX_POWER - MIN_TX_POWER; i++ )
     {
         char buf[12];
-        sprintf(buf, "%d dBm", i + MIN_TX_POWER);
+        sprintf(buf, "%d", i + MIN_TX_POWER);
         if ( this->drawMenuItem( buf, i, true) )
         {
             if ( s_groundstation_config.txPower != (i + MIN_TX_POWER) )  
@@ -898,6 +899,45 @@ void OSDMenu::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
         this->goBack();
     }
 }
+
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "GS Settings -> TX Interface" );
+    ImGui::Spacing();
+
+    bool saveAndExit = false;
+
+    if ( this->drawMenuItem( "auto", 0) )
+    {
+        s_groundstation_config.txInterface = "auto";
+        saveAndExit = true;
+    }
+
+    auto rx_descriptor = s_comms.getRXDescriptor();
+
+    for ( unsigned int i = 0; i < rx_descriptor.interfaces.size(); i++ )
+    {
+        if ( this->drawMenuItem( rx_descriptor.interfaces[i].c_str(), i+1) )
+        {
+            s_groundstation_config.txInterface = rx_descriptor.interfaces[i];
+            saveAndExit = true;
+        }
+    }
+
+    if ( saveAndExit )
+    {
+        saveGroundStationConfig();
+    }
+
+    if ( saveAndExit || this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
 
 //=======================================================
 //=======================================================
@@ -982,8 +1022,17 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Power: %d dBm##4", s_groundstation_config.txPower);
+        sprintf(buf, "TX Interface: %s##4", s_groundstation_config.txInterface.c_str());
         if ( this->drawMenuItem( buf, 3) )
+        {
+            this->goForward( OSDMenuId::GSTxInterface, 0);
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "TX Power: %d##5", s_groundstation_config.txPower);
+        if ( this->drawMenuItem( buf, 4) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
         }
@@ -991,15 +1040,15 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Toggle Statistics");
-        if ( this->drawMenuItem( buf, 4) )
+        sprintf(buf, "Toggle Statistics##6");
+        if ( this->drawMenuItem( buf, 5) )
         {
             s_groundstation_config.stats = !s_groundstation_config.stats;
         }
     }
 
 
-    if ( this->drawMenuItem( "Exit To Shell", 5) )
+    if ( this->drawMenuItem( "Exit To Shell##7", 6) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
