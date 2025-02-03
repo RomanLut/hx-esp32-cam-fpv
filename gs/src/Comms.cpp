@@ -1381,12 +1381,12 @@ void Comms::setChannel(int ch)
 
 void Comms::setTxPower(int txPower)
 {
-    for (const auto& itf:m_rx_descriptor.interfaces)
+    for (const auto& itf:m_tx_descriptor.interfaces)
     {
         //iw dev wlan1 set txpower fixed -4500
         std::string s = fmt::format("iw dev {} set txpower fixed {}", itf, -(txPower * 100) );
         system(s.c_str());
-        printf(s.c_str());
+        printf("%s\n", s.c_str());
     }
 }
 
