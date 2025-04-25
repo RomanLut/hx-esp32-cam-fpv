@@ -17,6 +17,8 @@
 
 //#define DEBUG_PCAP
 
+Comms s_comms;
+
 static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
@@ -1396,6 +1398,11 @@ void Comms::setMonitorMode(const std::vector<std::string> interfaces)
         system(fmt::format("sudo iw dev {} set type monitor", itf).c_str());
         system(fmt::format("sudo ip link set {} up", itf).c_str());
     }
+}
+
+const Comms::RX_Descriptor& Comms::getRXDescriptor()
+{
+    return this->m_rx_descriptor;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////

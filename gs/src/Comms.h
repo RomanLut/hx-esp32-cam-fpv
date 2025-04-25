@@ -9,7 +9,7 @@
 
 #define MIN_TX_POWER 5
 #define DEFAULT_TX_POWER 45
-#define MAX_TX_POWER 71
+#define MAX_TX_POWER 63
 
 
 struct fec_t;
@@ -51,6 +51,8 @@ public:
     void setTxPower(int txPower); //MIN_TX_POWER...MAX_TX_POWER
     void setMonitorMode(const std::vector<std::string> interfaces);
 
+    const RX_Descriptor& getRXDescriptor();
+
     size_t get_data_rate() const;
     int get_input_dBm() const;
 
@@ -89,3 +91,5 @@ private:
     size_t m_data_stats_data_accumulated = 0;
     Clock::time_point m_data_stats_last_tp = Clock::now();
 };
+
+extern Comms s_comms;
