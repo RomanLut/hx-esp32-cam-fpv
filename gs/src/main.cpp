@@ -322,6 +322,9 @@ uint32_t s_avi_frameCnt;
 bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
+uint16_t s_gs_device_id;  //unique device id of this GS. 
+uint16_t s_connected_air_device_id = 0;  //air unit this GS is connected to currently.
+
 static HXMavlinkParser mavlinkParserIn(true);
 
 //===================================================================================
@@ -533,6 +536,8 @@ static void comms_thread_proc()
             config.ping = last_sent_ping; 
             config.type = Ground2Air_Header::Type::Config;
             config.size = sizeof(config);
+            config.airDeviceId = s_connected_air_device_id;
+            config.gsDeviceId = s_gs_device_id;
             config.crc = 0;  //do calculate crc with crc field = 0
             config.crc = crc8(0, &config, sizeof(config)); 
             s_comms.send(&config, sizeof(config), true);
@@ -589,7 +594,9 @@ static void comms_thread_proc()
             {
                 data.type = Ground2Air_Header::Type::Telemetry;
                 data.size = sizeof(Ground2Air_Header) + s_tlm_size;
-                data.crc = 0;
+                data.airDeviceId = s_connected_air_device_id;
+                data.gsDeviceId = s_gs_device_id;
+                data.crc = 0;  //calculate cc with crc filed = 0
                 data.crc = crc8(0, &data, data.size); 
                 s_comms.send(&data, data.size, true);
                 last_data_sent_tp = Clock::now();
@@ -2412,6 +2419,38 @@ bool findRXInterfaces(Comms::RX_Descriptor& rx_descriptor)
 
 //===================================================================================
 //===================================================================================
+uint16_t generate_device_id()
+{
+    std::ifstream file("/etc/machine-id");
+    std::string machine_id;
+
+    if (file.is_open())
+    {
+        std::getline(file, machine_id);
+        file.close();
+    }
+
+    uint16_t device_id = 0;
+    if (!machine_id.empty())
+    {
+        for (size_t i = 0; i < machine_id.size(); ++i)
+        {
+            device_id ^= (uint16_t)machine_id[i] << (i % 8);
+        }
+    }
+    else
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint16_t> dist(0, 0xFFFF);
+        device_id = dist(gen);
+    }
+
+    return device_id;
+}
+
+//===================================================================================
+//===================================================================================
 int main(int argc, const char* argv[])
 {
     init_crc8_table();
@@ -2439,6 +2478,18 @@ int main(int argc, const char* argv[])
     s_groundstation_config.stats = false;
 
     s_ground2air_config_packet.sessionId = (uint16_t)std::rand();
+
+    {
+        std::string& temp = ini["gs"]["gs_device_id"];
+        s_gs_device_id = (uint16_t)atoi(temp.c_str());
+        if (s_gs_device_id)
+        {
+            s_gs_device_id = generate_device_id();
+            saveGroundStationConfig();
+        }
+
+      printf("gs_device_id: 0x%04x\n", s_gs_device_id);
+    }
 
     {
         std::string& temp = ini["gs"]["wifi_channel"];
