@@ -6,7 +6,7 @@
 
 * Enable ssh in Ruby interface '''System\Network\Enable SSH'''
 
-* ssh to running Ruby GS. Credentials are ```pi/raspberry```
+* ssh to running Ruby GS. Credentials are ```radxa/radxa```
 
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
 
