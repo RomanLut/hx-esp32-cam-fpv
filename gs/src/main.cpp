@@ -1044,7 +1044,7 @@ float calcLossRatio( int outCount, int inCount)
 //===================================================================================
 void applyWifiChannel(Ground2Air_Config_Packet& config)
 {
-    config.wifi_channel = s_groundstation_config.wifi_channel;
+    config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
     s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
 }
 
@@ -1052,7 +1052,7 @@ void applyWifiChannel(Ground2Air_Config_Packet& config)
 //===================================================================================
 void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
 {
-    config.wifi_channel = s_groundstation_config.wifi_channel;
+    config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
     s_comms.setChannel(s_groundstation_config.wifi_channel);
 }
 
@@ -1515,7 +1515,7 @@ int run(char* argv[])
 
                         ImGui::TableSetColumnIndex(1);
 
-                        ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
+                        ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
                     }
 /*
                     {
@@ -1792,7 +1792,7 @@ int run(char* argv[])
             s_total_data/1024, 
             s_wifi_queue_min,s_wifi_queue_max,
             s_curr_quality,
-            rateName[(int)s_curr_wifi_rate], rateName[(int)config.wifi_rate]);
+            rateName[(int)s_curr_wifi_rate], rateName[(int)config.dataChannel.wifi_rate]);
 
             static const float SLIDER_WIDTH = 480.0f;
 
@@ -1800,18 +1800,18 @@ int run(char* argv[])
             ImGui::Begin(buf);
             {
                 {
-                    int value = config.wifi_power;
+                    int value = config.dataChannel.wifi_power;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Power", &value, 0, 20); 
-                    config.wifi_power = value;
+                    config.dataChannel.wifi_power = value;
                 }
                 {
-                    int value = (int)config.wifi_rate;
+                    int value = (int)config.dataChannel.wifi_rate;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
-                    if (config.wifi_rate != (WIFI_Rate)value) 
+                    if (config.dataChannel.wifi_rate != (WIFI_Rate)value) 
                     {
-                        config.wifi_rate = (WIFI_Rate)value;
+                        config.dataChannel.wifi_rate = (WIFI_Rate)value;
                         saveGround2AirConfig(config);
                     }
                 }
@@ -1835,12 +1835,12 @@ int run(char* argv[])
                     }
                 }
                 {
-                    int value = config.fec_codec_n;
+                    int value = config.dataChannel.fec_codec_n;
                     ImGui::SetNextItemWidth(SLIDER_WIDTH); 
                     ImGui::SliderInt("FEC_N", &value,FEC_K+1, FEC_N);
-                    if (config.fec_codec_n != (int8_t)value)
+                    if (config.dataChannel.fec_codec_n != (int8_t)value)
                     {
-                        config.fec_codec_n = (int8_t)value;
+                        config.dataChannel.fec_codec_n = (int8_t)value;
                         saveGround2AirConfig(config);
                     }
                 }
@@ -2020,12 +2020,12 @@ int run(char* argv[])
                 }
                 if ( ImGui::Button("Profile 500ms") )
                 {
-                    config.profile1_btn++;
+                    config.dataChannel.profile1_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Button("Profile 3s") )
                 {
-                    config.profile2_btn++;
+                    config.dataChannel.profile2_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
@@ -2038,7 +2038,7 @@ int run(char* argv[])
 
                 if ( ImGui::Button("Air Record") )
                 {
-                    config.air_record_btn++;
+                    config.dataChannel.air_record_btn++;
                 }
 
                 ImGui::SameLine();
@@ -2128,7 +2128,7 @@ int run(char* argv[])
 
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
         {
-            config.air_record_btn++;
+            config.dataChannel.air_record_btn++;
         }
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
@@ -2277,8 +2277,8 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["sharpness"] = std::to_string(config.camera.sharpness);
     ini["gs"]["vflip"] = std::to_string(config.camera.vflip ? 1 : 0);
     ini["gs"]["resolution"] = std::to_string((int)config.camera.resolution);
-    ini["gs"]["wifi_rate"] = std::to_string((int)config.wifi_rate);
-    ini["gs"]["fec_n"] = std::to_string((int)config.fec_codec_n);
+    ini["gs"]["wifi_rate"] = std::to_string((int)config.dataChannel.wifi_rate);
+    ini["gs"]["fec_n"] = std::to_string((int)config.dataChannel.fec_codec_n);
     ini["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
     ini["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     s_iniFile.write(ini);
@@ -2477,8 +2477,6 @@ int main(int argc, const char* argv[])
 
     s_groundstation_config.stats = false;
 
-    s_ground2air_config_packet.sessionId = (uint16_t)std::rand();
-
     {
         std::string& temp = ini["gs"]["gs_device_id"];
         s_gs_device_id = (uint16_t)atoi(temp.c_str());
@@ -2497,12 +2495,12 @@ int main(int argc, const char* argv[])
         if ((channel >= 1) && (channel <= 13) )
         {
             s_groundstation_config.wifi_channel = channel;
-            config.wifi_channel = channel;
+            config.dataChannel.wifi_channel = channel;
         }
         else
         {
             s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
-            config.wifi_channel = DEFAULT_WIFI_CHANNEL;
+            config.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
         }
     }
 
@@ -2566,12 +2564,12 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["wifi_rate"];
-        if (temp != "") s_ground2air_config_packet.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
+        if (temp != "") s_ground2air_config_packet.dataChannel.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
     }
 
     {
         std::string& temp = ini["gs"]["fec_n"];
-        if (temp != "") s_ground2air_config_packet.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
+        if (temp != "") s_ground2air_config_packet.dataChannel.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
     }
 
     {
@@ -2654,7 +2652,7 @@ int main(int argc, const char* argv[])
         {
             check_argval_int("ch");
             s_groundstation_config.wifi_channel = std::stoi(next);
-            config.wifi_channel = s_groundstation_config.wifi_channel;
+            config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
             i++;
         }
         else if(temp=="-w")
@@ -2744,9 +2742,9 @@ int main(int argc, const char* argv[])
         printf("Using TX interface %s\n", tx_descriptor.interface.c_str());
     }
 
-    rx_descriptor.coding_k = s_ground2air_config_packet.fec_codec_k;
+    rx_descriptor.coding_k = s_ground2air_config_packet.dataChannel.fec_codec_k;
     rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
-    rx_descriptor.mtu = s_ground2air_config_packet.fec_codec_mtu;
+    rx_descriptor.mtu = s_ground2air_config_packet.dataChannel.fec_codec_mtu;
 
     tx_descriptor.coding_k = 2;
     tx_descriptor.coding_n = 3;
