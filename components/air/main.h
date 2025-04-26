@@ -17,7 +17,6 @@
 
 #ifdef BOARD_ESP32CAM
 
-//---- CONFIG 2 -----
 //   Debug log on pin 33 (existing LED)
 //   UART0:  Mavlink RX=3 TX=1 
 //   UART2:  MSP-OSD RX=13 TX=12
@@ -79,7 +78,6 @@
 
 #ifdef BOARD_XIAOS3SENSE
 
-//---- CONFIG 1 -----
 //  Debug is on USB UART
 //  UART1:  MSP-OSD  RX=D3 TX=D1
 //  UART2:  MAVLINK  RX=D6 TX=D&

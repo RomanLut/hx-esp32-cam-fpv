@@ -20,6 +20,7 @@
 #include "esp_private/wifi.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
+#include "esp_mac.h"
 //#include "bt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -108,6 +109,8 @@ static bool s_initialized = false;
 
 static uint32_t s_last_rc_packet_tp = 0;
 
+static uint16_t s_air_device_id;
+static uint16_t s_connected_gs_device_id = 0;
 
 #ifdef UART_MAVLINK
 
@@ -1328,6 +1331,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     if (dst.wifi_rate != src.wifi_rate)
     {
         LOG("Wifi rate changed from %d to %d\n", (int)dst.wifi_rate, (int)src.wifi_rate);
+        nvs_args_set("rate", (uint32_t)src.wifi_rate);
         ESP_ERROR_CHECK(set_wifi_fixed_rate(src.wifi_rate));
     }
     if (dst.wifi_power != src.wifi_power)
@@ -1338,9 +1342,8 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     if (dst.fec_codec_n != src.fec_codec_n)
     {
         LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.fec_codec_k, (int)dst.fec_codec_n, (int)dst.fec_codec_mtu, (int)src.fec_codec_k, (int)src.fec_codec_n, (int)src.fec_codec_mtu);
-        {
-            s_fec_encoder.switch_n( src.fec_codec_n );
-        }
+        nvs_args_set("fec_n", src.fec_codec_n);
+        s_fec_encoder.switch_n( src.fec_codec_n );
     }
     if (dst.wifi_channel != src.wifi_channel)
     {
@@ -1659,6 +1662,8 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
     packet.size = s_video_frame_data_size + sizeof(Air2Ground_Video_Packet);
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
+    packet.airDeviceId = s_air_device_id;
+    packet.gsDeviceId = s_connected_gs_device_id;
     packet.crc = 0;
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_Video_Packet));
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -1716,6 +1721,8 @@ IRAM_ATTR void send_air2ground_data_packet()
     packet.size = s_mavlinkOutBufferCount + sizeof(Air2Ground_Data_Packet);
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
+    packet.airDeviceId = s_air_device_id;
+    packet.gsDeviceId = s_connected_gs_device_id;
     packet.crc = 0;
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_Data_Packet));
 
@@ -1753,6 +1760,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.size = sizeof(Air2Ground_OSD_Packet);
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
+    packet.airDeviceId = s_air_device_id;
+    packet.gsDeviceId = s_connected_gs_device_id;
     packet.crc = 0;
 
 #ifdef DVR_SUPPORT
@@ -2552,6 +2561,110 @@ static void print_cpu_usage()
 
 //=============================================================================================
 //=============================================================================================
+uint16_t generateDeviceId() 
+{
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA); // Read base MAC address
+    uint16_t id = 0;
+
+    // Fold MAC address into 16 bits
+    id ^= (mac[0] << 8) | mac[1];
+    id ^= (mac[2] << 8) | mac[3];
+    id ^= (mac[4] << 8) | mac[5];
+
+    return id;
+}
+//=============================================================================================
+//=============================================================================================
+void readConfig()
+{
+    s_air_device_id = (uint16_t)nvs_args_read("deviceId");
+    if( (s_air_device_id == 0xffff) )
+    {
+        s_air_device_id = generateDeviceId();
+        nvs_args_set("deviceId", s_air_device_id);
+    }
+
+    s_ground2air_config_packet.wifi_channel = (uint16_t)nvs_args_read("channel");
+    if((s_ground2air_config_packet.wifi_channel < 1)  || (s_ground2air_config_packet.wifi_channel > 13))
+    {
+        s_ground2air_config_packet.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        nvs_args_set("channel", s_ground2air_config_packet.wifi_channel);
+    }
+
+    s_ground2air_config_packet.wifi_rate = (WIFI_Rate)nvs_args_read("rate");
+    if( s_ground2air_config_packet.wifi_rate > WIFI_Rate::RATE_N_72M_MCS7_S )
+    {
+        s_ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+        nvs_args_set("rate", (uint32_t)s_ground2air_config_packet.wifi_rate);
+    }
+
+    s_ground2air_config_packet.fec_codec_k = (uint8_t)nvs_args_read("fec_k");
+    s_ground2air_config_packet.fec_codec_n = (uint8_t)nvs_args_read("fec_n");
+
+    if( 
+        (s_ground2air_config_packet.fec_codec_k == 0) ||
+        (s_ground2air_config_packet.fec_codec_k > 12) || 
+        (s_ground2air_config_packet.fec_codec_n == 0) ||
+        (s_ground2air_config_packet.fec_codec_n > 12) ||
+        (s_ground2air_config_packet.fec_codec_k >= s_ground2air_config_packet.fec_codec_n) 
+        )
+    {
+        s_ground2air_config_packet.fec_codec_k = 6;
+        s_ground2air_config_packet.fec_codec_n = 8;
+        nvs_args_set("fec_k", s_ground2air_config_packet.fec_codec_k);
+        nvs_args_set("fec_n", s_ground2air_config_packet.fec_codec_n);
+    }
+
+    s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution");
+    if ( s_ground2air_config_packet.camera.resolution > Resolution::HD  )
+    {
+        s_ground2air_config_packet.camera.resolution = Resolution::SVGA;
+        nvs_args_set("resolution", (uint32_t)s_ground2air_config_packet.camera.resolution);
+    }
+
+    s_ground2air_config_packet.camera.brightness = (int8_t)nvs_args_read("brightness");
+    if ( ( s_ground2air_config_packet.camera.brightness < -2 ) || ( s_ground2air_config_packet.camera.brightness > 2 ) )
+    {
+        s_ground2air_config_packet.camera.brightness = 0;
+        nvs_args_set("brightness", s_ground2air_config_packet.camera.brightness);
+    }
+
+    s_ground2air_config_packet.camera.contrast = (int8_t)nvs_args_read("contrast");
+    if ((s_ground2air_config_packet.camera.contrast < -2) || (s_ground2air_config_packet.camera.contrast > 2))
+    {
+        s_ground2air_config_packet.camera.contrast = 0; // Default contrast
+        nvs_args_set("contrast", s_ground2air_config_packet.camera.contrast);
+    }
+
+    s_ground2air_config_packet.camera.saturation = (int8_t)nvs_args_read("saturation");
+    if ((s_ground2air_config_packet.camera.saturation < -2) || (s_ground2air_config_packet.camera.saturation > 2))
+    {
+        s_ground2air_config_packet.camera.saturation = 1; // Default saturation
+        nvs_args_set("saturation", s_ground2air_config_packet.camera.saturation);
+    }
+
+    s_ground2air_config_packet.camera.sharpness = (int8_t)nvs_args_read("sharpness");
+    if ((s_ground2air_config_packet.camera.sharpness < -2) || (s_ground2air_config_packet.camera.sharpness > 3))
+    {
+        s_ground2air_config_packet.camera.sharpness = 0; // Default sharpness
+        nvs_args_set("sharpness", s_ground2air_config_packet.camera.sharpness);
+    }
+
+    s_ground2air_config_packet.camera.ae_level = (int8_t)nvs_args_read("ae_level");
+    if ((s_ground2air_config_packet.camera.ae_level < -2) || (s_ground2air_config_packet.camera.ae_level > 2))
+    {
+        s_ground2air_config_packet.camera.ae_level = 1; // Default ae_level
+        nvs_args_set("ae_level", s_ground2air_config_packet.camera.ae_level);
+    }
+
+    s_ground2air_config_packet.camera.vflip = nvs_args_read("vflip") == 1;
+    s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read("ov2640hfps") == 1;
+    s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read("ov5640hfps") == 1;
+}
+
+//=============================================================================================
+//=============================================================================================
 extern "C" void app_main()
 {
     //esp_task_wdt_init();
@@ -2618,12 +2731,7 @@ extern "C" void app_main()
 
     nvs_args_init();
 
-    s_ground2air_config_packet.wifi_channel = (uint16_t)nvs_args_read("channel");
-    if((s_ground2air_config_packet.wifi_channel < 1)  || (s_ground2air_config_packet.wifi_channel > 13))
-    {
-        s_ground2air_config_packet.wifi_channel = DEFAULT_WIFI_CHANNEL;
-        nvs_args_set("channel", DEFAULT_WIFI_CHANNEL);
-    }
+    readConfig();
 
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
@@ -2646,7 +2754,7 @@ extern "C" void app_main()
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    //run file server i rec button is pressed on startup
+    //run file server if rec button is pressed on startup
     if ( getButtonState() )
     {
         LOG("Starting file server...");

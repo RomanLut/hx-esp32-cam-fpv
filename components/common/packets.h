@@ -94,6 +94,7 @@ struct Ground2Air_Header
     {
         Telemetry,
         Config,
+        Connect  //Packet is sent to initialize connection. GS will send this packet instead of Config Packet untill any packet with GS id is received from Air unit
         //todo: implement config and telemetry packet for uplink telemetry
     };
 
@@ -101,8 +102,16 @@ struct Ground2Air_Header
     uint32_t size = 0;
     uint8_t crc = 0;
     uint8_t packet_version = PACKET_VERSION;
+    uint16_t airDeviceId; //unique id of target AIR unit. 
+    uint16_t gsDeviceId;  //ID of GS. Assigned permanently on first boot.
+
 };
 
+//======================================================
+//======================================================
+struct Ground2Air_Connect_Packet : Ground2Air_Header
+{
+};
 
 constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
 
@@ -184,6 +193,8 @@ struct Air2Ground_Header
     uint8_t pong = 0; //used for latency measurement
     uint8_t version; //PACKET_VERSION
     uint8_t crc = 0;
+    uint16_t airDeviceId; //unique id of this AIR unit. Assigned permanently on first boot.
+    uint16_t gsDeviceId;  //ID of GS this unit is connected to cuurently. 0 - not connected currently. Will accept 
 };
 
 //======================================================
@@ -197,7 +208,7 @@ struct Air2Ground_Video_Packet : Air2Ground_Header
     //data follows
 };
 
-static_assert(sizeof(Air2Ground_Video_Packet) == 14, "");
+static_assert(sizeof(Air2Ground_Video_Packet) == 18, "");
 
 //======================================================
 //======================================================
