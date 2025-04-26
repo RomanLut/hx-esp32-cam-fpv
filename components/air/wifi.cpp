@@ -34,8 +34,8 @@ uint8_t s_wlan_outgoing_queue_usage = 0;
 
 static void (*ground2air_config_packet_handler)(Ground2Air_Config_Packet& src)=nullptr;
 static void (*ground2air_data_packet_handler)(Ground2Air_Data_Packet& src)=nullptr;
-WIFI_Rate s_wlan_rate = s_ground2air_config_packet.wifi_rate;
-float s_wlan_power_dBm = s_ground2air_config_packet.wifi_power;
+WIFI_Rate s_wlan_rate = s_ground2air_config_packet.dataChannel.wifi_rate;
+float s_wlan_power_dBm = s_ground2air_config_packet.dataChannel.wifi_power;
 
 //===========================================================================================
 //===========================================================================================
@@ -77,7 +77,7 @@ IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
 //===========================================================================================
 IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 {
-    if (s_ground2air_config_packet.wifi_power == 0) return true;
+    if (s_ground2air_config_packet.dataChannel.wifi_power == 0) return true;
 
     bool res = true;
 
@@ -323,7 +323,7 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     init_queues(WLAN_INCOMING_BUFFER_SIZE, WLAN_OUTGOING_BUFFER_SIZE);
 
     //~30kb + ~65KB PSRAM
-    setup_fec(s_ground2air_config_packet.fec_codec_k, s_ground2air_config_packet.fec_codec_n, s_ground2air_config_packet.fec_codec_mtu,
+    setup_fec(s_ground2air_config_packet.dataChannel.fec_codec_k, s_ground2air_config_packet.dataChannel.fec_codec_n, s_ground2air_config_packet.dataChannel.fec_codec_mtu,
                 add_to_wlan_outgoing_queue,add_to_wlan_incoming_queue);
 
 

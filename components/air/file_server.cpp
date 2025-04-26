@@ -353,7 +353,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         cJSON *root;
         root = cJSON_CreateObject();
 
-        snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.wifi_channel);
+        snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
         cJSON_AddStringToObject(root,"channel",channel_str);
         cJSON_AddStringToObject(root,"default_dvr","false");
 
@@ -368,7 +368,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         cJSON *root = cJSON_Parse(buf);
         uint16_t channel = atoi(cJSON_GetStringValue(cJSON_GetObjectItem(root,"channel")));
         nvs_args_set("channel",channel);
-        s_ground2air_config_packet.wifi_channel = channel;
+        s_ground2air_config_packet.dataChannel.wifi_channel = channel;
         cJSON_Delete(root);
     }
 

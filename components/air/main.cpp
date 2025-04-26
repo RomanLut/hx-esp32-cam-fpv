@@ -61,6 +61,7 @@
 
 static int s_stats_last_tp = -10000;
 static int s_last_osd_packet_tp = -10000;
+static int s_last_config_packet_tp = -10000;
 
 #define MJPEG_PATTERN_SIZE 512 
 
@@ -156,7 +157,9 @@ void initialize_status_led()
 #endif    
 }
 
+#ifdef ESP32CAM_FLASH_LED_PIN
 static bool s_last_flash_led_state = true;
+#endif
 
 //=============================================================================================
 //=============================================================================================
@@ -1320,6 +1323,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
 
+/*
     if (dst.sessionId != src.sessionId)
     {
         dst.sessionId = src.sessionId;
@@ -1327,29 +1331,30 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         dst.profile1_btn = src.profile1_btn;
         dst.profile2_btn = src.profile2_btn;
     }
+*/
 
-    if (dst.wifi_rate != src.wifi_rate)
+    if (dst.dataChannel.wifi_rate != src.dataChannel.wifi_rate)
     {
-        LOG("Wifi rate changed from %d to %d\n", (int)dst.wifi_rate, (int)src.wifi_rate);
-        nvs_args_set("rate", (uint32_t)src.wifi_rate);
-        ESP_ERROR_CHECK(set_wifi_fixed_rate(src.wifi_rate));
+        LOG("Wifi rate changed from %d to %d\n", (int)dst.dataChannel.wifi_rate, (int)src.dataChannel.wifi_rate);
+        nvs_args_set("rate", (uint32_t)src.dataChannel.wifi_rate);
+        ESP_ERROR_CHECK(set_wifi_fixed_rate(src.dataChannel.wifi_rate));
     }
-    if (dst.wifi_power != src.wifi_power)
+    if (dst.dataChannel.wifi_power != src.dataChannel.wifi_power)
     {
-        LOG("Wifi power changed from %d to %d\n", (int)dst.wifi_power, (int)src.wifi_power);
-        ESP_ERROR_CHECK(set_wlan_power_dBm(src.wifi_power));
+        LOG("Wifi power changed from %d to %d\n", (int)dst.dataChannel.wifi_power, (int)src.dataChannel.wifi_power);
+        ESP_ERROR_CHECK(set_wlan_power_dBm(src.dataChannel.wifi_power));
     }
-    if (dst.fec_codec_n != src.fec_codec_n)
+    if (dst.dataChannel.fec_codec_n != src.dataChannel.fec_codec_n)
     {
-        LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.fec_codec_k, (int)dst.fec_codec_n, (int)dst.fec_codec_mtu, (int)src.fec_codec_k, (int)src.fec_codec_n, (int)src.fec_codec_mtu);
-        nvs_args_set("fec_n", src.fec_codec_n);
-        s_fec_encoder.switch_n( src.fec_codec_n );
+        LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.dataChannel.fec_codec_k, (int)dst.dataChannel.fec_codec_n, (int)dst.dataChannel.fec_codec_mtu, (int)src.dataChannel.fec_codec_k, (int)src.dataChannel.fec_codec_n, (int)src.dataChannel.fec_codec_mtu);
+        nvs_args_set("fec_n", src.dataChannel.fec_codec_n);
+        s_fec_encoder.switch_n( src.dataChannel.fec_codec_n );
     }
-    if (dst.wifi_channel != src.wifi_channel)
+    if (dst.dataChannel.wifi_channel != src.dataChannel.wifi_channel)
     {
-        LOG("Wifi channel changed from %d to %d\n", (int)dst.wifi_channel, (int)src.wifi_channel);
-        nvs_args_set("channel", src.wifi_channel);
-        ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.wifi_channel, WIFI_SECOND_CHAN_NONE));
+        LOG("Wifi channel changed from %d to %d\n", (int)dst.dataChannel.wifi_channel, (int)src.dataChannel.wifi_channel);
+        nvs_args_set("channel", src.dataChannel.wifi_channel);
+        ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.dataChannel.wifi_channel, WIFI_SECOND_CHAN_NONE));
     }
 
     if (dst.camera.fps_limit != src.camera.fps_limit)
@@ -1363,14 +1368,14 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 
     if ( s_restart_time == 0 )
     {
-        if ( dst.air_record_btn != src.air_record_btn )
+        if ( dst.dataChannel.air_record_btn != src.dataChannel.air_record_btn )
         {
             s_air_record = !s_air_record;
-            dst.air_record_btn = src.air_record_btn;
+            dst.dataChannel.air_record_btn = src.dataChannel.air_record_btn;
         }
 
 #if defined(ENABLE_PROFILER)
-        if ( dst.profile1_btn != src.profile1_btn )
+        if ( dst.dataChannel.profile1_btn != src.dataChannel.profile1_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1384,10 +1389,10 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
                 LOG("Profiler started!\n");
                 s_profiler.start(500);
             }
-            dst.profile1_btn = src.profile2_btn;
+            dst.dataChannel.profile1_btn = src.dataChannel.profile2_btn;
         }
 
-        if ( dst.profile2_btn != src.profile2_btn )
+        if ( dst.dataChannel.profile2_btn != src.dataChannel.profile2_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1401,7 +1406,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
                 LOG("Profiler started!\n");
                 s_profiler.start(3000);
             }
-            dst.profile2_btn = src.profile2_btn;
+            dst.dataChannel.profile2_btn = src.dataChannel.profile2_btn;
         }
 #endif
     }
@@ -1750,7 +1755,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 {
     uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
 
-    if(!packet_data){
+    if(!packet_data)
+    {
         LOG("no data buf!\n");
         return ;
     }
@@ -1841,6 +1847,39 @@ IRAM_ATTR void send_air2ground_osd_packet()
     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
     
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
+
+    if (!s_fec_encoder.flush_encode_packet(true))
+    {
+        LOG("Fec codec busy\n");
+        s_stats.wlan_error_count++;
+#ifdef PROFILE_CAMERA_DATA    
+        s_profiler.toggle(PF_CAMERA_FEC_OVF);
+#endif
+    }
+}
+
+//=============================================================================================
+//=============================================================================================
+IRAM_ATTR void send_air2ground_config_packet()
+{
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    if( !packet_data )
+    {
+        LOG("no data buf!\n");
+        return;
+    }
+
+    Air2Ground_Config_Packet& packet = *(Air2Ground_Config_Packet*)packet_data;
+    packet.type = Air2Ground_Header::Type::Config;
+    packet.size = sizeof(Air2Ground_Config_Packet);
+    packet.dataChannel = s_ground2air_config_packet.dataChannel;
+    packet.camera = s_ground2air_config_packet.camera;
+    packet.version = PACKET_VERSION;
+    packet.airDeviceId = s_air_device_id;
+    packet.gsDeviceId = s_connected_gs_device_id;
+
+    packet.crc = 0;
+    packet.crc = crc8(0, &packet, sizeof(Air2Ground_Config_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
     {
@@ -1947,7 +1986,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 #endif
 
     //decrease available data rate using FEC codec parameters
-    int FECbandwidth = rateBandwidth * s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
+    int FECbandwidth = rateBandwidth * s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
 
     if ( s_air_record )
     {
@@ -1980,7 +2019,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     //k2 - max frame size which do not overload wifi output queue
     //wifi output queue should have space to hold frame data and fec data
-    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.fec_codec_k / s_ground2air_config_packet.fec_codec_n;
+    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
     //queue is emptied by tx thread constantly so we can assume virtually "larger buffer"
     safe_frame_size += FECbandwidth / fps; 
     safe_frame_size = safe_frame_size * 7 / 10;  //assume next frame can suddenly increase is size by 30%
@@ -2429,6 +2468,14 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef UART_MAVLINK
                     send_air2ground_data_packet();
 #endif
+
+                    int64_t dt = millis() - s_last_config_packet_tp;
+                    if ( dt > 500 ) 
+                    {
+                        s_last_config_packet_tp = millis();
+                        send_air2ground_config_packet();
+                    }
+
                 }
 
                 s_video_frame_index++;
@@ -2584,36 +2631,37 @@ void readConfig()
         s_air_device_id = generateDeviceId();
         nvs_args_set("deviceId", s_air_device_id);
     }
+    LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.wifi_channel = (uint16_t)nvs_args_read("channel");
-    if((s_ground2air_config_packet.wifi_channel < 1)  || (s_ground2air_config_packet.wifi_channel > 13))
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read("channel");
+    if((s_ground2air_config_packet.dataChannel.wifi_channel < 1)  || (s_ground2air_config_packet.dataChannel.wifi_channel > 13))
     {
-        s_ground2air_config_packet.wifi_channel = DEFAULT_WIFI_CHANNEL;
-        nvs_args_set("channel", s_ground2air_config_packet.wifi_channel);
+        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
-    s_ground2air_config_packet.wifi_rate = (WIFI_Rate)nvs_args_read("rate");
-    if( s_ground2air_config_packet.wifi_rate > WIFI_Rate::RATE_N_72M_MCS7_S )
+    s_ground2air_config_packet.dataChannel.wifi_rate = (WIFI_Rate)nvs_args_read("rate");
+    if( s_ground2air_config_packet.dataChannel.wifi_rate > WIFI_Rate::RATE_N_72M_MCS7_S )
     {
-        s_ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
-        nvs_args_set("rate", (uint32_t)s_ground2air_config_packet.wifi_rate);
+        s_ground2air_config_packet.dataChannel.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+        nvs_args_set("rate", (uint32_t)s_ground2air_config_packet.dataChannel.wifi_rate);
     }
 
-    s_ground2air_config_packet.fec_codec_k = (uint8_t)nvs_args_read("fec_k");
-    s_ground2air_config_packet.fec_codec_n = (uint8_t)nvs_args_read("fec_n");
+    s_ground2air_config_packet.dataChannel.fec_codec_k = (uint8_t)nvs_args_read("fec_k");
+    s_ground2air_config_packet.dataChannel.fec_codec_n = (uint8_t)nvs_args_read("fec_n");
 
     if( 
-        (s_ground2air_config_packet.fec_codec_k == 0) ||
-        (s_ground2air_config_packet.fec_codec_k > 12) || 
-        (s_ground2air_config_packet.fec_codec_n == 0) ||
-        (s_ground2air_config_packet.fec_codec_n > 12) ||
-        (s_ground2air_config_packet.fec_codec_k >= s_ground2air_config_packet.fec_codec_n) 
+        (s_ground2air_config_packet.dataChannel.fec_codec_k == 0) ||
+        (s_ground2air_config_packet.dataChannel.fec_codec_k > 12) || 
+        (s_ground2air_config_packet.dataChannel.fec_codec_n == 0) ||
+        (s_ground2air_config_packet.dataChannel.fec_codec_n > 12) ||
+        (s_ground2air_config_packet.dataChannel.fec_codec_k >= s_ground2air_config_packet.dataChannel.fec_codec_n) 
         )
     {
-        s_ground2air_config_packet.fec_codec_k = 6;
-        s_ground2air_config_packet.fec_codec_n = 8;
-        nvs_args_set("fec_k", s_ground2air_config_packet.fec_codec_k);
-        nvs_args_set("fec_n", s_ground2air_config_packet.fec_codec_n);
+        s_ground2air_config_packet.dataChannel.fec_codec_k = 6;
+        s_ground2air_config_packet.dataChannel.fec_codec_n = 8;
+        nvs_args_set("fec_k", s_ground2air_config_packet.dataChannel.fec_codec_k);
+        nvs_args_set("fec_n", s_ground2air_config_packet.dataChannel.fec_codec_n);
     }
 
     s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution");
@@ -2680,8 +2728,7 @@ extern "C" void app_main()
 
     s_ground2air_config_packet.type = Ground2Air_Header::Type::Config;
     s_ground2air_config_packet.size = sizeof(s_ground2air_config_packet);
-    s_ground2air_config_packet.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
-    s_ground2air_config_packet.sessionId = (uint16_t)esp_random();
+    s_ground2air_config_packet.dataChannel.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
 
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
@@ -2734,7 +2781,7 @@ extern "C" void app_main()
     readConfig();
 
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
-    setup_wifi(s_ground2air_config_packet.wifi_rate, s_ground2air_config_packet.wifi_channel, s_ground2air_config_packet.wifi_power, packet_received_cb);
+    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
 
     //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
     init_camera();
@@ -2841,7 +2888,7 @@ extern "C" void app_main()
     set_ground2air_config_packet_handler(handle_ground2air_config_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
-    LOG("WIFI channel: %d\n", s_ground2air_config_packet.wifi_channel );
+    LOG("WIFI channel: %d\n", s_ground2air_config_packet.dataChannel.wifi_channel );
 
     temperature_sensor_init();
 

@@ -88,6 +88,58 @@ extern TVMode vmodes[];
 
 //======================================================
 //======================================================
+//Description of some settings:
+//https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
+struct CameraConfig
+{
+    Resolution resolution = Resolution::SVGA;
+    uint8_t fps_limit = 60;
+    uint8_t quality = 0;//0 - 63  0-auto
+    int8_t brightness = 0;//-2 - 2
+    int8_t contrast = 0;//-2 - 2
+    int8_t saturation = 1;//-2 - 2
+    int8_t sharpness = 0;//-2 - 3
+    uint8_t denoise = 0;  //0..8, ov5640 only
+    uint8_t special_effect = 0;//0 - 6
+    bool awb = true;
+    bool awb_gain = true;
+    uint8_t wb_mode = 0;//0 - 4
+    bool aec = true; //automatic exposure control
+    bool aec2 = true; //enable aec DSP (better processing?). "Nigth mode" for ov5640.
+    int8_t ae_level = 1;//-2 - 2, for aec=true
+    uint16_t aec_value = 204;//0 - 1200 ISO, for aec=false
+    bool agc = true;  //automatic gain control
+    uint8_t agc_gain = 0;//30 - 6, for agc=false
+    uint8_t gainceiling = 0;//0 - 6, for agc=true. 0=2x, 1=4x, 2=8x,3=16x,4=32x,5=64x,6=128x
+    bool bpc = true;
+    bool wpc = true;
+    bool raw_gma = true;
+    bool lenc = true;
+    bool hmirror = false;
+    bool vflip = false;
+    bool dcw = true;
+    bool ov2640HighFPS = false;
+    bool ov5640HighFPS = false;
+    bool ov5640NightMode = false;
+};
+
+//======================================================
+//======================================================
+struct DataChannelConfig
+{
+    int8_t wifi_power = 20;//dBm
+    WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
+    uint8_t fec_codec_k = FEC_K;
+    uint8_t fec_codec_n = FEC_N;
+    uint16_t fec_codec_mtu = AIR2GROUND_MTU;
+    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+};
+
+//======================================================
+//======================================================
 struct Ground2Air_Header
 {
     enum class Type : uint8_t
@@ -128,52 +180,9 @@ static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 struct Ground2Air_Config_Packet : Ground2Air_Header
 {
     uint8_t ping = 0; //used for latency measurement
-    int8_t wifi_power = 20;//dBm
-    WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
-    uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
-    uint8_t fec_codec_k = FEC_K;
-    uint8_t fec_codec_n = FEC_N;
-    uint16_t fec_codec_mtu = AIR2GROUND_MTU;
-    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
-    uint16_t sessionId;  //assigned random number on boot on each side. Used to recognise that either GS or Air unit has rebooted
 
-    //Description of some settings:
-    //https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
-    struct Camera
-    {
-        Resolution resolution = Resolution::SVGA;
-        uint8_t fps_limit = 60;
-        uint8_t quality = 0;//0 - 63  0-auto
-        int8_t brightness = 0;//-2 - 2
-        int8_t contrast = 0;//-2 - 2
-        int8_t saturation = 1;//-2 - 2
-        int8_t sharpness = 0;//-2 - 3
-        uint8_t denoise = 0;  //0..8, ov5640 only
-        uint8_t special_effect = 0;//0 - 6
-        bool awb = true;
-        bool awb_gain = true;
-        uint8_t wb_mode = 0;//0 - 4
-        bool aec = true; //automatic exposure control
-        bool aec2 = true; //enable aec DSP (better processing?). "Nigth mode" for ov5640.
-        int8_t ae_level = 1;//-2 - 2, for aec=true
-        uint16_t aec_value = 204;//0 - 1200 ISO, for aec=false
-        bool agc = true;  //automatic gain control
-        uint8_t agc_gain = 0;//30 - 6, for agc=false
-        uint8_t gainceiling = 0;//0 - 6, for agc=true. 0=2x, 1=4x, 2=8x,3=16x,4=32x,5=64x,6=128x
-        bool bpc = true;
-        bool wpc = true;
-        bool raw_gma = true;
-        bool lenc = true;
-        bool hmirror = false;
-        bool vflip = false;
-        bool dcw = true;
-        bool ov2640HighFPS = false;
-        bool ov5640HighFPS = false;
-        bool ov5640NightMode = false;
-    };
-    Camera camera;
+    CameraConfig camera;
+    DataChannelConfig dataChannel;
 };
 static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 
@@ -185,7 +194,8 @@ struct Air2Ground_Header
     {
         Video,
         Telemetry,
-        OSD
+        OSD,
+        Config
     };
 
     Type type = Type::Video; 
@@ -196,6 +206,16 @@ struct Air2Ground_Header
     uint16_t airDeviceId; //unique id of this AIR unit. Assigned permanently on first boot.
     uint16_t gsDeviceId;  //ID of GS this unit is connected to cuurently. 0 - not connected currently. Will accept 
 };
+
+//======================================================
+//======================================================
+struct Air2Ground_Config_Packet : Air2Ground_Header
+{
+    CameraConfig camera;
+    DataChannelConfig dataChannel;
+};
+
+static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MTU, "");
 
 //======================================================
 //======================================================
