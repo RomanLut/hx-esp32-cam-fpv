@@ -144,6 +144,7 @@ extern Clock::time_point s_last_stats_packet_tp;
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);
 extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
 extern void applyGSTxPower(Ground2Air_Config_Packet& config);
+extern void airUnpair();
 
 extern const char* resolutionName2640[];
 extern const char* resolutionName2640Hi[];

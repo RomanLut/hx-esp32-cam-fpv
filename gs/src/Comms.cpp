@@ -442,7 +442,6 @@ bool Comms::process_rx_packet(PCap& pcap)
         prh.input_dBm = -1000;
         while (ieee80211_radiotap_iterator_next(&rti) == 0)
         {
-
             switch (rti.this_arg_index)
             {
             case IEEE80211_RADIOTAP_RATE:
@@ -501,6 +500,12 @@ bool Comms::process_rx_packet(PCap& pcap)
         {
             LOGW("invalid checksum.");
             return true;
+        }
+
+        //ignore packets from neightbour channels
+        if ( prh.channel != s_groundstation_config.wifi_channel )
+        {
+            return true; 
         }
 
         {
