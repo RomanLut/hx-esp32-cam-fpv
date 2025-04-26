@@ -186,6 +186,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     {
         if ( this->drawMenuItem( "Search...", 0) )
         {
+            airUnpair();
             this->search_tp = Clock::now() - std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
             this->searchDone = false;
             this->goForward( OSDMenuId::Search, 0);
