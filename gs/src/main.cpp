@@ -322,7 +322,6 @@ uint32_t s_avi_frameCnt;
 bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
-uint16_t s_gs_device_id;  //unique device id of this GS. 
 uint16_t s_connected_air_device_id = 0;  //air unit this GS is connected to currently.
 bool s_got_config_packet = false;
 bool s_accept_config_packet = false;
@@ -492,12 +491,14 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
-            LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{},vfps:{}", sent_count, total_data, in_tlm_size, out_tlm_size,
+            LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}", 
+                sent_count, total_data, in_tlm_size, out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
                 ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
-                video_fps);
+                video_fps,
+                s_connected_air_device_id, s_groundstation_config.deviceId);
 
             s_total_data = total_data;
 
@@ -541,7 +542,7 @@ static void comms_thread_proc()
                 config.type = Ground2Air_Header::Type::Config;
                 config.size = sizeof(config);
                 config.airDeviceId = s_connected_air_device_id;
-                config.gsDeviceId = s_gs_device_id;
+                config.gsDeviceId = s_groundstation_config.deviceId;
                 config.crc = 0;  //do calculate crc with crc field = 0
                 config.crc = crc8(0, &config, sizeof(config)); 
                 s_comms.send(&config, sizeof(config), true);
@@ -552,7 +553,7 @@ static void comms_thread_proc()
                 ground2air_connect_packet.type = Ground2Air_Header::Type::Connect;
                 ground2air_connect_packet.size = sizeof(ground2air_connect_packet);
                 ground2air_connect_packet.airDeviceId = 0;
-                ground2air_connect_packet.gsDeviceId = s_gs_device_id;
+                ground2air_connect_packet.gsDeviceId = s_groundstation_config.deviceId;
                 ground2air_connect_packet.crc = 0;  //do calculate crc with crc field = 0
                 ground2air_connect_packet.crc = crc8(0, &ground2air_connect_packet, sizeof(ground2air_connect_packet)); 
                 s_comms.send(&ground2air_connect_packet, sizeof(ground2air_connect_packet), true);
@@ -612,7 +613,7 @@ static void comms_thread_proc()
                 data.type = Ground2Air_Header::Type::Telemetry;
                 data.size = sizeof(Ground2Air_Header) + s_tlm_size;
                 data.airDeviceId = s_connected_air_device_id;
-                data.gsDeviceId = s_gs_device_id;
+                data.gsDeviceId = s_groundstation_config.deviceId;
                 data.crc = 0;  //calculate cc with crc filed = 0
                 data.crc = crc8(0, &data, data.size); 
                 if ( s_got_config_packet ) 
@@ -668,6 +669,8 @@ static void comms_thread_proc()
             }
 
             Air2Ground_Header& air2ground_header = *(Air2Ground_Header*)rx_data.data.data();
+            uint32_t packet_size = air2ground_header.size;
+
 
 /*
             if ( air2ground_header.version != PACKET_VERSION )
@@ -687,8 +690,9 @@ static void comms_thread_proc()
             if( !s_got_config_packet )
             {
                 if ( 
+                    ( s_accept_config_packet == false ) &&
                     ( air2ground_header.type == Air2Ground_Header::Type::Config ) && 
-                    ( air2ground_header.gsDeviceId == s_gs_device_id ) //AirDevice just accepted connection with this GS
+                    ( air2ground_header.gsDeviceId == s_groundstation_config.deviceId ) //AirDevice just accepted connection with this GS
                 )
                 {
                     s_connected_air_device_id = air2ground_header.airDeviceId;
@@ -700,29 +704,34 @@ static void comms_thread_proc()
                     s_ground2air_config_packet.camera = airConfig->camera;
                     s_accept_config_packet = true;
 
-                    s_got_config_packet = true;
-
                     //TODO: set filtering on interface
                     //FEC_Codec.setSourceDeviceId(s_connected_air_device_id);
-                    //FEC_Codec.setDestDeviceId(s_gs_device_id);
+                    //FEC_Codec.setDestDeviceId(s_groundstation_config.deviceId);
+
+                    printf("Connecting to Air Device Id 0x%04x\n", s_connected_air_device_id); 
                 }
+                break;
+            }
+
+            //TODO: filter before FEC
+            if ( air2ground_header.gsDeviceId != s_groundstation_config.deviceId ) 
+            {
+                break;
+            }
+
+            if ( ( s_connected_air_device_id != 0 ) && ( air2ground_header.airDeviceId != s_connected_air_device_id ) )
+            {
                 break;
             }
 
             s_last_packet_tp = Clock::now();
             rx_data.rssi = (int16_t)s_comms.get_input_dBm();
 
-/*
-            if ( 
-                ( air2ground_header.airDeviceId != s_connected_air_device_id ) ||  //ignore packets from other air units
-                ( air2ground_header.gsDeviceId != s_gs_device_id ) // also handle case when air unit get forcibly captured by another gs
-            )
+            if ( air2ground_header.type == Air2Ground_Header::Type::Config )
             {
-                break;
+                //we need config packet only on connection
             }
-*/
-            uint32_t packet_size = air2ground_header.size;
-            if (air2ground_header.type == Air2Ground_Header::Type::Video)
+            else if (air2ground_header.type == Air2Ground_Header::Type::Video)
             {
                 if (packet_size > rx_data.size)
                 {
@@ -2229,6 +2238,7 @@ int run(char* argv[])
         if ( s_accept_config_packet )
         {
             s_accept_config_packet = false;
+            s_got_config_packet = true;
             config = s_ground2air_config_packet;
         }
         else
@@ -2332,6 +2342,7 @@ void saveGroundStationConfig()
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
+    ini["gs"]["gs_device_id"] = s_groundstation_config.deviceId;
     s_iniFile.write(ini);
 }
 
@@ -2527,7 +2538,7 @@ void airUnpair()
 
     //TODO: clear filtering on interface
     //FEC_Codec.setSourceDeviceId(s_connected_air_device_id);
-    //FEC_Codec.setDestDeviceId(s_gs_device_id);
+    //FEC_Codec.setDestDeviceId(s_groundstation_config.deviceId);
 
 }
 
@@ -2561,14 +2572,14 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["gs_device_id"];
-        s_gs_device_id = (uint16_t)atoi(temp.c_str());
-        if (s_gs_device_id)
+        s_groundstation_config.deviceId = (uint16_t)atoi(temp.c_str());
+        if ( s_groundstation_config.deviceId == 0)
         {
-            s_gs_device_id = generate_device_id();
+            s_groundstation_config.deviceId = generate_device_id();
             saveGroundStationConfig();
         }
 
-      printf("gs_device_id: 0x%04x\n", s_gs_device_id);
+      printf("gs_device_id: 0x%04x\n", s_groundstation_config.deviceId);
     }
 
     {

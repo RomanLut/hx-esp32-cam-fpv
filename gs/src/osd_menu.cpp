@@ -175,6 +175,16 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
+void OSDMenu::searchNextWifiChannel(Ground2Air_Config_Packet& config)
+{
+    this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+    s_groundstation_config.wifi_channel++;
+    if ( s_groundstation_config.wifi_channel > 13 ) s_groundstation_config.wifi_channel = 1;
+    applyWifiChannelInstant(config);
+}
+
+//=======================================================
+//=======================================================
 void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 {
     {
@@ -184,11 +194,11 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( "Search...", 0) )
+        if ( this->drawMenuItem( "Search & Connect...", 0) )
         {
-            airUnpair();
-            this->search_tp = Clock::now() - std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+            this->searchNextWifiChannel(config);
             this->searchDone = false;
+            airUnpair();
             this->goForward( OSDMenuId::Search, 0);
         }
     }
@@ -1132,10 +1142,7 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
         }
         else
         {
-            this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
-            s_groundstation_config.wifi_channel += 4;
-            if (s_groundstation_config.wifi_channel>13) s_groundstation_config.wifi_channel -= 13;
-            applyWifiChannelInstant(config);
+            this->searchNextWifiChannel(config);
         }
     }
 
