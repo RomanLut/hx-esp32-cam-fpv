@@ -1249,15 +1249,15 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool 
 //=============================================================================================
 IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 {
-    if (type == WIFI_PKT_MGMT)
+    if (type == WIFI_PKT_DATA)
+    {
+        //LOG("data packet\n");
+    }
+    else if (type == WIFI_PKT_MGMT)
     {
         //LOG("management packet\n");
         s_stats.inRejectedPacketCounter++;
         return;
-    }
-    else if (type == WIFI_PKT_DATA)
-    {
-        //LOG("data packet\n");
     }
     else if (type == WIFI_PKT_MISC)
     {
@@ -1265,8 +1265,21 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
         s_stats.inRejectedPacketCounter++;
         return;
     }
+    else if (type == WIFI_PKT_CTRL)
+    {
+        //LOG("misc packet\n");
+        s_stats.inRejectedPacketCounter++;
+        return;
+    }
 
     wifi_promiscuous_pkt_t *pkt = reinterpret_cast<wifi_promiscuous_pkt_t*>(buf);
+
+    if (pkt->rx_ctrl.channel != s_ground2air_config_packet.dataChannel.wifi_channel)
+    {
+        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, s_ground2air_config_packet.dataChannel.wifi_channel);
+        s_stats.inRejectedPacketCounter++;
+        return;
+    }    
 
     uint16_t len = pkt->rx_ctrl.sig_len;
     //s_stats.wlan_data_received += len;
@@ -1287,6 +1300,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     uint8_t *data = pkt->payload;
     if (memcmp(data + 10, WLAN_IEEE_HEADER_GROUND2AIR + 10, 6) != 0)
     {
+        //here we filter also AIR2GROUND packets from other air devices on the same channel
         s_stats.inRejectedPacketCounter++;
         return;
     }
@@ -1294,7 +1308,17 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     data += WLAN_IEEE_HEADER_SIZE;
     len -= WLAN_IEEE_HEADER_SIZE; //skip the 802.11 header
 
-    len -= 4; //the received length has 4 more bytes at the end for some reason.
+    if (len >= 4) 
+    {
+        len -= 4;
+    } 
+    else 
+    {
+        // Packet is too small after removing header and potential FCS
+        //LOG("WLAN payload error - packet too small after header removal (%d bytes)\n", len);
+        s_stats.wlan_error_count++;
+        return;
+    }
 
     s_stats.inPacketCounter++;
     s_stats.rssiDbm = -pkt->rx_ctrl.rssi;
@@ -1427,11 +1451,10 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     src.camera.aec2 = false;
 #endif
 
-    if (forceCameraSettings || 
-        (dst.camera.resolution != src.camera.resolution) || 
-        (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS ) || 
-        (src.camera.ov5640HighFPS != dst.camera.ov5640HighFPS )
-    )
+    bool resolutionChanged = (dst.camera.resolution != src.camera.resolution);
+    bool ov2640HighFPSChanged = (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS );
+    bool ov5640HighFPSChanged = (src.camera.ov5640HighFPS != dst.camera.ov5640HighFPS );
+    if ( forceCameraSettings || resolutionChanged || ov2640HighFPSChanged || ov5640HighFPSChanged )
     {
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
@@ -1506,6 +1529,19 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             break;
 
         }
+
+        if ( resolutionChanged)
+        {
+            nvs_args_set("resolution", (uint32_t)src.camera.resolution);
+        }
+        if ( ov2640HighFPSChanged)
+        {
+            nvs_args_set( "ov2640hfps", src.camera.ov2640HighFPS?1:0 );
+        }
+        if ( ov5640HighFPSChanged)
+        {
+            nvs_args_set( "ov5640hfps", src.camera.ov5640HighFPS?1:0 );
+        }
     }
 
 #define APPLY(n1, n2, type) \
@@ -1514,6 +1550,12 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         LOG("Camera " #n1 " from %d to %d\n", (int)dst.camera.n1, (int)src.camera.n1); \
         sensor_t* s = esp_camera_sensor_get(); \
         s->set_##n2(s, (type)src.camera.n1); \
+    }
+
+#define SAVE(n) \
+    if (dst.camera.n != src.camera.n) \
+    { \
+        nvs_args_set(#n, (uint32_t)src.camera.n); \
     }
 
     if ( src.camera.quality != 0 )
@@ -1542,15 +1584,23 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         forceCameraSettings = true;
     }
 
-    APPLY(brightness, brightness, int);
-    APPLY(contrast, contrast, int);
-    APPLY(saturation, saturation, int);
+    SAVE(brightness)
+    APPLY(brightness, brightness, int)
+
+    SAVE(contrast)
+    APPLY(contrast, contrast, int)
+
+    SAVE(saturation)
+    APPLY(saturation, saturation, int)
+
+    SAVE(sharpness)
     if ( s_quality < 50 )
     {
         APPLY(sharpness, sharpness, int);
         s_sharpness = src.camera.sharpness;
     }
     APPLY(denoise, denoise, int);
+
 #ifdef SENSOR_OV5640
     //gainceiling for ov5640 is range 0...3ff
     if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling)) 
@@ -1564,6 +1614,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 #else
     APPLY(gainceiling, gainceiling, gainceiling_t);
 #endif
+
     APPLY(awb, whitebal, int);
     APPLY(awb_gain, awb_gain, int);
     APPLY(wb_mode, wb_mode, int);
@@ -1572,9 +1623,18 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(aec, exposure_ctrl, int);
     APPLY(aec_value, aec_value, int);
     APPLY(aec2, aec2, int);
+
+    SAVE(ae_level);
     APPLY(ae_level, ae_level, int);
+
     APPLY(hmirror, hmirror, int);
+    
+    if ( dst.camera.vflip != src.camera.vflip )
+    {
+        nvs_args_set( "vflip", src.camera.vflip?1:0 );
+    }
     APPLY(vflip, vflip, int);
+
     APPLY(special_effect, special_effect, int);
     APPLY(dcw, dcw, int);
     APPLY(bpc, bpc, int);
@@ -1588,11 +1648,49 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
+IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
+{
+    s_connected_gs_device_id = gsDeviceId;
+
+    //TODO: set filtering on interface
+    //FEC_Codec.setSourceDeviceId(s_connected_gs_device_id);
+    //FEC_Codec.setDestDeviceId(s_air_device_id);
+
+    LOG("Accepting connection to GS device ID: 0x%04x\n", s_connected_gs_device_id );
+}
+
+//===========================================================================================
+//===========================================================================================
 IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
+    if ( s_connected_gs_device_id == 0 ) 
+    {
+        if ( src.airDeviceId == s_air_device_id )
+        {
+            //accept connection with GS. This GS was connected to this camera before. 
+            //Camera rebooted?
+            acceptConnectionWithGS( src.gsDeviceId );
+        }
+        else
+        {
+            return;
+        }
+    }
+
     //handle settings not related to camera sensor setup.
     //camera sensor settings are processed in camera_data_available() callback
     handle_ground2air_config_packetEx1(src);
+}
+
+//===========================================================================================
+//===========================================================================================
+IRAM_ATTR static void handle_ground2air_connect_packet(Ground2Air_Config_Packet& src)
+{
+    if ( s_connected_gs_device_id == 0 )
+    {
+        //todo: revert if no GS packets [target=this device id] come from GS in 3 seconds
+        acceptConnectionWithGS( src.gsDeviceId );
+    }
 }
 
 static void init_camera();
@@ -1602,6 +1700,8 @@ static void init_camera();
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
 #ifdef UART_MAVLINK
+    if ( ( s_connected_gs_device_id == 0 ) || ( src.gsDeviceId != s_connected_gs_device_id ) ) return;
+
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
     int s = src.size - sizeof(Ground2Air_Header);
@@ -2625,30 +2725,30 @@ uint16_t generateDeviceId()
 //=============================================================================================
 void readConfig()
 {
-    s_air_device_id = (uint16_t)nvs_args_read("deviceId");
-    if( (s_air_device_id == 0xffff) )
+    s_air_device_id = (uint16_t)nvs_args_read( "deviceId", 0 );
+    if( ( s_air_device_id == 0 )
     {
         s_air_device_id = generateDeviceId();
         nvs_args_set("deviceId", s_air_device_id);
     }
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read("channel");
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL );
     if((s_ground2air_config_packet.dataChannel.wifi_channel < 1)  || (s_ground2air_config_packet.dataChannel.wifi_channel > 13))
     {
         s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
-    s_ground2air_config_packet.dataChannel.wifi_rate = (WIFI_Rate)nvs_args_read("rate");
+    s_ground2air_config_packet.dataChannel.wifi_rate = (WIFI_Rate)nvs_args_read( "rate", -1 );
     if( s_ground2air_config_packet.dataChannel.wifi_rate > WIFI_Rate::RATE_N_72M_MCS7_S )
     {
-        s_ground2air_config_packet.dataChannel.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+        s_ground2air_config_packet.dataChannel.wifi_rate = DEFAULT_WIFI_RATE;
         nvs_args_set("rate", (uint32_t)s_ground2air_config_packet.dataChannel.wifi_rate);
     }
 
-    s_ground2air_config_packet.dataChannel.fec_codec_k = (uint8_t)nvs_args_read("fec_k");
-    s_ground2air_config_packet.dataChannel.fec_codec_n = (uint8_t)nvs_args_read("fec_n");
+    s_ground2air_config_packet.dataChannel.fec_codec_k = (uint8_t)nvs_args_read( "fec_k", 0 );
+    s_ground2air_config_packet.dataChannel.fec_codec_n = (uint8_t)nvs_args_read( "fec_n", 0 );
 
     if( 
         (s_ground2air_config_packet.dataChannel.fec_codec_k == 0) ||
@@ -2664,51 +2764,51 @@ void readConfig()
         nvs_args_set("fec_n", s_ground2air_config_packet.dataChannel.fec_codec_n);
     }
 
-    s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution");
+    s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution", (uint32_t)Resolution::SVGA);
     if ( s_ground2air_config_packet.camera.resolution > Resolution::HD  )
     {
         s_ground2air_config_packet.camera.resolution = Resolution::SVGA;
         nvs_args_set("resolution", (uint32_t)s_ground2air_config_packet.camera.resolution);
     }
 
-    s_ground2air_config_packet.camera.brightness = (int8_t)nvs_args_read("brightness");
+    s_ground2air_config_packet.camera.brightness = (int8_t)nvs_args_read("brightness", 10);
     if ( ( s_ground2air_config_packet.camera.brightness < -2 ) || ( s_ground2air_config_packet.camera.brightness > 2 ) )
     {
         s_ground2air_config_packet.camera.brightness = 0;
         nvs_args_set("brightness", s_ground2air_config_packet.camera.brightness);
     }
 
-    s_ground2air_config_packet.camera.contrast = (int8_t)nvs_args_read("contrast");
+    s_ground2air_config_packet.camera.contrast = (int8_t)nvs_args_read("contrast", 10);
     if ((s_ground2air_config_packet.camera.contrast < -2) || (s_ground2air_config_packet.camera.contrast > 2))
     {
         s_ground2air_config_packet.camera.contrast = 0; // Default contrast
         nvs_args_set("contrast", s_ground2air_config_packet.camera.contrast);
     }
 
-    s_ground2air_config_packet.camera.saturation = (int8_t)nvs_args_read("saturation");
+    s_ground2air_config_packet.camera.saturation = (int8_t)nvs_args_read("saturation", 10);
     if ((s_ground2air_config_packet.camera.saturation < -2) || (s_ground2air_config_packet.camera.saturation > 2))
     {
         s_ground2air_config_packet.camera.saturation = 1; // Default saturation
         nvs_args_set("saturation", s_ground2air_config_packet.camera.saturation);
     }
 
-    s_ground2air_config_packet.camera.sharpness = (int8_t)nvs_args_read("sharpness");
+    s_ground2air_config_packet.camera.sharpness = (int8_t)nvs_args_read("sharpness", 10);
     if ((s_ground2air_config_packet.camera.sharpness < -2) || (s_ground2air_config_packet.camera.sharpness > 3))
     {
         s_ground2air_config_packet.camera.sharpness = 0; // Default sharpness
         nvs_args_set("sharpness", s_ground2air_config_packet.camera.sharpness);
     }
 
-    s_ground2air_config_packet.camera.ae_level = (int8_t)nvs_args_read("ae_level");
+    s_ground2air_config_packet.camera.ae_level = (int8_t)nvs_args_read("ae_level", 10);
     if ((s_ground2air_config_packet.camera.ae_level < -2) || (s_ground2air_config_packet.camera.ae_level > 2))
     {
         s_ground2air_config_packet.camera.ae_level = 1; // Default ae_level
         nvs_args_set("ae_level", s_ground2air_config_packet.camera.ae_level);
     }
 
-    s_ground2air_config_packet.camera.vflip = nvs_args_read("vflip") == 1;
-    s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read("ov2640hfps") == 1;
-    s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read("ov5640hfps") == 1;
+    s_ground2air_config_packet.camera.vflip = nvs_args_read( "vflip", 0 ) == 1;
+    s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
+    s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 }
 
 //=============================================================================================
@@ -2728,7 +2828,7 @@ extern "C" void app_main()
 
     s_ground2air_config_packet.type = Ground2Air_Header::Type::Config;
     s_ground2air_config_packet.size = sizeof(s_ground2air_config_packet);
-    s_ground2air_config_packet.dataChannel.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    s_ground2air_config_packet.dataChannel.wifi_rate = DEFAULT_WIFI_RATE;
 
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
@@ -2886,6 +2986,7 @@ extern "C" void app_main()
     handle_ground2air_config_packetEx1( s_ground2air_config_packet);
     handle_ground2air_config_packetEx2( true);
     set_ground2air_config_packet_handler(handle_ground2air_config_packet);
+    set_ground2air_connect_packet_handler(handle_ground2air_connect_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
     LOG("WIFI channel: %d\n", s_ground2air_config_packet.dataChannel.wifi_channel );
@@ -2911,13 +3012,14 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d || SK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d %d\n",
+                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
                     s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_actual_capture_fps_expected, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg); 
+                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg,
+                    s_air_device_id, s_connected_gs_device_id); 
                 print_cpu_usage();
             }
 

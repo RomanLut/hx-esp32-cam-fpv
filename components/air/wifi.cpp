@@ -16,8 +16,14 @@ static const char * TAG="wifi_task";
 #define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 Ground2Air_Data_Packet s_ground2air_data_packet;
-Ground2Air_Config_Packet s_ground2air_config_packet;  
-Ground2Air_Config_Packet s_ground2air_config_packet2;  
+
+//we apply settings in two steps after receiving config packet:
+//1) we apply changed non-camera related settings by comparing config and s_ground2air_config_packet
+//2) we assign config to s_ground2air_config_packet
+//3) we apply camera-related settings at the end of the frame by comparing s_ground2air_config_packet with s_ground2air_config_packet2
+//4) we assign s_ground2air_config_packet to s_ground2air_config_packet2
+Ground2Air_Config_Packet s_ground2air_config_packet; 
+Ground2Air_Config_Packet s_ground2air_config_packet2;
 
 SemaphoreHandle_t s_wlan_incoming_mux = xSemaphoreCreateBinary();
 SemaphoreHandle_t s_wlan_outgoing_mux = xSemaphoreCreateBinary();
@@ -32,8 +38,9 @@ Stats s_stats;
 Stats s_last_stats;
 uint8_t s_wlan_outgoing_queue_usage = 0;
 
-static void (*ground2air_config_packet_handler)(Ground2Air_Config_Packet& src)=nullptr;
-static void (*ground2air_data_packet_handler)(Ground2Air_Data_Packet& src)=nullptr;
+static void (*ground2air_config_packet_handler)(Ground2Air_Config_Packet& src) = nullptr;
+static void (*ground2air_connect_packet_handler)(Ground2Air_Config_Packet& src) = nullptr;
+static void (*ground2air_data_packet_handler)(Ground2Air_Data_Packet& src) = nullptr;
 WIFI_Rate s_wlan_rate = s_ground2air_config_packet.dataChannel.wifi_rate;
 float s_wlan_power_dBm = s_ground2air_config_packet.dataChannel.wifi_power;
 
@@ -42,6 +49,13 @@ float s_wlan_power_dBm = s_ground2air_config_packet.dataChannel.wifi_power;
 void set_ground2air_config_packet_handler(void (*handler)(Ground2Air_Config_Packet& src))
 {
     ground2air_config_packet_handler = handler;
+}
+
+//===========================================================================================
+//===========================================================================================
+void set_ground2air_connect_packet_handler(void (*handler)(Ground2Air_Config_Packet& src))
+{
+    ground2air_connect_packet_handler = handler;
 }
 
 //===========================================================================================
@@ -261,21 +275,34 @@ IRAM_ATTR static void wifi_rx_proc(void *)
                         header.crc = 0;
                         uint8_t computed_crc = crc8(0, packet.ptr, header.size);
                         if (computed_crc != crc)
+                        {
                             ESP_LOGE(TAG,"Bad incoming packet %d: bad crc %d != %d\n", (int)header.type, (int)crc, (int)computed_crc);
+                        }
                         else
                         {
                             switch (header.type)
                             {
                                 case Ground2Air_Header::Type::Telemetry:
-                                    if(ground2air_data_packet_handler){
+                                    if (ground2air_data_packet_handler)
+                                    {
                                         ground2air_data_packet_handler(*(Ground2Air_Data_Packet*)packet.ptr);
                                     }
                                 break;
+                                
                                 case Ground2Air_Header::Type::Config:
-                                    if(ground2air_config_packet_handler){
+                                    if (ground2air_config_packet_handler)
+                                    {
                                         ground2air_config_packet_handler(*(Ground2Air_Config_Packet*)packet.ptr);
                                     }
                                 break;
+
+                                case Ground2Air_Header::Type::Connect:
+                                    if (ground2air_connect_packet_handler)
+                                    {
+                                        ground2air_connect_packet_handler(*(Ground2Air_Config_Packet*)packet.ptr);
+                                    }
+                                break;
+
                                 default:
                                     ESP_LOGE(TAG,"Bad incoming packet: unknown type %d\n", (int)header.type);
                                 break;
