@@ -502,12 +502,14 @@ bool Comms::process_rx_packet(PCap& pcap)
             return true;
         }
 
+/*
         //ignore packets from neightbour channels
+        //update: does not work? no channel number in packet?
         if ( prh.channel != s_groundstation_config.wifi_channel )
         {
             return true; 
         }
-
+*/
         {
             if (prh.input_dBm > -1000)
             {

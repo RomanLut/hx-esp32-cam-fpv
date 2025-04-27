@@ -81,12 +81,13 @@ struct TGroundstationConfig
     bool record;
     FILE * record_file=nullptr;
     std::mutex record_mutex;
-    int wifi_channel;
+    int wifi_channel;  // 1...13
     ScreenAspectRatio screenAspectRatio;
     int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
     bool vsync = true;
     std::string txInterface = "";
+    uint16_t deviceId;
 };
 
 extern TGroundstationConfig s_groundstation_config;

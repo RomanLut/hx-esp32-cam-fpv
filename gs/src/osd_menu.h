@@ -86,6 +86,7 @@ private:
     void drawSearchMenu(Ground2Air_Config_Packet& config);
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);
     void drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config);
+    void searchNextWifiChannel(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;
