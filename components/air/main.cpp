@@ -7,8 +7,8 @@
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
-#include <driver/adc.h>
-#include "esp_adc_cal.h"
+//#include <driver/adc.h>
+//#include "esp_adc_cal.h"
 #include "esp_wifi_types.h"
 #include "driver/sdmmc_host.h"
 #include "driver/sdmmc_defs.h"
@@ -903,8 +903,6 @@ static void sd_write_proc(void*)
     //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
     //MJPEG_PATTERN_SIZE is 512 bytes, so we can check for zero every 256th byte instead of every byte to find pattern
 
-    uint16_t lastFrameCounter =0;
-
     while (true)
     {
         if (!s_air_record || (s_shouldRestartRecording > esp_timer_get_time()))
@@ -1342,7 +1340,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
     s_recv_ground2air_packet = true;
 
     int64_t t = esp_timer_get_time();
-    int64_t dt = t - s_last_seen_config_packet;
+    //int64_t dt = t - s_last_seen_config_packet;
     s_last_seen_config_packet = t;
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
@@ -2726,7 +2724,7 @@ uint16_t generateDeviceId()
 void readConfig()
 {
     s_air_device_id = (uint16_t)nvs_args_read( "deviceId", 0 );
-    if( ( s_air_device_id == 0 )
+    if( s_air_device_id == 0 )
     {
         s_air_device_id = generateDeviceId();
         nvs_args_set("deviceId", s_air_device_id);
@@ -2866,7 +2864,8 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB
+        .source_clk = UART_SCLK_APB,
+        .flags = 0
     };  
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config0) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 256, 0, NULL, 0));
@@ -2950,7 +2949,8 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB
+        .source_clk = UART_SCLK_APB,
+        .flags = 0
     };  
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
@@ -2971,7 +2971,8 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
-        .source_clk = UART_SCLK_APB
+        .source_clk = UART_SCLK_APB,
+        .flags = 0
     };  
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
