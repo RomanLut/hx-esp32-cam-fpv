@@ -40,7 +40,10 @@ int s_encoder_output_ovf_flag = false;
 
 struct Packet_Header
 {
-    //    uint32_t crc = 0;
+    uint8_t packet_version;     //PACKET_VERSIOB
+    uint8_t packet_signature;   //PACKET_SIGNATURE
+    uint16_t fromDeviceId;
+    uint16_t toDeviceId;
     uint32_t block_index : 24;
     uint32_t packet_index : 8;
     uint16_t size : 16;

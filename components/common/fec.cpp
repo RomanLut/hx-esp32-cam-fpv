@@ -526,10 +526,10 @@ fec_encode(const fec_t* code, const gf*restrict const*restrict const src, gf*res
 void
 fec_encode_block(const fec_t* code, const gf*restrict const*restrict const src, gf*restrict const fec, const unsigned*restrict const block_nums, int fec_block_index, size_t sz) {
     unsigned char j;
-    size_t k;
+    //size_t k;
     unsigned fecnum;
     const gf* p;
-    int i;
+    //int i;
 
     fecnum=block_nums[fec_block_index];
     assert (fecnum >= code->k);

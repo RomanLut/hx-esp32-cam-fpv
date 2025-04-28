@@ -1,3 +1,5 @@
+#pragma once
+
 /**
  * zfec -- fast forward error correction library with Python interface
  *
@@ -5,6 +7,10 @@
  */
 
 #include <stddef.h>
+
+#define PACKET_VERSION 2
+#define PACKET_SIGNATURE 56
+
 
 typedef unsigned char gf;
 
