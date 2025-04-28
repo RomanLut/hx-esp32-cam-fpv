@@ -53,6 +53,8 @@ enum class WIFI_Rate : uint8_t
     /* 29 */ RATE_N_72M_MCS7_S,
 };
 
+#define DEFAULT_WIFI_RATE WIFI_Rate::RATE_N_26M_MCS3
+
 //======================================================
 //======================================================
 enum class Resolution : uint8_t
@@ -128,7 +130,7 @@ struct CameraConfig
 struct DataChannelConfig
 {
     int8_t wifi_power = 20;//dBm
-    WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    WIFI_Rate wifi_rate = DEFAULT_WIFI_RATE;
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
     uint8_t fec_codec_k = FEC_K;
     uint8_t fec_codec_n = FEC_N;
@@ -147,7 +149,6 @@ struct Ground2Air_Header
         Telemetry,
         Config,
         Connect  //Packet is sent to initialize connection. GS will send this packet instead of Config Packet untill any packet with GS id is received from Air unit
-        //todo: implement config and telemetry packet for uplink telemetry
     };
 
     Type type = Type::Telemetry; 
