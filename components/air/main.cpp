@@ -1320,9 +1320,9 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
-    auto res = s_fec_decoder.filter_packet( data, size );
+    auto res = s_fec_decoder.packetFilter.filter_packet( data, size );
 
-    if ( res != Fec_Codec::PacketFilterResult::Pass)
+    if ( res != PacketFilter::PacketFilterResult::Pass)
     {
         s_stats.inRejectedPacketCounter++;
         return;
@@ -1659,8 +1659,8 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
 {
     s_connected_gs_device_id = gsDeviceId;
-    s_fec_encoder.set_packet_header_data( s_air_device_id, s_connected_gs_device_id );
-    s_fec_decoder.set_packet_filtering( s_connected_gs_device_id, s_air_device_id );
+    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, s_connected_gs_device_id );
+    s_fec_decoder.packetFilter.set_packet_filtering( s_connected_gs_device_id, s_air_device_id );
 
     LOG("Accepting connection to GS device ID: 0x%04x\n", s_connected_gs_device_id );
 }
@@ -2889,7 +2889,7 @@ extern "C" void app_main()
 
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
-    s_fec_encoder.set_packet_header_data( s_air_device_id, 0 );
+    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
     //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
     init_camera();

@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "fec.h"
+#include "packet_filter.h"
 
 
 extern int s_fec_spin_count;
@@ -33,14 +34,6 @@ public:
         Core_1
     };
 
-    enum class PacketFilterResult
-    {
-        Pass,
-        Drop,
-        WrongStructure,
-        WrongVersion
-    };
-
     struct Descriptor
     {
         uint8_t coding_k = 2;
@@ -49,6 +42,8 @@ public:
         Core core = Core::Any;
         uint8_t priority = configMAX_PRIORITIES - 1;
     };
+
+    PacketFilter packetFilter;
 
     SemaphoreHandle_t fec_encoder_mux;
     BaseType_t lock(){return xSemaphoreTake(fec_encoder_mux,portMAX_DELAY);}
@@ -81,10 +76,6 @@ public:
 
     bool init(const Descriptor& descriptor, bool is_encoder);
     void switch_n(int n);
-
-    void set_packet_header_data( uint16_t from_device_id, uint16_t to_device_id );
-    void set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id );
-    IRAM_ATTR PacketFilterResult filter_packet( const void* data, size_t size ); 
 
 private:
 
