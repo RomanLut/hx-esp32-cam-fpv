@@ -20,7 +20,6 @@ static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 
 const uint8_t Fec_Codec::MAX_CODING_K;
 const uint8_t Fec_Codec::MAX_CODING_N;
-const size_t Fec_Codec::PACKET_OVERHEAD;
 
 constexpr size_t STACK_SIZE = 4096;
 
@@ -51,7 +50,7 @@ struct Packet_Header
 
 #pragma pack(pop)
 
-static_assert(Fec_Codec::PACKET_OVERHEAD == sizeof(Packet_Header), "Check the PACKET_OVERHEAD size");
+static_assert(PACKET_OVERHEAD == sizeof(Packet_Header), "Check the PACKET_OVERHEAD size");
 ////////////////////////////////////////////////////////////////////////////////////////////
 Fec_Codec s_fec_encoder;
 

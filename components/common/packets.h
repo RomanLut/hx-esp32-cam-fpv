@@ -10,7 +10,7 @@
 #define FEC_K 6
 #define FEC_N 12
 
-constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the fec header size
+constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_OVERHEAD; //6 is the fec header size
 constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
 
 #pragma pack(push, 1) // exact fit - no padding

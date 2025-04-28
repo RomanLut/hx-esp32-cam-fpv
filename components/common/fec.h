@@ -10,6 +10,7 @@
 
 #define PACKET_VERSION 2
 #define PACKET_SIGNATURE 56
+#define PACKET_OVERHEAD 12
 
 
 typedef unsigned char gf;
