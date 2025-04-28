@@ -1321,7 +1321,6 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
     auto res = s_fec_decoder.packetFilter.filter_packet( data, size );
-
     if ( res != PacketFilter::PacketFilterResult::Pass)
     {
         s_stats.inRejectedPacketCounter++;
@@ -1449,6 +1448,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 //=============================================================================================
 //=============================================================================================
 //process settings related to camera sensor setup
+__attribute__((optimize("Os")))
 IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 {
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
