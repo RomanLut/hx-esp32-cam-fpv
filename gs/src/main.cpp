@@ -671,7 +671,6 @@ static void comms_thread_proc()
             Air2Ground_Header& air2ground_header = *(Air2Ground_Header*)rx_data.data.data();
             uint32_t packet_size = air2ground_header.size;
 
-
 /*
             if ( air2ground_header.version != PACKET_VERSION )
             {
@@ -704,16 +703,14 @@ static void comms_thread_proc()
                     s_ground2air_config_packet.camera = airConfig->camera;
                     s_accept_config_packet = true;
 
-                    //TODO: set filtering on interface
-                    //FEC_Codec.setSourceDeviceId(s_connected_air_device_id);
-                    //FEC_Codec.setDestDeviceId(s_groundstation_config.deviceId);
+                    s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, s_connected_air_device_id );
+                    s_comms.packetFilter.set_packet_filtering( s_connected_air_device_id, s_groundstation_config.deviceId );
 
                     printf("Connecting to Air Device Id 0x%04x\n", s_connected_air_device_id); 
                 }
                 break;
             }
 
-            //TODO: filter before FEC
             if ( air2ground_header.gsDeviceId != s_groundstation_config.deviceId ) 
             {
                 break;
@@ -2536,10 +2533,8 @@ void airUnpair()
     s_connected_air_device_id = 0;
     s_got_config_packet = false;
 
-    //TODO: clear filtering on interface
-    //FEC_Codec.setSourceDeviceId(s_connected_air_device_id);
-    //FEC_Codec.setDestDeviceId(s_groundstation_config.deviceId);
-
+    s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, 0 );
+    s_comms.packetFilter.set_packet_filtering( 0, s_groundstation_config.deviceId );
 }
 
 //===================================================================================
@@ -2873,7 +2868,11 @@ int main(int argc, const char* argv[])
 #endif
 
     if (!s_comms.init(rx_descriptor, tx_descriptor))
+    {
         return -1;
+    }
+
+    airUnpair();
 
     s_isDual = rx_descriptor.interfaces.size() > 1;
 
