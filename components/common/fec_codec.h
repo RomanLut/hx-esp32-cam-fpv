@@ -33,6 +33,14 @@ public:
         Core_1
     };
 
+    enum class PacketFilterResult
+    {
+        Pass,
+        Drop,
+        WrongStructure,
+        WrongVersion
+    };
+
     struct Descriptor
     {
         uint8_t coding_k = 2;
@@ -67,19 +75,24 @@ public:
     void set_data_decoded_cb(void (*cb)(const void* data, size_t size));
 
     //Add here data that will be decoded.
-    //Size dosn't have to be a full packet. Can be anything > 0, even bigger than a packet
+    //Size doesn't have to be a full packet. Can be anything > 0, even bigger than a packet
     //NOTE: This has to be called from a single thread only (any thread, as long as it's just one)
     IRAM_ATTR bool decode_data(const void* data, size_t size, bool block);
 
     bool init(const Descriptor& descriptor, bool is_encoder);
     void switch_n(int n);
+
+    void set_packet_header_data( uint16_t from_device_id, uint16_t to_device_id );
+    void set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id );
+    IRAM_ATTR PacketFilterResult filter_packet( const void* data, size_t size ); 
+
 private:
 
     void stop_tasks();
     bool start_tasks();
 
-    void encoder_task_proc();
-    void decoder_task_proc();
+    IRAM_ATTR void encoder_task_proc();
+    IRAM_ATTR void decoder_task_proc();
     static void static_encoder_task_proc(void* params);
     static void static_decoder_task_proc(void* params);
 
@@ -92,6 +105,14 @@ private:
 
     fec_t* m_fec = nullptr;
     bool m_is_encoder = false;
+
+    //values are set on outgoing packets
+    uint16_t m_from_device_id = 0;
+    uint16_t m_to_device_id = 0;
+
+    //values are used to filter incoming packets. 0 - no filtering
+    uint16_t m_filter_from_device_id = 0;
+    uint16_t m_filter_to_device_id = 0;
 
     struct Encoder
     {

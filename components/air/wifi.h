@@ -37,7 +37,7 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 //use as much memory as available
 //leave ~5k for SD library to initialize correctly
 #ifdef BOARD_XIAOS3SENSE
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 98000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 90000;
 #else
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 93000;
 #endif

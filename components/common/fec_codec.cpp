@@ -42,7 +42,8 @@ Fec_Codec s_fec_decoder;
 
 static const char* TAG = "fec";
 
-void init_fec_codec(Fec_Codec & codec,uint8_t k,uint8_t n,uint16_t mtu,bool is_encoder){
+void init_fec_codec(Fec_Codec & codec,uint8_t k,uint8_t n,uint16_t mtu,bool is_encoder)
+{
 
         Fec_Codec::Descriptor descriptor;
         descriptor.coding_k = k;
@@ -379,7 +380,7 @@ void Fec_Codec::static_encoder_task_proc(void* params)
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-void Fec_Codec::static_decoder_task_proc(void* params)
+/*RAM_ATTR*/ void Fec_Codec::static_decoder_task_proc(void* params)
 {
     Fec_Codec* ptr = reinterpret_cast<Fec_Codec*>(params);
     assert(ptr);
@@ -388,7 +389,7 @@ void Fec_Codec::static_decoder_task_proc(void* params)
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR void Fec_Codec::encoder_task_proc()
+/*IRAM_ATTR*/ void Fec_Codec::encoder_task_proc()
 {
     
     while (true)
@@ -465,7 +466,8 @@ IRAM_ATTR void Fec_Codec::encoder_task_proc()
             for (size_t i = 0; i < fec_count; i++)
             {
                 uint64_t start = esp_timer_get_time();
-
+                (void)start;
+                
                 //encode
                 fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, m_descriptor.mtu);
 
@@ -548,7 +550,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block)
+/*IRAM_ATTR*/ bool Fec_Codec::encode_data(const void* _data, size_t size, bool block)
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -610,7 +612,7 @@ IRAM_ATTR bool Fec_Codec::encode_data(const void* _data, size_t size, bool block
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR uint8_t* Fec_Codec::get_encode_packet_data(bool block)
+/*IRAM_ATTR*/ uint8_t* Fec_Codec::get_encode_packet_data(bool block)
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -640,7 +642,7 @@ IRAM_ATTR uint8_t* Fec_Codec::get_encode_packet_data(bool block)
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR bool Fec_Codec::flush_encode_packet(bool block)
+/*IRAM_ATTR*/ bool Fec_Codec::flush_encode_packet(bool block)
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -682,7 +684,7 @@ IRAM_ATTR bool Fec_Codec::flush_encode_packet(bool block)
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR bool Fec_Codec::is_encode_packet_empty()
+/*IRAM_ATTR*/ bool Fec_Codec::is_encode_packet_empty()
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -695,7 +697,7 @@ IRAM_ATTR bool Fec_Codec::is_encode_packet_empty()
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR bool Fec_Codec::decode_data(const void* _data, size_t size, bool block)
+/*IRAM_ATTR*/ bool Fec_Codec::decode_data(const void* _data, size_t size, bool block)
 {
     if (m_is_encoder == true || !m_decoder.task)
         return false;
@@ -1033,6 +1035,10 @@ void Fec_Codec::decoder_task_proc()
 void Fec_Codec::seal_packet(Encoder::Packet& packet, uint32_t block_index, uint8_t packet_index)
 {
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data);
+    header.packet_version = PACKET_VERSION;
+    header.packet_signature = PACKET_SIGNATURE;
+    header.fromDeviceId = this->m_from_device_id;
+    header.toDeviceId = this->m_to_device_id;
     header.size = packet.size;
     header.block_index = block_index;
     header.packet_index = packet_index;
@@ -1051,6 +1057,61 @@ bool Fec_Codec::is_encoder() const
 {
     return m_is_encoder;
 }
+
+//=============================================================================================
+//=============================================================================================
+void Fec_Codec::set_packet_header_data( uint16_t from_device_id, uint16_t to_device_id )
+{
+    assert(m_is_encoder);
+    m_from_device_id = from_device_id;
+    m_to_device_id = to_device_id;
+}
+
+//=============================================================================================
+//=============================================================================================
+void Fec_Codec::set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id )
+{
+    assert(!m_is_encoder);
+    m_filter_from_device_id = filter_from_device_id;
+    m_filter_to_device_id = filter_to_device_id;
+}
+
+//=============================================================================================
+//=============================================================================================
+/*IRAM_ATTR*/ Fec_Codec::PacketFilterResult Fec_Codec::filter_packet( const void* data, size_t size )
+{
+    assert(!m_is_encoder);
+    if ( size < sizeof(Packet_Header) )
+    {
+        return PacketFilterResult::WrongStructure;
+    }
+
+    const Packet_Header* header = reinterpret_cast<const Packet_Header*>(data);
+
+    if ( header->packet_signature != PACKET_SIGNATURE ) 
+    {
+        return PacketFilterResult::WrongStructure;
+    }
+
+    if ( header->packet_version != PACKET_VERSION )
+    {
+        return PacketFilterResult::WrongVersion;
+    }
+
+    if ( !this->m_filter_from_device_id && ( header->fromDeviceId != this->m_filter_from_device_id ) )
+    {
+        return PacketFilterResult::Drop;
+    }
+
+    if ( !this->m_filter_to_device_id && ( header->toDeviceId != this->m_filter_to_device_id ) )
+    {
+        return PacketFilterResult::Drop;
+    }
+
+    return PacketFilterResult::Pass;
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
