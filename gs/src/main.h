@@ -160,3 +160,5 @@ extern mINI::INIStructure ini;
 extern mINI::INIFile s_iniFile;
 
 extern std::unique_ptr<IHAL> s_hal;
+
+extern Clock::time_point s_incompatibleFirmwareTime;

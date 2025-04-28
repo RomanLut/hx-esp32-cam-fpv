@@ -6,6 +6,7 @@
 #include <thread>
 #include <functional>
 #include "Clock.h"
+#include "packet_filter.h"
 
 #define MIN_TX_POWER 5
 #define DEFAULT_TX_POWER 45
@@ -61,6 +62,8 @@ public:
     struct PCap;
     struct RX;
     struct TX;
+
+    PacketFilter packetFilter;
 
 private:
     bool prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor);

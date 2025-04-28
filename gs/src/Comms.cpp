@@ -198,6 +198,9 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
     assert(packet.data.size() >= header_offset + sizeof(Comms::TX::Packet));
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
+
+    s_comms.packetFilter.apply_packet_header_data(&header);
+
     header.size = packet.data.size() - header_offset;
     header.block_index = block_index;
     header.packet_index = packet_index;
@@ -507,6 +510,22 @@ bool Comms::process_rx_packet(PCap& pcap)
             return true; 
         }
 */
+        s_gs_stats.inPacketCounter[pcap.index]++;
+
+        Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
+
+        auto res = s_comms.packetFilter.filter_packet( payload, bytes );
+        if ( res != PacketFilter::PacketFilterResult::Pass )
+        {
+            //s_stats.inRejectedPacketCounter++;
+
+            if ( res == PacketFilter::PacketFilterResult::WrongVersion )
+            {
+                s_incompatibleFirmwareTime = Clock::now();
+            }
+            continue;
+        }
+
         {
             if (prh.input_dBm > -1000)
             {
@@ -515,9 +534,6 @@ bool Comms::process_rx_packet(PCap& pcap)
             }
         }
 
-        s_gs_stats.inPacketCounter[pcap.index]++;
-
-        Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
         uint32_t block_index = header.block_index;
         uint32_t packet_index = header.packet_index;
 
