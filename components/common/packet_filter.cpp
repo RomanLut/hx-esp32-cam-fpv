@@ -12,6 +12,8 @@ void PacketFilter::set_packet_header_data( uint16_t from_device_id, uint16_t to_
 //=============================================================================================
 /*IRAM_ATTR*/ void PacketFilter::apply_packet_header_data( Packet_Header* packet )
 {
+    packet->packet_version = PACKET_VERSION;
+    packet->packet_signature = PACKET_SIGNATURE;
     packet->fromDeviceId = this->m_from_device_id;
     packet->toDeviceId = this->m_to_device_id;
 }

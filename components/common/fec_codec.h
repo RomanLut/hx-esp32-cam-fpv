@@ -97,14 +97,6 @@ private:
     fec_t* m_fec = nullptr;
     bool m_is_encoder = false;
 
-    //values are set on outgoing packets
-    uint16_t m_from_device_id = 0;
-    uint16_t m_to_device_id = 0;
-
-    //values are used to filter incoming packets. 0 - no filtering
-    uint16_t m_filter_from_device_id = 0;
-    uint16_t m_filter_to_device_id = 0;
-
     struct Encoder
     {
         struct Packet

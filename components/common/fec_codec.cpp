@@ -1035,10 +1035,9 @@ void Fec_Codec::decoder_task_proc()
 void Fec_Codec::seal_packet(Encoder::Packet& packet, uint32_t block_index, uint8_t packet_index)
 {
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data);
-    header.packet_version = PACKET_VERSION;
-    header.packet_signature = PACKET_SIGNATURE;
-    header.fromDeviceId = this->m_from_device_id;
-    header.toDeviceId = this->m_to_device_id;
+    
+    this->packetFilter.apply_packet_header_data(&header);
+    
     header.size = packet.size;
     header.block_index = block_index;
     header.packet_index = packet_index;
