@@ -47,12 +47,12 @@ void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_
         return PacketFilterResult::WrongVersion;
     }
 
-    if ( !this->m_filter_from_device_id && ( header->fromDeviceId != this->m_filter_from_device_id ) )
+    if ( ( this->m_filter_from_device_id !=0 ) && ( header->fromDeviceId != this->m_filter_from_device_id ) )
     {
         return PacketFilterResult::Drop;
     }
 
-    if ( !this->m_filter_to_device_id && ( header->toDeviceId != this->m_filter_to_device_id ) )
+    if ( ( this->m_filter_to_device_id != 0 ) && ( header->toDeviceId != this->m_filter_to_device_id ) )
     {
         return PacketFilterResult::Drop;
     }
