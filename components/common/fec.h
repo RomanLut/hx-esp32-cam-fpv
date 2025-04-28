@@ -7,11 +7,28 @@
  */
 
 #include <stddef.h>
+#include <cstdint>
+
+//WIFI payload header
+//FEC encoded data is following header
+#pragma pack(push, 1)
+struct Packet_Header
+{
+    uint8_t packet_version;     //PACKET_VERSIOB
+    uint8_t packet_signature;   //PACKET_SIGNATURE
+    uint16_t fromDeviceId;
+    uint16_t toDeviceId;
+    uint16_t size;
+    uint32_t block_index : 24;
+    uint32_t packet_index : 8;
+};
+#pragma pack(pop)
 
 #define PACKET_VERSION 2
 #define PACKET_SIGNATURE 56
 #define PACKET_OVERHEAD 12
 
+static_assert(PACKET_OVERHEAD == sizeof(Packet_Header), "Check the PACKET_OVERHEAD size");
 
 typedef unsigned char gf;
 

@@ -35,22 +35,6 @@ int s_fec_wlan_error_count = 0;
 //set when fec_encoder is unable to add encoded packet to wifi send queue
 int s_encoder_output_ovf_flag = false;
 
-#pragma pack(push, 1)
-
-struct Packet_Header
-{
-    uint8_t packet_version;     //PACKET_VERSIOB
-    uint8_t packet_signature;   //PACKET_SIGNATURE
-    uint16_t fromDeviceId;
-    uint16_t toDeviceId;
-    uint16_t size;
-    uint32_t block_index : 24;
-    uint32_t packet_index : 8;
-};
-
-#pragma pack(pop)
-
-static_assert(PACKET_OVERHEAD == sizeof(Packet_Header), "Check the PACKET_OVERHEAD size");
 ////////////////////////////////////////////////////////////////////////////////////////////
 Fec_Codec s_fec_encoder;
 

@@ -75,19 +75,16 @@ struct Penumbra_Radiotap_Header
     int32_t radiotap_flags = 0;
 };
 
+/*
 struct Packet_Header
 {
     uint32_t block_index : 24;
     uint32_t packet_index : 8;
     uint16_t size = 0;
 };
+*/
 
 #pragma pack(pop)
-
-static_assert(sizeof(Packet_Header) == 6);
-
-//A     B       C       D       E       F
-//A     Bx      Cx      Dx      Ex      Fx
 
 struct Comms::PCap
 {
