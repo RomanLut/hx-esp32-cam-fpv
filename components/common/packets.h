@@ -1,11 +1,11 @@
 #pragma once
 
 #include "structures.h"
+#include "fec.h"
 
 #define DEFAULT_WIFI_CHANNEL 7
 
 #define FW_VERSION "0.3"
-#define PACKET_VERSION 2
 
 #define FEC_K 6
 #define FEC_N 12

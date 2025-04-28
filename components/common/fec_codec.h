@@ -25,7 +25,7 @@ public:
 
     static const uint8_t MAX_CODING_K = 16;
     static const uint8_t MAX_CODING_N = 32;
-    static const size_t PACKET_OVERHEAD = 6;
+    static const size_t PACKET_OVERHEAD = 12;
 
     enum class Core
     {
