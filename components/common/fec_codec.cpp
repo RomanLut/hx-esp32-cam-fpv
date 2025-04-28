@@ -43,9 +43,9 @@ struct Packet_Header
     uint8_t packet_signature;   //PACKET_SIGNATURE
     uint16_t fromDeviceId;
     uint16_t toDeviceId;
+    uint16_t size;
     uint32_t block_index : 24;
     uint32_t packet_index : 8;
-    uint16_t size : 16;
 };
 
 #pragma pack(pop)

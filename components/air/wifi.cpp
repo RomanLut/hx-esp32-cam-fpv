@@ -135,6 +135,8 @@ IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
     return res;
 }
 
+//===========================================================================================
+//===========================================================================================
 inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_queue_size)
 {
   //SPI RAM is too slow, can not handle more then 2Mb/s bandwidth
@@ -147,6 +149,10 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
   return true;
 }
 
+//===========================================================================================
+//===========================================================================================
+//A task which sends encoded packets (Air2Ground) after FEC
+//from s_wlan_outgoing_queue
 IRAM_ATTR static void wifi_tx_proc(void *)
 {
     Wlan_Outgoing_Packet packet;
@@ -248,6 +254,10 @@ IRAM_ATTR static void wifi_tx_proc(void *)
     }
 }
 
+//===========================================================================================
+//===========================================================================================
+// A task which reads incoming decoded packets (Ground2Air) after FEC
+//from s_wlan_incoming_queue queue
 IRAM_ATTR static void wifi_rx_proc(void *)
 {
     Wlan_Incoming_Packet packet;
@@ -326,6 +336,8 @@ IRAM_ATTR static void wifi_rx_proc(void *)
     }
 }
 
+//===========================================================================================
+//===========================================================================================
 #ifdef TX_COMPLETION_CB
 IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus)
 {
@@ -338,6 +350,8 @@ IRAM_ATTR static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_
 }
 #endif 
 
+//===========================================================================================
+//===========================================================================================
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type))
 {
     printf("Setup WIFI...\n");
