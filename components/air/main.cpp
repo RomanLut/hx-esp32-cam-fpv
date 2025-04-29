@@ -614,7 +614,7 @@ static bool init_sd()
     s_sd_initialized = true;
 
 #ifdef DVR_SUPPORT
-    s_air_record = true;
+    s_air_record = s_ground2air_config_packet2.dataChannel.autostartRecord != 0;
 #endif
 
     // Card has been initialized, print its properties
@@ -1397,6 +1397,24 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
         LOG("Target FPS changed from %d to %d\n", (int)dst.camera.fps_limit, (int)src.camera.fps_limit);
     }
 
+    if (dst.dataChannel.autostartRecord != src.dataChannel.autostartRecord)
+    {
+        LOG("AutostartRecord changed from %d to %d\n", (int)dst.dataChannel.autostartRecord, (int)src.dataChannel.autostartRecord);
+        nvs_args_set("autostartRecord", src.dataChannel.autostartRecord);
+    }
+
+    if (dst.dataChannel.cameraStopChannel != src.dataChannel.cameraStopChannel)
+    {
+        LOG("CameraStopChannel changed from %d to %d\n", (int)dst.dataChannel.cameraStopChannel, (int)src.dataChannel.cameraStopChannel);
+        nvs_args_set("cameraStopCH", src.dataChannel.cameraStopChannel);
+    }
+
+    if (dst.dataChannel.mavlink2mspRC != src.dataChannel.mavlink2mspRC)
+    {
+        LOG("mavlink2mspRC changed from %d to %d\n", (int)dst.dataChannel.mavlink2mspRC, (int)src.dataChannel.mavlink2mspRC);
+        nvs_args_set("mavlink2mspRC", src.dataChannel.mavlink2mspRC);
+    }
+
     if ( s_restart_time == 0 )
     {
         if ( dst.dataChannel.air_record_btn != src.dataChannel.air_record_btn )
@@ -1729,11 +1747,22 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     s_stats.RCPeriodMaxMS = d;
                 }
 
-                //const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
-                //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
-                //g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+                if ( s_ground2air_config_packet2.dataChannel.mavlink2mspRC != 0 )
+                {
+                    const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
+                    //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
+                    g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+                }
 
-                //s_camera_stopped_requested = msg->chan12_raw > 1700;
+                if ( s_ground2air_config_packet2.dataChannel.mavlink2mspRC != 0 )
+                {
+                    const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
+                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.dataChannel.mavlink2mspRC ) > 1700;
+                }
+                else
+                {
+                    s_camera_stopped_requested = false;
+                }
             }
         }
     }
@@ -1744,7 +1773,6 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     if ( freeSize >= s )
     {
         uart_write_bytes(UART_MAVLINK, ((uint8_t*)&src) + sizeof(Ground2Air_Header), s);
-        //uart_write_bytes(UART_NUM_0, ((uint8_t*)&src) + sizeof(Ground2Air_Header), s);
     }
 
     xSemaphoreGive(s_serial_mux);
@@ -1949,6 +1977,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
     packet.stats.cam_ovf_count = cam_ovf_count;
     packet.stats.inMavlinkRate = s_last_stats.in_telemetry_data;
     packet.stats.outMavlinkRate = s_last_stats.out_telemetry_data;
+
+    packet.stats.suspended = s_camera_stopped != 0;
 
     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
     
@@ -2815,6 +2845,18 @@ void readConfig()
     s_ground2air_config_packet.camera.vflip = nvs_args_read( "vflip", 0 ) == 1;
     s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
+
+    s_ground2air_config_packet.dataChannel.autostartRecord = nvs_args_read( "autostartRecord", 1 );
+
+    s_ground2air_config_packet.dataChannel.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
+    if ( s_ground2air_config_packet.dataChannel.cameraStopChannel > 18 )
+    {
+        s_ground2air_config_packet.dataChannel.cameraStopChannel = 0;
+    }
+
+    s_ground2air_config_packet.dataChannel.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
+
+    s_ground2air_config_packet2 = s_ground2air_config_packet;
 }
 
 //=============================================================================================
@@ -3131,7 +3173,7 @@ extern "C" void app_main()
 */
 
 #ifdef UART_MSP_OSD
-        //msp.loop() should be called every ~10ms
+        //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
         //with UART RX buffer of 512 we are save with periods 10...40ms
         g_msp.loop();

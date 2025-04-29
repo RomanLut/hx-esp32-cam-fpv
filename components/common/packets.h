@@ -138,6 +138,11 @@ struct DataChannelConfig
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+
+    uint8_t cameraStopChannel : 5 = 0;  //0 - none
+    uint8_t autostartRecord : 1 = 1;
+    uint8_t mavlink2mspRC : 1 = 0;
+    uint8_t reserved1 : 1 = 0;
 };
 
 //======================================================
@@ -293,9 +298,9 @@ struct AirStats
     uint8_t overheatTrottling : 1;
 //28
     uint8_t suspend_ch : 5; //0 - disabled, 1...18
-    uint8_t highFps: 1;
-    uint8_t mavlink2mspRC : 1;
-    uint8_t suspended : 1;
+    uint8_t reserved2: 1;
+    uint8_t reserved3 : 1;
+    uint8_t suspended : 1;  //camera stopped as requested by RC channel
 //29
     uint8_t fec_codec_k : 4;
     uint8_t in_session : 1; //1 if camera is currently actively communicating with some GS. Used in search.
@@ -306,7 +311,7 @@ struct AirStats
     int16_t saturation : 3;  //-2 - 2
     int16_t sharpness : 3;   //-2 - 3
     int16_t ae_level: 3;     //-2 - 2, for aec=true
-    int16_t reserved: 1;  //-1...0
+    int16_t reserved1: 1; 
 //32
 
 //..39

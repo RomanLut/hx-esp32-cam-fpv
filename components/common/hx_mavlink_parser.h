@@ -95,6 +95,18 @@ struct HXMAVLinkRCChannelsOverride
 
     // Checksum (calculated over the message starting from payload_length)
     uint16_t checksum;
+
+    //index == 1...18
+    uint16_t getChannelValue(int channelIndex) const
+    {
+        if ( ( channelIndex < 1 ) || ( channelIndex > 18 ) ) 
+        {
+            return 1500;
+        }
+
+        const uint16_t*  p = &chan1_raw;
+        return p[channelIndex - 1];
+    }
 };
 
 //=====================================================================
