@@ -429,7 +429,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Mavlink2MspRC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             config.dataChannel.mavlink2mspRC ^= 1;
             
@@ -939,7 +939,7 @@ void OSDMenu::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
 
     bool bExit = false;
 
-    for ( int i = 0; i < 18; i++ )
+    for ( int i = 0; i <= 18; i++ )
     {
         char buf[12];
         if ( i == 0 ) 

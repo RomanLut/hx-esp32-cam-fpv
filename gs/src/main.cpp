@@ -1356,20 +1356,6 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
-            if ( s_last_airStats.suspended == 1 )
-            {
-                //AIR REC
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("OFF");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-
             if ( g_CPUTemp.getTemperature() >= 80 )
             {
                 //GS temperature
@@ -1412,7 +1398,6 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
-
             //Incompatible firmware
             if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
             {
@@ -1433,6 +1418,18 @@ int run(char* argv[])
                 ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
                 ImGui::Button("Displayport OSD Font Unexpected Format!");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
+            if ( s_last_airStats.suspended == 1 )
+            {
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("OFF");
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
