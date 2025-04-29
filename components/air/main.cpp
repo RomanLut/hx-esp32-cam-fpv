@@ -1343,84 +1343,73 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
 //=============================================================================================
 //=============================================================================================
+IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue, const char *nvsName )
+{
+    if ( fromValue != toValue )
+    {
+        LOG("%s changed from %d to %d\n", valueName, fromValue, toValue );
+        if ( !!nvsName ) 
+        {
+            nvs_args_set(nvsName, (uint32_t)toValue);
+        }
+        return true;
+    }
+    return false;
+}
+
+//=============================================================================================
+//=============================================================================================
 //process settings not related to camera sensor setup
+__attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     s_recv_ground2air_packet = true;
 
     int64_t t = esp_timer_get_time();
-    //int64_t dt = t - s_last_seen_config_packet;
     s_last_seen_config_packet = t;
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
 
-/*
-    if (dst.sessionId != src.sessionId)
+    if ( processSetting( "Wifi rate", (int)dst.dataChannel.wifi_rate, (int)src.dataChannel.wifi_rate, "rate") )
     {
-        dst.sessionId = src.sessionId;
-        dst.air_record_btn = src.air_record_btn;
-        dst.profile1_btn = src.profile1_btn;
-        dst.profile2_btn = src.profile2_btn;
-    }
-*/
-
-    if (dst.dataChannel.wifi_rate != src.dataChannel.wifi_rate)
-    {
-        LOG("Wifi rate changed from %d to %d\n", (int)dst.dataChannel.wifi_rate, (int)src.dataChannel.wifi_rate);
-        nvs_args_set("rate", (uint32_t)src.dataChannel.wifi_rate);
         ESP_ERROR_CHECK(set_wifi_fixed_rate(src.dataChannel.wifi_rate));
     }
-    if (dst.dataChannel.wifi_power != src.dataChannel.wifi_power)
+    
+    if ( processSetting( "Wifi power", dst.dataChannel.wifi_power, src.dataChannel.wifi_power, NULL ) )
     {
-        LOG("Wifi power changed from %d to %d\n", (int)dst.dataChannel.wifi_power, (int)src.dataChannel.wifi_power);
         ESP_ERROR_CHECK(set_wlan_power_dBm(src.dataChannel.wifi_power));
     }
-    if (dst.dataChannel.fec_codec_n != src.dataChannel.fec_codec_n)
+
+    if ( processSetting( "FEC codec N", dst.dataChannel.fec_codec_n, src.dataChannel.fec_codec_n, "fec_n") )
     {
-        LOG("FEC codec changed from %d/%d/%d to %d/%d/%d\n", (int)dst.dataChannel.fec_codec_k, (int)dst.dataChannel.fec_codec_n, (int)dst.dataChannel.fec_codec_mtu, (int)src.dataChannel.fec_codec_k, (int)src.dataChannel.fec_codec_n, (int)src.dataChannel.fec_codec_mtu);
-        nvs_args_set("fec_n", src.dataChannel.fec_codec_n);
         s_fec_encoder.switch_n( src.dataChannel.fec_codec_n );
     }
-    if (dst.dataChannel.wifi_channel != src.dataChannel.wifi_channel)
+    
+    if ( processSetting( "Wifi channel", dst.dataChannel.wifi_channel, src.dataChannel.wifi_channel, "channel" ) )
     {
-        LOG("Wifi channel changed from %d to %d\n", (int)dst.dataChannel.wifi_channel, (int)src.dataChannel.wifi_channel);
-        nvs_args_set("channel", src.dataChannel.wifi_channel);
         ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.dataChannel.wifi_channel, WIFI_SECOND_CHAN_NONE));
     }
 
-    if (dst.camera.fps_limit != src.camera.fps_limit)
+    if ( processSetting( "Target FPS", dst.camera.fps_limit, src.camera.fps_limit, NULL) )
     {
         if (src.camera.fps_limit == 0)
             s_video_target_frame_dt = 0;
         else
             s_video_target_frame_dt = 1000000 / src.camera.fps_limit;
-        LOG("Target FPS changed from %d to %d\n", (int)dst.camera.fps_limit, (int)src.camera.fps_limit);
     }
 
-    if (dst.dataChannel.autostartRecord != src.dataChannel.autostartRecord)
-    {
-        LOG("AutostartRecord changed from %d to %d\n", (int)dst.dataChannel.autostartRecord, (int)src.dataChannel.autostartRecord);
-        nvs_args_set("autostartRecord", src.dataChannel.autostartRecord);
-    }
+    processSetting( "AutostartRecord", dst.dataChannel.autostartRecord, src.dataChannel.autostartRecord, "autostartRecord" );
 
-    if (dst.dataChannel.cameraStopChannel != src.dataChannel.cameraStopChannel)
-    {
-        LOG("CameraStopChannel changed from %d to %d\n", (int)dst.dataChannel.cameraStopChannel, (int)src.dataChannel.cameraStopChannel);
-        nvs_args_set("cameraStopCH", src.dataChannel.cameraStopChannel);
-    }
+    processSetting( "CameraStopChannel", dst.dataChannel.cameraStopChannel, src.dataChannel.cameraStopChannel, "cameraStopCH" );
 
-    if (dst.dataChannel.mavlink2mspRC != src.dataChannel.mavlink2mspRC)
-    {
-        LOG("mavlink2mspRC changed from %d to %d\n", (int)dst.dataChannel.mavlink2mspRC, (int)src.dataChannel.mavlink2mspRC);
-        nvs_args_set("mavlink2mspRC", src.dataChannel.mavlink2mspRC);
-    }
+    processSetting( "mavlink2mspRC",  dst.dataChannel.mavlink2mspRC, src.dataChannel.mavlink2mspRC, "mavlink2mspRC" );
 
     if ( s_restart_time == 0 )
     {
         if ( dst.dataChannel.air_record_btn != src.dataChannel.air_record_btn )
         {
             s_air_record = !s_air_record;
-            dst.dataChannel.air_record_btn = src.dataChannel.air_record_btn;
+            //dst.dataChannel.air_record_btn = src.dataChannel.air_record_btn;
         }
 
 #if defined(ENABLE_PROFILER)
