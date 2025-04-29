@@ -26,7 +26,9 @@ enum class OSDMenuId
     OSDFont,
     Search,
     GSTxPower,
-    GSTxInterface
+    GSTxInterface, 
+    Image,
+    CameraStopCH
 };
 
 //=======================================================
@@ -87,6 +89,8 @@ private:
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);
     void drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config);
     void searchNextWifiChannel(Ground2Air_Config_Packet& config);
+    void drawImageSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;

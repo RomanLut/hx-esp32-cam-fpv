@@ -158,6 +158,8 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::Search: this->drawSearchMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
+        case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
+        case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -304,9 +306,9 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
-void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
+void OSDMenu::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Menu -> Camera Settings" );
+    this->drawMenuTitle( "Menu -> Image Settings" );
     
     {
         char buf[256];
@@ -378,14 +380,62 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-/*
+    if ( this->exitKeyPressed())
     {
-        if ( this->drawMenuItem( config.camera.hmirror ? "Horizontal Mirror: Enabled##5" : "Horizontal Mirror: Disabled##6", 6.7) )
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Camera Settings" );
+    
+    {
+        if ( this->drawMenuItem( "Image Settings...", 0 ) )
         {
-            config.camera.hmirror = !config.camera.hmirror;
+            this->goForward( OSDMenuId::Image, 0 );
         }
     }
-*/
+
+    {
+        char buf[256];
+        sprintf(buf, "Autostart recording: %s", config.dataChannel.autostartRecord == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            config.dataChannel.autostartRecord ^= 1;
+
+        }
+    }
+
+    {
+        char buf[256];
+        if ( config.dataChannel.cameraStopChannel == 0 )
+        {
+            sprintf(buf, "Camera Stop CH: None" );
+        }
+        else
+        {
+            sprintf(buf, "Camera Stop CH: %d", (int)config.dataChannel.cameraStopChannel );
+        }
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            this->goForward( OSDMenuId::CameraStopCH, (int)config.dataChannel.cameraStopChannel );
+            
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Mavlink2MspRC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            config.dataChannel.mavlink2mspRC ^= 1;
+            
+        }
+    }
+
 
     if ( this->exitKeyPressed())
     {
@@ -870,6 +920,39 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
                 saveGroundStationConfig();
                 applyWifiChannel(config);
             }
+            bExit = true;
+        }
+    }
+
+    if ( bExit || this->exitKeyPressed() )
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Camera Stop Channel" );
+    ImGui::Spacing();
+
+    bool bExit = false;
+
+    for ( int i = 0; i < 18; i++ )
+    {
+        char buf[12];
+        if ( i == 0 ) 
+        {
+            sprintf(buf, "None" );
+        }
+        else
+        {
+            sprintf(buf, "%d", i );
+        }
+        if ( this->drawMenuItem( buf, i, true) )
+        {
+            config.dataChannel.cameraStopChannel = i;
             bExit = true;
         }
     }

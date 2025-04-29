@@ -139,10 +139,10 @@ struct DataChannelConfig
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
 
-    uint8_t cameraStopChannel : 5 = 0;  //0 - none
-    uint8_t autostartRecord : 1 = 1;
-    uint8_t mavlink2mspRC : 1 = 0;
-    uint8_t reserved1 : 1 = 0;
+    uint8_t cameraStopChannel : 5;// = 0;  //0 - none
+    uint8_t autostartRecord : 1;// = 1;
+    uint8_t mavlink2mspRC : 1;// = 0;
+    uint8_t reserved1 : 1;// = 0;
 };
 
 //======================================================

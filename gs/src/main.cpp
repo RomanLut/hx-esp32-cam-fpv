@@ -1343,7 +1343,7 @@ int run(char* argv[])
                 ImGui::PopID();
             }
 
-            //GS REC
+            //HQ DRV mode
             if ( isHQDVRMode() )
             {
                 ImGui::SameLine();
@@ -1355,6 +1355,20 @@ int run(char* argv[])
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
             }
+
+            if ( s_last_airStats.suspended == 1 )
+            {
+                //AIR REC
+                ImGui::SameLine();
+                ImGui::PushID(0);
+                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+                ImGui::Button("OFF");
+                ImGui::PopStyleColor(3);
+                ImGui::PopID();
+            }
+
 
             if ( g_CPUTemp.getTemperature() >= 80 )
             {
@@ -1388,7 +1402,6 @@ int run(char* argv[])
 
             if ( s_last_airStats.overheatTrottling != 0 )
             {
-                //!SD SLOW!
                 ImGui::SameLine();
                 ImGui::PushID(0);
                 ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
