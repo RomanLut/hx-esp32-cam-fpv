@@ -1718,7 +1718,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
     int s = src.size - sizeof(Ground2Air_Header);
-    s_stats.in_telemetry_data += s;        
+    s_stats.in_telemetry_data += s;
 
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
     for ( int i = 0; i < s; i++ )
@@ -1726,7 +1726,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
         mavlinkParserIn.processByte(*dPtr++);
         if ( mavlinkParserIn.gotPacket())
         {
-            if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
+            if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
                 uint32_t t = (uint32_t)millis();
                 int d = t - s_last_rc_packet_tp;
@@ -1740,13 +1740,21 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
-                    g_msp.setRCChannels((const uint16_t*)(&(msg->chan1_raw)));
+                    uint16_t ch[MSP_RC_CHANNELS_COUNT];
+                    for ( int i = 0; i < MSP_RC_CHANNELS_COUNT; i++ )
+                    {
+                        ch[i] = msg->getChannelValue( i + 1 );
+                    }
+                    g_msp.setRCChannels(ch);
                 }
 
-                if ( s_ground2air_config_packet2.dataChannel.mavlink2mspRC != 0 )
+                if ( s_ground2air_config_packet2.dataChannel.cameraStopChannel != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
-                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.dataChannel.mavlink2mspRC ) > 1700;
+                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.dataChannel.cameraStopChannel ) > 1700;
+
+                    //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
+                    //LOG("%d %d %d %d %d\n", msg->chan9_raw, msg->chan10_raw, msg->chan11_raw, msg->chan12_raw, mavlinkParserIn.getPacketLength());
                 }
                 else
                 {
