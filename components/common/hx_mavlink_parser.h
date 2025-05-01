@@ -80,6 +80,10 @@ struct HXMAVLinkRCChannelsOverride
     uint16_t chan6_raw;  // Channel 6 value (0 to 65535)
     uint16_t chan7_raw;  // Channel 7 value (0 to 65535)
     uint16_t chan8_raw;  // Channel 8 value (0 to 65535)
+
+    uint8_t target_system;    // Target system ID
+    uint8_t target_component; // Target component ID
+
     uint16_t chan9_raw;  // Channel 9 value (0 to 65535)
     uint16_t chan10_raw; // Channel 10 value (0 to 65535)
     uint16_t chan11_raw; // Channel 11 value (0 to 65535)
@@ -90,8 +94,6 @@ struct HXMAVLinkRCChannelsOverride
     uint16_t chan16_raw; // Channel 16 value (0 to 65535)
     uint16_t chan17_raw; // Channel 17 value (0 to 65535)
     uint16_t chan18_raw; // Channel 18 value (0 to 65535)
-    uint8_t target_system;    // Target system ID
-    uint8_t target_component; // Target component ID
 
     // Checksum (calculated over the message starting from payload_length)
     uint16_t checksum;
@@ -105,7 +107,7 @@ struct HXMAVLinkRCChannelsOverride
         }
 
         const uint16_t*  p = &chan1_raw;
-        return p[channelIndex - 1];
+        return p[channelIndex-1 + (channelIndex >= 9 ? 1 : 0)];   //account for target_XXX for channels 9...
     }
 };
 
