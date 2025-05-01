@@ -1461,6 +1461,8 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
+    sensor_t* s = esp_camera_sensor_get();
+
 #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
     src.camera.aec2 = false;
@@ -1473,7 +1475,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     {
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
-        sensor_t* s = esp_camera_sensor_get();
 
 #ifdef SENSOR_OV5640
         s->set_colorbar(s, src.camera.ov5640HighFPS?1:0);
@@ -1563,7 +1564,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     if (forceCameraSettings || (dst.camera.n1 != src.camera.n1)) \
     { \
         LOG("Camera " #n1 " from %d to %d\n", (int)dst.camera.n1, (int)src.camera.n1); \
-        sensor_t* s = esp_camera_sensor_get(); \
         s->set_##n2(s, (type)src.camera.n1); \
     }
 
@@ -1582,7 +1582,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     {
         if ( forceCameraSettings )
         {
-            sensor_t* s = esp_camera_sensor_get(); 
             s->set_quality(s, 20); 
         }
     }
@@ -1621,7 +1620,6 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling)) 
     { 
         LOG("Camera gainceiling from %d to %d\n", (int)dst.camera.gainceiling, (int)src.camera.gainceiling); 
-        sensor_t* s = esp_camera_sensor_get(); 
         //s->set_gainceiling(s, (gainceiling_t)(2 << src.camera.gainceiling));
         //do not limit gainceiling on OV5640. Contrary to OV2640, it does good images with large gain ceiling, without enormous noise in dark scenes.
         s->set_gainceiling(s, (gainceiling_t)(0x3ff));
@@ -1657,6 +1655,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(raw_gma, raw_gma, int);
     APPLY(lenc, lenc, int);
 #undef APPLY
+#undef SAVE
 
     dst = src;
 }
