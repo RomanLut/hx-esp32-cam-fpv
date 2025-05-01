@@ -358,12 +358,12 @@ void Comms::prepare_radiotap_header(size_t rate_hz)
     ieee80211_radiotap_header& hdr = reinterpret_cast<ieee80211_radiotap_header& >(*RADIOTAP_HEADER.data());
     hdr.it_version = 0;
     hdr.it_present = 0
-                     //                    | (1 << IEEE80211_RADIOTAP_RATE)
-                     | (1 << IEEE80211_RADIOTAP_TX_FLAGS)
-                     //                    | (1 << IEEE80211_RADIOTAP_RTS_RETRIES)
-                     | (1 << IEEE80211_RADIOTAP_DATA_RETRIES)
-        //                    | (1 << IEEE80211_RADIOTAP_CHANNEL)
-        //                    | (1 << IEEE80211_RADIOTAP_MCS)
+                        //| (1 << IEEE80211_RADIOTAP_RATE)
+                        | (1 << IEEE80211_RADIOTAP_TX_FLAGS)
+                        //| (1 << IEEE80211_RADIOTAP_RTS_RETRIES)
+                        | (1 << IEEE80211_RADIOTAP_DATA_RETRIES)
+                        //| (1 << IEEE80211_RADIOTAP_CHANNEL)
+                        | (1 << IEEE80211_RADIOTAP_MCS)
         ;
 
     auto* dst = RADIOTAP_HEADER.data() + sizeof(ieee80211_radiotap_header);
@@ -379,9 +379,9 @@ void Comms::prepare_radiotap_header(size_t rate_hz)
         radiotap_add_u8(dst, idx, 0x0);
     if (hdr.it_present & (1 << IEEE80211_RADIOTAP_MCS))
     {
-        radiotap_add_u8(dst, idx, IEEE80211_RADIOTAP_MCS_HAVE_MCS);
-        radiotap_add_u8(dst, idx, 0);
-        radiotap_add_u8(dst, idx, 1);
+        radiotap_add_u8(dst, idx, IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW | IEEE80211_RADIOTAP_MCS_HAVE_GI ); // short gI
+        radiotap_add_u8(dst, idx, IEEE80211_RADIOTAP_MCS_BW_20 );  //HT20
+        radiotap_add_u8(dst, idx, 1);  //MCS Index 1 13M
     }
     if (hdr.it_present & (1 << IEEE80211_RADIOTAP_CHANNEL))
     {
