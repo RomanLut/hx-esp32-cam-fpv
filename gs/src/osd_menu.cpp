@@ -1003,19 +1003,25 @@ void OSDMenu::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
+    auto rx_descriptor = s_comms.getRXDescriptor();
+
     if ( this->drawMenuItem( "auto", 0) )
     {
         s_groundstation_config.txInterface = "auto";
+
+        s_comms.setTxInterface( rx_descriptor.interfaces[0] );
+        s_comms.setTxPower( s_groundstation_config.txPower );
+
         saveAndExit = true;
     }
-
-    auto rx_descriptor = s_comms.getRXDescriptor();
 
     for ( unsigned int i = 0; i < rx_descriptor.interfaces.size(); i++ )
     {
         if ( this->drawMenuItem( rx_descriptor.interfaces[i].c_str(), i+1) )
         {
             s_groundstation_config.txInterface = rx_descriptor.interfaces[i];
+            s_comms.setTxInterface( s_groundstation_config.txInterface );
+            s_comms.setTxPower( s_groundstation_config.txPower );
             saveAndExit = true;
         }
     }
@@ -1118,7 +1124,17 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "TX Interface: %s##4", s_groundstation_config.txInterface.c_str());
         if ( this->drawMenuItem( buf, 3) )
         {
-            this->goForward( OSDMenuId::GSTxInterface, 0);
+            auto rx_descriptor = s_comms.getRXDescriptor();
+
+            size_t index = 0;
+            for( size_t i = 0; i < rx_descriptor.interfaces.size(); i++ )
+            {
+                if ( rx_descriptor.interfaces[i] == s_groundstation_config.txInterface )
+                {
+                    index = i + 1;
+                }
+            }
+            this->goForward( OSDMenuId::GSTxInterface, index );
         }
     }
 

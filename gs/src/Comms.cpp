@@ -151,7 +151,8 @@ struct Comms::RX
     std::array<uint8_t const*, 16> fec_src_packet_ptrs;
     std::array<uint8_t*, 32> fec_dst_packet_ptrs;
 
-    std::vector<PCap*> pcaps;
+    std::vector<std::string> interfaces;  //this list contans both RX and TX interfaces. We do not support TX only interface.
+    std::vector<std::unique_ptr<PCap>> pcaps;
     std::vector<uint32_t> pcal_last_block_index;
 
     size_t transport_packet_size = 0;
@@ -219,12 +220,12 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
 struct Comms::Impl
 {
     size_t tx_packet_header_length = 0;
-    std::vector<std::unique_ptr<PCap>> pcaps;
 
     TX tx;
     RX rx;
 };
 
+/*
 //===================================================================================
 //===================================================================================
 std::vector<std::string> Comms::enumerate_interfaces()
@@ -255,6 +256,7 @@ std::vector<std::string> Comms::enumerate_interfaces()
 
     return res;
 }
+*/
 
 //===================================================================================
 //===================================================================================
@@ -785,10 +787,17 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
         return false;
     }
 
-    setMonitorMode(rx_descriptor.interfaces);
+    this->m_rx_descriptor = rx_descriptor;
 
-    m_rx_descriptor = rx_descriptor;
-    m_rx_descriptor.mtu = std::min(rx_descriptor.mtu, MAX_USER_PACKET_SIZE);
+    //make sure TX interface is in the list of RX interfaces
+    if (std::find(this->m_rx_descriptor.interfaces.begin(), this->m_rx_descriptor.interfaces.end(), tx_descriptor.interface) == this->m_rx_descriptor.interfaces.end()) 
+    {
+        this->m_rx_descriptor.interfaces.push_back(tx_descriptor.interface);
+    }
+
+    setMonitorMode( this->m_rx_descriptor.interfaces );
+
+    this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, MAX_USER_PACKET_SIZE);
 
     if (m_rx_descriptor.coding_k == 0 || 
         m_rx_descriptor.coding_n < m_rx_descriptor.coding_k || 
@@ -881,34 +890,22 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     //        return false;
     //    }
 
-    std::set<std::string> interfaces;
-    for (auto i: m_rx_descriptor.interfaces)
-        interfaces.insert(i);
-    interfaces.insert(m_tx_descriptor.interface);
-
-    m_impl->rx.pcal_last_block_index.resize(interfaces.size());
-    m_impl->rx.pcaps.resize(interfaces.size());
-    m_impl->pcaps.resize(interfaces.size());
+    m_impl->rx.pcal_last_block_index.resize( this->m_rx_descriptor.interfaces.size() );
+    m_impl->rx.pcaps.resize( this->m_rx_descriptor.interfaces.size() );
     size_t index = 0;
-    for (auto& interf: interfaces)
+    for (auto& interf: this->m_rx_descriptor.interfaces)
     {
-        m_impl->pcaps[index] = std::make_unique<PCap>();
-        if (!prepare_pcap(interf, *m_impl->pcaps[index], rx_descriptor))
-            return false;
-
-        m_impl->pcaps[index]->index = index;
-
-        if (m_tx_descriptor.interface == interf)
-            m_impl->tx.pcap = m_impl->pcaps[index].get();
-
-        for (size_t j = 0; j < m_rx_descriptor.interfaces.size(); j++)
+        m_impl->rx.pcaps[index] = std::make_unique<PCap>();
+        if ( !prepare_pcap(interf, *m_impl->rx.pcaps[index], rx_descriptor) )
         {
-            if (m_rx_descriptor.interfaces[j] == interf)
-            {
-                m_impl->rx.pcaps[j] = m_impl->pcaps[index].get();
-                break;
-            }
+            return false;
         }
+
+        if ( m_tx_descriptor.interface == interf )
+        {
+            m_impl->tx.pcap = m_impl->rx.pcaps[index].get();
+        }
+
         index++;
     }
 
@@ -1449,8 +1446,10 @@ const Comms::RX_Descriptor& Comms::getRXDescriptor()
 
 //===================================================================================
 //===================================================================================
-void Comms::setTXInterface(const std::string& interface)
+void Comms::setTxInterface(const std::string& interface)
 {
+    std::lock_guard<std::mutex> lg( m_impl->tx.pcap->mutex );
+
     for ( size_t i = 0; i < m_rx_descriptor.interfaces.size(); ++i ) 
     {
         if ( m_rx_descriptor.interfaces[i] == interface ) 

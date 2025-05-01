@@ -33,7 +33,7 @@ public:
 
     struct RX_Descriptor
     {
-        std::vector<std::string> interfaces;  //this list contains all interfaces, incuding TX interface if it is separate from RX interfaces.
+        std::vector<std::string> interfaces;  //this list may not contain TX interface
         Clock::duration max_latency = std::chrono::milliseconds(500);
         Clock::duration reset_duration = std::chrono::milliseconds(1000);
         uint32_t coding_k = 12;
@@ -54,14 +54,14 @@ public:
     void setTxPower(int txPower); //MIN_TX_POWER...MAX_TX_POWER
     void setMonitorMode(const std::vector<std::string> interfaces);
 
-    void setTXInterface(const std::string& interface);
+    void setTxInterface(const std::string& interface);
 
     const RX_Descriptor& getRXDescriptor();
 
     size_t get_data_rate() const;
     int get_input_dBm() const;
 
-    static std::vector<std::string> enumerate_interfaces();
+    //static std::vector<std::string> enumerate_interfaces();
 
     struct PCap;
     struct RX;
