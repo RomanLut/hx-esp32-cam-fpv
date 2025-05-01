@@ -896,6 +896,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     for (auto& interf: this->m_rx_descriptor.interfaces)
     {
         m_impl->rx.pcaps[index] = std::make_unique<PCap>();
+        m_impl->rx.pcaps[index]->index = index;
         if ( !prepare_pcap(interf, *m_impl->rx.pcaps[index], rx_descriptor) )
         {
             return false;
