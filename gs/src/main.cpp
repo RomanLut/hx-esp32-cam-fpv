@@ -2349,7 +2349,7 @@ void saveGroundStationConfig()
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
-    ini["gs"]["gs_device_id"] = s_groundstation_config.deviceId;
+    ini["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
     s_iniFile.write(ini);
 }
 
@@ -2731,7 +2731,7 @@ int main(int argc, const char* argv[])
         else if(temp=="-p")
         {
             check_argval_int("port");
-            s_groundstation_config.socket_fd=udp_socket_init(std::string("127.0.0.1"),std::stoi(next));
+            s_groundstation_config.socket_fd = udp_socket_init( std::string("127.0.0.1"), std::stoi(next) );
             i++;
         }
         /*

@@ -413,22 +413,21 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         char buf[256];
         if ( config.dataChannel.cameraStopChannel == 0 )
         {
-            sprintf(buf, "Camera Stop CH: None" );
+            sprintf(buf, "Camera Off Channel: None" );
         }
         else
         {
-            sprintf(buf, "Camera Stop CH: %d", (int)config.dataChannel.cameraStopChannel );
+            sprintf(buf, "Camera Off Channel: %d", (int)config.dataChannel.cameraStopChannel );
         }
         if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::CameraStopCH, (int)config.dataChannel.cameraStopChannel );
-            
         }
     }
 
     {
         char buf[256];
-        sprintf(buf, "Mavlink2MspRC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
+        sprintf(buf, "Mavlink2 to Msp RC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
         if ( this->drawMenuItem( buf, 3) )
         {
             config.dataChannel.mavlink2mspRC ^= 1;
@@ -1222,6 +1221,7 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
         {
             this->searchDone = true;
             this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
+            saveGroundStationConfig();  //save Wifi channel
         }
         else
         {
