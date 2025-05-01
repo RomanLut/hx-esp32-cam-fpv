@@ -1218,7 +1218,7 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
         {
             bExit = true;
         }
-        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_stats_packet_tp).count() < SEARCH_TIME_STEP_MS/2 )
+        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < SEARCH_TIME_STEP_MS/2 )
         {
             this->searchDone = true;
             this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
