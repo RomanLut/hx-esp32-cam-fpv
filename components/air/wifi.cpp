@@ -237,6 +237,7 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                     }
                     else //other errors
                     {
+                        //Logging from tx task crashes esp32s!!!
                         //ESP_LOGE(TAG,"Wlan err: %d\n", res);
                         s_stats.wlan_error_count++;
 #ifdef PROFILE_CAMERA_DATA    
@@ -286,7 +287,9 @@ IRAM_ATTR static void wifi_rx_proc(void *)
                         uint8_t computed_crc = crc8(0, packet.ptr, header.size);
                         if (computed_crc != crc)
                         {
-                            ESP_LOGE(TAG,"Bad incoming packet %d: bad crc %d != %d\n", (int)header.type, (int)crc, (int)computed_crc);
+                            //LOGGING from rxtask crashes esp32s!!!
+                            //ESP_LOGE(TAG,"Bad incoming packet %d: bad crc %d != %d\n", (int)header.type, (int)crc, (int)computed_crc);
+                            s_stats.wlan_received_packets_bad++;
                         }
                         else
                         {
@@ -314,16 +317,23 @@ IRAM_ATTR static void wifi_rx_proc(void *)
                                 break;
 
                                 default:
-                                    ESP_LOGE(TAG,"Bad incoming packet: unknown type %d\n", (int)header.type);
+                                    //ESP_LOGE(TAG,"Bad incoming packet: unknown type %d\n", (int)header.type);
+                                    s_stats.wlan_received_packets_bad++;
                                 break;
                             }
                         }
                     }
                     else
-                        ESP_LOGE(TAG,"Bad incoming packet: header size too big %d > %d\n", (int)header.size, (int)packet.size);
+                    {
+                        //ESP_LOGE(TAG,"Bad incoming packet: header size too big %d > %d\n", (int)header.size, (int)packet.size);
+                        s_stats.wlan_received_packets_bad++;
+                    }
                 }
                 else
-                   ESP_LOGE(TAG,"Bad incoming packet: size too small %d < %d\n", (int)packet.size, (int)sizeof(Ground2Air_Header));
+                {
+                   //ESP_LOGE(TAG,"Bad incoming packet: size too small %d < %d\n", (int)packet.size, (int)sizeof(Ground2Air_Header));
+                   s_stats.wlan_received_packets_bad++;
+                }
 
 
                 xSemaphoreTake(s_wlan_incoming_mux, portMAX_DELAY);
@@ -331,7 +341,9 @@ IRAM_ATTR static void wifi_rx_proc(void *)
                 xSemaphoreGive(s_wlan_incoming_mux);
             }
             else
+            {
                 break;
+            }
         }
     }
 }

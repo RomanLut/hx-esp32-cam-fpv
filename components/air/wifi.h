@@ -86,6 +86,9 @@ struct Stats
     uint16_t camera_frame_size_max;
 
     int RCPeriodMaxMS = -1;
+
+    uint16_t wlan_received_packets_bad = 0;
+
 };
 
 extern Stats s_stats;
