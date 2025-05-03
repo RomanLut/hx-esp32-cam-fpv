@@ -158,7 +158,7 @@ Both internal red LED and additional LED are used for indication:
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-## Air Unit Variant 2: **Seed Studio XIAO ESP32 S3 Sense** + OV2640
+## Air Unit Variant 2: **Seed Studio XIAO ESP32 S3 Sense** + OV2640 + M8 120° lens
 
 Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
 
@@ -180,7 +180,7 @@ Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
-## Air Unit Variant 3: **Seed Studio XIAO ESP32 S3 Sense** + OV5640 (recommended)
+## Air Unit Variant 3: **Seed Studio XIAO ESP32 S3 Sense** + OV5640 + M12 120° lens (recommended)
 
 Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
 
@@ -190,7 +190,7 @@ Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sen
 
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately. No hardware modifications are required for camera replacement.
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total), **esp32sesense + ov5640** camera 160 degree lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total), **esp32sesense + ov5640** camera 160° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -206,30 +206,35 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station
 
-### === Raspberri PI ===
+## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (Recommended)
 
-Preparing SD Card for Raspberry PI GS from pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
+Preparing SD Card for **Radxa Zero 3W** GS using pre-built **RubyFPV/hx-esp32-cam-fpv dualboot image**: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image_radxa.md) 
 
-Building Raspberry PI GS image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
+Building **RubyFPV/hx-esp32-cam-fpv dualboot image** for **Radxa Zero 3W**: 
+
+Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32cam-fpv** at the same time with dualboot SD Card.
+
+Hold **Air Rec** button on boot to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** button on boot to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
+
+STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6847533
+
+![alt text](doc/images/gs_glasses.jpg "gs_glasses")
+
+## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
+
+Preparing SD Card for **Raspberry PI GS** using pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
+
+Building **Raspberry PI GS** image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
 
 ***Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)***
 
 ***Please use HDMI output next to USB C connector on RPI4.***
 
-### === Ubuntu ===
-Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+Single wifi card is Ok for the GS with attached small HDMI monitor.
 
-### === Fedora Linux Workstation ===
+Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32-cam-fpv** by swapping SD card.
 
-Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
-
-## Ground Station Variant 1: Raspberry PI Zero 2W, Single rtl8812au
-
-Single wifi card is Ok for GS with LCD monitor.
-
-Note: Joystick and keys wiring is compatible with Ruby. GS built for Ruby can be used with hx-esp32-fpv by swapping SD card.
-
-STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ![alt text](doc/images/gs_glasses.jpg "gs_glasses")
 
@@ -241,12 +246,22 @@ STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: http
 
 ![alt text](doc/images/gs.jpg "gs")
 
+***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
 
-## Ground Station Variant 2: Raspberry PI Zero 2W, Dual rtl8812au
 
-Dual wifi cards variant benefit less frame dropping.
+## Ground Station Variant 3: Raspberry PI Zero 2W, Dual rtl8812au (Not recommended)
 
-STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
+Preparing SD Card for **Raspberry PI GS** using pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
+
+Building **Raspberry PI GS** image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
+
+***Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)***
+
+***Please use HDMI output next to USB C connector on RPI4.***
+
+Dual wifi cards variant benefit better reception and less frame dropping.
+
+STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ![alt text](doc/images/gs2_glasses.jpg "gs2_glasses")
 
@@ -256,13 +271,24 @@ STL files for 3D printing Raspberry Pi Zero 2W GS enclosure on Thingiverse: http
 
 A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
 
-Small rtl8812au cards are used. 
+Small **rtl8812au** cards are used. 
 
 ![alt text](doc/images/gs2_overview.jpg "gs2_overview")
 
-Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90 degree adapters are recommended instead.
+Note that red/black antenas are not recommented unless all you want is to look cool :) These are 2dbi wideband antenas. A pair of 2.4Ghz BetaFPS Moxons with 90° adapters are recommended instead.
 
 ![alt text](doc/images/moxon.jpg "moxon")
+
+***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
+
+### === Ground station Variant: Ubuntu ===
+
+Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+
+### === Ground station Variant: Fedora Linux Workstation ===
+
+Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
+
 
 
 # Displayport MSP OSD
@@ -356,7 +382,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 **ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total) with ov2640 camera 120 degree lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total) with ov2640 camera 120° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
@@ -374,7 +400,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps MCS3 26Mbps (~5Mbps actual transfer rate total) with ov5640 camera 160 degree lens:
+800x456 30fps MCS3 26Mbps (~5Mbps actual transfer rate total) with ov5640 camera 160° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
@@ -396,7 +422,7 @@ https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 or 160 lens to be used on UAV.
 
-14mm 160 degree lens are recommended. 7mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
+14mm 160° lens are recommended. 7mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
 
 Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
 
