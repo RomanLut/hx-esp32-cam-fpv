@@ -484,20 +484,31 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-## Wifi card
+## Wifi cards
 
-This **RTL8812au** card is recommended for the project:
-
-![alt text](doc/images/rtl8812au.jpg "rtl8812au")
-
-It can be powerd from 5V and comes with good 5dBi antenas which is the best purchase in summary.
-
-Other cards should also work but not tested.
+**RTL8812AU is recommended wifi card for the project.
 
 *Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the marked with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
 
-
 **AR9271** should also work but not tested. **RTL8812au** has antena diversity and thus is recommended over **AR9271**.
+
+Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
+
+### Noname RTL8812AU
+
+Card can be powered from 5V and comes with good 5dBi antenas.
+
+My experience with this **RTL8812au** is negative. Card is *NOT recommended* due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
+
+![alt text](doc/images/rtl8812au.jpg "rtl8812au")
+
+
+### Comfast RTL8812AU
+
+Recommended. You will have to solder IPX antena connectors. Adding metal cover is also recommended.
+
+![alt text](doc/images/comfast.jpg "comfast rtl8812au")
+
 
 ## Antenas
 
