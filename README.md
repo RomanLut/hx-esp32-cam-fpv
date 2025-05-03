@@ -20,8 +20,11 @@ Open source digital FPV system based on esp32cam.
 - [x] composite output on RPI GS (PAL/NTSC, support for FPV glasses without HDMI input)
 - [x] Joystick pinout compatible with Ruby
 - [x] **Release v0.2.1**
-- [ ] measure latency properly
+- [ ] pairing
 - [ ] radxa 3w GS
+- [ ] dualboot images
+- [ ] **Release v0.3.2**
+- [ ] measure latency properly
 - [ ] study which components introduce latency
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
@@ -29,7 +32,6 @@ Open source digital FPV system based on esp32cam.
 - [ ] sound recording (esp32s3sense)?
 - [ ] digital pan, zoom
 - [ ] fisheye correction shader, vignetting correction shader
-- [ ] pairing
 - [ ] EIS
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
@@ -39,60 +41,61 @@ Open source digital FPV system based on esp32cam.
 - **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
 - HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
-- up to 1km at 24Mbps (actual transfer rate is ~4-5Mbps total), 600m at 36Mbps (actual trasnfer rate is ~5-6Mbps total) (line of sight)
+- up to 1km at 24Mbps (actual transfer rate is ~4-5Mbps total), 600m at 36Mbps (actual transfer rate is ~5-6Mbps total) (line of sight)
 - latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
-**Air unit variants:**
-- **esp32cam** with **ov2640** camera
+**Air unit variants (VTX):**
+- **esp32s3sense** with **ov5640** camera **(recommended)**
 - **esp32s3sense** with **ov2640** camera
-- **esp32s3sense** with **ov5640** camera _(recommended for FPV: has 50fps modes)_
+- **esp32cam** with **ov2640** camera
 
-**Ground station:**
-- **Raspberry Pi Zero 2W**(recommended) ... **Raspberry Pi 4B** with **rtl8812au**(recommended) or **AR9271** wifi card. Dual **rtl8812au** are recommended for FPV.
-- GS Software also can be run on x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W on Ubuntu.
+**Ground station (VRX):**
+- **Radxa Zero 3W** with **rtl8812au** wifi card(s) **(recommended)**
+- **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
+- GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
+# Recommended hardware
 
-## Original project
+While project can be compiled for the various platforms, the recommented hardware which will allow to achieve best results is:
+- **esp32s3sense** with **ov5640** camera with 12mm lens
 
-**esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs. 
+- **Radxa Zero 3W** with dual **rtl8812au** wifi cards 
 
-The goal of this fork is to develop fpv system for small inav-based plane, starting from the prof-of-concept code of **jeanlemotan**.
 
 # Theory
-Wifi bandwidth is too small for uncompressed video streaming. **ESP32** is too slow for video encoding. MJPEG encoding is done by camera sensor module (**ov2640** or **ov5640**). Camera module continuously scans pixels and encodes rows as JPEG data which is received by **ESP32** at 10MHz I2S clock (**ESP32**) or 20MHz (**ESP32S3** + **ov5640**), written to the SD card (if the DVR is enabled), FEC encoded and passed directly to Wifi. 
 
-The **esp32-camera** component https://github.com/RomanLut/esp32-camera has been modified to send the data as it's received from the DMA instead of frame-by-frame basis. This decreases latency quite significantly (10-20 ms) and reduces the need to allocate full frames in PSRAM. **Ncerzzk** even removed PSRAM on his board. While frame is received from the camera, it is already in flight to GS.
+Wi-Fi bandwidth is insufficient for uncompressed video streaming, and the **ESP32** lacks the processing power for real-time video encoding. Fortunately, **OV2640/OV5640** camera modules can output frames as JPEG images. This project utilizes that feature to stream MJPEG video.
 
-The wifi data is sent using packet injection which is possible on **ESP32** platform. Data is sent with forward error correction encoding (FEC) which allows GS to recover lost packets. No acknowlegements are sent from GS and no retransmissions are done by air unit.
+The camera continuously scans the image sensor and encodes the data row-by-row into JPEG format. These JPEG frames are transmitted to the **ESP32** over I2S at 10 MHz (or 20 MHz for **ESP32-S3** with OV5640), where they are optionally written to an SD card (if DVR mode is enabled), forward error correction (FEC) encoded, and streamed over Wi-Fi.
 
-The air unit can also record the video straight from the camera to the SD card. There is a significant buffering when writing to SD (3MB at the moment) to work around the very regular slowdowns of SD cards. The video quality of air unit recording is the same as on GS (no recompression is done).
+To reduce latency and memory usage, the esp32-camera component (https://github.com/espressif/esp32-camera) was modified to stream data directly from DMA as it arrives, rather than waiting for full frames. This cuts latency by 10–20 ms and minimizes PSRAM usage. As the camera captures the image, data is already in transmission to the Ground Station (GS).
 
-The size of JPEG images vary a lot depending on number of details in the view. Adaptive JPEG compression level adjustment is implemented. Compression is adjusted to achieve frame sizes which fit into available bandwidth.
+Wi-Fi packets are transmitted using packet injection, a feature supported by the **ESP32**. FEC (forward error correction)  ensures that the GS can recover from packet loss without needing acknowledgments or retransmissions.
 
-The receiver (Ground Station) is a **Raspberry PI Zero 2W** ... **Pi4**  with **Realtek 8812au**(recommended) or **AR9271** adapter in monitor mode. Two wifi adapters may work as diversity receivers if required.
+The air unit can also record video directly to an SD card. To compensate for the inconsistent write speeds of SD cards, a 3 MB buffer is used. The recorded video is identical in quality to the streamed version.
 
-Ground Station software can also be run on x86_64 notebook with Ubuntu or Fedora Linux.
+JPEG image sizes vary depending on scene complexity. Adaptive JPEG compression dynamically adjusts the quality level to match the available bandwidth and maintain smooth streaming.
 
-**8812au** with LNA is recommended, while PA is not that important. Range is limited by **ESP32** maximum output power of 100mW (20dB).
+The Ground Station can be a **Radxa Zero 3W**, **Raspberry Pi Zero 2W, up to Raspberry Pi 4**, equipped with Wi-Fi cards in monitor mode such as **Realtek 8812AU** (recommended) or **AR9271**. Dual Wi-Fi cards can be used for diversity reception.
 
-The JPEG decoding is done with turbojpeg to lower latency and - based on the resolution - can take between 1 and 7 milliseconds.
+**8812au** with a low-noise amplifier (LNA) is preferred; however, a high-power amplifier (PA) is not critical since the range is primarily limited by the **ESP32's** maximum transmit power of 100 mW (20 dBm).
 
-It's then uploaded to texture and shown on screen.
+JPEG decoding on the GS is handled by TurboJPEG, achieving decoding times between 1–7 ms depending on resolution. Frames are uploaded as textures and rendered to screen.
 
-OSD is drawn on top of the video with OpenGL ES.
+On-screen display (OSD) elements are drawn using OpenGL ES.
 
-The link is bi-directional so the ground station can send data to the air unit. At the moment it sends camera and wifi configuration and bi-directional stream for telemetry (FEC encoded).
+The link is bi-directional, allowing the Ground Station to send data back to the air unit. Currently, this is used for camera and Wi-Fi configuration, as well as bi-directional telemetry streaming (also FEC encoded).
 
-Here is a video shot at 30 FPS at 800x456 with ov2640 sensor with 120 degeee lens:
+Here’s an example video captured at 30 FPS, resolution **800×456**, using an **OV2640** sensor with a 120° lens:
 
 https://github.com/RomanLut/esp32-cam-fpv/assets/11955117/970a7ee9-467e-46fb-91a6-caa74871fc3b
 
 # Is it worth building?
 
-Do not expect a lot from this system. It all starts with a cheap camera (ov2640) comparable to 2005 smartphone cameras. With such camera you have to accept noisy sensor, bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
+Do not expect a lot from this system. It all starts with a cheap camera (ov5640) comparable to 2005 smartphone cameras. With such camera you have to accept noisy sensor, bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
 
 Secondly, esp32 is not capable of video encoding, which means that video stream is sent as a sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
 
@@ -105,9 +108,9 @@ Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
  - telemetry logging
  - absence of analog noise on image
  
-The downside is high JPEG compression, no WDR, distorted colors, low light sensitivity(ov2640), varying quality of sensor and lenses, frame droping.
+The downside is blocky JPEG compression, no WDR, distorted colors, low light sensitivity(ov2640), varying quality of sensor and lenses, frame droping.
 
-For FPV flight with glasses, a setup with **esp32s3sense + ov5640** with dual Wifi adapters is recommended. Frame droping is not comfortable for FPV. **esp32s3sense + ov5640** offers 50Fps modes while dual adapters offer lower packet loss/frame loss ratio.
+
 
 **hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems in terms of image quality.
 
@@ -115,7 +118,44 @@ The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are:
 - minimal air unit price
 - tiny air unit size (esp32s3sense)
 - low power consumption (less then 300mA at 5V)
-- **ground station hardware used for other fpv systems can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
+- **ground station hardware used for OpenHD/Ruby/OpenIPC can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
+
+
+**Set your expectations low**. This system begins with a very basic camera — the **OV5640** — comparable to smartphone cameras from around 2005. Using such a sensor means accepting several limitations:
+- Noisy image
+- Poor brightness/contrast handling, especially in backlit scenes
+- Distorted and inaccurate colors
+- Weak low-light performance
+- Vignetting from cheap lenses
+- Blurry corners due to poor focus
+- High JPEG compression artifacts
+
+In addition, the **ESP32** lacks hardware video encoding capabilities. As a result, the video stream is transmitted as a series of JPEG images — an inefficient method that wastes bandwidth and reduces potential image quality.
+
+Given its low resolution, **esp32-cam-fpv** should be compared to cheap analog 5.8GHz AIO FPV cameras, not modern digital systems.
+
+What You Gain Compared to Analog AIO Systems? For roughly the same price, hx-esp32-cam-fpv offers:
+- Simultaneous video recording on both air unit and ground station
+- Digital OSD
+- Mavlink telemetry and RC control
+- Telemetry logging
+- Clean digital image with no analog interference
+
+Key Drawbacks:
+- Blocky JPEG compression
+- No Wide Dynamic Range (WDR)
+- Distorted color reproduction
+- Poor low-light performance (especially with **OV2640**)
+- Inconsistent quality between camera units
+- Occasional frame drops
+
+**hx-esp32-cam-fpv** is clearly outclassed by all commercial digital FPV systems in terms of image quality and performance.
+
+However, compared to other open-source digital FPV solutions like OpenHD, Ruby, or OpenIPC, it offers:
+- low cost air unit
+- Very compact size (**XIAO ESP32-S3 Sense**)
+- Low power usage (under 300mA at 5V)
+- The same ground station hardware used for OpenHD/Ruby/OpenIPC can be reused — just swap the SD card.
 
 # Building
 
@@ -360,7 +400,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-
 
 800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
 
-1024x576 30fps requires 36Mbps+ ( > ~6Mbps actual trasnfer rate total ) wifi rate to provide benefits over 800x456.
+1024x576 30fps requires 36Mbps+ ( > ~6Mbps actual transfer rate total ) wifi rate to provide benefits over 800x456.
 
 It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
@@ -368,7 +408,7 @@ While **ov5640** can do 50Fps in higher resolution modes, it does not make a sen
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps MCS3 26Mbps (~5Mbps actual trasnfer rate total) with ov5640 camera 160 degree lens:
+800x456 30fps MCS3 26Mbps (~5Mbps actual transfer rate total) with ov5640 camera 160 degree lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
@@ -559,6 +599,12 @@ Unfortunatelly attempt to use sensor with long flex cable was unsuccessfull. Fle
 # Development
 
 See [development.md](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
+
+# Original project
+
+**esp32-cam-fpv** project was originally developed by **jeanlemotan** https://github.com/jeanlemotan/esp32-cam-fpv (currently seems to be abandoned). Some more work has been done by **Ncerzzk** https://github.com/Ncerzzk/esp-vtx who also seems to developed custom air unit hardware https://github.com/Ncerzzk/esp-vtx-hardware and continues to work on gs https://github.com/Ncerzzk/esp-vtx-gs-rs. 
+
+The goal of this fork is to develop fpv system for small inav-based plane, starting from the prof-of-concept code of **jeanlemotan**.
 
 # References
 
