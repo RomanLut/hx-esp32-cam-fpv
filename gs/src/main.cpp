@@ -1847,6 +1847,21 @@ int run(char* argv[])
                         ImGui::Text("%d ms", v);
                     }
 
+                    {
+                        ImGui::TableNextRow();
+                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("Jpeg Decode");
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d/%d/%d ms", 
+                            s_last_gs_stats.decodedJpegTimeMinMS, 
+                            s_last_gs_stats.decodedJpegTimeTotalMS / ( s_last_gs_stats.decodedJpegCount ? s_last_gs_stats.decodedJpegCount : 1 ), 
+                            s_last_gs_stats.decodedJpegTimeMaxMS 
+                            );
+                    }
+
                     ImGui::EndTable();
                 }
 

@@ -286,7 +286,12 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         output->width = width;
         output->height = height;
 
+        Clock::time_point t1 = Clock::now();
+
+        //without flags decoding performance is 80% slower
+        //visually there is no impact on image quality
         int flags = TJ_FASTUPSAMPLE | TJFLAG_FASTDCT;
+        
         //if (tjDecompressToYUVPlanes(tjInstance, data, size, planesPtr.data(), 0, nullptr, 0, flags) < 0)
         if(tjDecompress2(tjInstance, data, size,output->rgb_data.data(),width,0,height,TJPF_RGB,flags))
         {
@@ -297,6 +302,13 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         }
         
         tjDestroy(tjInstance);
+
+        Clock::time_point t2 = Clock::now();
+        int duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+        s_gs_stats.decodedJpegCount++;
+        s_gs_stats.decodedJpegTimeTotalMS += duration;
+        s_gs_stats.decodedJpegTimeMinMS = std::min( s_gs_stats.decodedJpegTimeMinMS, duration );
+        s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
