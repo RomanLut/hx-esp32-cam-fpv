@@ -113,6 +113,8 @@ static uint32_t s_last_rc_packet_tp = 0;
 static uint16_t s_air_device_id;
 static uint16_t s_connected_gs_device_id = 0;
 
+static int64_t s_accept_connection_timeout_ms = 0;
+
 #ifdef UART_MAVLINK
 
 //constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
@@ -1364,6 +1366,7 @@ __attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     s_recv_ground2air_packet = true;
+    s_accept_connection_timeout_ms = 0;
 
     int64_t t = esp_timer_get_time();
     s_last_seen_config_packet = t;
@@ -1669,6 +1672,21 @@ IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
     s_fec_decoder.packetFilter.set_packet_filtering( s_connected_gs_device_id, s_air_device_id );
 
     LOG("Accepting connection to GS device ID: 0x%04x\n", s_connected_gs_device_id );
+
+    s_accept_connection_timeout_ms = millis() + 3000;
+}
+
+//===========================================================================================
+//===========================================================================================
+static void unpairGS()
+{
+    s_connected_gs_device_id = 0;
+    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
+    s_fec_decoder.packetFilter.set_packet_filtering( 0, 0 );
+
+    LOG("Unpair from GS\n" );
+
+    s_accept_connection_timeout_ms = 0;
 }
 
 //===========================================================================================
@@ -1700,7 +1718,6 @@ IRAM_ATTR static void handle_ground2air_connect_packet(Ground2Air_Config_Packet&
 {
     if ( s_connected_gs_device_id == 0 )
     {
-        //todo: revert if no GS packets [target=this device id] come from GS in 3 seconds
         acceptConnectionWithGS( src.gsDeviceId );
     }
 }
@@ -3120,6 +3137,14 @@ extern "C" void app_main()
                 }
                 
                 s_fec_encoder.unlock();
+            }
+        }
+
+        if ( s_accept_connection_timeout_ms != 0 ) 
+        {
+            if ( s_accept_connection_timeout_ms < millis() )
+            {
+                unpairGS();
             }
         }
 
