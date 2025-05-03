@@ -218,7 +218,11 @@ Hold **Air Rec** button on boot to boot **hx-esp32-cam-fpv** software. Hold **GS
 
 STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6847533
 
-![alt text](doc/images/gs_glasses.jpg "gs_glasses")
+![alt text](doc/images/radxa3w_gs1.jpg "radxa3w_gs1.jpg")
+![alt text](doc/images/radxa3w_gs2.jpg "radxa3w_gs2.jpg")
+![alt text](doc/images/radxa3w_gs3.jpg "radxa3w_gs3.jpg")
+![alt text](doc/images/radxa3w_gs4.jpg "radxa3w_gs4.jpg")
+![alt text](doc/images/radxa3w_gs5.jpg "radxa3w_gs5.jpg")
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
 
@@ -281,11 +285,13 @@ Note that red/black antenas are not recommented unless all you want is to look c
 
 ***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
 
-### === Ground station Variant: Ubuntu ===
+
+## Ground station Variant: Ubuntu
 
 Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
 
-### === Ground station Variant: Fedora Linux Workstation ===
+
+## Ground station Variant: Fedora Linux Workstation
 
 Building and running Ground Station software on a Fedora Linux Workstation (x86_64 notebook): [/doc/running_gs_on_fedora.md](/doc/running_gs_on_fedora.md)
 
@@ -303,9 +309,9 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-
 
 # Mavlink
 
- Can be used for RC and for downlink telemetry. Setup 115200 UART. 
+ Can be used for RC and for downlink telemetry. Setup baudrate 115200 for the UART. 
  
- This is transparent bidirectional stream sent with FEC encoding (Groun2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
+ This is transparent bidirectional stream sent with FEC encoding (Ground2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
 
 # Camera OSD Elements
 
@@ -478,20 +484,31 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-## Wifi card
+## Wifi cards
 
-This **RTL8812au** card is recommended for the project:
-
-![alt text](doc/images/rtl8812au.jpg "rtl8812au")
-
-It can be powerd from 5V and comes with good 5dBi antenas which is the best purchase in summary.
-
-Other cards should also work but not tested.
+**RTL8812AU is recommended wifi card for the project.
 
 *Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the marked with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
 
-
 **AR9271** should also work but not tested. **RTL8812au** has antena diversity and thus is recommended over **AR9271**.
+
+Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
+
+### Noname RTL8812AU
+
+Card can be powered from 5V and comes with good 5dBi antenas.
+
+My experience with this **RTL8812au** is negative. Card is *NOT recommended* due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
+
+![alt text](doc/images/rtl8812au.jpg "rtl8812au")
+
+
+### Comfast RTL8812AU
+
+Recommended. You will have to solder IPX antena connectors. Adding metal cover is also recommended.
+
+![alt text](doc/images/comfast.jpg "comfast rtl8812au")
+
 
 ## Antenas
 
