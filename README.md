@@ -52,18 +52,19 @@ Open source digital FPV system based on esp32cam.
 - **esp32s3sense** with **ov2640** camera
 - **esp32cam** with **ov2640** camera
 
-**Ground station (VRX):**
+**Ground station variants (VRX):**
 - **Radxa Zero 3W** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
 - GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
 # Recommended hardware
 
-While project can be compiled for the various platforms, the recommented hardware which will allow to achieve best results is:
-- **esp32s3sense** with **ov5640** camera with 12mm lens
+Although the project can be compiled for various platforms, the recommended hardware for optimal performance is:
+- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, 12mm lens, 2dbi dipole
+![alt text](doc/images/xiaoesp32s3sense.jpg "xiaoesp32s3sense.jpg")
 
-- **Radxa Zero 3W** with dual **rtl8812au** wifi cards 
-
+- **VRX:** **Radxa Zero 3W** with dual **rtl8812au** wifi cards (at least 20dBbm/100mW output), 4x5dBi dipoles
+![alt text](doc/images/radxa3w_gs.jpg "radxa3w_gs.jpg")
 
 # Theory
 
