@@ -46,9 +46,14 @@ struct Output
     std::vector<uint8_t> rgb_data;
 
     ~Output(){
-        if(texture != 0){
+        if(texture != 0)
+        {
             glDeleteTextures(1,&texture);
             LOGI("die texture:{}",texture);
+        }
+        if (pbo != 0) 
+        {
+            glDeleteBuffers(1, &pbo);
         }
     }
 };
@@ -97,9 +102,6 @@ Video_Decoder::~Video_Decoder()
     for (auto& t: m_impl->threads)
         if (t.joinable())
             t.join();
-    if(m_texture != 0){
-        glDeleteTextures(1,&m_texture);
-    }
 }
 
 //===================================================================================
@@ -345,7 +347,7 @@ size_t Video_Decoder::lock_output()
     size_t pbo_size = output.rgb_data.size();
 
     {
-        GLCHK(glBufferData(GL_PIXEL_UNPACK_BUFFER, pbo_size, nullptr, GL_STREAM_DRAW));
+            GLCHK(glBufferData(GL_PIXEL_UNPACK_BUFFER, pbo_size, nullptr, GL_STREAM_DRAW));
         output.pbo_size = pbo_size;
     }
 
