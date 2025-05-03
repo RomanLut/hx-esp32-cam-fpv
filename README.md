@@ -196,7 +196,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-
 
 
 
-STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
+STL files for 3D Printing 12mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
 
 ## Current consumption
 
@@ -424,15 +424,28 @@ https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 ## Lens 
 
-![alt text](doc/images/ov2640_lens.jpg "ov2640 lens")
+![alt text](doc/images/lens.jpg "lens")
 
-Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 or 160 lens to be used on UAV.
+Always aim for lens with bigger diameter. Bigger lens means better light sensitiviry, less distortions, beter optical resolution.
 
-14mm 160° lens are recommended. 7mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
+Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120° or 160° lens to be used on UAV.
 
-Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
+12mm 160° lens are recommended. 8mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
+
+Note that there are sensors with slightly different lens diameter. The leftmost sensor is not compatible with next two.
 
 Note that "night version" sensor does not have IR filter and shows distorted colors under sunlight (buy a proper sensor!).
+
+
+Always choose lenses with a larger diameter. Larger lenses offer better light sensitivity, reduced distortion, and improved optical resolution.
+
+Both the **ESP32-CAM** and **ESP32-S3 Sense** come with narrow-angle lenses, which should be replaced with wide-angle lenses (120° or 160°) for UAV use.
+
+A 12mm 160° wide-angle lens is recommended. The 8mm wide-angle lenses on these modules are of poor quality, exhibiting high distortion, poor focus, chromatic aberration, and low light sensitivity.
+
+Be aware that some sensors have slightly different lens mount diameters. For example, the leftmost sensor is not compatible with the next two.
+
+Also note: the so advertized "night version" sensor lacks an IR filter and will display distorted colors in sunlight (buy correct lens with IR filter!).
 
 # Wifi channel
 
