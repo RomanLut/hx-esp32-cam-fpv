@@ -116,6 +116,12 @@ struct GSStats
     int pingMaxMS = 0;
 
     int RCPeriodMax = -1;  //ms
+
+    int decodedJpegCount = 0;
+    int decodedJpegTimeTotalMS = 0;
+    
+    int decodedJpegTimeMinMS = 99;
+    int decodedJpegTimeMaxMS = 0;
 };
 
 extern GSStats s_gs_stats;
