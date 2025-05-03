@@ -139,39 +139,28 @@ However, compared to other open-source digital FPV solutions like OpenHD, Ruby, 
 
 ## Air Unit
 
-## esp32cam
+## Air Unit Variant 1: ESP32CAM
 
 Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam.md)
 
-**esp32cam** does not have enough free pins. Two configurations are available currently.
-Configuration is selected in [main.h](https://github.com/RomanLut/esp32-cam-fpv/blob/b63eb884e7c1e2ced3711dce53f20f102a39b4fc/components/air/main.h#L12) before building air unit firmware.
+![alt text](doc/images/esp32cam_pinout.png "pinout")
 
-## Air Unit Variant 1: Displayport MSP OSD + REC button
+The **esp32cam** doesn’t have many free pins. You can optionally solder a **REC button** and an additional **REC status LED** where the **Flash LED** normally is. At a minimum, removing the Flash LED is recommended.
 
-![alt text](doc/images/esp32cam_pinout_config1.png "pinout_config1")
+![alt text](doc/images/esp32cam_led.jpg "esp32cam_led.jpg")
 
-## Air Unit Variant 2: Displayport MSP OSD + Mavlink
-
-![alt text](doc/images/esp32cam_pinout_config2.png "pinout_config2")
-
-Both internal red LED and flash LED are used for indication:
+Both internal red LED and additional LED are used for indication:
  * solid - not recording
  * blinking 1Hz - recording
  * blinking 3Hz - OTA update mode.
  
-Replace flash LED with small indication LED (Blue LED + 100 Ohm resistor), or remove, or paint with black marker:
-
-![alt text](doc/images/esp32cam_flash_led.jpg "esp32cam_flash_led.png")
-
 **REC button** is used to start/stop air unit recording. Hold **REC button** on powerup to enter OTA (over the air update) mode.
 
 With pcb antenna, 50m transmission distance can barely be achieved. A jumper has to be soldered to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
-## esp32s3sense
+## Air Unit Variant 2: **Seed Studio XIAO ESP32 S3 Sense** + OV2640
 
-Flashing esp32s3sense firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
-
-## Air Unit Variant 3: esp32s3sense + ov2640
+Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
 
 STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624598
 
@@ -191,13 +180,15 @@ Existing **Boot** button is used to start/stop air unit recording.
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
-## Air Unit Variant 4: esp32s3sense + ov5640
+## Air Unit Variant 3: **Seed Studio XIAO ESP32 S3 Sense** + OV5640 (recommended)
+
+Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sense.md](/doc/flashing_esp32s3sense.md)
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
 
 **ov5640** on **esp32s3sense** camera offers 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
 
-**es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately.
+**es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately. No hardware modifications are required for camera replacement.
 
 800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total), **esp32sesense + ov5640** camera 160 degree lens:
 
