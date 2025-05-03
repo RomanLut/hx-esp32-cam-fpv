@@ -96,32 +96,6 @@ https://github.com/RomanLut/esp32-cam-fpv/assets/11955117/970a7ee9-467e-46fb-91a
 
 # Is it worth building?
 
-Do not expect a lot from this system. It all starts with a cheap camera (ov5640) comparable to 2005 smartphone cameras. With such camera you have to accept noisy sensor, bad brightness/contrast against light, distorted colors, low light sensitivity, vignetting from cheap lenses, bad focus on corners, high jpeg compression artefacts etc. 
-
-Secondly, esp32 is not capable of video encoding, which means that video stream is sent as a sequence of JPEG images, wasting bitrate which could be used to represent more details otherwise. 
-
-Due to low resolution, **esp32-cam-fpv** competes with cheap analog 5.8 AIO camera, not with other digital fpv systems. 
-
-Compared to analog AIO camera, **hx-esp32-cam-fpv** offers for the same price:
- - air unit and ground station video recording
- - digital OSD
- - (Mavlink) telemetry and RC
- - telemetry logging
- - absence of analog noise on image
- 
-The downside is blocky JPEG compression, no WDR, distorted colors, low light sensitivity(ov2640), varying quality of sensor and lenses, frame droping.
-
-
-
-**hx-esp32-cam-fpv** definitely looses againg all commercially available digital FPV systems in terms of image quality.
-
-The benefits over other open-source systems (OpenHD/Ruby/OpenIPC) are: 
-- minimal air unit price
-- tiny air unit size (esp32s3sense)
-- low power consumption (less then 300mA at 5V)
-- **ground station hardware used for OpenHD/Ruby/OpenIPC can be reused for hx-esp32cam-fpv project, just with different SD card inserted**
-
-
 **Set your expectations low**. This system begins with a very basic camera — the **OV5640** — comparable to smartphone cameras from around 2005. Using such a sensor means accepting several limitations:
 - Noisy image
 - Poor brightness/contrast handling, especially in backlit scenes
@@ -135,7 +109,7 @@ In addition, the **ESP32** lacks hardware video encoding capabilities. As a resu
 
 Given its low resolution, **esp32-cam-fpv** should be compared to cheap analog 5.8GHz AIO FPV cameras, not modern digital systems.
 
-What You Gain Compared to Analog AIO Systems? For roughly the same price, hx-esp32-cam-fpv offers:
+What you gain compared to analog AIO systems? For roughly the same price, **hx-esp32-cam-fpv** offers:
 - Simultaneous video recording on both air unit and ground station
 - Digital OSD
 - Mavlink telemetry and RC control
