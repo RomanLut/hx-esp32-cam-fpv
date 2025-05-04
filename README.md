@@ -208,7 +208,7 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (Recommended)
 
-Preparing SD Card for **Radxa Zero 3W** GS: [doc/software for_radxa.md](/doc/software for_radxa.md) 
+Preparing SD Card for **Radxa Zero 3W** GS: [/doc/software for_radxa.md](/doc/software for_radxa.md) 
 
 Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32cam-fpv** at the same time with dualboot SD Card.
 
@@ -224,7 +224,7 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
 
-Preparing SD Card for **Raspberry PI GS**: [doc/software for_rpi.md](/doc/software for_rpi.md)
+Preparing SD Card for **Raspberry PI GS**: [/doc/software for_rpi.md](/doc/software for_rpi.md)
 
 Single wifi card is Ok for the GS with attached small HDMI monitor.
 
@@ -247,7 +247,7 @@ STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: 
 
 ## Ground Station Variant 3: Raspberry PI Zero 2W, Dual rtl8812au (Not recommended)
 
-Preparing SD Card for **Raspberry PI GS**: [doc/software for_rpi.md](/doc/software for_rpi.md)
+Preparing SD Card for **Raspberry PI GS**: [/doc/software for_rpi.md](/doc/software for_rpi.md)
 
 Dual wifi cards variant benefit better reception and less frame dropping.
 
