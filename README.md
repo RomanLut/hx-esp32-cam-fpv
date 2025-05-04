@@ -208,9 +208,7 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (Recommended)
 
-Preparing SD Card for **Radxa Zero 3W** GS using pre-built **RubyFPV/hx-esp32-cam-fpv dualboot image**: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image_radxa.md) 
-
-Building **RubyFPV/hx-esp32-cam-fpv dualboot image** for **Radxa Zero 3W**: 
+Preparing SD Card for **Radxa Zero 3W** GS: [doc/software for_radxa.md](/doc/software for_radxa.md) 
 
 Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32cam-fpv** at the same time with dualboot SD Card.
 
@@ -226,13 +224,7 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
 
-Preparing SD Card for **Raspberry PI GS** using pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
-
-Building **Raspberry PI GS** image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
-
-***Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)***
-
-***Please use HDMI output next to USB C connector on RPI4.***
+Preparing SD Card for **Raspberry PI GS**: [doc/software for_rpi.md](/doc/software for_rpi.md)
 
 Single wifi card is Ok for the GS with attached small HDMI monitor.
 
@@ -255,13 +247,7 @@ STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: 
 
 ## Ground Station Variant 3: Raspberry PI Zero 2W, Dual rtl8812au (Not recommended)
 
-Preparing SD Card for **Raspberry PI GS** using pre-built image: [doc/prebuilt_gs_image.md](/doc/prebuilt_gs_image.md)
-
-Building **Raspberry PI GS** image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md)
-
-***Note that RPI ground station is configured to output HDMI only by default, but can also output composite [/doc/composite_output.md](/doc/composite_output.md)***
-
-***Please use HDMI output next to USB C connector on RPI4.***
+Preparing SD Card for **Raspberry PI GS**: [doc/software for_rpi.md](/doc/software for_rpi.md)
 
 Dual wifi cards variant benefit better reception and less frame dropping.
 
