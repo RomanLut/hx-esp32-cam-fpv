@@ -60,10 +60,10 @@ Open source digital FPV system based on esp32cam.
 # Recommended hardware
 
 Although the project can be compiled for various platforms, the recommended hardware for optimal performance is:
-- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, 12mm lens, 2dbi dipole
+- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, **M12** 120° lens, 2dbi dipole
 ![alt text](doc/images/xiaoesp32s3sense.jpg "xiaoesp32s3sense.jpg")
 
-- **VRX:** **Radxa Zero 3W** with dual **rtl8812au** wifi cards (at least 20dBbm/100mW output), 4x5dBi dipoles
+- **VRX:** **Radxa Zero 3W** with dual **rtl8812au** wifi cards, 4x5dBi dipoles
 ![alt text](doc/images/radxa3w_gs.jpg "radxa3w_gs.jpg")
 
 # Theory
@@ -196,7 +196,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-
 
 
 
-STL files for 3D Printing 14mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
+STL files for 3D Printing 12mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
 
 ## Current consumption
 
@@ -424,15 +424,17 @@ https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 
 ## Lens 
 
-![alt text](doc/images/ov2640_lens.jpg "ov2640 lens")
+![alt text](doc/images/lens.jpg "lens")
 
-Both **esp32cam** and **esp32s3sense** come with narrow lens which definitely should be replaced with wide angle 120 or 160 lens to be used on UAV.
+Always choose lenses with a larger diameter. Larger lenses offer better light sensitivity, reduced distortion, and improved optical resolution.
 
-14mm 160° lens are recommended. 7mm lens shipped with these cameras have too low quality (high distortions, no focus, chromatic aberration, worse light sensitivity).
+Both the **ESP32-CAM** and **ESP32-S3 Sense** come with narrow-angle lenses, which should be replaced with wide-angle lenses (120° or 160°) for UAV use.
 
-Note that there are sensors with slightly different lens diameter. Two sensors on the left are compatible; the one on the right is not.
+A 12mm 160° wide-angle lens is recommended. The 8mm wide-angle lenses on these modules are of poor quality, exhibiting high distortion, poor focus, chromatic aberration, and low light sensitivity.
 
-Note that "night version" sensor does not have IR filter and shows distorted colors under sunlight (buy a proper sensor!).
+Be aware that some sensors have slightly different lens mount diameters. For example, the leftmost sensor is not compatible with the next two.
+
+Also note: so called "night version" sensor lacks an IR filter and will display distorted colors in sunlight (buy correct lens with IR filter!).
 
 # Wifi channel
 
@@ -486,11 +488,11 @@ FEC is set to such high redundancy because lost frame at 30 fps looks very bad, 
 
 ## Wifi cards
 
-**RTL8812AU is recommended wifi card for the project.
+**RTL8812AU-based** cards are recommended for the project.
 
-*Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the marked with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
+*Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the market with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
 
-**AR9271** should also work but not tested. **RTL8812au** has antena diversity and thus is recommended over **AR9271**.
+**AR9271** should also work but not tested. **RTL8812AU** has antena diversity and thus is recommended over **AR9271**.
 
 Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
 
@@ -498,7 +500,7 @@ Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
 
 Card can be powered from 5V and comes with good 5dBi antenas.
 
-My experience with this **RTL8812au** is negative. Card is *NOT recommended* due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
+My experience with this card is negative. Card is **NOT recommended** due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
 
 ![alt text](doc/images/rtl8812au.jpg "rtl8812au")
 
