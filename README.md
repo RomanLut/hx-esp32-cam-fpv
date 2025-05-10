@@ -514,7 +514,9 @@ Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
 
 ### Noname RTL8812AU
 
-Card can be powered from 5V and comes with good 5dBi antenas.
+Card can be powered from 5V and comes with good 5dBi dualband antenas.
+
+Equipped with two SKY85601 amplifiers. 5GHz: 12dB LNA, no PA. 2.4GHz: No LNA and PA. Theoretical output power: 5Ghz: 11-13 dBm, 2.4Ghz: 16-17 dBm.
 
 My experience with this card is negative. Card is **NOT recommended** due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
 
@@ -522,6 +524,8 @@ My experience with this card is negative. Card is **NOT recommended** due to low
 
 
 ### Comfast RTL8812AU
+
+Equipped with two SKY85703 amplifiers. 5GHz: 12dB LNA, 17dBm output PA. 2.24Ghz: No LNA and PA. Theoretical output power: 5Ghz: 17 dBm, 2.4Ghz: 16-17 dBm.
 
 Recommended. You will have to solder IPX antena connectors. Adding metal cover is also recommended.
 
