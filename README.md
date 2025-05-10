@@ -244,7 +244,9 @@ Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardwa
 | 12       | 25x25x8mm Fan                    | 1        |
 | 13       | Fan PWM Control board (optional) | 1        |
 | 14       | USB Female Connector (optional)  | 2        |
+| 15       | USB-LAN adapter*                 | 1        |
 
+* *USB-LAN adapter is required for software installation.*
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
 
