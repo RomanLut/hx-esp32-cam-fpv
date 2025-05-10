@@ -223,7 +223,7 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 ![alt text](doc/images/radxa3w_gs5.jpg "radxa3w_gs5.jpg")
 ![alt text](doc/images/gs_pinout_radxa.png "gs_pinout_radxa")
 
-It is highl recommended to install cooling fan 
+It is highly recommended to install cooling fan [/doc/connecting_fan.md](/doc/connecting_fan.md) 
 
 Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface](https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface) 
 
@@ -282,6 +282,8 @@ STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: 
 ![alt text](doc/images/gs2_drawing.jpg "gs2_drawing")
 
 ![alt text](doc/images/gs2_wifi_usb.jpg "gs2_wifi_usb")
+
+It is highly recommended to install cooling fan [/doc/connecting_fan.md](/doc/connecting_fan.md) 
 
 A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
 
@@ -512,7 +514,9 @@ Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
 
 ### Noname RTL8812AU
 
-Card can be powered from 5V and comes with good 5dBi antenas.
+Card can be powered from 5V and comes with good 5dBi dualband antenas.
+
+Equipped with two SKY85601 amplifiers. 5GHz: 12dB LNA, no PA. 2.4GHz: No LNA and PA. Theoretical output power: 5Ghz: 11-13 dBm, 2.4Ghz: 16-17 dBm.
 
 My experience with this card is negative. Card is **NOT recommended** due to low output power. As 2.4Ghz power output is limited by RTL8812AU chip iself, maybe I have broken card?
 
@@ -520,6 +524,8 @@ My experience with this card is negative. Card is **NOT recommended** due to low
 
 
 ### Comfast RTL8812AU
+
+Equipped with two SKY85703 amplifiers. 5GHz: 12dB LNA, 17dBm output PA. 2.24Ghz: No LNA and PA. Theoretical output power: 5Ghz: 17 dBm, 2.4Ghz: 16-17 dBm.
 
 Recommended. You will have to solder IPX antena connectors. Adding metal cover is also recommended.
 
