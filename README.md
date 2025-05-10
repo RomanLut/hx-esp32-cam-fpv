@@ -330,7 +330,7 @@ Setup baudrate 115200 for the UARTs.
  
 ## Mavlink 2 RC
 
-The **hx-esp32-cam-fpv** system supports remote control via the **Mavlink 2** protocol. It accepts **Mavlink 2 RC command messages** (```HX_MAXLINK_RC_CHANNELS_OVERRIDE```) over the VRX UART interface.
+The **hx-esp32-cam-fpv** system supports remote control via the **Mavlink 2** protocol. It accepts **Mavlink 2 RC command messages** (```MAXLINK_RC_CHANNELS_OVERRIDE```) over the VRX UART interface.
 
 Although **Mavlink 1** and even **MSP RC** are also compatible, the system is specifically optimized for **Mavlink 2**. It accurately detects the boundaries of RC packets and transmits them without aggregation to minimize latency.
 
@@ -342,7 +342,7 @@ Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 
 Some flight controllers have a limited number of available UART ports.  
 
-To address this, you can enable a camera configuration option that translates **Mavlink 2 RC commands** (```HX_MAXLINK_RC_CHANNELS_OVERRIDE```) into **MSP RC commands** (```MSP_SET_RAW_RC```). These translated commands are then sent over the **DisplayPort OSD UART**, allowing full aircraft control without requiring a Mavlink UART connection to the flight controller ( it is supported by inav firmware ).
+To address this, you can enable a camera configuration option that translates **Mavlink 2 RC commands** (```MAXLINK_RC_CHANNELS_OVERRIDE```) into **MSP RC commands** (```MSP_SET_RAW_RC```). These translated commands are then sent over the **DisplayPort OSD UART**, allowing full aircraft control without requiring a Mavlink UART connection to the flight controller ( it is supported by inav firmware ).
 
 *Note: Translating MSP telemetry to Mavlink telemetry is currently not implemented*.
 
