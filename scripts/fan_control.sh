@@ -4,7 +4,7 @@
 #===========================================
 
 # Raspberry Pi: PWM Output is on PIN35 on the header (PWM1)
-#Radxa Zero 3W: PWM Output is on PIN7 on the header (PWM14-M0)
+# Radxa Zero 3W: PWM Output is on PIN7 on the header (PWM14-M0)
 
 # Run to test:
 # ./fan_control.sh
