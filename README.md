@@ -124,18 +124,18 @@ Key Drawbacks:
 - Inconsistent quality between camera units
 - Occasional frame drops
 
-**hx-esp32-cam-fpv** is clearly outclassed by all commercial digital FPV systems in terms of image quality and performance.
+**hx-esp32-cam-fpv** is clearly outclassed by all commercial digital FPV systems in terms of image quality.
 
 However, compared to other open-source digital FPV solutions like OpenHD, Ruby, or OpenIPC, it offers:
 - low cost air unit
-- Very compact size (**XIAO ESP32-S3 Sense**)
+- Very compact size air unit (**XIAO ESP32-S3 Sense**)
 - Low power usage (under 300mA at 5V)
 - The same ground station hardware used for OpenHD/Ruby/OpenIPC can be reused — just swap the SD card.
 
 # Building
 
 > [!NOTE]
-> Please use **release** branch. **master** can be unstable.
+> Please use **release** branch (it contains lastest release). **master** branch can be unstable.
 
 ## Air Unit
 
@@ -212,7 +212,7 @@ Preparing SD Card for **Radxa Zero 3W** GS: [/doc/software_for_radxa.md](/doc/so
 
 Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32cam-fpv** at the same time with dualboot SD Card.
 
-Hold **Air Rec** button on boot to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** button on boot to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
+Hold **Air Rec** button on powerup to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** button on powerup to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
 
 STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6847533
 
@@ -304,17 +304,21 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-
 ![alt text](doc/images/osd_elements.png "osd_elements")
 
 From left to right:
- - RSSI in Dbm
- - Average wifi queue usage. Should be below 50%. Look for free wifi channel if it turns red constantly
- - actual MJPEG stream bandwidth in Mbps (without FEC encoding). Wifi stream bandwwith = MJPEG stream bandwidth * FEC_n / FEC_k
+ - ```AIR:-10``` Air Unit RSSI in Dbm
+ - ```GS:-14:-13``` GS RSSI in Dbm on each wifi card
+ - Average wifi queue usage. Should be below 50%. Look for free wifi channel if it turns red frequently
+ - actual MJPEG stream bandwidth in Mbps (without FEC encoding). Wifi stream bandwwith = MJPEG stream bandwidth * FEC_n / FEC_k (2x for FEC 6/12)
  - resolution
- - FPS
+ - FPS at GS
  - ```!NO PING!``` Indicates that air unit does not receive GS packets (configuration packets, uplink Mavlink)
  - ```AIR``` Air unit is recording video to SD card
  - ```GS``` GS is recording video to SD card
  - ```HQ DVR``` HQ DVR mode enabled
  - ```!SD SLOW!``` SD card on AIR unit is too slow to record video, frames are skipped
-
+ - ```OFF``` Camera is stopped by RC cahnnel
+ - ```Air: 112°``` Air unit temperature exceeded 110° (overheat)
+ - ```GS: 90°``` GS CPU temperature exceeded 80° (overheat). Throttling and degraded performance may occur.
+   
 # OSD Menu
 
 ![alt text](doc/images/osd_menu.jpg "osd_menu")
@@ -416,7 +420,7 @@ Always choose lenses with a larger diameter. Larger lenses offer better light se
 
 Both the **ESP32-CAM** and **ESP32-S3 Sense** come with narrow-angle lenses, which should be replaced with wide-angle lenses (120° or 160°) for UAV use.
 
-A 12mm 160° wide-angle lens is recommended. The 8mm wide-angle lenses on these modules are of poor quality, exhibiting high distortion, poor focus, chromatic aberration, and low light sensitivity.
+A M12 120° wide-angle lens is recommended. The M8 wide-angle lenses on these modules are of poor quality, exhibiting high distortion, poor focus, chromatic aberration, and low light sensitivity.
 
 Be aware that some sensors have slightly different lens mount diameters. For example, the leftmost sensor is not compatible with the next two.
 
@@ -428,11 +432,13 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 ## Wifi rate
 
-24Mbps or MCS3 26Mbps seems to be the sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~4-5Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
+24Mbps or MCS3 26Mbps seems to be the sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~8-14Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec (23Mbps). Maximum SD write speed 0.8Mb/sec (8Mbps) for **esp32** and 1.8Mb/sec (18Mbps) for **esp32s3** should also be considered here for the air unit DVR. 
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec (23Mbps). 
+
+When Air Recording is enabled, rate is also limited by SD write speed 0.8Mb/sec (8Mbps) for **esp32** and 1.8Mb/sec (18Mbps) for **esp32s3**. 
 
 ## Wifi interferrence 
 
@@ -444,7 +450,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
-**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (30% faster with 4 bit). Overal, 1.9Mb/sec (~19Mbps) in 1 bit mode is more then Wifi can transfer in practice, so SD writing speed is not a limiting factor for now.
+**ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (write speed is only 30% faster in 4 bit mode).
 
 ## Adaptive compression
 
@@ -454,15 +460,13 @@ For **ov2640** sensor, compression level can be set in range 1..63 (lower is bet
 
 Frame data flows throught a number of queues, which can easily be overloaded due to small RAM size on ESP32, see [profiling](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md#profiling).
 
-Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compressoin level and each coefficient can increase it up to 63.
+Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compression level and each coefficient can increase it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy (**/FEC_n * FEC_k**) and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy **/(FEC_n / FEC_k)** and divided by FPS. The result is target frame size.
 
-Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 0.8Mb/sec **ESP32** and 1.8Mb/sec for **esp32s3sense**. 
+Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 0.8Mb/sec **ESP32** and 1.8Mb/sec for **esp32s3sense**.  **ESP32** can write at 1.9Mb/sec but can not keep up such speed due to high overall system load.
 
-**ESP32** can write at 1.9Mb/sec but can not keep up such speed due to high overall system load.
-
-Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between clients; practical bandwidth can be much lower then expected). **This is the most limiting factor**.
+Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between multiple devices. Practical bandwidth can be much lower then expected). **This is the most limiting factor**.
 
 Adaptive compression is key component of **hx-esp32-cam-fpv**. Without adaptive compression, compression level have to be set to so low quality, that system became unusable.
 
@@ -470,13 +474,13 @@ Adaptive compression is key component of **hx-esp32-cam-fpv**. Without adaptive 
 
 Frames are sent using Forward error correction encoding. Currently FEC is set to k=6, n=12 which means that bandwidth is doubled but any 6 of 12 packets in block can be lost, and frame will still be recovered. It can be changed to 6/8 or 6/10 in OSD menu.
 
-FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
+If single packet is lost and can not be recovered by FEC, the whole frame is lost. FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
 ## Wifi cards
 
 **RTL8812AU-based** cards are recommended for the project.
 
-*Note that high power output on GS is not important for **esp32cam-fpv** project. Range is limited by 20db max output of ESP32. Moreover, AFAIK there are no RTL8812AU cards on the market with power amplifier on 2.4GHz stage. All "High output power" RTL8812AU cards has PA on 5GHz only. 2.4GHz is limited by RTL8812AU naked chip output: 16-17db at lower rates.*
+*High power output on the ground station (GS) is not critical for the esp32cam-fpv project, as the range is primarily limited by the ESP32's maximum output of 20 dBm. Additionally, to the best of my knowledge, there are very few RTL8812AU-based cards on the market with a power amplifier (PA) on the 2.4 GHz band. Most RTL8812AU cards advertised as "high output power" include a PA only on the 5 GHz band. On 2.4 GHz, the output is limited to the bare RTL8812AU chip, which typically delivers around 16–17 dBm at lower data rates.*
 
 **AR9271** should also work but not tested. **RTL8812AU** has antena diversity and thus is recommended over **AR9271**.
 
@@ -552,7 +556,7 @@ Note that some optimizations important for other open source digital FPV systems
 
 ## Latency
 
-Latency is in range 90-110ms for all resolutions at 30 and 50fps. This is still to be double checked because esp32 simply does not have memory to buffer more then 30ms. From technological side, this system is close to HD Zero which do not need to wait for the full frame from camera to start transmission, expected latency should be in range 40-80ms.
+Latency ranges between 90–110 ms across all resolutions at both 30 and 50 fps. Technologically, the system is similar to HDZero in that it begins transmission without waiting for a full frame from the camera. However, the source of the current latency still needs to be investigated, as the expected range should be around 40–80 ms.
 
 **Raspberry Pi Zero 2W** GS with 60Hz TV:
 
@@ -611,13 +615,16 @@ The goal of this fork is to develop fpv system for small inav-based plane, start
 
 # FAQ
 
+* Can  use Runcam VRX with tis project?
+  No, Runcam VRX contains two **RLT8812EU** cards which support 5.8Ghz only.
+
 * Can original **Raspberry Pi Zero W** be used as GS?
   
   No, RPI0W does not have enough performance to decode 800x600 MJPEG stream with it's CPU.
 
 * Do I need to pair Air unit and GS?
 
-  Currently there is no pairing procedure; GS will receive signal from any air unit. As project is in early development state, it is assumed that there are single Air Unit and single GS in the area. If you ever try to test multiple systems, make sure channels are separated at least by 3, so that GS will not hear other air unit.
+  No, the ground station (GS) will automatically connect to any unpaired air unit detected on the selected Wi-Fi channel. Once connected, the air unit will communicate exclusively with that GS until it is rebooted. While multiple air unit/GS pairs can technically operate on the same channel, this is not recommended.
 
 * What if packet lost and FEC can not recover?
 
