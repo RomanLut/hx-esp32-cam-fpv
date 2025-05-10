@@ -60,7 +60,7 @@ Open source digital FPV system based on esp32cam.
 # Recommended hardware
 
 Although the project can be compiled for various platforms, the recommended hardware for optimal performance is:
-- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, **M12** 120° lens, 2dbi dipole
+- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, **M12** 120° lens, 2dBi dipole
 ![alt text](doc/images/xiaoesp32s3sense.jpg "xiaoesp32s3sense.jpg")
 
 - **VRX:** **Radxa Zero 3W** with dual **rtl8812au** wifi cards, 4x5dBi dipoles
@@ -311,19 +311,46 @@ Building and running Ground Station software on a Fedora Linux Workstation (x86_
 
 # Displayport MSP OSD
 
- Configure Displayport MSP OSD 115200, Avatar in INav/Betaflight/Ardupilot.
+Configure Displayport MSP OSD 115200, Avatar in INav/Betaflight/Ardupilot.
 
- A number of OSD fonts are included. User fonts can be placed in ```/gs/assets/osd_fonts/``` - 24 pixels wide png format.
+A number of OSD fonts are included. User fonts can be placed in ```/gs/assets/osd_fonts/``` - 24 pixels wide png format.
  
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/42821eb8-5996-4f39-aac6-2929c9d3661e
 
 
 
-# Mavlink
+# Bidirectional serial connection
 
- Can be used for RC and for downlink telemetry. Setup baudrate 115200 for the UART. 
+There is bidirectional stream sent with FEC encoding (Ground2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
+
+It can be used for downlink telemetry (Mavlink 1, Mavlnk2, LTE) and RC (See below). 
+
+Setup baudrate 115200 for the UARTs. 
  
- This is transparent bidirectional stream sent with FEC encoding (Ground2Air: ```k=2 n=3```, Air2Ground: Same as video stream, ```k=6 n=12``` by default).
+ 
+## Mavlink 2 RC
+
+The **hx-esp32-cam-fpv** system supports remote control via the **Mavlink 2** protocol. It accepts **Mavlink 2 RC command messages** (```MAXLINK_RC_CHANNELS_OVERRIDE```) over the VRX UART interface.
+
+Although **Mavlink 1** and even **MSP RC** are also compatible, the system is specifically optimized for **Mavlink 2**. It accurately detects the boundaries of RC packets and transmits them without aggregation to minimize latency.
+
+Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
+![alt text](doc/images/mavlink2_rc.png "mavlink2_rc")
+
+
+## MSP RC translation ( Mavlink2MspRC )
+
+Some flight controllers have a limited number of available UART ports.  
+
+To address this, you can enable a camera configuration option that translates **Mavlink 2 RC commands** (```MAXLINK_RC_CHANNELS_OVERRIDE```) into **MSP RC commands** (```MSP_SET_RAW_RC```). These translated commands are then sent over the **DisplayPort OSD UART**, allowing full aircraft control without requiring a Mavlink UART connection to the flight controller ( it is supported by inav firmware ).
+
+*Note: Translating MSP telemetry to Mavlink telemetry is currently not implemented*.
+
+## Disabling camera from RC Controller
+
+If **Mavlink RC** is used, it is possible to disable camera using channel configured in ```Camera Stop Channel``` camera configuraion. 
+
+
 
 # Camera OSD Elements
 
@@ -502,7 +529,7 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 If single packet is lost and can not be recovered by FEC, the whole frame is lost. FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-## Wifi cards
+# Known Wifi cards
 
 **RTL8812AU-based** cards are recommended for the project.
 
@@ -558,7 +585,7 @@ Do not power wifi card or **ESP32** without antena attached; it can damage outpu
 
 ## Range 
 
-**2dbi dipole on plane, 5dbi dipoles on GS:** 1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Will drop to few metters with walls/trees on the way.
+**2dbi dipole on plane, 5dbi dipoles on GS:** 1.2km at 24Mbps, 600m at 36Mbps (line of sight, away from wifi routers). Range is decreased significantly with walls/trees on the way.
 
 **2dbi dipole on plane, 5dbi dipole + BetaFPV Moxon Antenna on GS:** 2km at 24Mbps, 900m at 36Mbps.
 
