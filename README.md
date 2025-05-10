@@ -221,6 +221,10 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 ![alt text](doc/images/radxa3w_gs3.jpg "radxa3w_gs3.jpg")
 ![alt text](doc/images/radxa3w_gs4.jpg "radxa3w_gs4.jpg")
 ![alt text](doc/images/radxa3w_gs5.jpg "radxa3w_gs5.jpg")
+![alt text](doc/images/gs_pinout_radxa.png "gs_pinout_radxa")
+
+Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface](https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface) 
+
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
 
