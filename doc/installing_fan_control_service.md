@@ -1,40 +1,29 @@
-# Installing fan control service 
+# Installing Fan Control Service 
 
-* Configure PWM channel:
+Boot, ssh, download script:
 
-  Raspberry Pi: Add to ```boot/config.txt``` at the end:  ```dtoverlay=pwm-2chan,pin2=19,func2=2```
-  Radxa Zero 3W: Enable PWM14-M0 overlay in rsetup
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/fan_control.sh```
 
-* Edit ```fan_control.sh``` : adjust PWM frequency ```PWM_FREQUENCY=`` and minimum PWM duty ratio ```DUTY_MIN_PERCENT=``` if required.
+* ```chmod +x fan_control.sh```
 
-* Test:
+## Configure PWM channel:
 
+  **Raspberry Pi**: Add ```dtoverlay=pwm-2chan,pin2=19,func2=2``` to  the end of the file ```boot/config.txt```   
+  
+  **Radxa Zero 3W**: Enable **PWM14-M0** overlay in **rsetup**
+
+## Adjust parameters
+Edit ```fan_control.sh```, adjust:
+ - PWM frequency ```PWM_FREQUENCY=```
+ - minimum PWM duty ratio ```DUTY_MIN_PERCENT=``` - the minimum duty ratio at which fan still operates.
+ - maximum PWM duty ratio ```DUTY_MAX_PERCENT``` - limit maximum fan speed. F.e when connecting 5V fan to 2S VBAT, set to 60%.
+
+## Test:
   ```fan_control.sh run```
 
-* Install service:
+## Install service:
 
-  ```fan_control.sh install```
+```fan_control.sh install```
 
+See also: [Connecting Fan](/doc/connecting_fan.md) 
 
-
-# 2-wire fan
-
- 5v fan
-
- Simple schematics =
- May be noisy. To  lower noice, change PWM frequency to 30000 (30Khz). May not work.
-
- Low-noice schematics =
- change PWM frequency to 30000 (30Khz)
-
-
-# 4-wire fan
-
- Should be compatible with 3.3 PWM signal.
-
- How to find out if ti is compatible:
- Connect fan to 5v  voltage on PWM pin.
- Should be 3.3V or less.
- Then connect PWM pin,check it if works.
-
- PWM frequency in script should be set to  25Hz (default).
