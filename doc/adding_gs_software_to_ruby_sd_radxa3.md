@@ -1,10 +1,10 @@
-# Adding esp32-cam-fpv GS software to exiting Ruby SD Card using script
+# Adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card using script
 
 * Connect Radxa3 GS to LAN using USB-LAN adapter
 
 * Boot Ruby
 
-* Enable ssh in Ruby interface '''System\Network\Enable SSH'''
+* Enable ssh in Ruby interface **System\Network\Enable SSH**
 
 * ssh to running Ruby GS. Credentials are ```radxa/radxa```
 
@@ -14,7 +14,7 @@
 
 * ```./install_on_ruby.sh```
 
-* Wait until script finishes and reboots system to esp32-cam-fpv GS software.
+* Wait until script finishes and reboots system to **hx-esp32-cam-fpv** GS software.
 
 ssh connection should stay alive untill reboot.
 
@@ -22,13 +22,13 @@ ssh connection should stay alive untill reboot.
 
   The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
-* Download lastest RubyFPV image for Radxa Zero 3W: https://rubyfpv.com/downloads.php
+* Download lastest **RubyFPV** image for **Radxa Zero 3W**: https://rubyfpv.com/downloads.php
 
-* Write to SD card using Raspberry PI Imager (select **Other Os**).
+* Write to SD card using **Raspberry PI Imager** (select **Other OS**).
 
 * Connect Radxa GS to network using USB-LAN adapter
 
-* Boot image on Radxa GS.Wait untill Ruby interface boots fully.
+* Boot image on Radxa GS. Wait untill Ruby interface boots fully.
 
 * ssh to Radxa GS. Credentials are ```radxa/radxa```
 
@@ -56,17 +56,17 @@ ssh connection should stay alive untill reboot.
 
 * Modify launch script:
 
- ```sudo nano /root/.profile
+  ```sudo nano /root/.profile```
  
- Comment out all lines starting from ```echo "Launching Ruby..."```
+  Comment out all lines starting from ```echo "Launching Ruby..."```
 
- Add line: ```/home/radxa/esp32-cam-fpv/scripts/boot_selection.sh``` 
+  Add line: ```/home/radxa/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
-* Run ```sudo rsetup```. Eable UART3 overlay: Hardware -> Manage overlays.
+* Run ```sudo rsetup```. Enable **UART3** overlay: Hardware -> Manage overlays.
 
 * Save and reboot:
 
-``` sudo reboot ```
+  ``` sudo reboot ```
 
 
 
@@ -75,9 +75,13 @@ ssh connection should stay alive untill reboot.
 Connect Radxa GS to network using USB-LAN adapter
 
 To update groundstation software, pull updates from '''release''' branch:
-  ```cd /home/radxa/cd esp32-cam-fpv```
+
+  ```cd /home/radxa/```
+  
+  ```cd esp32-cam-fpv```
  
   ```git pull```
+  
   ```cd gs```
   
   ```make```
