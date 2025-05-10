@@ -223,7 +223,27 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 ![alt text](doc/images/radxa3w_gs5.jpg "radxa3w_gs5.jpg")
 ![alt text](doc/images/gs_pinout_radxa.png "gs_pinout_radxa")
 
+It is highl recommended to install cooling fan 
+
 Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface](https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface) 
+
+**Bill of materials:**
+| Position | Name                             | Quantity |
+|----------|----------------------------------|----------|
+| 1        | Radxa Zero 3W                    | 1        |
+| 3        | DC-DC 5V 2A                      | 1        |
+| 3        | DC Female Connector              | 1        |
+| 4        | USB Type C OTG Male Connector    | 1        |
+| 5        | USB 2.0 HUB                      | 1        |
+| 6        | RTL 8812AU                       | 2        |
+| 7        | U.fl to SMA Coax Cable           | 4        |
+| 8        | 2.4Ghz+5.8Ghz Dipole Antena      | 4        |
+| 9        | 4-Position Joystick              | 1        |
+| 10       | Button                           | 2        |
+| 11       | Resistor 1kOhm                   | 1        |
+| 12       | 25x25x8mm Fan                    | 1        |
+| 13       | Fan PWM Control board (optional) | 1        |
+| 14       | USB Female Connector (optional)  | 2        |
 
 
 ## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
