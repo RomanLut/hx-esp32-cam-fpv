@@ -60,7 +60,7 @@ Open source digital FPV system based on esp32cam.
 # Recommended hardware
 
 Although the project can be compiled for various platforms, the recommended hardware for optimal performance is:
-- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, **M12** 120° lens, 2dbi dipole
+- **VTX:** **Seed Studio XIAO ESP32S3 Sense** with **ov5640** camera, **M12** 120° lens, 2dBi dipole
 ![alt text](doc/images/xiaoesp32s3sense.jpg "xiaoesp32s3sense.jpg")
 
 - **VRX:** **Radxa Zero 3W** with dual **rtl8812au** wifi cards, 4x5dBi dipoles
