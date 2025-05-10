@@ -502,7 +502,15 @@ Frames are sent using Forward error correction encoding. Currently FEC is set to
 
 If single packet is lost and can not be recovered by FEC, the whole frame is lost. FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
-## Wifi cards
+# Mavlink 2 RC
+
+The **hx-esp32-cam-fpv** system supports remote control via the **Mavlink 2** protocol. It accepts **Mavlink 2** RC command messages (HX_MAXLINK_RC_CHANNELS_OVERRIDE) over the VRX UART interface.
+
+Although Mavlink 1 is also compatible, the system is specifically optimized for Mavlink 2. It accurately detects the boundaries of RC packets and transmits them without aggregation to minimize latency.
+
+![alt text](doc/images/mavlink2_rc.png "mavlink2_rc")
+
+# Known Wifi cards
 
 **RTL8812AU-based** cards are recommended for the project.
 
