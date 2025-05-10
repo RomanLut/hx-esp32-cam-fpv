@@ -223,7 +223,7 @@ STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https:/
 ![alt text](doc/images/radxa3w_gs5.jpg "radxa3w_gs5.jpg")
 ![alt text](doc/images/gs_pinout_radxa.png "gs_pinout_radxa")
 
-It is highl recommended to install cooling fan 
+It is highly recommended to install cooling fan [/doc/connecting_fan.md](/doc/connecting_fan.md) 
 
 Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface](https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface) 
 
@@ -282,6 +282,8 @@ STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: 
 ![alt text](doc/images/gs2_drawing.jpg "gs2_drawing")
 
 ![alt text](doc/images/gs2_wifi_usb.jpg "gs2_wifi_usb")
+
+It is highly recommended to install cooling fan [/doc/connecting_fan.md](/doc/connecting_fan.md) 
 
 A small USB 2.0 hub board is used to connect two wifi cards and add two USB port sockets. 
 
