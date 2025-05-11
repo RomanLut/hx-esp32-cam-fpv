@@ -20,8 +20,7 @@ Note that installation process may take ~1h on **Raspberry Pi 2W**. ssh connecti
 
 See also: Installing fan control service [/doc/installing_fan_control_service.md  ](/doc/installing_fan_control_service.md  ) 
 
-> ***Note***
-> 
+> [!NOTE]
 > *Known problem: With Wifi drivers installed in RubyFPV image currently, esp32-cam-fpv GS software is unable to show RSSI*
 
 # Manually adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card
