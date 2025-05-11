@@ -87,3 +87,7 @@ To update groundstation software, pull updates from '''release''' branch:
   ```cd gs```
   
   ```make```
+
+# Development
+
+ See notes on development with **RubyFPV** based image: [/doc/vs_code_remote_development.md  ](/doc/vs_code_remote_development.md  ) 

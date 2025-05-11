@@ -119,4 +119,4 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
 # Development
 
- See notes on development with **RubyFPV** based image: [/doc/vs_code_remote_debugging.md  ](/doc/vs_code_remote_debugging.md  ) 
+ See notes on development with **RubyFPV** based image: [/doc/vs_code_remote_development.md  ](/doc/vs_code_remote_development.md  ) 
