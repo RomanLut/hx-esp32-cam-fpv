@@ -12,6 +12,8 @@
 
   ```sudo timedatectl set-ntp true```
 
+* enable **/dev/ttyS3* overlay in **rsetup**: **System\Manage Overlays\Enable UART3-M0**
+
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
 
 * ```chmod +x install_on_ruby.sh```
