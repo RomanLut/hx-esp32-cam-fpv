@@ -1,4 +1,4 @@
-# Adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card using script
+# Adding hx-esp32-cam-fpv GS software to existing RubyFPV SD Card using script
 
 * Connect RPI GS to LAN using USB-LAN adapter
 
