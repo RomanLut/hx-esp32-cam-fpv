@@ -1,14 +1,12 @@
 
-# Making image file from SD card for release
-- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **16GB** or **32BG** SD Card
- 
-- Insert SD card into PRI 2W and compile rtl8812au driver.
+# Making image file from SD card for release (Radxa Zero 3W)
+- Creade SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB**, **16GB** or **32BG** SD Card
 
-- * start ```sudo raspi-config``` and change the following options:
-  * **Advanced options -> GL Driver -> Fake KMS**
-  * **Advanced options -> Compositor -> disable compositor**
+- install fan control service [/doc/installing_fan_control_service.md ](/doc/installing_fan_control_service.md)
 
-- Insert SD card into PRI4 or PRI2W.
+- Boot **hx-esp32-cam-gs** software
+
+- Exit to shell
 
 - Install modified pishrink.sh script and copy it to the ```/usr/local/bin``` folder by typing: 
 
@@ -28,13 +26,13 @@
 
 ```sudo mkdir -p /mnt/usb1```
 
-```sudo mount /dev/sda1 /mnt/usb1```
+```sudo mount /dev/sda1 /mnt/usb1``` 
 
 _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 - Create image from SD card to USB drive:
 
-```sudo dd if=/dev/mmcblk0 of=/mnt/usb1/espvrx.img bs=1M status=progress```
+```sudo dd if=/dev/mmcblk1 of=/mnt/usb1/espvrx.img bs=1M status=progress```
 
 ```sudo pishrink.sh -z -a /mnt/usb1/espvrx.img```
 
