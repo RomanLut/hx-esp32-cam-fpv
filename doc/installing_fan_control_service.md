@@ -25,5 +25,7 @@ Edit ```fan_control.sh```, adjust:
 
 ```./fan_control.sh install```
 
+After installation, script path is ```/usr/local/bin/fan_control.sh```.
+
 See also: [Connecting Fan](/doc/connecting_fan.md) 
 
