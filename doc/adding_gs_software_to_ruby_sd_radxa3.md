@@ -1,4 +1,4 @@
-# Adding hx-esp32-cam-fpv GS software to existing RubyFPV SD Card using script
+# Adding hx-esp32-cam-fpv GS software to existing RubyFPV Radxa Zero 3W SD Card using script
 
 * Connect Radxa3 GS to LAN using USB-LAN adapter
 
