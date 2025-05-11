@@ -244,9 +244,10 @@ Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardwa
 | 10       | Button                           | 2        |
 | 11       | Resistor 1kOhm                   | 1        |
 | 12       | 25x25x8mm Fan                    | 1        |
-| 13       | Fan PWM Control board (optional) | 1        |
-| 14       | USB Female Connector (optional)  | 2        |
-| 15       | USB-LAN adapter*                 | 1        |
+| 13       | Heatsink                         | 1        |
+| 14       | Fan PWM Control board (optional) | 1        |
+| 15       | USB Female Connector (optional)  | 2        |
+| 16       | USB-LAN adapter*                 | 1        |
 
 * *USB-LAN adapter is required for software installation.*
 
