@@ -27,5 +27,7 @@ Edit ```fan_control.sh```, adjust:
 
 After installation, script path is ```/usr/local/bin/fan_control.sh```.
 
+To restart service after adjustments, use: ```sudo systemctl restart fan_control```.
+
 See also: [Connecting Fan](/doc/connecting_fan.md) 
 
