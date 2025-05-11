@@ -1,12 +1,12 @@
-# Adding esp32-cam-fpv GS software to exiting Ruby SD Card using script
+# Adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card using script
 
 * Connect RPI GS to LAN using USB-LAN adapter
 
-* Boot Ruby
+* Boot **RubyFPV** image
 
-* Enable ssh in Ruby interface '''System\Network\Enable SSH'''
+* Enable ssh in Ruby interface **System\Network\Enable SSH**
 
-* ssh to running Ruby GS. Credentials are ```pi/raspberry```
+* ssh to running **RubyFPV** GS. Credentials are ```pi/raspberry```
 
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
 
@@ -14,22 +14,27 @@
 
 * ```./install_on_ruby.sh```
 
-* Wait until script finishes and reboots system to esp32-cam-fpv GS software.
+* Wait until script finishes and reboots system to **hx-esp32-cam-fpv** GS software.
 
-Note that installation process may take ~1h on Raspberry pi 2w. ssh connection should stay alive untill reboot.
+Note that installation process may take ~1h on **Raspberry Pi 2W**. ssh connection should stay alive untill reboot.
 
+See also: Installing fan control service [/doc/installing_fan_control_service.md  ](/doc/installing_fan_control_service.md  ) 
 
-# Manually adding esp32-cam-fpv GS software to exiting Ruby SD Card
+> ***Note***
+> 
+> *Known problem: With Wifi drivers installed in RubyFPV image currently, esp32-cam-fpv GS software is unable to show RSSI*
+
+# Manually adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card
 
   The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
-* Download lastest RubyFPV image for Raspberry Pi: https://rubyfpv.com/downloads.php
+* Download lastest **RubyFPV** image for Raspberry Pi: https://rubyfpv.com/downloads.php
 
-* Write to SD card using Raspberry PI Imager (select **Other Os**).
+* Write to SD card using **Raspberry PI Imager** (select **Other Os**).
 
-* Connect Raspberry PI GS to network using USB-LAN adapter
+* Connect **Raspberry PI** GS to network using USB-LAN adapter
 
-* Boot image on RPI GS. Wait untill Ruby interface boots fully.
+* Boot image on RPI GS. Wait untill **RubyFPV** interface boots fully.
 
 * ssh to RPI GS. Credentials are ```pi/raspberry```
 
@@ -79,15 +84,15 @@ Note that installation process may take ~1h on Raspberry pi 2w. ssh connection s
 
 * Modify launch script:
 
- ```sudo nano /root/.profile
- 
-* Comment out all lines starting from ```echo "Launching..."```
+  ```sudo nano /root/.profile```
+  
+  Comment out all lines starting from ```echo "Launching..."```
 
- Add line: ```/home/pi/esp32-cam-fpv/scripts/boot_selection.sh``` 
+  Add line: ```/home/pi/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
 * Save and reboot:
 
-``` sudo reboot ```
+  ``` sudo reboot ```
 
 
 
@@ -105,13 +110,13 @@ Note that installation process may take ~1h on Raspberry pi 2w. ssh connection s
   
   ```make```
 
-#Notes
+# Notes
 
 * LAN is not initialized while GS software is running. Exit GS software to initialize LAN. 
 
 * If image is booted on Raspberry 4 once, it will not boot on Raspberry Pi Zero 2W anymore.
  
 
-#Development
+# Development
 
- See notes on development with RubyFPV based image: vs_code_remote_debugging.md 
+ See notes on development with **RubyFPV** based image: [/doc/vs_code_remote_debugging.md  ](/doc/vs_code_remote_debugging.md  ) 
