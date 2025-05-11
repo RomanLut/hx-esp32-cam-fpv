@@ -20,10 +20,12 @@ Open source digital FPV system based on esp32cam.
 - [x] composite output on RPI GS (PAL/NTSC, support for FPV glasses without HDMI input)
 - [x] Joystick pinout compatible with Ruby
 - [x] **Release v0.2.1**
-- [ ] pairing
-- [ ] radxa 3w GS
-- [ ] dualboot images
-- [ ] **Release v0.3.2**
+- [x] pairing
+- [x] radxa 3w GS
+- [x] dualboot images
+- [x] **Release v0.3.2**
+- [ ] use smaller packets for less losses?
+- [ ] retransmissions ?
 - [ ] measure latency properly
 - [ ] study which components introduce latency
 - [ ] Camera OSD elements position configuration
