@@ -1,18 +1,19 @@
 
-Visual Studio Code Remote Debugging
+# Notes on Visual Studio Code Remote Development
 
- On Ruby based images, VS Code will fail installing VS Code remote server due to insufficiend space in /tmp folder, allocated in RAM.
+ On **RubyFPV** based images, **VS Code** will fail installing **VS Code remote server** due to insufficiend space in /tmp folder, allocated in RAM.
 
-- I can be solved executing command once before connecting:
+It can be solved executing the follwing command once, before connecting VS Code:
 
-   ```sudo mount -o remount,size=1G /tmp```
+- ```sudo mount -o remount,size=1G /tmp```
 
-  Checking size of /tmp foder:
+- Checking size of /tmp foder:
   
-  ```df -h /tmp```
+- ```df -h /tmp```
 
-- Lastest working VSCode version for kernel 5.10  is 1.89.1. If you want to use remote development, install this version manually and disable automatic agrades.
 
-- Reassign all files in the folder to user pi (in case Git have problems):
+Lastest working **VS Code** version for kernel **5.10** is **1.89.1**. If you want to use remote development, install this **VS Code** version manually and disable automatic agrades.
+
+In case if Git have problems, reassign all files in the folder to user pi ():
  
-  sudo chown -R pi:pi esp32-cam-fpv
+  ```sudo chown -R pi:pi esp32-cam-fpv```
