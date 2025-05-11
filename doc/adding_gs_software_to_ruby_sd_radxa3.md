@@ -42,7 +42,9 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   ```sudo timedatectl set-ntp true```
 
-* Install required packages: 
+* Install required packages:
+
+  ```sudo apt-get update```
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng```
 
