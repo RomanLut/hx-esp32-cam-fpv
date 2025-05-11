@@ -18,7 +18,7 @@ Open source digital FPV system based on esp32cam.
 - [x] HQ DVR mode: 1280x720x30fps(ov5640) recording with maximum quality on air unit, with low framerate transmission to GS
 - [x] provide manual for running GS software on Ubuntu
 - [x] composite output on RPI GS (PAL/NTSC, support for FPV glasses without HDMI input)
-- [x] Joystick pinout compatible with Ruby
+- [x] Joystick pinout compatible with RubyFPV
 - [x] **Release v0.2.1**
 - [x] pairing
 - [x] radxa 3w GS
@@ -128,11 +128,11 @@ Key Drawbacks:
 
 **hx-esp32-cam-fpv** is clearly outclassed by all commercial digital FPV systems in terms of image quality.
 
-However, compared to other open-source digital FPV solutions like OpenHD, Ruby, or OpenIPC, it offers:
+However, compared to other open-source digital FPV solutions like OpenHD, RubyFPV, or OpenIPC, it offers:
 - low cost air unit
 - Very compact size air unit (**XIAO ESP32-S3 Sense**)
 - Low power usage (under 300mA at 5V)
-- The same ground station hardware used for OpenHD/Ruby/OpenIPC can be reused — just swap the SD card.
+- The same ground station hardware used for OpenHD/RubyFPV/OpenIPC can be reused — just swap the SD card.
 
 # Building
 
