@@ -57,7 +57,7 @@ else
 fi
 
 cd "$HOME_DIRECTORY"
-git clone -b development --recursive https://github.com/RomanLut/esp32-cam-fpv
+git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv
 cd esp32-cam-fpv
 cd gs
 
