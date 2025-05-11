@@ -8,6 +8,10 @@
 
 * ssh to running Ruby GS. Credentials are ```radxa/radxa```
 
+* Actualise time:
+
+  ```sudo timedatectl set-ntp true```
+
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
 
 * ```chmod +x install_on_ruby.sh```
