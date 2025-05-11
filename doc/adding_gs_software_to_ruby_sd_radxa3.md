@@ -4,7 +4,7 @@
 
 * Boot Ruby
 
-* Enable ssh in Ruby interface **System\Network\Enable SSH**
+* Enable ssh in Ruby interface **Controller Settings\Local Network Settings\Enable SSH**
 
 * ssh to running Ruby GS. Credentials are ```radxa/radxa```
 
