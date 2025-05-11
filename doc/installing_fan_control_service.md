@@ -19,11 +19,11 @@ Edit ```fan_control.sh```, adjust:
  - maximum PWM duty ratio ```DUTY_MAX_PERCENT``` - limit maximum fan speed. F.e when connecting 5V fan to 2S VBAT, set to 60%.
 
 ## Test:
-  ```fan_control.sh run```
+  ```./fan_control.sh run```
 
 ## Install service:
 
-```fan_control.sh install```
+```./fan_control.sh install```
 
 See also: [Connecting Fan](/doc/connecting_fan.md) 
 
