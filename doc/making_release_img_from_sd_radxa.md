@@ -34,6 +34,8 @@ _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 ```sudo dd if=/dev/mmcblk1 of=/mnt/usb1/espvrx.img bs=1M status=progress```
 
+```sudo apt-get install pigz```
+
 ```sudo pishrink.sh -z -a /mnt/usb1/espvrx.img```
 
 ```sudo umount /mnt/usb1```
