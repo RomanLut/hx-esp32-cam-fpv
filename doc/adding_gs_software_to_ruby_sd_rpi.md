@@ -23,7 +23,7 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 > [!NOTE]
 > *Known problem: With Wifi drivers installed in RubyFPV image currently, esp32-cam-fpv GS software is unable to show RSSI*
 
-# Manually adding hx-esp32-cam-fpv GS software to exiting Ruby SD Card
+# Manually adding hx-esp32-cam-fpv GS software to exiting RubyFPV SD Card
 
   The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
