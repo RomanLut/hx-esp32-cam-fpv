@@ -10,35 +10,35 @@
 
 - Install modified pishrink.sh script and copy it to the ```/usr/local/bin``` folder by typing: 
 
-```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
+  ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
 
-```sudo chmod +x pishrink.sh```
+  ```sudo chmod +x pishrink.sh```
 
-```sudo mv pishrink.sh /usr/local/bin```
+  ```sudo mv pishrink.sh /usr/local/bin```
 
 - Check the mount point path of your USB drive by entering:
 
-```lsblk```
+  ```lsblk```
 
 - Insert **64GB** Flash drive formatted to NTFS. We use 64GB flash drive, because it should have enought free space for 32GB SD Card image and a shrinked image.
 
 - Mount usbdrive:
 
-```sudo mkdir -p /mnt/usb1```
+  ```sudo mkdir -p /mnt/usb1```
 
-```sudo mount /dev/sda1 /mnt/usb1``` 
+  ```sudo mount /dev/sda1 /mnt/usb1``` 
 
 _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
 - Create image from SD card to USB drive:
 
-```sudo dd if=/dev/mmcblk1 of=/mnt/usb1/espvrx.img bs=1M status=progress```
+  ```sudo dd if=/dev/mmcblk1 of=/mnt/usb1/espvrx.img bs=1M status=progress```
 
-```sudo apt-get install pigz```
+  ```sudo apt-get install pigz```
 
-```sudo pishrink.sh -z -a /mnt/usb1/espvrx.img```
+  ```sudo pishrink.sh -z -a /mnt/usb1/espvrx.img```
 
-```sudo umount /mnt/usb1```
+  ```sudo umount /mnt/usb1```
 
 # References
 
