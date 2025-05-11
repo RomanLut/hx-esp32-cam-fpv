@@ -13,3 +13,5 @@
 
 * If dualboot image is unable to load correct drivers for wifi cards, boot into **RubyFPV** ( by holding **REC GS** button on button) and select **Factory Reset** in **RubyFPV** menu.
 
+* To resize filesystem on dualboot image, use **RubyFPV** tools in **System** menu
+
