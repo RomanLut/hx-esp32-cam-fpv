@@ -10,7 +10,7 @@ Boot, ssh, download script:
 
   **Raspberry Pi**: Add ```dtoverlay=pwm-2chan,pin2=19,func2=2``` to  the end of the file ```boot/config.txt```   
   
-  **Radxa Zero 3W**: Enable **PWM14-M0** overlay in **rsetup**
+  **Radxa Zero 3W**: Enable **PWM14-M0** overlay in **rsetup**: **Overlays\Manager Overlays\Enable PWM14-M0**
 
 ## Adjust parameters
 Edit ```fan_control.sh```, adjust:
