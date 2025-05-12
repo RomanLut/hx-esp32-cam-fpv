@@ -32,7 +32,7 @@
 
 - force filesystem resize on first boot:
 
-  ```rm /etc/growroot-grown```
+  ```sudo rm /etc/growroot-grown```
 
 - remove boot count file to force system to resize filesystem and install drivers on the first boot:
   
