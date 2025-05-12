@@ -22,6 +22,14 @@ if [ "$IS_RADXA" = true ]; then
     QABUTTON1=114
     QABUTTON2=102
     HOME_DIRECTORY="/home/radxa"
+
+    # Automatically run resize2fs once if not already done
+    if [ ! -f /etc/resize2fs-done ]; then
+        echo "Resizing root filesystem..."
+        ROOT_DEV=$(findmnt -n -o SOURCE /)
+        resize2fs "$ROOT_DEV" && touch /etc/resize2fs-done
+    fi
+
 else
     QABUTTON1=17
     QABUTTON2=4
