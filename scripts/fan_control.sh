@@ -127,7 +127,7 @@ After=multi-user.target
 StandardOutput=journal
 StandardError=journal
 Type=simple 
-ExecStart=/bin/bash $SCRIPT_PATH run
+ExecStart=/bin/bash $SCRIPT_PATH run $IS_RADXA
 Restart=always
 User=root
 
@@ -194,6 +194,12 @@ stop_service() {
 }
 
 run_service() {
+    if [ "$1" = "true" ]; then
+        IS_RADXA=true
+    else
+        IS_RADXA=false
+    fi
+
     DEV_TEMP="/sys/class/thermal/thermal_zone0/temp"
 
 if [ "$IS_RADXA" = true ]; then
@@ -224,7 +230,6 @@ fi
     DEV_ENABLE="$DEV_PWM/enable"
     DEV_DUTY="$DEV_PWM/duty_cycle"
     DEV_PERIOD="$DEV_PWM/period"
-    DEV_EXPORT="$DEV_PWM/export"
     DEV_POLARITY="$DEV_PWM/polarity"
 
     # Margin for no adjustment in degrees Celsius
@@ -289,7 +294,7 @@ fi
             PREV_DUTY=$DUTY_CURRENT
         fi
 
-        echo "Temperature: $(($TEMP / 1000))Â°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
+        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
 
         # Wait for a short interval and check the termination flag
         for ((i = 0; i < 10; i++)); do
