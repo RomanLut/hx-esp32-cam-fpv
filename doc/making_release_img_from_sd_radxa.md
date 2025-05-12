@@ -1,6 +1,6 @@
 
 # Making image file from SD card for release (Radxa Zero 3W)
-- Creade SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB** SD Card
+- Create SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB** SD Card
 
 - install fan control service [/doc/installing_fan_control_service.md ](/doc/installing_fan_control_service.md)
 
@@ -30,6 +30,10 @@
 
   _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
+- remove boot count file to force system to resize filesystem and install drivers on the first boot:
+  
+   ```rm /home/radxa/ruby/config/boot_count.cfg```
+   
 - Create image from SD card to USB drive:
 
   ```sudo dd if=/dev/mmcblk1 of=/mnt/usb1/espvrx_dualboot_radxa3w.img bs=1M status=progress```
