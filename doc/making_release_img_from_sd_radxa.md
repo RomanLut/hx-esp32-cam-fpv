@@ -30,6 +30,10 @@
 
   _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 
+- force filesystem resize on first boot:
+
+  ```rm /etc/growroot-grown```
+
 - remove boot count file to force system to resize filesystem and install drivers on the first boot:
   
    ```rm /home/radxa/ruby/config/boot_count.cfg```
