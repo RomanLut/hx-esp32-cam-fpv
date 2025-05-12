@@ -35,6 +35,8 @@ fi
 
 echo "HOME_DIRECTORY=$HOME_DIRECTORY"
 
+sudo apt update
+
 sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng
 
 if [ "$IS_RADXA" = true ]; then
