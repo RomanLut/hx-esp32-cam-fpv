@@ -22,7 +22,7 @@
 
 - Insert **16+GB** Flash drive formatted to **NTFS**. Flash drive should have enough free space for **8GB** SD Card image.
 
-- Mount usbdrive:
+- Mount usb flash drive:
 
   ```sudo mkdir -p /mnt/usb1```
 
