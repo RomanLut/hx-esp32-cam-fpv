@@ -12,7 +12,7 @@
 
   ```sudo timedatectl set-ntp true```
 
-* enable **/dev/ttyS3** overlay in **rsetup**: **Overlays\Manage Overlays\Enable UART3-M0**
+* Run ```rsetup```. Enable /dev/ttyS3 overlay: Overlays\Manage Overlays\Enable UART3-M0
 
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/release/scripts/install_on_ruby.sh```
 
@@ -72,7 +72,7 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   Add line: ```/home/radxa/esp32-cam-fpv/scripts/boot_selection.sh``` 
 
-* Run ```sudo rsetup```. Enable **UART3** overlay: Hardware -> Manage overlays.
+* Run ```rsetup```. Enable /dev/ttyS3 overlay: Overlays\Manage Overlays\Enable UART3-M0
 
 * Save and reboot:
 
