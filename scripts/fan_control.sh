@@ -47,7 +47,7 @@ configure_pwm() {
     if [ "$IS_RADXA" = true ]; then
         pwmchip_path="/sys/class/pwm/pwmchip14"
         if [ ! -d $pwmchip_path ]; then
-	        echo "Please enable PWM14-M1 in rsetup!"
+	        echo "Please enable PWM14-M0 in rsetup!"
 	        return 1
         fi    
     else
