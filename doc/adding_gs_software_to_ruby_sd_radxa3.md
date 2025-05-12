@@ -26,7 +26,7 @@ ssh connection should stay alive untill reboot.
 
 See also: Installing fan control service [/doc/installing_fan_control_service.md  ](/doc/installing_fan_control_service.md  ) 
 
-# Manually adding hx-esp32-cam-fpv GS software to exiting RubyFPV SD Card
+# Manually adding hx-esp32-cam-fpv GS software to existing RubyFPV SD Card
 
   The following steps describe what ```install_on_ruby.sh``` script does automatically.
 
