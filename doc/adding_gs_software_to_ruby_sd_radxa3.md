@@ -1,12 +1,12 @@
 # Adding hx-esp32-cam-fpv GS software to existing RubyFPV Radxa Zero 3W SD Card using script
 
-* Connect Radxa3 GS to LAN using USB-LAN adapter
+* Connect **Radxa Zero 3W** GS to LAN using **USB-LAN adapter**
 
-* Boot Ruby
+* Boot **RubyFPV**
 
-* Enable ssh in Ruby interface **Controller Settings\Local Network Settings\Enable SSH**
+* Enable **ssh** in **RubyFPV** interface **Controller Settings\Local Network Settings\Enable SSH**
 
-* ssh to running Ruby GS. Credentials are ```radxa/radxa```
+* ssh to the running **RubyFPV** GS. Credentials are ```radxa/radxa```
 
 * Actualise time:
 
@@ -14,7 +14,7 @@
 
 * enable **/dev/ttyS3** overlay in **rsetup**: **Overlays\Manage Overlays\Enable UART3-M0**
 
-* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/release/scripts/install_on_ruby.sh```
 
 * ```chmod +x install_on_ruby.sh```
 
