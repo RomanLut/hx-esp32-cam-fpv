@@ -33,29 +33,44 @@ jobs:
       run: |
         platformio run -d ${{ matrix.project }}
 
-    - name: Create release tag
-      id: create_tag
+    - name: Create output directory
+      run: mkdir -p release_zips
+
+    - name: Zip firmware files
       run: |
-        echo "RELEASE_TAG=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+        out="release_zips/${{ matrix.project }}.zip"
+        zip -j "$out" \
+          ${{ matrix.project }}/.pio/build/**/bootloader.bin \
+          ${{ matrix.project }}/.pio/build/**/firmware.bin \
+          ${{ matrix.project }}/.pio/build/**/flash_args \
+          ${{ matrix.project }}/.pio/build/**/partitions.bin \
+          ${{ matrix.project }}/.pio/build/**/ota_data_initial.bin || true
+
+    - name: Upload zip as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.project }}.zip
+        path: release_zips/${{ matrix.project }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create release tag
+      id: tag
+      run: echo "tag=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
 
     - name: Create GitHub draft release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ env.RELEASE_TAG }}
-        name: Firmware Release ${{ env.RELEASE_TAG }}
+        tag_name: ${{ env.tag }}
+        name: Firmware Release ${{ env.tag }}
         draft: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Upload firmware to release
-      uses: softprops/action-gh-release@v1
-      with:
         files: |
-          ${{ matrix.project }}/.pio/build/**/bootloader.bin
-          ${{ matrix.project }}/.pio/build/**/firmware.bin
-          ${{ matrix.project }}/.pio/build/**/flash_args
-          ${{ matrix.project }}/.pio/build/**/partitions.bin
-          ${{ matrix.project }}/.pio/build/**/ota_data_initial.bin
-        tag_name: ${{ env.RELEASE_TAG }}
+          **/*.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
