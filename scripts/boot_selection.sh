@@ -65,6 +65,10 @@ if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON2/value) -eq 1 ]; then
     echo "ruby" | sudo tee bootSelection.txt > /dev/null
 fi
 
+# Restore GPIOs 
+sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
+sudo sh -c "echo $QABUTTON2 > /sys/class/gpio/unexport"
+
 # Check bootSelection.txt and execute appropriate script
 if [ -f "bootSelection.txt" ] && grep -q "ruby" bootSelection.txt; then
     echo "Launching Ruby..."
