@@ -8,7 +8,7 @@
 
 - Exit to shell
 
-- zero free space:
+- zero free space to make compressed image smaller:
 
   ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh```
 
