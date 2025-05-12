@@ -20,7 +20,7 @@
 
   ```lsblk```
 
-- Insert **64GB** Flash drive formatted to NTFS. We use 64GB flash drive, because it should have enought free space for 32GB SD Card image and a shrinked image.
+- Insert **16+GB** Flash drive formatted to NTFS. Flash drive should have enough free space for 8GB SD Card image.
 
 - Mount usbdrive:
 
