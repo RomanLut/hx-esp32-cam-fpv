@@ -41,30 +41,28 @@ Experienced users who connect **esp32cam** using USB-UART adapter should enter f
  
 * Clone repository: ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
-* Open project: esp32-cam-fpv\air_firmware_esp32cam\esp32-cam-fpv-esp32cam.code-workspace 
+* Open project: **esp32-cam-fpv\air_firmware_esp32cam\esp32-cam-fpv-esp32cam.code-workspace**
 
-* Let PlatformIO install all components
+* Let **PlatformIO** to install all components
 
-* Uncomment desired configuration section in: https://github.com/RomanLut/hx-esp32-cam-fpv/blob/e7ba5a247c40c10a1967982f36ea29345682fbf2/components/air/main.h#L17
-
-* Connect esp32cam to USB
+* Connect **esp32cam** to USB
 
 * Click **[PlatformIO: Upload]** on bottom toolbar.
 
 # Over the Air update (OTA)
 
-When esp32cam is installed on UAV, it would require desoldering to update firmware. 
+When **esp32cam** is installed on UAV, it would require desoldering to update firmware. 
 
-There is easie alternative way using Over The Air update (OTA). It is possible only in configuration 1 which has REC button.
+There is easie alternative way using **Over The Air update (OTA)**. 
 
-Hold REC button while powering up to enter OTA mode. Alternatively, hold REC button and press reset button. 
+Hold **REC** button while powering up to enter **OTA mode**. 
 
-OTA/Fileserver mode is indicated by LED blinking with 2 Hz frequency
+**OTA/Fileserver mode** is indicated by LED blinking with 2 Hz frequency.
 
-* Enter OTA mode.
-* Connect to **espvtx** access point
+* Enter **OTA mode**.
+* Connect to **espvtx** access point.
 * Navigate to http://192.168.4.1/ota
-* Select **firmware.bin** file
+* Select **firmware.bin** file.
 * Click **Upload**
 
 
