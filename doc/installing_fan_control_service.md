@@ -2,7 +2,7 @@
 
 Boot, ssh, download script:
 
-* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/fan_control.sh```
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/release/scripts/fan_control.sh```
 
 * ```chmod +x fan_control.sh```
 
