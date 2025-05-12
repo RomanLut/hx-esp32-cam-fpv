@@ -1,0 +1,61 @@
+name: Build Release Firmware
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        project: [air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install required Python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools
+
+    - name: Install PlatformIO latest
+      run: |
+        python -m pip install --upgrade pip
+        pip install platformio
+
+    - name: Build firmware
+      run: |
+        platformio run -d ${{ matrix.project }}
+
+    - name: Create release tag
+      id: create_tag
+      run: |
+        echo "RELEASE_TAG=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+
+    - name: Create GitHub draft release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: Firmware Release ${{ env.RELEASE_TAG }}
+        draft: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload firmware to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ matrix.project }}/.pio/build/**/bootloader.bin
+          ${{ matrix.project }}/.pio/build/**/firmware.bin
+          ${{ matrix.project }}/.pio/build/**/flash_args
+          ${{ matrix.project }}/.pio/build/**/partitions.bin
+          ${{ matrix.project }}/.pio/build/**/ota_data_initial.bin
+        tag_name: ${{ env.RELEASE_TAG }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
