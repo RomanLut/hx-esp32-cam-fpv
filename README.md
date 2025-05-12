@@ -24,6 +24,7 @@ Open source digital FPV system based on esp32cam.
 - [x] radxa 3w GS
 - [x] dualboot images
 - [x] **Release v0.3.2**
+- [ ] dualboot image for PRI
 - [ ] use smaller packets for less losses?
 - [ ] retransmissions ?
 - [ ] measure latency properly
