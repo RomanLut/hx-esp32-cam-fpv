@@ -10,7 +10,7 @@
 
 - zero free space:
 
-  ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/zero_free_space.sh```
+  ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh```
 
   ```sudo chmod +x zero_free_space.sh```
 

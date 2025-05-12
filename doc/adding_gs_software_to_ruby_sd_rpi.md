@@ -8,7 +8,7 @@
 
 * ssh to running **RubyFPV** GS. Credentials are ```pi/raspberry```
 
-* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/master/scripts/install_on_ruby.sh```
+* ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/release/scripts/install_on_ruby.sh```
 
 * ```chmod +x install_on_ruby.sh```
 

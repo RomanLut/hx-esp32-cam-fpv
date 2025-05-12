@@ -12,7 +12,7 @@
 
 - Install modified pishrink.sh script and copy it to the ```/usr/local/bin``` folder by typing: 
 
-```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/master/scripts/pishrink.sh```
+```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/pishrink.sh```
 
 ```sudo chmod +x pishrink.sh```
 
