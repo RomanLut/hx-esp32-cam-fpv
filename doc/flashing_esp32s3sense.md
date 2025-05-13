@@ -15,8 +15,8 @@
 ## Flashing using Flash download tool
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
-* Download and uncommpress Flash Download tools https://www.espressif.com/en/support/download/other-tools
-* Start Flash Download Tools, select ```ESP32-S3```:
+* Download and uncompress **Flash Download tools** https://www.espressif.com/en/support/download/other-tools
+* Start **Flash Download Tools**, select ```ESP32-S3```:
 
 ![alt text](images/flash_download_tool_esp32s3.png "flash_download_tool_esp32s3.png")
  
@@ -40,7 +40,7 @@
 
 * Open project: ```esp32-cam-fpv\air_firmware_esp32s3sense\esp32-cam-fpv-esp32s3sense.code-workspace```  (or other for ov5640)
 
-* Let PlatformIO install all components
+* Let **PlatformIO** to install all components
 
 * Connect **esp32s3sense** to USB
 
@@ -52,8 +52,8 @@
 Sometimes after unsuccesfull flashing, **esp32s2sense** constantly reboots, and it is impossible to flash firmware because USB device disappears/appears in the system every two seconds.
 
 To resolve this problem:
-* Download and uncompress Flash Download tools https://www.espressif.com/en/support/download/other-tools
+* Download and uncompress **Flash Download tools** https://www.espressif.com/en/support/download/other-tools
 * Start Flash Download Tools, select ```ESP32-S3```
-* Connect **esp32s3sense** to USB while holding ```BOOT```, release ```BOOT``` button
+* Connect **esp32s3sense** to USB while holding ```Boot```, release ```Boot``` button
 * Click ```[Erase]```
 
