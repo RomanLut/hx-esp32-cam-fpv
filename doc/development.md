@@ -1,9 +1,9 @@
 
 # Development
 
-  Raspberry Pi 4 is recommented for development.
+  Radxa Zero 3W or Raspberry Pi 4 is recommented for development.
  
-  Building GS development image : [/doc/building_gs_image_rpi.md](/doc/building_gs_image_rpi.md#building-ground-station-development-image-for-raspberry-pi)
+  Building GS development image for Raspberry PI: [/doc/building_gs_image_rpi.md](/doc/building_gs_sd_rpi.md#building-ground-station-development-image-for-raspberry-pi)
 
  
 # Development UI
@@ -14,7 +14,7 @@ Development UI is enabled with **d** key or **middle mouse click**.
 
 # Statistics
 
- Statistic can be enabled in development menu.
+ Statistic can be enabled in development menu or in OSD menu.
 
 ![alt text](images/stats.jpg "stats.jpg")
 
