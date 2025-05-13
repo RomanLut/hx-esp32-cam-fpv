@@ -4,7 +4,7 @@ Preparing SD Card for **Raspberry PI GS** using pre-built image: [doc/prebuilt_g
 
 Building **Raspberry PI GS** image : [/doc/building_gs_sd_rpi.md](/doc/building_gs_sd_rpi.md)
 
-Building dualboot RubyFPV/hx-esp32-cam-fpv image for **Raspberry PI GS**: [/doc/adding_gs_software_to_ruby_sd_rpi.md ](/doc/adding_gs_software_to_ruby_sd_rpi.md )
+Building dualboot **RubyFPV/hx-esp32-cam-fpv** image for **Raspberry PI GS**: [/doc/adding_gs_software_to_ruby_sd_rpi.md ](/doc/adding_gs_software_to_ruby_sd_rpi.md )
 
 Installing fan control service [/doc/installing_fan_control_service.md  ](/doc/installing_fan_control_service.md  ) 
 
