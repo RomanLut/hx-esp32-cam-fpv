@@ -44,7 +44,7 @@ Open source digital FPV system based on esp32cam.
 - **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
 - HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
-- up to 1km at 24Mbps (actual transfer rate is ~4-5Mbps total), 600m at 36Mbps (actual transfer rate is ~5-6Mbps total) (line of sight)
+- up to 1km at 24Mbps (actual transfer rate is ~8-10Mbps total with FEC 6/12), 600m at 36Mbps (actual transfer rate is ~10-12Mbps total with FEC 6/12) (line of sight)
 - latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
@@ -177,7 +177,7 @@ STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
 Module comes with moderate flexible antenna which should be replaced with 2dBi dipole to maximize range.
 
-Internal yellow LED conflicts with SD card and thus can not be used for indication. External LED should be soldered to pin **D0**.
+Internal yellow LED conflicts with SD card and thus can not be used for indication. External LED should be soldered to pin **D0** via 150 ... 680 Ohm resistor.
 
 Existing **Boot** button is used to start/stop air unit recording.
 
@@ -189,11 +189,13 @@ Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sen
 
 ![alt text](doc/images/shell_14.jpg "shell_14") ![alt text](doc/images/ov5640.jpg "ov5640")
 
-**ov5640** on **esp32s3sense** camera offers 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much beter colors and contrast, good performance against sunlight.
-
 **es32s3sense** boards are sold with **ov2640** camera which can be easily replaced with **ov5640** purchased separately. No hardware modifications are required for camera replacement.
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total), **esp32sesense + ov5640** camera 160° lens:
+**ov5640** camera on **esp32s3sense** offers 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps and 1280x720 30fps modes, less noisy sensor, much better colors and contrast, better performance against sunlight.
+
+Connection diagram is similar to **Variant 2**.
+
+800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps total with FEC 6/12), **esp32sesense + ov5640** camera 160° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -209,7 +211,7 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station
 
-## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (Recommended)
+## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (recommended)
 
 Preparing SD Card for **Radxa Zero 3W** GS: [/doc/software_for_radxa.md](/doc/software_for_radxa.md) 
 
@@ -246,13 +248,14 @@ Radxa Zero 3W pinout for reference: [https://docs.radxa.com/en/zero/zero3/hardwa
 | 11       | Resistor 1kOhm                   | 1        |
 | 12       | 25x25x8mm Fan                    | 1        |
 | 13       | Heatsink                         | 1        |
-| 14       | Fan PWM Control board (optional) | 1        |
-| 15       | USB Female Connector (optional)  | 2        |
-| 16       | USB-LAN adapter*                 | 1        |
+| 14       | 8+GB MicroSD Class A1 Card       | 1        |
+| 15       | Fan PWM Control board (optional) | 1        |
+| 16       | USB Female Connector (optional)  | 2        |
+| 17       | USB-LAN adapter*                 | 1        |
 
 * *USB-LAN adapter is required for software installation.*
 
-## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (Not recommended)
+## Ground Station Variant 2: Raspberry PI Zero 2W, Single rtl8812au (not recommended)
 
 Preparing SD Card for **Raspberry PI GS**: [/doc/software_for_rpi.md](/doc/software_for_rpi.md)
 
@@ -275,7 +278,7 @@ STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: 
 ***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
 
 
-## Ground Station Variant 3: Raspberry PI Zero 2W, Dual rtl8812au (Not recommended)
+## Ground Station Variant 3: Raspberry PI Zero 2W, Dual rtl8812au (not recommended)
 
 Preparing SD Card for **Raspberry PI GS**: [/doc/software_for_rpi.md](/doc/software_for_rpi.md)
 
@@ -429,15 +432,15 @@ The sweet spot settings for this camera seems to be 800x600 resolution with JPEG
 
 Another options are 640x480 and 640x360, which can have better JPEG compression level set per frame, but luck pixel details and thus do not benefit over 800x456.
 
-Any resolution lower then 640x360, despite high frame rate (60fps with 320x240), is useless in my opinion due to luck of details.
+Any resolution lower then 640x360, despite high frame rate (60fps can be achieved at 320x240), is useless in my opinion due to luck of details.
 
-**ov2640** can capture 1280x720 at 13 FPS. Image looks Ok on 7" screen, but FPS is definitely is lower then acceptable level for FPV.
+**ov2640** can capture 1280x720 at 13 FPS. Image looks Ok on 7" screen, but FPS is definitely lower then acceptable level for FPV glasses.
 
 It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 40Fps in 640x360, 640x480 and 800x456 modes, however it is not garantied to work. If it does not work - try with another sensor.
 
-**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and next video are made in almost the same light conditions:
+**ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and the next video are made in almost the same light conditions:
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~5Mbps total) with ov2640 camera 120° lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps totalwith FEC 6/12) with ov2640 camera 120° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
@@ -445,23 +448,21 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-
 
 **OV5640** supports the same resolutions and offers the same FPS thanks to binning support, but also have much better light sensivity, brightness and contrast. It also has higher pixel rate and supports 1280x720 30fps (which can be received by **esp32s3** thanks to 2x maximum DMA speed).
 
-800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality and less noise.
+800x456 image looks much better on **ov5640** compared to **ov2640** thanks to highger sensor quality.
 
-1024x576 30fps requires 36Mbps+ ( > ~6Mbps actual transfer rate total ) wifi rate to provide benefits over 800x456.
+It is possible to enable **50FPS** 640x360 and 800x456 modes is **Camera Settings**. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
 
-It is possible to enable 50Fps 640x360 and 800x456 modes is **Camera Settings**. These modes are the best choise for FPV. Unfortunatelly, camera seems to distort colors in low light conditions in these modes (flying in the evening).
-
-While **ov5640** can do 50Fps in higher resolution modes, it does not make a sense to use them because higher FPS requires too high bandwidth for MJPEG stream. 
+While **ov5640** can do **50FPS** in higher resolution modes, it does not make a sense to use them because higher FPS requires too high bandwidth for MJPEG stream. 
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps MCS3 26Mbps (~5Mbps actual transfer rate total) with ov5640 camera 160° lens:
+800x456 30fps MCS3 26Mbps (~10Mbps actual transfer rate total with FEC 6/12) with ov5640 camera 160° lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
 ## HQ DVR Mode
 
-While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. In practice, it looks worse then 1024x576.
+While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. There is no sense to use this mode for FPV.
 
 Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode: video is saved with best possible quality limited by SD card performance only on Air unit, while frames are sent as fast as link allows (usually 5-10 FPS).
 
@@ -481,7 +482,7 @@ Both the **ESP32-CAM** and **ESP32-S3 Sense** come with narrow-angle lenses, whi
 
 A M12 120° wide-angle lens is recommended. The M8 wide-angle lenses on these modules are of poor quality, exhibiting high distortion, poor focus, chromatic aberration, and low light sensitivity.
 
-Be aware that some sensors have slightly different lens mount diameters. For example, the leftmost sensor is not compatible with the next two.
+Be aware that some sensors have slightly different lens mount diameters. For example, the leftmost sensor is not compatible with the next two. I would recommend buying sensor with lens preinstalled rather replacing lens.
 
 Also note: so called "night version" sensor lacks an IR filter and will display distorted colors in sunlight (buy correct lens with IR filter!).
 
@@ -491,17 +492,17 @@ Default wifi channel is set to 7. 3…7 seems to be the best setting, because an
 
 ## Wifi rate
 
-24Mbps or MCS3 26Mbps seems to be the sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~8-14Mbps total ( including FEC ). Full 24Mbps transfer rate is not achievable.
+24Mbps or MCS3 26Mbps seems to be the sweet spot which provides high bandwidth and range. 24 is Wifi rate; actual bandwith is ~8-14Mbps total ( including FEC 6/12). Full 24Mbps transfer rate is not achievable.
 
 Lowering bandwidth to 12Mbps seems to not provide any range improvement; reception still drops at -83dB. 
 
-Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3 Mb/sec (23Mbps). 
+Increasing bandwidth to 36Mbps allows to send less compressed frames, but decreases range to 600m. 36Mbps bandwidth is not fully used because practical maximum **ESP32** bandwidth seems to be 2.3Mb/sec (23Mbps) in ideal conditions ( 29Mbps or 2.9Mb/sec for **ESP32s**). On the field, practical transfer rate is ~14Mbps max.
 
-When Air Recording is enabled, rate is also limited by SD write speed 0.8Mb/sec (8Mbps) for **esp32** and 1.8Mb/sec (18Mbps) for **esp32s3**. 
+When Air Recording is enabled, rate is also limited by SD write speed 0.8Mb/sec (8Mbps without FEC) for **ESP32** and 1.8Mb/sec (18Mbps without FEC) for **ESP32s3**. 
 
 ## Wifi interferrence 
 
-Wifi channel is shared beetween multiple clients. In crowded area, bandwith can be significanly lower then expected. While tested on table at home, **hx-esp32-cam-fpv** can show ~5FPS due to low bandwidth and high packet loss; this is normal.
+Wifi channel is shared between multiple clients. In crowded area, bandwith can be significanly lower then expected. While tested on table at home, **hx-esp32-cam-fpv** can show ~5FPS due to low bandwidth and high packet loss; this is normal.
 
 Note than UAV in the air will sense carrier of all Wifi routers around and share wifi channel bandwidth with them (See [Carrier-sense multiple access with collision avoidance (CSMA/CA)](https://www.geeksforgeeks.org/carrier-sense-multiple-access-csma/) )
 
@@ -521,17 +522,17 @@ Frame data flows throught a number of queues, which can easily be overloaded due
 
 Air unit calculates 3 coefficients which are used to adjust compression quality, where 8 is minumum compression level and each coefficient can increase it up to 63.
 
-Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy **/(FEC_n / FEC_k)** and divided by FPS. The result is target frame size.
+Theoretical maximum bandwidth of current Wifi rate is multipled by 0.5 (50%), divided by FEC redundancy **(FEC_n / FEC_k)** and divided by FPS. The result is target frame size.
 
 Additionally, compression level is limited by maximum SD write speed when air unit DVR is enabled; it is 0.8Mb/sec **ESP32** and 1.8Mb/sec for **esp32s3sense**.  **ESP32** can write at 1.9Mb/sec but can not keep up such speed due to high overall system load.
 
 Additionally, frame size is decreased if Wifi output queue grows (Wifi channel is shared between multiple devices. Practical bandwidth can be much lower then expected). **This is the most limiting factor**.
 
-Adaptive compression is key component of **hx-esp32-cam-fpv**. Without adaptive compression, compression level have to be set to so low quality, that system became unusable.
+Adaptive compression level is a key component of **hx-esp32-cam-fpv**. Without adaptive compression, compression level have to be set to so low quality, that system became unusable.
 
 # FEC
 
-Frames are sent using Forward error correction encoding. Currently FEC is set to k=6, n=12 which means that bandwidth is doubled but any 6 of 12 packets in block can be lost, and frame will still be recovered. It can be changed to 6/8 or 6/10 in OSD menu.
+Frames are sent using **Forward Error Correction Encoding**. Currently FEC is set to k=6, n=12 which means that bandwidth is doubled, but any 6 of 12 packets in block can be lost, and frame will still be recovered. It can be changed to 6/8 or 6/10 in OSD menu.
 
 If single packet is lost and can not be recovered by FEC, the whole frame is lost. FEC is set to such high redundancy because lost frame at 30 fps looks very bad, even worse then overal image quality decrease caused by wasted bandwidth.
 
@@ -575,7 +576,7 @@ Various PCB antenas for 2.4Ghz can be considered (not tested):
 
 ![alt text](doc/images/pcb_antena.jpg "pcb antena")
 
-The best choice for GS is pair of 5dBi dipoles or 5dbi dipole + BetaFPV Moxon Antenna.
+The best choice for GS is 4x5dBi dipoles or 2x5dbi dipoles + 2xBetaFPV Moxon Antenna.
 
 It is important that all antenas should be mounded **VERTICALLY**.
 
@@ -585,7 +586,7 @@ Note: **esp32cam** board requires soldering resistor to use external antena: htt
 
 Do not power wifi card or **ESP32** without antena attached; it can damage output amplifier.
 
-# Dual Wifi Adapters
+# Dual Wifi Adapters (recommended)
 
 **hx-esp32-cam-fpv** supports dual Wifi adapters to decrease packet loss ratio. [Default launch script](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/1e14550fcf04f8fcb10a3b6a18126332e7aa6609/gs/launch.sh#L20) will launch GS in dual adapters mode if **wlan1** and **wlan2** are found in the system.
 
