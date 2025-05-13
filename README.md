@@ -25,7 +25,7 @@ Open source digital FPV system based on esp32cam.
 - [x] dualboot images
 - [x] saving settings on camera
 - [x] **Release v0.3.2**
-- [ ] dualboot image for PRI
+- [ ] dualboot image for RPI
 - [ ] use smaller packets for less losses?
 - [ ] retransmissions ?
 - [ ] measure latency properly
