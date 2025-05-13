@@ -8,6 +8,8 @@
 
 * ssh to running **RubyFPV** GS. Credentials are ```pi/raspberry```
 
+* Actualise time: ```sudo timedatectl set-ntp true```
+
 * ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/refs/heads/release/scripts/install_on_ruby.sh```
 
 * ```chmod +x install_on_ruby.sh```
