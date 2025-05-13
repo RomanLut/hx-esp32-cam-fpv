@@ -1,5 +1,5 @@
 
-DEPRECATED: Currently GS images are built based on RubyFPV images.
+DEPRECATED: Currently GS software is build based on **RubyFPV** images.
 
 # Building Ground Station image for Raspberry Pi
 
