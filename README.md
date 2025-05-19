@@ -149,7 +149,7 @@ Flashing esp32cam firmware: [/doc/flashing_esp32_cam.md](/doc/flashing_esp32_cam
 
 ![alt text](doc/images/esp32cam_pinout.png "pinout")
 
-The **esp32cam** doesn’t have many free pins. You can optionally solder a **REC button** and an additional **REC status LED** where the **Flash LED** normally is. At a minimum, removing the Flash LED is recommended.
+The **esp32cam** doesn’t have many free pins. You can optionally solder a **REC button** and an additional **REC status LED** where the **Flash LED** normally is.
 
 ![alt text](doc/images/esp32cam_led.jpg "esp32cam_led.jpg")
 
