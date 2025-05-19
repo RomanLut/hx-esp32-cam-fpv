@@ -457,7 +457,7 @@ While **ov5640** can do **50FPS** in higher resolution modes, it does not make a
 
 **Note: ov5640** does not support **vertical image flip**.
 
-800x456 30fps MCS3 26Mbps (~10Mbps actual transfer rate total with FEC 6/12) with ov5640 camera 160° lens:
+800x456 30fps MCS3 26Mbps (~10Mbps actual transfer rate total with FEC 6/12) with ov5640 camera 160° M8 lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
 
