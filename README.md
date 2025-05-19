@@ -94,7 +94,7 @@ On-screen display (OSD) elements are drawn using OpenGL ES.
 
 The link is bi-directional, allowing the Ground Station to send data back to the air unit. Currently, this is used for camera and Wi-Fi configuration, as well as bi-directional telemetry streaming (also FEC encoded).
 
-Here’s an example video captured at 30 FPS, resolution **800×456**, using an **OV2640** sensor with a 120° lens:
+Here’s an example video captured at 30 FPS, resolution **800×456**, using an **OV2640** sensor with a 120° M8 lens:
 
 https://github.com/RomanLut/esp32-cam-fpv/assets/11955117/970a7ee9-467e-46fb-91a6-caa74871fc3b
 
@@ -196,7 +196,7 @@ Flashing **Seed Studio XIAO ESP32 S3 Sense** firmware: [/doc/flashing_esp32s3sen
 
 Connection diagram is similar to **Variant 2**.
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps total with FEC 6/12), **esp32sesense + ov5640** camera 160° lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps total with FEC 6/12), **esp32sesense + ov5640** camera 160° M8 lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
@@ -441,7 +441,7 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 
 **ov2640** is Ok for day but has much worse light sensitivity and dynamic range compared to **ov5640** in the evening. This and the next video are made in almost the same light conditions:
 
-800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps totalwith FEC 6/12) with ov2640 camera 120° lens:
+800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps totalwith FEC 6/12) with ov2640 camera 120° M8 lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
 
