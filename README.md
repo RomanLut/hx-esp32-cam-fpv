@@ -560,7 +560,7 @@ My experience with this card is negative. Card is **NOT recommended** due to low
 
 ### Comfast RTL8812AU
 
-Equipped with two SKY85703 amplifiers. 5GHz: 12dB LNA, 17dBm output PA. 2.24Ghz: No LNA and PA. Theoretical output power: 5Ghz: 17 dBm, 2.4Ghz: 16-17 dBm.
+Equipped with two SKY85703 amplifiers. 5GHz: 12dB LNA, 17dBm output PA. 2.4Ghz: No LNA and PA. Theoretical output power: 5Ghz: 17 dBm, 2.4Ghz: 16-17 dBm.
 
 Recommended. You will have to solder IPX antena connectors. Adding metal cover is also recommended.
 
