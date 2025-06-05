@@ -1798,7 +1798,8 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 {
     s_stats.video_data += s_video_frame_data_size;
 
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
 
     if(!packet_data)
     {
@@ -1861,7 +1862,8 @@ IRAM_ATTR void send_air2ground_data_packet()
 
     if ( s_mavlinkOutBufferCount < MAX_TELEMETRY_PAYLOAD_SIZE ) return; //todo: or agregationtime
 
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
     if(!packet_data)
     {
         LOG("no data buf!\n");
@@ -1900,7 +1902,8 @@ IRAM_ATTR void send_air2ground_data_packet()
 //=============================================================================================
 IRAM_ATTR void send_air2ground_osd_packet()
 {
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
 
     if(!packet_data)
     {
@@ -2011,7 +2014,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 //=============================================================================================
 IRAM_ATTR void send_air2ground_config_packet()
 {
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
     if( !packet_data )
     {
         LOG("no data buf!\n");
@@ -2040,7 +2044,7 @@ IRAM_ATTR void send_air2ground_config_packet()
     }
 }
 
-constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Video_Packet);
+constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MAX_MTU - sizeof(Air2Ground_Video_Packet);
 
 static const int WifiRateBandwidth[] = 
 {
@@ -2444,10 +2448,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             while (count > 0)
             {
                 //fill the buffer
-                uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+                uint32_t current_packet_size;
+                uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &current_packet_size);
                 uint8_t* start_ptr = packet_data + sizeof(Air2Ground_Video_Packet) + s_video_frame_data_size;
                 uint8_t* ptr = start_ptr;
-                size_t c = std::min(MAX_VIDEO_DATA_PAYLOAD_SIZE - s_video_frame_data_size, count);
+                size_t c = std::min((size_t)( current_packet_size - sizeof(Air2Ground_Video_Packet) - s_video_frame_data_size), count);
 
                 count -= c;
                 s_video_frame_data_size += c;
@@ -2521,7 +2526,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 src += c;
 #endif
 
-                if (s_video_frame_data_size == MAX_VIDEO_DATA_PAYLOAD_SIZE) 
+                if (s_video_frame_data_size == ( current_packet_size - sizeof(Air2Ground_Video_Packet)) ) 
                 {
                     //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
                     //if wifi send queue was overloaded, do not send frame data till the end of the frame. 

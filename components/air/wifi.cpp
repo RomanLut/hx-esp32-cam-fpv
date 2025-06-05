@@ -89,6 +89,8 @@ IRAM_ATTR void add_to_wlan_incoming_queue(const void* data, size_t size)
 
 //===========================================================================================
 //===========================================================================================
+//here comes packet starting from Packet_Header + user_data
+//size is sizeof(Packet_header) + sizeof(user_data)
 IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 {
     if (s_ground2air_config_packet.dataChannel.wifi_power == 0) return true;

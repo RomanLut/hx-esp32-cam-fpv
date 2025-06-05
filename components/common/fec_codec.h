@@ -38,7 +38,7 @@ public:
     {
         uint8_t coding_k = 2;
         uint8_t coding_n = 4;
-        size_t mtu = 512;
+        size_t mtu = 512;   //max size of data without Packet_Header
         Core core = Core::Any;
         uint8_t priority = configMAX_PRIORITIES - 1;
     };
@@ -58,12 +58,13 @@ public:
     void set_data_encoded_cb(bool (*cb)(const void* data, size_t size));
 
     //Add here data that will be encoded.
-    //Size dosn't have to be a full packet. Can be anything > 0, even bigger than a packet
+    //Size doesn't have to be a full packet. Can be anything > 0, even bigger than a packet
     //NOTE: This has to be called from a single thread only (any thread, as long as it's just one)
-    IRAM_ATTR bool encode_data(const void* data, size_t size, bool block);
-    IRAM_ATTR bool flush_encode_packet(bool block);
-    IRAM_ATTR uint8_t* get_encode_packet_data(bool block);
+    //IRAM_ATTR bool encode_data(const void* data, size_t size, bool block);
+
+    IRAM_ATTR uint8_t* get_encode_packet_data(bool block, uint32_t* size);
     IRAM_ATTR bool is_encode_packet_empty();
+    IRAM_ATTR bool flush_encode_packet(bool block);
 
     //Callback for when a decoded packet is ready.
     //NOTE: this is called form another thread!!!
@@ -76,6 +77,8 @@ public:
 
     bool init(const Descriptor& descriptor, bool is_encoder);
     void switch_n(int n);
+
+    void switch_mtu( size_t new_mtu );
 
 private:
 
@@ -92,8 +95,6 @@ private:
     size_t m_encoder_pool_size = 0;
     size_t m_decoder_pool_size = 0;
 
-    size_t m_encoded_packet_size = 0;
-
     fec_t* m_fec = nullptr;
     bool m_is_encoder = false;
 
@@ -101,14 +102,17 @@ private:
     {
         struct Packet
         {
-            uint32_t size = 0;
-            uint8_t* data = nullptr;
+            uint32_t size = 0;  //size of user_data
+            uint8_t* data = nullptr;  //pints to Packet_header + user_data
         };
         QueueHandle_t packet_queue = nullptr;
         QueueHandle_t packet_pool = nullptr;
         TaskHandle_t task = nullptr;
 
         uint32_t last_block_index = 0;
+
+        size_t scheduled_mtu;  //mtu which will be set on the next packet
+        size_t current_mtu;  //mtu of current packe (data size without PacketHeader)
 
         std::vector<Packet> block_packets;
         Packet block_fec_packet;
@@ -131,10 +135,10 @@ private:
         {
             bool received_header = false;
             bool is_processed = false;
-            uint32_t size = 0;
+            uint32_t size = 0;  //the size of a data without Packet_header
             uint32_t block_index = 0;
             uint32_t packet_index = 0;
-            uint8_t* data = nullptr;
+            uint8_t* data = nullptr;  //allocated buffer for Packet_header + data[m_descriptor.mtu]
         };
         QueueHandle_t packet_queue = nullptr;
         QueueHandle_t packet_pool = nullptr;

@@ -63,7 +63,7 @@ void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const voi
     init_fec();
 
     init_fec_codec(s_fec_encoder,k,n,mtu,true);
-    init_fec_codec(s_fec_decoder,2,3,GROUND2AIR_DATA_MAX_SIZE,false);
+    init_fec_codec(s_fec_decoder,2,3,GROUND2AIR_MAX_MTU,false);
     s_fec_encoder.set_data_encoded_cb(fec_encoded_cb);
     s_fec_decoder.set_data_decoded_cb(fec_decoded_cb);
 
@@ -115,8 +115,6 @@ bool Fec_Codec::init(const Descriptor& descriptor, bool is_encoder)
 
     m_fec = fec_new(m_descriptor.coding_k, m_descriptor.coding_n);
 
-    m_encoded_packet_size = sizeof(Packet_Header) + m_descriptor.mtu;
-
     return start_tasks();
 }
 
@@ -125,6 +123,12 @@ bool Fec_Codec::init(const Descriptor& descriptor, bool is_encoder)
 void Fec_Codec::switch_n(int n)
 {
     m_descriptor.coding_n = n;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+void Fec_Codec::switch_mtu( size_t new_mtu )
+{
+    this->m_encoder.scheduled_mtu = new_mtu;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -220,9 +224,16 @@ void Fec_Codec::stop_tasks()
 
 bool Fec_Codec::start_tasks()
 {
+    size_t encoded_packet_size = sizeof(Packet_Header) + m_descriptor.mtu;
+
     stop_tasks();
 
     m_encoder = Encoder();
+
+    this->m_encoder.current_mtu = m_descriptor.mtu;
+    this->m_encoder.scheduled_mtu = m_descriptor.mtu;
+
+
     m_decoder = Decoder();
 
     ////////////////////////////////////////////////////////////////////////////////////////////
@@ -246,7 +257,7 @@ bool Fec_Codec::start_tasks()
         m_encoder.packet_pool_owned.resize(m_encoder_pool_size);
         for (Encoder::Packet& packet: m_encoder.packet_pool_owned)
         {
-            packet.data = new uint8_t[m_encoded_packet_size];
+            packet.data = new uint8_t[encoded_packet_size];
             if (!packet.data)
             {
                 stop_tasks();
@@ -260,7 +271,7 @@ bool Fec_Codec::start_tasks()
             }
         }
         
-        m_encoder.block_fec_packet.data = new uint8_t[m_encoded_packet_size];
+        m_encoder.block_fec_packet.data = new uint8_t[encoded_packet_size];
         if (!m_encoder.block_fec_packet.data)
         {
             stop_tasks();
@@ -403,7 +414,9 @@ void Fec_Codec::static_encoder_task_proc(void* params)
             Encoder::Packet packet;
             BaseType_t res = xQueueReceive(m_encoder.packet_queue, &packet, portMAX_DELAY);
             if (res == pdFALSE || !packet.data)
+            {
                 continue;
+            }
 
 #ifdef PROFILE_CAMERA_DATA    
             s_profiler.set(PF_CAMERA_FEC,1);
@@ -416,7 +429,7 @@ void Fec_Codec::static_encoder_task_proc(void* params)
 
                 while ( true )
                 {
-                    if (!m_encoder.cb(packet.data, m_encoded_packet_size) )
+                    if (!m_encoder.cb(packet.data, packet.size + sizeof( Packet_Header ) ) )
                     {
                         s_fec_spin_count++;
 #ifdef PROFILE_CAMERA_DATA    
@@ -452,11 +465,29 @@ void Fec_Codec::static_encoder_task_proc(void* params)
         //compute fec packets and send
         if (m_encoder.block_packets.size() >= m_descriptor.coding_k)
         {
+            uint32_t maxSize = 0; //size of data without Packet_Header
             //init data for the fec_encode
             for (size_t i = 0; i < m_descriptor.coding_k; i++)
             {
                 Encoder::Packet& packet = m_encoder.block_packets[i];
                 m_encoder.fec_src_ptrs[i] = packet.data + sizeof(Packet_Header);
+                if ( maxSize < packet.size )
+                {
+                    maxSize = packet.size;
+                }
+            }
+
+            //if there are packets with different mtu in this block, we create FEC packets with largest size
+            //we fill tail with zeros
+            //note that packet.data points to block of memory enough to store Packet_header + user_data[m_descriptor.mtu]
+            for (size_t i = 0; i < m_descriptor.coding_k; i++)
+            {
+                Encoder::Packet& packet = m_encoder.block_packets[i];
+                uint32_t extra = maxSize - packet.size;
+                if ( extra > 0)
+                {
+                    memset(packet.data + sizeof(Packet_Header) + packet.size, 0, extra);
+                }
             }
 
             uint8_t* fec_dst_ptr = m_encoder.block_fec_packet.data + sizeof(Packet_Header);
@@ -469,7 +500,7 @@ void Fec_Codec::static_encoder_task_proc(void* params)
                 (void)start;
 
                 //encode
-                fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, m_descriptor.mtu);
+                fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, maxSize);
 
                 ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
 
@@ -480,15 +511,15 @@ avg = avg - ((avg+2048) >>12) + start;
 SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 */
 
-            //seal the result
-                m_encoder.block_fec_packet.size = m_descriptor.mtu;
+                //seal the result
+                m_encoder.block_fec_packet.size = maxSize;
                 if (m_encoder.cb)
                 {
                     seal_packet(m_encoder.block_fec_packet, m_encoder.last_block_index, m_descriptor.coding_k + i);
 
                     while ( true )
                     {
-                        if ( !m_encoder.cb(m_encoder.block_fec_packet.data, m_encoded_packet_size) )
+                        if ( !m_encoder.cb(m_encoder.block_fec_packet.data, m_encoder.block_fec_packet.size + sizeof( Packet_Header ) ) )
                         {
                             //wifi output queue is overloaded.
                             //yield untill some space is available.
@@ -550,7 +581,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-/*IRAM_ATTR*/ bool Fec_Codec::encode_data(const void* _data, size_t size, bool block)
+/*IRAM_ATTR*/ /* bool Fec_Codec::encode_data(const void* _data, size_t size, bool block)
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -609,10 +640,11 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 
     return true;
 }
+*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-/*IRAM_ATTR*/ uint8_t* Fec_Codec::get_encode_packet_data(bool block)
+/*IRAM_ATTR*/ uint8_t* Fec_Codec::get_encode_packet_data(bool block, uint32_t* size)
 {
     if (m_is_encoder == false || !m_encoder.task)
     {
@@ -635,8 +667,11 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
         s_profiler.set(PF_CAMERA_FEC_POOL, uxQueueMessagesWaiting(m_encoder.packet_pool));
 #endif
     }
-    crt_packet.size = m_descriptor.mtu; //mark the packet as full
 
+    m_encoder.current_mtu = m_encoder.scheduled_mtu;
+    crt_packet.size = m_encoder.current_mtu; //mark the packet as full
+
+    *size = crt_packet.size;
     return crt_packet.data + sizeof(Packet_Header);
 }
 
@@ -655,6 +690,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
     if (!crt_packet.data)
         return true;
         
+    /*
     size_t s = m_descriptor.mtu - crt_packet.size;
     if (s > 0)
     {
@@ -662,6 +698,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
         memset(crt_packet.data + sizeof(Packet_Header) + offset, 0, s);
         crt_packet.size += s;
     }
+    */
 
     ENCODER_LOG("0: Enqueueing packet in the queue: %d\n", uxQueueSpacesAvailable(m_encoder.packet_queue));
     BaseType_t res = xQueueSend(m_encoder.packet_queue, &crt_packet, block ? portMAX_DELAY : 0);
@@ -677,6 +714,7 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 #endif
         return false;
     }
+
     crt_packet = Encoder::Packet();
 
     return true;
@@ -1056,112 +1094,3 @@ bool Fec_Codec::is_encoder() const
 {
     return m_is_encoder;
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////
-
-/*Fec_Codec s_fec_codec;
-size_t s_fec_encoded_data_size = 0;
-size_t s_fec_decoded_data_size = 0;
-
-void fec_encoded_cb(void* data, size_t size)
-{
-    s_fec_encoded_data_size += size;
-}
-void fec_decoded_cb(void* data, size_t size)
-{
-    s_fec_decoded_data_size += size;
-}
-
-void test_fec_encoding()
-{
-    s_fec_encoded_data_size = 0;
-    s_fec_decoded_data_size = 0;
-    s_fec_codec.set_data_encoded_cb(&fec_encoded_cb);
-    s_fec_codec.set_data_decoded_cb(&fec_decoded_cb);
-
-    LOG("starting test\n");
-
-    uint8_t data[128] = { 0 };
-
-    uint32_t start_tp = millis();
-
-    size_t iteration = 0;
-    size_t fec_data_in = 0;
-    //encode
-    while (millis() - start_tp < 1000)
-    {
-//        printf("Encoding %d\n", iteration);
-
-        if (!s_fec_codec.encode_data(data, sizeof(data), true))
-        {
-            printf("Failed to encode\n");
-            return;
-        }
-        fec_data_in += sizeof(data);
-        //LOG("Pass %d %dms\n", i, millis() - start_pass_tp);
-
-        iteration++;
-    }
-    float ds = 1.f;//d / 1000.f;
-    float total_data_in = fec_data_in / 1024.f;
-    float total_data_out = s_fec_encoded_data_size / 1024.f;
-    LOG("Total IN: %.2fKB, %.2fKB/s, OUT: %.2fKB, %.2fKB/s\n", total_data_in, total_data_in / ds, total_data_out, total_data_out / ds);
-}
-
-volatile size_t xxx = 0;
-void fec_encoded2_cb(void* data, size_t size)
-{
-    s_fec_encoded_data_size += size;
-
-    //if (rand() > RAND_MAX / 4)
-    xxx++;
-
-    size_t n = s_fec_codec.get_descriptor().coding_n;
-    if ((xxx % n) < n * 75 / 100)
-    {
-        s_fec_codec.decode_data(data, size, true);
-    }
-    else
-    {
-        //LOG("Skipped packet %d\n", xxx);
-    }
-}
-
-void test_fec_decoding()
-{
-    s_fec_encoded_data_size = 0;
-    s_fec_decoded_data_size = 0;
-    s_fec_codec.set_data_encoded_cb(&fec_encoded2_cb);
-    s_fec_codec.set_data_decoded_cb(&fec_decoded_cb);
-
-    LOG("starting test\n");
-
-    uint8_t data[128] = { 0 };
-
-    uint32_t start_tp = millis();
-
-    size_t iteration = 0;
-    size_t fec_data_in = 0;
-    //encode
-    while (millis() - start_tp < 1000)
-    {
-        //printf("Encoding %d\n", iteration);
-
-        if (!s_fec_codec.encode_data(data, sizeof(data), true))
-        {
-            printf("Failed to encode\n");
-            return;
-        }
-        fec_data_in += sizeof(data);
-        //LOG("Pass %d %dms\n", i, millis() - start_pass_tp);
-
-        iteration++;
-    }
-    float ds = 1.f;//d / 1000.f;
-    float total_data_in = fec_data_in / 1024.f;
-    float total_data_encoded = s_fec_encoded_data_size / 1024.f;
-    float total_data_decoded = s_fec_decoded_data_size / 1024.f;
-    LOG("Total IN: %.2fKB, %.2fKB/s, ENCODED: %.2fKB, %.2fKB/s, DECODED: %.2fKB, %.2fKB/s\n", total_data_in, total_data_in / ds, total_data_encoded, total_data_encoded / ds, total_data_decoded, total_data_decoded / ds);
-}
-
-*/

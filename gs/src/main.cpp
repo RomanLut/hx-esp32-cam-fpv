@@ -480,7 +480,7 @@ static void comms_thread_proc()
 
     struct RX_Data
     {
-        std::array<uint8_t, AIR2GROUND_MTU> data;
+        std::array<uint8_t, AIR2GROUND_MAX_MTU> data;
         size_t size;
         int16_t rssi = 0;
     };
@@ -2857,11 +2857,11 @@ int main(int argc, const char* argv[])
 
     rx_descriptor.coding_k = s_ground2air_config_packet.dataChannel.fec_codec_k;
     rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
-    rx_descriptor.mtu = s_ground2air_config_packet.dataChannel.fec_codec_mtu;
+    rx_descriptor.mtu = AIR2GROUND_MAX_MTU;
 
     tx_descriptor.coding_k = 2;
     tx_descriptor.coding_n = 3;
-    tx_descriptor.mtu = GROUND2AIR_DATA_MAX_SIZE;
+    tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
 
 #ifdef USE_MAVLINK
     init_uart();

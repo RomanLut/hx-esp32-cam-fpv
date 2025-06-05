@@ -10,8 +10,8 @@
 #define FEC_K 6
 #define FEC_N 12
 
-constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_OVERHEAD; //6 is the fec header size
-constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
+constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
+constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
 
 #pragma pack(push, 1) // exact fit - no padding
 
@@ -134,7 +134,7 @@ struct DataChannelConfig
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
     uint8_t fec_codec_k = FEC_K;
     uint8_t fec_codec_n = FEC_N;
-    uint16_t fec_codec_mtu = AIR2GROUND_MTU;
+    uint16_t fec_codec_mtu = AIR2GROUND_MAX_MTU;
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
@@ -171,7 +171,7 @@ struct Ground2Air_Connect_Packet : Ground2Air_Header
 {
 };
 
-constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
+constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_MAX_MTU - sizeof(Ground2Air_Header);
 
 //======================================================
 //======================================================
@@ -179,7 +179,7 @@ struct Ground2Air_Data_Packet : Ground2Air_Header
 {
     uint8_t payload[GROUND2AIR_DATA_MAX_PAYLOAD_SIZE];
 };
-static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
+static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_MAX_MTU, "");
 
 //======================================================
 //======================================================
@@ -190,7 +190,7 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
     CameraConfig camera;
     DataChannelConfig dataChannel;
 };
-static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
+static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_MAX_MTU, "");
 
 //======================================================
 //======================================================
@@ -205,7 +205,7 @@ struct Air2Ground_Header
     };
 
     Type type = Type::Video; 
-    uint32_t size = 0;
+    uint32_t size = 0;  //size of the data in this packet including Air2Ground_xxx_Header
     uint8_t pong = 0; //used for latency measurement
     uint8_t version; //PACKET_VERSION
     uint8_t crc = 0;
@@ -221,7 +221,7 @@ struct Air2Ground_Config_Packet : Air2Ground_Header
     DataChannelConfig dataChannel;
 };
 
-static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MTU, "");
+static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MAX_MTU, "");
 
 //======================================================
 //======================================================
@@ -323,7 +323,7 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
     OSDBuffer buffer;
 };
 
-static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MTU, "");
+static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MAX_MTU, "");
 
 #pragma pack(pop)
 

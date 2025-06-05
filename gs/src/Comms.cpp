@@ -14,6 +14,7 @@
 #include "structures.h"
 #include <algorithm>
 #include "main.h"
+#include "packets.h"
 
 //#define DEBUG_PCAP
 
@@ -22,9 +23,6 @@ Comms s_comms;
 static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
-
-static constexpr size_t MAX_PACKET_SIZE = 4192;
-static constexpr size_t MAX_USER_PACKET_SIZE = 1470;
 
 static constexpr size_t DEFAULT_RATE_HZ = 26000000;
 
@@ -416,9 +414,7 @@ void Comms::prepare_tx_packet_header(uint8_t* buffer)
 bool Comms::process_rx_packet(PCap& pcap)
 {
     struct pcap_pkthdr* pcap_packet_header = nullptr;
-
-    uint8_t payload_buffer[MAX_PACKET_SIZE];
-    uint8_t* payload = payload_buffer;
+    uint8_t* payload;
 
     while (true)
     {
@@ -763,7 +759,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     m_impl.reset(new Impl);
 
     m_tx_descriptor = tx_descriptor;
-    m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, MAX_USER_PACKET_SIZE);
+    m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_tx_descriptor.coding_k == 0 || 
         m_tx_descriptor.coding_n < m_tx_descriptor.coding_k || 
@@ -797,7 +793,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
 
     setMonitorMode( this->m_rx_descriptor.interfaces );
 
-    this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, MAX_USER_PACKET_SIZE);
+    this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_rx_descriptor.coding_k == 0 || 
         m_rx_descriptor.coding_n < m_rx_descriptor.coding_k || 
@@ -1121,7 +1117,7 @@ void Comms::tx_thread_proc()
                 static size_t xxx_real_data = 0;
                 static std::chrono::system_clock::time_point xxx_last_tp = std::chrono::system_clock::now();
                 xxx_data += tx_buffer.size();
-                xxx_real_data += MAX_USER_PACKET_SIZE;
+                xxx_real_data += AIR2GROUND_MAX_MTU;
                 auto now = std::chrono::system_clock::now();
                 if (now - xxx_last_tp >= std::chrono::seconds(1))
                 {
@@ -1196,7 +1192,6 @@ void Comms::process_rx_packets()
 {
     RX& rx = m_impl->rx;
     uint32_t coding_k = m_rx_descriptor.coding_k;
-    //uint32_t coding_n = m_rx_descriptor.coding_n;
 
     std::unique_lock<std::mutex> lg(rx.block_queue_mutex);
 

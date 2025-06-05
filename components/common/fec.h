@@ -18,7 +18,7 @@ struct Packet_Header
     uint8_t packet_signature;   //PACKET_SIGNATURE
     uint16_t fromDeviceId;
     uint16_t toDeviceId;
-    uint16_t size;
+    uint16_t size;  //size of data without Packet_Header
     uint32_t block_index : 24;
     uint32_t packet_index : 8;
 };
@@ -26,9 +26,9 @@ struct Packet_Header
 
 #define PACKET_VERSION 2
 #define PACKET_SIGNATURE 56
-#define PACKET_OVERHEAD 12
+#define PACKET_HEADER_SIZE 12
 
-static_assert(PACKET_OVERHEAD == sizeof(Packet_Header), "Check the PACKET_OVERHEAD size");
+static_assert(PACKET_HEADER_SIZE == sizeof(Packet_Header), "Check the PACKET_HEADER_SIZE size");
 
 typedef unsigned char gf;
 
