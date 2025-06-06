@@ -202,13 +202,15 @@ struct Comms::RX
 //===================================================================================
 static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_t block_index, uint8_t packet_index)
 {
-    assert(packet.data.size() >= header_offset + sizeof(Comms::TX::Packet));
+    //review:  header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+    assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
 
     s_comms.packetFilter.apply_packet_header_data(&header);
 
-    header.size = packet.data.size() - header_offset;
+//review:
+    header.size = packet.data.size() - header_offset;   //size shold be WITHOUT size of Packet_Header
     header.block_index = block_index;
     header.packet_index = packet_index;
 }
@@ -217,7 +219,7 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
 //===================================================================================
 struct Comms::Impl
 {
-    size_t tx_packet_header_length = 0;
+    size_t tx_packet_header_length = 0;  //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
 
     TX tx;
     RX rx;
@@ -759,7 +761,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     m_impl.reset(new Impl);
 
     m_tx_descriptor = tx_descriptor;
-    m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
+    //m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_tx_descriptor.coding_k == 0 || 
         m_tx_descriptor.coding_n < m_tx_descriptor.coding_k || 
@@ -793,7 +795,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
 
     setMonitorMode( this->m_rx_descriptor.interfaces );
 
-    this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
+    //this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_rx_descriptor.coding_k == 0 || 
         m_rx_descriptor.coding_n < m_rx_descriptor.coding_k || 
@@ -1031,6 +1033,8 @@ void Comms::tx_thread_proc()
 
             if (packet)
             {
+                //m_packet_header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+                //packet->data() + m_packet_header_offset => Packet_Header
                 seal_packet(*packet, m_packet_header_offset, tx.last_block_index, tx.block_packets.size());
                 tx.ready_packet_queue.push_back(packet); //ready to send
                 tx.block_packets.push_back(packet);

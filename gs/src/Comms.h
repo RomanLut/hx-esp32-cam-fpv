@@ -7,6 +7,7 @@
 #include <functional>
 #include "Clock.h"
 #include "packet_filter.h"
+#include "fec.h"
 
 #define MIN_TX_POWER 5
 #define DEFAULT_TX_POWER 45
@@ -28,7 +29,7 @@ public:
         std::string interface;
         uint32_t coding_k = 12;
         uint32_t coding_n = 20;
-        size_t mtu = 1200;
+        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header);  //=GROUND2AIR_MAX_MTU
     };
 
     struct RX_Descriptor
@@ -38,7 +39,7 @@ public:
         Clock::duration reset_duration = std::chrono::milliseconds(1000);
         uint32_t coding_k = 12;
         uint32_t coding_n = 20;
-        size_t mtu = 1200;
+        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header); // =AIR2GROUND_MAX_MTU
         bool skip_mon_mode_cfg = true;
     };
 
