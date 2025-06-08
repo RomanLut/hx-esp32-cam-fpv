@@ -28,7 +28,9 @@ void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_
 
 //=============================================================================================
 //=============================================================================================
-/*IRAM_ATTR*/ PacketFilter::PacketFilterResult PacketFilter::filter_packet( const void* data, size_t size )
+//data* points to Packet_header + mtu
+//size is sizeof(Packet_Header) + sizeof(mtu)
+/*IRAM_ATTR*/ PacketFilter::PacketFilterResult PacketFilter::filter_packet( const void* data, size_t size, size_t mtu )
 {
     if ( size < sizeof(Packet_Header) )
     {
@@ -55,6 +57,16 @@ void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_
     if ( ( this->m_filter_to_device_id != 0 ) && ( header->toDeviceId != this->m_filter_to_device_id ) )
     {
         return PacketFilterResult::Drop;
+    }
+
+    if ( size < ( header->size + sizeof(Packet_Header) ) )
+    {
+        return PacketFilterResult::WrongStructure;
+    }
+
+    if ( header->size > mtu )
+    {
+        return PacketFilterResult::WrongStructure;
     }
 
     return PacketFilterResult::Pass;

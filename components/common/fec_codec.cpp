@@ -408,7 +408,6 @@ void Fec_Codec::static_encoder_task_proc(void* params)
         //esp_task_wdt_reset();
 
         {
-            
             ENCODER_LOG("1: Waiting for packet: %d\n", uxQueueSpacesAvailable(m_encoder.packet_queue));
 
             Encoder::Packet packet;
@@ -418,18 +417,21 @@ void Fec_Codec::static_encoder_task_proc(void* params)
                 continue;
             }
 
+            m_encoder.cur_block_packets = m_encoder.block_packets.size();
+
 #ifdef PROFILE_CAMERA_DATA    
             s_profiler.set(PF_CAMERA_FEC,1);
 #endif
             ENCODER_LOG("1: Received packet: %d\n", uxQueueSpacesAvailable(m_encoder.packet_queue));
 
+            //send normal packet as soon as it is available,  to minimize latency
             if (m_encoder.cb)
             {
                 seal_packet(packet, m_encoder.last_block_index, m_encoder.block_packets.size());
 
                 while ( true )
                 {
-                    if (!m_encoder.cb(packet.data, packet.size + sizeof( Packet_Header ) ) )
+                    if (!m_encoder.cb(packet.data, packet.size + sizeof( Packet_Header ) ) )  //add_to_wlan_outgoing_queue()
                     {
                         s_fec_spin_count++;
 #ifdef PROFILE_CAMERA_DATA    
@@ -465,92 +467,90 @@ void Fec_Codec::static_encoder_task_proc(void* params)
         //compute fec packets and send
         if (m_encoder.block_packets.size() >= m_descriptor.coding_k)
         {
-            uint32_t maxSize = 0; //size of data without Packet_Header
             //init data for the fec_encode
+            bool sameSize = true;
+            uint32_t lastSize = 0; 
             for (size_t i = 0; i < m_descriptor.coding_k; i++)
             {
                 Encoder::Packet& packet = m_encoder.block_packets[i];
                 m_encoder.fec_src_ptrs[i] = packet.data + sizeof(Packet_Header);
-                if ( maxSize < packet.size )
+                if ( i == 0  )
                 {
-                    maxSize = packet.size;
+                    lastSize = packet.size;
+                }
+                else if ( lastSize != packet.size )
+                {
+                    sameSize = false;
                 }
             }
 
-            //if there are packets with different mtu in this block, we create FEC packets with largest size
-            //we fill tail with zeros
-            //note that packet.data points to block of memory enough to store Packet_header + user_data[m_descriptor.mtu]
-            for (size_t i = 0; i < m_descriptor.coding_k; i++)
+            //if there are packets with different mtu in this block, we do not create FEC packets.
+            //while we could padd smaller packets with zeros and create FEC packets with largest size,
+            //it will not work because we will not know the size of the lost normal packets on receiving side.
+            if ( sameSize )
             {
-                Encoder::Packet& packet = m_encoder.block_packets[i];
-                uint32_t extra = maxSize - packet.size;
-                if ( extra > 0)
+                uint8_t* fec_dst_ptr = m_encoder.block_fec_packet.data + sizeof(Packet_Header);
+
+                size_t fec_count = m_descriptor.coding_n - m_descriptor.coding_k;
+
+                for (size_t i = 0; i < fec_count; i++)
                 {
-                    memset(packet.data + sizeof(Packet_Header) + packet.size, 0, extra);
-                }
-            }
+                    uint64_t start = esp_timer_get_time();
+                    (void)start;
 
-            uint8_t* fec_dst_ptr = m_encoder.block_fec_packet.data + sizeof(Packet_Header);
+                    //encode
+                    fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, lastSize);
 
-            size_t fec_count = m_descriptor.coding_n - m_descriptor.coding_k;
+                    ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
 
-            for (size_t i = 0; i < fec_count; i++)
-            {
-                uint64_t start = esp_timer_get_time();
-                (void)start;
+    /*
+    static int avg = 0;
+    start = esp_timer_get_time() - start;
+    avg = avg - ((avg+2048) >>12) + start;
+    SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
+    */
 
-                //encode
-                fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, maxSize);
-
-                ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
-
-/*
-static int avg = 0;
-start = esp_timer_get_time() - start;
-avg = avg - ((avg+2048) >>12) + start;
-SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
-*/
-
-                //seal the result
-                m_encoder.block_fec_packet.size = maxSize;
-                if (m_encoder.cb)
-                {
-                    seal_packet(m_encoder.block_fec_packet, m_encoder.last_block_index, m_descriptor.coding_k + i);
-
-                    while ( true )
+                    //seal the result
+                    m_encoder.block_fec_packet.size = lastSize;
+                    if (m_encoder.cb)
                     {
-                        if ( !m_encoder.cb(m_encoder.block_fec_packet.data, m_encoder.block_fec_packet.size + sizeof( Packet_Header ) ) )
+                        seal_packet(m_encoder.block_fec_packet, m_encoder.last_block_index, m_descriptor.coding_k + i);
+
+                        while ( true )
                         {
-                            //wifi output queue is overloaded.
-                            //yield untill some space is available.
-                            //there is a plenty of space in fec pool so we can wait here until situation imporves.
-                            s_fec_spin_count++;
-#ifdef PROFILE_CAMERA_DATA    
-                            s_profiler.set(PF_CAMERA_FEC_SPIN,1);
-#endif
-                            if (!isHQDVRMode()) taskYIELD();
-#ifdef PROFILE_CAMERA_DATA    
-                            s_profiler.set(PF_CAMERA_FEC_SPIN,0);
-#endif
-                            if ( (uxQueueMessagesWaiting(m_encoder.packet_pool) < 2) || isHQDVRMode() )
+                            if ( !m_encoder.cb(m_encoder.block_fec_packet.data, m_encoder.block_fec_packet.size + sizeof( Packet_Header ) ) ) //add_to_wlan_outgoing_queue()
                             {
-                                //fec input queue will be filled soon
-                                //no sense to wait, wlan is too slow
-                                s_fec_wlan_error_count++;
-#ifdef PROFILE_CAMERA_DATA    
-                                s_profiler.toggle(PF_CAMERA_WIFI_OVF);
-#endif
-                                s_encoder_output_ovf_flag = true;
+                                //wifi output queue is overloaded.
+                                //yield untill some space is available.
+                                //there is a plenty of space in fec pool so we can wait here until situation imporves.
+                                s_fec_spin_count++;
+    #ifdef PROFILE_CAMERA_DATA    
+                                s_profiler.set(PF_CAMERA_FEC_SPIN,1);
+    #endif
+                                if (!isHQDVRMode()) taskYIELD();
+    #ifdef PROFILE_CAMERA_DATA    
+                                s_profiler.set(PF_CAMERA_FEC_SPIN,0);
+    #endif
+                                if ( (uxQueueMessagesWaiting(m_encoder.packet_pool) < 2) || isHQDVRMode() )
+                                {
+                                    //fec input queue will be filled soon
+                                    //no sense to wait, wlan is too slow
+                                    s_fec_wlan_error_count++;
+    #ifdef PROFILE_CAMERA_DATA    
+                                    s_profiler.toggle(PF_CAMERA_WIFI_OVF);
+    #endif
+                                    s_encoder_output_ovf_flag = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
                                 break;
                             }
                         }
-                        else
-                        {
-                            break;
-                        }
                     }
                 }
-            }
+            } //create fec packets
 
             //return packets to the pool
             ENCODER_LOG("Returning packets: %d\n", uxQueueSpacesAvailable(m_encoder.packet_pool));
@@ -668,8 +668,19 @@ SAFE_PRINTF("Encoded fec: %d  %d\n", (int)(start), avg>>12);
 #endif
     }
 
-    m_encoder.current_mtu = m_encoder.scheduled_mtu;
-    crt_packet.size = m_encoder.current_mtu; //mark the packet as full
+    if ( m_encoder.current_mtu != m_encoder.scheduled_mtu )
+    {
+        //try to guess if this packet will be the first packet in the fec block.
+        //this may fail, as operation is not atomic at all...
+        //if it fails, we will find it out in the fec encoder task and will not create fec packets at all.
+        int c = m_encoder.cur_block_packets + uxQueueMessagesWaiting(m_encoder.packet_queue);
+        if  ( (c % m_descriptor.coding_k) == 0 )
+        {
+            m_encoder.current_mtu = m_encoder.scheduled_mtu;
+        }
+    }
+
+    crt_packet.size = m_encoder.current_mtu; 
 
     *size = crt_packet.size;
     return crt_packet.data + sizeof(Packet_Header);
@@ -1076,7 +1087,7 @@ void Fec_Codec::seal_packet(Encoder::Packet& packet, uint32_t block_index, uint8
     
     this->packetFilter.apply_packet_header_data(&header);
     
-    header.size = packet.size;
+    header.size = packet.size;  //size of user data, without Packet_Header
     header.block_index = block_index;
     header.packet_index = packet_index;
 }

@@ -10,6 +10,7 @@
 #define FEC_K 6
 #define FEC_N 12
 
+constexpr size_t AIR2GROUND_MIN_MTU = 1300;
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
 constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
 
@@ -221,7 +222,7 @@ struct Air2Ground_Config_Packet : Air2Ground_Header
     DataChannelConfig dataChannel;
 };
 
-static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MAX_MTU, "");
+static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MIN_MTU, "");
 
 //======================================================
 //======================================================
@@ -323,7 +324,7 @@ struct Air2Ground_OSD_Packet : Air2Ground_Header
     OSDBuffer buffer;
 };
 
-static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MAX_MTU, "");
+static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MIN_MTU, "");
 
 #pragma pack(pop)
 

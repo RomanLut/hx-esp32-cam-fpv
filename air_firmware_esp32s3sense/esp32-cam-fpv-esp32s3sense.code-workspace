@@ -24,7 +24,20 @@
 			"initializer_list": "cpp",
 			"utility": "cpp",
 			"functional": "cpp",
-			"*.tcc": "cpp"
+			"*.tcc": "cpp",
+			"atomic": "cpp",
+			"bit": "cpp",
+			"deque": "cpp",
+			"vector": "cpp",
+			"algorithm": "cpp",
+			"memory_resource": "cpp",
+			"memory": "cpp",
+			"random": "cpp",
+			"istream": "cpp",
+			"sstream": "cpp",
+			"stdexcept": "cpp",
+			"tuple": "cpp",
+			"type_traits": "cpp"
 		}
 	}
 }

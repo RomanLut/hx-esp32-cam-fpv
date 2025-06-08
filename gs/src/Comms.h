@@ -39,7 +39,7 @@ public:
         Clock::duration reset_duration = std::chrono::milliseconds(1000);
         uint32_t coding_k = 12;
         uint32_t coding_n = 20;
-        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header); // =AIR2GROUND_MAX_MTU
+        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header); // =AIR2GROUND_MAX_MTU = data without Packet_Header
         bool skip_mon_mode_cfg = true;
     };
 
@@ -89,8 +89,8 @@ private:
     std::unique_ptr<Impl> m_impl;
     bool m_exit = false;
 
-    size_t m_packet_header_offset = 0;
-    size_t m_payload_offset = 0;
+    size_t m_packet_header_offset = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+    size_t m_payload_offset = 0;         //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header
 
     std::atomic_int m_best_input_dBm = {0};
     std::atomic_int m_latched_input_dBm = {0};

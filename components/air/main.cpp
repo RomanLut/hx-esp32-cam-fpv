@@ -1322,7 +1322,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
-    auto res = s_fec_decoder.packetFilter.filter_packet( data, size );
+    auto res = s_fec_decoder.packetFilter.filter_packet( data, size, GROUND2AIR_MAX_MTU );
     if ( res != PacketFilter::PacketFilterResult::Pass)
     {
         s_stats.inRejectedPacketCounter++;

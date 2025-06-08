@@ -124,6 +124,8 @@ private:
 
         Packet crt_packet;
 
+        volatile uint8_t cur_block_packets = 0;
+
         bool (*cb)(const void* data, size_t size);
     } m_encoder;
 

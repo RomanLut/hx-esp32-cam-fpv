@@ -111,14 +111,14 @@ struct Comms::TX
 
     struct Packet 
     {
-        std::vector<uint8_t> data;
+        std::vector<uint8_t> data;      //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
     };
     using Packet_ptr = Pool<Packet>::Ptr;
     Pool<Packet> packet_pool;
 
-    size_t transport_packet_size = 0;
-    size_t streaming_packet_size = 0;
-    size_t payload_size = 0;
+    size_t transport_packet_size = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+    size_t streaming_packet_size = 0;   //Packet_Header + mtu
+    size_t payload_size = 0;            //mtu
 
     ////////
     //These are accessed by both the TX thread and the main thread
@@ -153,9 +153,9 @@ struct Comms::RX
     std::vector<std::unique_ptr<PCap>> pcaps;
     std::vector<uint32_t> pcal_last_block_index;
 
-    size_t transport_packet_size = 0;
-    size_t streaming_packet_size = 0;
-    size_t payload_size = 0;
+    size_t transport_packet_size = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+    size_t streaming_packet_size = 0;   //Packet_Header + mtu
+    size_t payload_size = 0;            //mtu
 
 
     struct Packet
@@ -163,7 +163,8 @@ struct Comms::RX
         bool is_processed = false;
         bool restoredByFEC;
         uint32_t index = 0;
-        std::vector<uint8_t> data;
+        uint16_t size;  //size of user data without Packet_header
+        std::vector<uint8_t> data;   //data without Packet_Header - current mtu
     };
 
     using Packet_ptr = Pool<Packet>::Ptr;
@@ -202,15 +203,14 @@ struct Comms::RX
 //===================================================================================
 static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_t block_index, uint8_t packet_index)
 {
-    //review:  header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+    //header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
     assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
 
     s_comms.packetFilter.apply_packet_header_data(&header);
 
-//review:
-    header.size = packet.data.size() - header_offset;   //size shold be WITHOUT size of Packet_Header
+    header.size = packet.data.size() - header_offset - sizeof( Packet_header ); //size of user data, without Packet_header
     header.block_index = block_index;
     header.packet_index = packet_index;
 }
@@ -524,7 +524,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
         Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
 
-        auto res = s_comms.packetFilter.filter_packet( payload, bytes );
+        auto res = s_comms.packetFilter.filter_packet( payload, bytes, m_rx_descriptor.mtu );
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
             //s_stats.inRejectedPacketCounter++;
@@ -607,9 +607,10 @@ bool Comms::process_rx_packet(PCap& pcap)
             }
 
             RX::Packet_ptr packet = rx.packet_pool.acquire();
-            packet->data.resize(bytes - sizeof(Packet_Header));
+            packet->data.resize(header.size);
             packet->index = packet_index;
-            memcpy(packet->data.data(), payload + sizeof(Packet_Header), bytes - sizeof(Packet_Header));
+            packet->size = header.size;
+            memcpy(packet->data.data(), payload + sizeof(Packet_Header), header.size);
 
             //store packet
             if (packet_index >= m_rx_descriptor.coding_k)
@@ -839,8 +840,8 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     {
         if (packet.data.empty())
         {
-            packet.data.resize(m_payload_offset);
-            prepare_tx_packet_header(packet.data.data());
+            packet.data.resize(m_payload_offset);           //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header
+            prepare_tx_packet_header(packet.data.data());   //prepare RADIOTAP_HEADER, WLAN_IEEE_HEADER_GROUND2AIR
         }
         else
             packet.data.resize(m_payload_offset);
@@ -851,7 +852,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
         packet.index = 0;
         packet.is_processed = false;
         packet.data.clear();
-        packet.data.reserve(m_impl->rx.transport_packet_size);
+        packet.data.reserve(m_impl->rx.payload_size);  
     };
     m_impl->rx.block_pool.on_acquire = [this](RX::Block& block) 
     {
@@ -1050,15 +1051,15 @@ void Comms::tx_thread_proc()
 
                 //init data for the fec_encode
                 for (size_t i = 0; i < coding_k; i++)
-                    tx.fec_src_packet_ptrs[i] = tx.block_packets[i]->data.data() + m_payload_offset;
+                    tx.fec_src_packet_ptrs[i] = tx.block_packets[i]->data.data() + m_payload_offset;  //points to mtu
 
                 size_t fec_count = coding_n - coding_k;
                 tx.block_fec_packets.resize(fec_count);
                 for (size_t i = 0; i < fec_count; i++)
                 {
                     tx.block_fec_packets[i] = tx.packet_pool.acquire();
-                    tx.block_fec_packets[i]->data.resize(tx.transport_packet_size);
-                    tx.fec_dst_packet_ptrs[i] = tx.block_fec_packets[i]->data.data() + m_payload_offset;
+                    tx.block_fec_packets[i]->data.resize(tx.transport_packet_size);  //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+                    tx.fec_dst_packet_ptrs[i] = tx.block_fec_packets[i]->data.data() + m_payload_offset;  //points to mtu
                 }
 
                 //encode
@@ -1139,6 +1140,10 @@ void Comms::tx_thread_proc()
 
 //===================================================================================
 //===================================================================================
+//appentds data to current packet
+//or appends and flushes
+//currently flush=true is always used
+//because we want the data headers to be on the beginning of each block
 void Comms::send(void const* _data, size_t size, bool flush)
 {
     TX& tx = m_impl->tx;
@@ -1262,11 +1267,13 @@ void Comms::process_rx_packets()
             std::array<unsigned int, 32> indices;
             size_t primary_index = 0;
             size_t used_fec_index = 0;
+
+            size_t blockPacketsSize = block->fec_packets[0]->size;
             for (size_t i = 0; i < coding_k; i++)
             {
                 if (primary_index < block->packets.size() && i == block->packets[primary_index]->index)
                 {
-                    rx.fec_src_packet_ptrs[i] = block->packets[primary_index]->data.data();
+                    RX::Packet_ptr const& d = block->packets[primary_index];
                     indices[i] = block->packets[primary_index]->index;
                     primary_index++;
                 }
@@ -1285,14 +1292,15 @@ void Comms::process_rx_packets()
                 if (i >= block->packets.size() || i != block->packets[i]->index)
                 {
                     block->packets.insert(block->packets.begin() + i, rx.packet_pool.acquire());
-                    block->packets[i]->data.resize(rx.payload_size);
+                    block->packets[i]->data.resize(blockPacketsSize);
+                    block->packets[i]->size = blockPacketsSize;
                     block->packets[i]->index = i;
                     rx.fec_dst_packet_ptrs[fec_index++] = block->packets[i]->data.data();
                 }
             }
 
             lg.unlock(); //not need to hold the mutex locked - give the rx_proc a chance to get its data in
-            fec_decode(rx.fec, rx.fec_src_packet_ptrs.data(), rx.fec_dst_packet_ptrs.data(), indices.data(), rx.payload_size);
+            fec_decode(rx.fec, rx.fec_src_packet_ptrs.data(), rx.fec_dst_packet_ptrs.data(), indices.data(), blockPacketsSize);
             lg.lock(); //relock the mutex
 
             //now dispatch them
