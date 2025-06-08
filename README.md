@@ -39,6 +39,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] EIS
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
+- [ ] lost frames inpainting ?
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
