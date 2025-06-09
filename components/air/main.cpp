@@ -117,10 +117,6 @@ static int64_t s_accept_connection_timeout_ms = 0;
 
 #ifdef UART_MAVLINK
 
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
-constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
-
 static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
 static int s_mavlinkOutBufferCount = 0;
 #endif
@@ -1835,7 +1831,8 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 //this currently called every frame: 50...11 fps
 //30 fps: 30 * 128 = 3840 bytes/sec or 38400 baud
 //11 fps: 11 * 128 - 1408 = 14080 baud
-//todo: increase max mavlink payload size to 1K. Packets are 1.4K anyway. With 128 bytes we can not push 115200 mavlink stream currently.
+//todo: increase max mavlink payload size to AIR2GROUD_MIN_MTU-sizeof(Ait2Ground_Header). 
+//With 128 bytes we can not push 115200 mavlink stream currently.
 //also UART RX ring buffer of 512 can not handle 115200 at 11 fps
 IRAM_ATTR void send_air2ground_data_packet()
 {

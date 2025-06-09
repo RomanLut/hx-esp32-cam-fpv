@@ -10,7 +10,7 @@
 #define FEC_K 6
 #define FEC_N 12
 
-constexpr size_t AIR2GROUND_MIN_MTU = 1300;
+constexpr size_t AIR2GROUND_MIN_MTU = 1250;
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
 constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
 
@@ -18,7 +18,7 @@ constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Head
 
 //======================================================
 //======================================================
-enum class WIFI_Rate : uint8_t
+enum class WIFI_Rate : uint8_t 
 {
     /*  0 */ RATE_B_2M_CCK,
     /*  1 */ RATE_B_2M_CCK_S,
@@ -235,14 +235,23 @@ struct Air2Ground_Video_Packet : Air2Ground_Header
     //data follows
 };
 
+//53 bytes
 static_assert(sizeof(Air2Ground_Video_Packet) == 18, "");
 
 //======================================================
 //======================================================
 struct Air2Ground_Data_Packet : Air2Ground_Header
 {
+    //MAX_TELEMETRY_PAYLOAD_SIZE bytes here
 };
 
+//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
+//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
+constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
+
+
+//12 bytes + MAX_TELEMETRY_PAYLOAD_SIZE
+static_assert(sizeof(Air2Ground_Data_Packet) + MAX_TELEMETRY_PAYLOAD_SIZE <= AIR2GROUND_MIN_MTU, "");
 
 #define OSD_COLS 53
 #define OSD_COLS_H 7 //56 bits
@@ -256,7 +265,7 @@ struct OSDBuffer
 {
     uint8_t screenLow[OSD_ROWS][OSD_COLS];
     uint8_t screenHigh[OSD_ROWS][OSD_COLS_H];
-};
+}; //1200 bytes
 
 //======================================================
 //======================================================
@@ -320,11 +329,11 @@ struct AirStats
 //======================================================
 struct Air2Ground_OSD_Packet : Air2Ground_Header
 {
-    AirStats stats;
-    OSDBuffer buffer;
+    AirStats stats;  //28 nytes
+    OSDBuffer buffer;  //1200 bytes
 };
 
+//1240 bytes
 static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MIN_MTU, "");
 
 #pragma pack(pop)
-
