@@ -5,6 +5,7 @@
 #include <atomic>
 #include <thread>
 #include <functional>
+#include "structures.h"
 #include "Clock.h"
 #include "packet_filter.h"
 #include "fec.h"

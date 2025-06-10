@@ -210,7 +210,7 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
 
     s_comms.packetFilter.apply_packet_header_data(&header);
 
-    header.size = packet.data.size() - header_offset - sizeof( Packet_header ); //size of user data, without Packet_header
+    header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
     header.block_index = block_index;
     header.packet_index = packet_index;
 }
@@ -1273,7 +1273,6 @@ void Comms::process_rx_packets()
             {
                 if (primary_index < block->packets.size() && i == block->packets[primary_index]->index)
                 {
-                    RX::Packet_ptr const& d = block->packets[primary_index];
                     indices[i] = block->packets[primary_index]->index;
                     primary_index++;
                 }

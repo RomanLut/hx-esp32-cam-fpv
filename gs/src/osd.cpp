@@ -130,22 +130,22 @@ void OSD::update(const uint8_t* pData, uint16_t size)
   int byteCount = 0;
   while (byteCount < size)
   {
-    uint8_t c = data[byteCount++];
+    uint8_t c = pData[byteCount++];
     if (c == 0)
     {
-      c = data[byteCount++];
+      c = pData[byteCount++];
       count = (c & 0x7f);
       if (count == 0)
       {
         break; //stop
       }
       highBank ^= (c & 128) != 0;
-      c = data[byteCount++];
+      c = pData[byteCount++];
     }
     else if (c == 255)
     {
       highBank = !highBank;
-      c = data[byteCount++];
+      c = pData[byteCount++];
       count = 1;
     }
     else
@@ -156,10 +156,10 @@ void OSD::update(const uint8_t* pData, uint16_t size)
     while (count > 0)
     {
       this->buffer.screenLow[osdRow][osdCol] = c;
-      int col8 = col >> 3;
-      int sh = col & 0x7;
+      int col8 = osdCol >> 3;
+      int sh = osdCol & 0x7;
       uint8_t m = 1 << sh;
-      this->buffer.screenHigh[osdRow][col8] = (this->buffer.screenHigh[osdRow][col8] & ~m) | (m & flag);
+      this->buffer.screenHigh[osdRow][col8] = (this->buffer.screenHigh[osdRow][col8] & ~m) | (highBank ? m : 0 );
       osdCol++;
       if (osdCol == OSD_COLS)
       {

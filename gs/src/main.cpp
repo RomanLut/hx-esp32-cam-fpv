@@ -974,14 +974,14 @@ static void comms_thread_proc()
                 s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
                 s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
-                uint16_t old_data_size = air2ground_osd_packet.size - (sizeof(Air2Ground_OSD_Packet) - 1);
-                if ( ( old_data_size >=2 ) && ( size <= MAX_OSD_PAYLOAD_SIZE ) )
+                uint16_t osd_data_size = air2ground_osd_packet.size - (sizeof(Air2Ground_OSD_Packet) - 1);
+                if ( ( osd_data_size >=2 ) && ( osd_data_size <= MAX_OSD_PAYLOAD_SIZE ) )
                 {
                     g_osd.update( &air2ground_osd_packet.osd_enc_start, osd_data_size );
                 }
                 else
                 {
-                    LOGE("OSD Enc Data size incorrect{}", old_data_size);
+                    LOGE("OSD Enc Data size incorrect{}", osd_data_size);
                 }
 
                 s_last_stats_packet_tp = Clock::now();
