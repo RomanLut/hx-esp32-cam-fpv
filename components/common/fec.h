@@ -24,7 +24,7 @@ struct Packet_Header
 };
 #pragma pack(pop)
 
-#define PACKET_VERSION 2
+#define PACKET_VERSION 3
 #define PACKET_SIGNATURE 56
 #define PACKET_HEADER_SIZE 12
 

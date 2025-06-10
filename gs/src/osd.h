@@ -23,7 +23,7 @@ public:
     void init();
     void loadFont(const  char* fontName);
     void draw();
-    void update(void* pScreen);
+    void update(const uint8_t* pData, uint16_t size);
     bool isFontError();
 };
 

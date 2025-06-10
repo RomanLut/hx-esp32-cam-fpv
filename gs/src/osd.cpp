@@ -119,9 +119,60 @@ void OSD::draw()
 
 //======================================================
 //======================================================
-void OSD::update(void* pScreen)
+void OSD::update(const uint8_t* pData, uint16_t size)
 {
-    memcpy(&this->buffer, pScreen, OSD_BUFFER_SIZE);
+  bool highBank = false;
+  int count;
+
+  int osdCol = 0;
+  int osdRow = 0;
+
+  int byteCount = 0;
+  while (byteCount < size)
+  {
+    uint8_t c = data[byteCount++];
+    if (c == 0)
+    {
+      c = data[byteCount++];
+      count = (c & 0x7f);
+      if (count == 0)
+      {
+        break; //stop
+      }
+      highBank ^= (c & 128) != 0;
+      c = data[byteCount++];
+    }
+    else if (c == 255)
+    {
+      highBank = !highBank;
+      c = data[byteCount++];
+      count = 1;
+    }
+    else
+    {
+      count = 1;
+    }
+
+    while (count > 0)
+    {
+      this->buffer.screenLow[osdRow][osdCol] = c;
+      int col8 = col >> 3;
+      int sh = col & 0x7;
+      uint8_t m = 1 << sh;
+      this->buffer.screenHigh[osdRow][col8] = (this->buffer.screenHigh[osdRow][col8] & ~m) | (m & flag);
+      osdCol++;
+      if (osdCol == OSD_COLS)
+      {
+        osdCol = 0;
+        osdRow++;
+        if (osdRow == OSD_ROWS)
+        {
+          osdRow = 0;
+        }
+      }
+      count--;
+    }
+  }
 }
 
 //======================================================

@@ -43,7 +43,7 @@ static void *_malloc(size_t size)
     return NULL;
 }
 
-static IRAM_ATTR void convert_line_format(uint8_t * src, pixformat_t format, uint8_t * dst, size_t width, size_t in_channels, size_t line)
+static void convert_line_format(uint8_t * src, pixformat_t format, uint8_t * dst, size_t width, size_t in_channels, size_t line)
 {
     int i=0, o=0, l=0;
     if(format == PIXFORMAT_GRAYSCALE) {

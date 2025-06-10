@@ -58,13 +58,6 @@ void OSD::writeString(unsigned int row, unsigned int col, int isExtChar, uint8_t
 
 //==============================================================
 //==============================================================
-void* OSD::getBuffer()
-{
-    return &this->buffer;
-}
-
-//==============================================================
-//==============================================================
 bool OSD::isChanged()
 {
     /*
@@ -87,4 +80,13 @@ bool OSD::isLocked()
     if ( this->lockCounter == 0 ) return false;
     this->lockCounter--;
     return true;
+}
+
+//==============================================================
+//==============================================================
+IRAM_ATTR uint16_t OSD::getChar(unsigned int row, unsigned int col)
+{
+    uint16_t charCodeLow = this->buffer.screenLow[row][col];
+    uint8_t m = 1 << (col & 0x7);
+    return (this->buffer.screenHigh[row][col >> 3] & m) != 0 ? charCodeLow | 0x100 : charCodeLow;
 }

@@ -1207,6 +1207,7 @@ static void sd_enqueue_proc(void*)
     }
 }
 
+__attribute__((optimize("Os")))
 IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
@@ -1341,6 +1342,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue, const char *nvsName )
 {
     if ( fromValue != toValue )
@@ -1661,6 +1663,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
 {
     s_connected_gs_device_id = gsDeviceId;
@@ -1722,6 +1725,7 @@ static void init_camera();
 
 //===========================================================================================
 //===========================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
 #ifdef UART_MAVLINK
@@ -1897,6 +1901,108 @@ IRAM_ATTR void send_air2ground_data_packet()
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
+IRAM_ATTR uint16_t encodeOSDData(uint8_t* buffer)
+{
+	//RLE encoding
+    //we hope that OSD content is sparse, and encoded data will fit into MAX_OSD_PAYLOAD_SIZE
+	//no more than MAX_OSD_PAYLOAD_SIZE bytes output
+
+	//0 and 255 are special symbols
+	//255 [char_low] - font bank switch
+	//0 [flags:2,count:6] [char_low] - font bank switch, blink switch and character repeat
+    //original 0 is sent as 32
+    //original 0xff, 0x100 and 0x1ff are forcibly sent inside command 0
+
+	uint8_t osdPos_y = 0;
+	uint8_t osdPos_x = 0;
+
+    int bytesCount = 0;
+
+    bool highBank = false;
+
+    while (bytesCount < (MAX_OSD_PAYLOAD_SIZE - 3 - 2) ) 
+    {
+        uint16_t lastChar;
+        int count = 0;
+
+        while ( true )
+        {
+            uint16_t c = g_osd.getChar( osdPos_y, osdPos_x );
+            if (c == 0) c = 32;
+
+            if (count == 0)
+            {
+                lastChar = c;
+            }
+            else if ((lastChar != c) || (count == 127))
+            {
+                break;
+            }
+
+            count++;
+
+            osdPos_x++;
+            if (osdPos_x == OSD_COLS)
+            {
+                osdPos_x = 0;
+                osdPos_y++;
+                if (osdPos_y == OSD_ROWS)
+                {
+                    break;
+                }
+            }
+        }
+
+        uint8_t cmd = 0;
+        uint8_t lastCharLow = (uint8_t)(lastChar & 0xff);
+
+        bool highBank1 = lastChar > 255;
+        if (highBank1 != highBank)
+        {
+            cmd |= 128;//switch bank attr
+            highBank = highBank1;
+        }
+
+        if (count == 1 && cmd == 128)
+        {
+            *buffer++ = 255;  //short command for bank switch with char following
+            *buffer++ = lastCharLow;
+            bytesCount += 2;
+        }
+        else if ((count > 2) || (cmd != 0) || (lastCharLow == 0xff) || (lastCharLow == 0))
+        {
+            cmd |= count;  //long command for bank switch and symbol repeat
+            *buffer++ = 0;
+            *buffer++ = cmd;
+            *buffer++ = lastCharLow;
+            bytesCount += 3;
+        }
+        else if (count == 2)  //cmd == 0 here
+        {
+            *buffer++ = lastCharLow;
+            *buffer++ = lastCharLow;
+            bytesCount += 2;
+        }
+        else  //count = 1
+        {
+            *buffer++ = lastCharLow;
+            bytesCount++;
+        }
+
+        if (osdPos_y == OSD_ROWS)
+        {
+            break;
+        }
+    }
+    *buffer++ = 0;  //command 0 with length=0 -> stop
+    *buffer++ = 0;
+
+    return bytesCount + 2;
+}
+
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR void send_air2ground_osd_packet()
 {
     uint32_t size;
@@ -1909,8 +2015,11 @@ IRAM_ATTR void send_air2ground_osd_packet()
     }
 
     Air2Ground_OSD_Packet& packet = *(Air2Ground_OSD_Packet*)packet_data;
+
+    uint16_t osd_enc_size = encodeOSDData(&packet.osd_enc_start);
+
     packet.type = Air2Ground_Header::Type::OSD;
-    packet.size = sizeof(Air2Ground_OSD_Packet);
+    packet.size = sizeof(Air2Ground_OSD_Packet) - 1 + osd_enc_size;
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
     packet.airDeviceId = s_air_device_id;
@@ -1993,8 +2102,6 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.suspended = s_camera_stopped != 0;
 
-    memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
-    
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -2110,6 +2217,7 @@ IRAM_ATTR bool isHQDVRMode()
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
     if ( video_full_frame_size > s_max_frame_size )

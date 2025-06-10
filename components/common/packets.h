@@ -10,9 +10,11 @@
 #define FEC_K 6
 #define FEC_N 12
 
-constexpr size_t AIR2GROUND_MIN_MTU = 1250;
+constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 2) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
+
 constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
+//variable mtu is not supported for Ground2Air
 
 #pragma pack(push, 1) // exact fit - no padding
 
@@ -245,8 +247,7 @@ struct Air2Ground_Data_Packet : Air2Ground_Header
     //MAX_TELEMETRY_PAYLOAD_SIZE bytes here
 };
 
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
+//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MIN_MTU - sizeof(Air2Ground_Data_Packet);
 constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
 
 
@@ -329,11 +330,12 @@ struct AirStats
 //======================================================
 struct Air2Ground_OSD_Packet : Air2Ground_Header
 {
-    AirStats stats;  //28 nytes
-    OSDBuffer buffer;  //1200 bytes
+    AirStats stats;  //28 bytes
+    uint8_t osd_enc_start;  //RLE encoded buffer start, MAX_OSD_PAYLOAD_SIZE max
 };
 
-//1240 bytes
+constexpr size_t MAX_OSD_PAYLOAD_SIZE = AIR2GROUND_MIN_MTU - sizeof(Air2Ground_OSD_Packet) + 1;
+
 static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MIN_MTU, "");
 
 #pragma pack(pop)
