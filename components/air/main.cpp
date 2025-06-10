@@ -1360,8 +1360,7 @@ IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue,
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
-__attribute__((optimize("Os")))
-IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
+static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     s_recv_ground2air_packet = true;
     s_accept_connection_timeout_ms = 0;
@@ -1456,8 +1455,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 //=============================================================================================
 //=============================================================================================
 //process settings related to camera sensor setup
-__attribute__((optimize("Os")))
-IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
+void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 {
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
@@ -1690,7 +1688,7 @@ static void unpairGS()
 
 //===========================================================================================
 //===========================================================================================
-IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
+static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
     if ( s_connected_gs_device_id == 0 ) 
     {
