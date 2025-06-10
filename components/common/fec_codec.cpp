@@ -62,13 +62,15 @@ void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const voi
     init_crc8_table();
     init_fec();
 
-    init_fec_codec(s_fec_encoder,k,n,mtu,true);
+    init_fec_codec(s_fec_encoder,k,n,AIR2GROUND_MAX_MTU,true);
     init_fec_codec(s_fec_decoder,2,3,GROUND2AIR_MAX_MTU,false);
     s_fec_encoder.set_data_encoded_cb(fec_encoded_cb);
     s_fec_decoder.set_data_decoded_cb(fec_decoded_cb);
 
     ESP_LOGI(TAG,"MEMORY after fec:");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+
+    s_fec_encoder.switch_mtu( mtu );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////

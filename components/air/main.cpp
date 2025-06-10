@@ -1404,6 +1404,11 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 
     processSetting( "mavlink2mspRC",  dst.dataChannel.mavlink2mspRC, src.dataChannel.mavlink2mspRC, "mavlink2mspRC" );
 
+    if ( processSetting( "fec_codec_mtu", dst.dataChannel.fec_codec_mtu, src.dataChannel.fec_codec_mtu, "fec_codec_mtu") )
+    {
+        s_fec_encoder.switch_mtu( src.dataChannel.fec_codec_mtu );
+    }
+
     if ( s_restart_time == 0 )
     {
         if ( dst.dataChannel.air_record_btn != src.dataChannel.air_record_btn )
@@ -2919,6 +2924,15 @@ void readConfig()
         s_ground2air_config_packet.dataChannel.fec_codec_n = 8;
         nvs_args_set("fec_k", s_ground2air_config_packet.dataChannel.fec_codec_k);
         nvs_args_set("fec_n", s_ground2air_config_packet.dataChannel.fec_codec_n);
+    }
+
+    s_ground2air_config_packet.dataChannel.fec_codec_mtu = (uint8_t)nvs_args_read( "fec_codec_mtu", AIR2GROUND_MAX_MTU );
+    if ( 
+        ( s_ground2air_config_packet.dataChannel.fec_codec_mtu < AIR2GROUND_MIN_MTU ) ||
+        ( s_ground2air_config_packet.dataChannel.fec_codec_mtu > AIR2GROUND_MAX_MTU ) 
+    )
+    {
+        s_ground2air_config_packet.dataChannel.fec_codec_mtu = AIR2GROUND_MAX_MTU;
     }
 
     s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution", (uint32_t)Resolution::SVGA);

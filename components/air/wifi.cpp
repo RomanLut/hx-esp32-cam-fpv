@@ -381,7 +381,6 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     setup_fec(s_ground2air_config_packet.dataChannel.fec_codec_k, s_ground2air_config_packet.dataChannel.fec_codec_n, s_ground2air_config_packet.dataChannel.fec_codec_mtu,
                 add_to_wlan_outgoing_queue,add_to_wlan_incoming_queue);
 
-
     //allocates 118-32 kb RAM!!!
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     //ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_ap_handler, NULL, NULL));
