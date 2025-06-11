@@ -552,7 +552,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
         RX& rx = m_impl->rx;
         rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
-        
+
         {
             std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
 
@@ -1269,10 +1269,14 @@ void Comms::process_rx_packets()
             size_t used_fec_index = 0;
 
             size_t blockPacketsSize = block->fec_packets[0]->size;
+
+            //LOGD("blockpacketssize {} {}!!!", block->fec_packets.size(), blockPacketsSize);
+
             for (size_t i = 0; i < coding_k; i++)
             {
                 if (primary_index < block->packets.size() && i == block->packets[primary_index]->index)
                 {
+                    rx.fec_src_packet_ptrs[i] = block->packets[primary_index]->data.data();
                     indices[i] = block->packets[primary_index]->index;
                     primary_index++;
                 }

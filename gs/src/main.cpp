@@ -546,6 +546,7 @@ static void comms_thread_proc()
                 config.crc = 0;  //do calculate crc with crc field = 0
                 config.crc = crc8(0, &config, sizeof(config)); 
                 s_comms.send(&config, sizeof(config), true);
+                //LOGD("send config packet");
             }
             else
             {
@@ -1878,7 +1879,7 @@ int run(char* argv[])
 
         }
         ImGui::End();
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar();
 
         //------------ osd menu
         g_osdMenu.draw(config);
