@@ -10,7 +10,7 @@
 #define FEC_K 6
 #define FEC_N 12
 
-constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 2) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
+constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 4) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
 
 constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
