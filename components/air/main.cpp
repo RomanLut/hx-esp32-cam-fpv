@@ -2105,6 +2105,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.suspended = s_camera_stopped != 0;
 
+    packet.stats.id = s_last_stats_id;
+
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -3219,6 +3221,7 @@ extern "C" void app_main()
             }
 
             s_last_stats = s_stats;
+            s_last_stats_id++;
             s_stats = Stats();
 
             temperature_sensor_read(&s_camera_temperature);

@@ -93,5 +93,6 @@ struct Stats
 
 extern Stats s_stats;
 extern Stats s_last_stats;
+extern uint8_t s_last_stats_id;
 extern uint8_t s_wlan_outgoing_queue_usage;
 

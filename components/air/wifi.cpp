@@ -35,6 +35,7 @@ SemaphoreHandle_t s_wifi_tx_done_semaphore = xSemaphoreCreateBinary();
 TaskHandle_t s_wifi_tx_task = nullptr;
 TaskHandle_t s_wifi_rx_task = nullptr;
 Stats s_stats;
+uint8_t s_last_stats_id = 0;  //increased each time s_last_stast is updated
 Stats s_last_stats;
 uint8_t s_wlan_outgoing_queue_usage = 0;
 
