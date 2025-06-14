@@ -523,7 +523,6 @@ bool Comms::process_rx_packet(PCap& pcap)
         if ( pcap.index < 2 )
         {
             s_gs_stats.inPacketCounter[pcap.index]++;
-            s_gs_stats_sync.inPacketCounter[pcap.index]++;
         }
 
         Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
@@ -1112,7 +1111,6 @@ void Comms::tx_thread_proc()
                 else
                 {
                     s_gs_stats.outPacketCounter++;
-                    s_gs_stats_sync.outPacketCounter++;
                 }
             }
         }

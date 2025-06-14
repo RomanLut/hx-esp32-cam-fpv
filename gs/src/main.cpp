@@ -313,9 +313,6 @@ static AirStats s_last_airStats;
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
 
-GSStats s_gs_stats_sync;
-GSStats s_last_gs_stats_sync;
-
 static Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
 
 uint8_t s_avi_fps;
@@ -959,14 +956,6 @@ static void comms_thread_proc()
                     break;
                 }
 
-                if ( s_last_airStats.id = air2ground_osd_packet.stats.id )
-                {
-                    s_last_gs_stats_sync = s_gs_stats_sync;
-                    s_gs_stats_sync.outPacketCounter = 0;
-                    s_gs_stats_sync.inPacketCounter[0] = 0;
-                    s_gs_stats_sync.inPacketCounter[1] = 0;
-                }
-
                 s_last_airStats = air2ground_osd_packet.stats;
 
                 total_data += rx_data.size;
@@ -1529,7 +1518,7 @@ int run(char* argv[])
                         ImGui::Text("AirPacketLossRatio");
 
                         ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats_sync.outPacketCounter, s_last_airStats.inPacketRate) );
+                        ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats.outPacketCounter, s_last_airStats.inPacketRate) );
                     }
 
                     {
@@ -1563,8 +1552,10 @@ int run(char* argv[])
 
                         ImGui::TableSetColumnIndex(1);
 
-                        ImGui::Text("%.1f,%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats_sync.inPacketCounter[0]),
-                            calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats_sync.inPacketCounter[1]));
+                        int n = (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n;
+                        ImGui::Text("%.1f,%.1f%%", 
+                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[0]),
+                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[1]));
                     }
 /*
                     {

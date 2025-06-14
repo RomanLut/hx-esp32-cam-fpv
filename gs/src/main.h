@@ -136,10 +136,6 @@ struct GSStatsSync
 extern GSStats s_gs_stats;
 extern GSStats s_last_gs_stats;
 
-extern GSStatsSync s_gs_stats_sync;
-extern GSStatsSync s_last_gs_stats_sync;
-
-
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
 extern void saveGroundStationConfig();
 extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
