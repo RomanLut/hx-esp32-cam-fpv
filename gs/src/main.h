@@ -97,10 +97,10 @@ extern TGroundstationConfig s_groundstation_config;
 struct GSStats
 {
     uint16_t outPacketCounter = 0;
-    uint16_t inPacketCounter[2] = {0,0};
+    uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
 
-    uint32_t lastPacketIndex = 0;
-    uint32_t statsPacketIndex = 0;
+    uint32_t lastPacketIndex = 0;           //gs_stats: last recevied packet index, last_gs_stats: last packet index received for the period of last_gs_stats
+    uint32_t statsPacketIndex = 0;          //packets index when inUniquePacketCounter is stated counting
     uint16_t inDublicatedPacketCounter = 0;
     uint16_t inUniquePacketCounter = 0;
 
@@ -124,8 +124,20 @@ struct GSStats
     int decodedJpegTimeMaxMS = 0;
 };
 
+//===================================================================================
+//===================================================================================
+//GS Stats syncronized to the last airstats
+struct GSStatsSync
+{
+    uint16_t outPacketCounter = 0;
+    uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
+};
+
 extern GSStats s_gs_stats;
 extern GSStats s_last_gs_stats;
+
+extern GSStatsSync s_gs_stats_sync;
+extern GSStatsSync s_last_gs_stats_sync;
 
 
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
