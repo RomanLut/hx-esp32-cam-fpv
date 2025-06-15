@@ -6,22 +6,28 @@
 
 FramePacketsDebug g_framePacketsDebug;
 
-#define FPD_EMPTY           0
-#define FPD_RECEIVED        1
-#define FPD_OLD_REGECTED    2
-#define FPD_END             3
+#define FPD_CHAR_EMPTY          '-'
+#define FPD_CHAR_FRAME_START    'F'
+#define FPD_CHAR_FRAME_PART     'P'
+#define FPD_CHAR_FRAME_END      'E'
+#define FPD_CHAR_FRAME_SINGLE   'B'
+#define FPD_CHAR_TELEMETRY      'T'
+#define FPD_CHAR_CONFIG         'C'
+#define FPD_CHAR_OSD            'O'
+#define FPD_CHAR_UNKNOWN        '?'
+#define FPD_CHAR_FEC            '*'
 
-#define FPD_CHAR_RECEVIED   'O'
-#define FPD_CHAR_RESTORED   'o'
-#define FPD_CHAR_LOST       '-'
-#define FPD_CHAR_END        'F'
-#define FPD_CHAR_BLOCK_EDGE 'I'
+#define FPD_CHAR_OLD_REJECTED   'J'
+
+#define FPD_CHAR_BLOCK_OK       ' '
+#define FPD_CHAR_BLOCK_LOST     '!'
 
 #define FPD_STATE_OFF                       0
 #define FPD_STATE_SYNC_BLOCK_START          1
-#define FPD_STATE_SYNC_FRAME_START          2
-#define FPD_STATE_CAPTURE_FRAME             3
-#define FPD_STATE_SHOWING                   4
+#define FPD_STATE_CAPTURE                   2
+#define FPD_STATE_SHOWING                   3
+
+#define FPD_FEK_K   6
 
 //======================================================
 //======================================================
@@ -35,69 +41,45 @@ FramePacketsDebug::FramePacketsDebug()
 //======================================================
 void FramePacketsDebug::clear()
 {
-    memset( &this->buffer, FPD_EMPTY, FPD_BUFFER_SIZE );
+    memset( &this->buffer, FPD_CHAR_EMPTY, FPD_BUFFER_SIZE );
 }
 
 //======================================================
 //======================================================
 void FramePacketsDebug::onPacketReceived(const Packet_Header* header, bool old)
 {
-    //if ( old ) return;
-
-    //uint32_t block_index : 24;
-    //uint32_t packet_index : 8;
-
     //choose block id to accumulate
     if ( this->state == FPD_STATE_SYNC_BLOCK_START ) 
     {
         this->first_block = header->block_index + 1;
-        this->state = FPD_STATE_SYNC_FRAME_START;
+        this->state = FPD_STATE_CAPTURE;
     }
     
-    if ( this->state == FPD_STATE_SYNC_FRAME_START ) 
-    {
-        if (  header->block_index < this->first_block ) return; 
-
-        //packet is from the next block
-        if ( header->block_index > this->first_block )
-        {
-            //was there a frame start in this block?
-            if ( this->frameIndex == 0 )
-            {
-                //no, continue accumulating starting from the next block;
-                this->clear();
-                this->first_block = header->block_index;
-                this->checkFrameStartAndEnd(header);
-                this->buffer[0][0][header->packet_index] = this->gotFrameEnd ? FPD_END : FPD_RECEIVED;
-                return;
-            }
-            
-            //start capturing frame
-            this->state = FPD_STATE_CAPTURE_FRAME;
-        }
-        else
-        {
-            this->checkFrameStartAndEnd(header);
-            this->buffer[0][0][header->packet_index] = this->gotFrameEnd ? FPD_END : FPD_RECEIVED;
-        }
-    }
-    
-    if ( this->state == FPD_STATE_CAPTURE_FRAME ) 
+    if ( this->state == FPD_STATE_CAPTURE ) 
     {
         if (  header->block_index < this->first_block ) return; 
 
         int row = (header->block_index - this->first_block) / FPD_BLOCKS_PER_ROW;
         int col = (header->block_index - this->first_block) % FPD_BLOCKS_PER_ROW;
-        if ( row > FPD_ROWS ) 
+        if ( row >= FPD_ROWS )
         {
-            //finished capturing
             copyToOSD();
             this->state = FPD_STATE_SHOWING;
             return;
         }
 
-        this->checkFrameStartAndEnd(header);
-        this->buffer[row][col][header->packet_index] = this->gotFrameEnd ? FPD_END : FPD_RECEIVED;
+        uint8_t c = this->getPacketTypeChar(header);
+        if ( !old )
+        {
+            this->buffer[row][col][header->packet_index] = c;
+        }
+        else
+        {
+            if (this->buffer[row][col][header->packet_index] == FPD_CHAR_EMPTY)
+            {
+                this->buffer[row][col][header->packet_index] = FPD_CHAR_OLD_REJECTED;
+            } 
+        }
     }
 }
 
@@ -105,8 +87,6 @@ void FramePacketsDebug::onPacketReceived(const Packet_Header* header, bool old)
 //======================================================
 void FramePacketsDebug::copyToOSD()
 {
-    this->clear();
-
     const uint8_t* ptr = (const uint8_t*)this->buffer;
 
     for ( int row = 0; row < FPD_ROWS; row++ )
@@ -114,26 +94,17 @@ void FramePacketsDebug::copyToOSD()
         int col = 0;
         for ( int block = 0; block < FPD_BLOCKS_PER_ROW; block++ )
         {
+            int bc = 0;
             for ( int packet = 0; packet < FPD_PACKETS_PER_BLOCK; packet++ )
             {
-                if ( *ptr == FPD_RECEIVED )
-                {
-                    g_osd.setLowChar(row,col,FPD_CHAR_RECEVIED);
-                }
-                else if ( *ptr == FPD_END )
-                {
-                    g_osd.setLowChar(row,col,FPD_CHAR_END);
-                }
-                else
-                {
-                    g_osd.setLowChar(row,col,FPD_CHAR_LOST);
-                }
+                g_osd.setLowChar(row,col,*ptr);
                 ptr++;
+                col++;
+                if ( (*ptr != FPD_CHAR_EMPTY) && (*ptr != FPD_CHAR_OLD_REJECTED) ) bc++;
             }
+            g_osd.setLowChar(row, col, bc >= FPD_FEK_K ? FPD_CHAR_BLOCK_OK : FPD_CHAR_BLOCK_LOST );
             col++;
         }
-        g_osd.setLowChar(row, col, FPD_CHAR_BLOCK_EDGE);
-        col++;
     }
 }
 
@@ -157,32 +128,44 @@ void FramePacketsDebug::off()
 void FramePacketsDebug::captureFrame(bool broken)
 {
     this->state = FPD_STATE_SYNC_BLOCK_START;
-    this->needBroken = broken;
-    this->frameIndex = 0;
-    this->gotFrameEnd = false;
 }
 
 //======================================================
 //======================================================
-void FramePacketsDebug::checkFrameStartAndEnd(const Packet_Header* header)
+uint8_t FramePacketsDebug::getPacketTypeChar(const Packet_Header* header)
 {
-    //check for frame start packet
+    if ( header->packet_index >= FPD_FEK_K )
+    {
+        return FPD_CHAR_FEC;
+    }
+
     const Air2Ground_Header* hdr2 = (const Air2Ground_Header*)((uint8_t*)header + sizeof(Packet_Header));
     if ( hdr2->type == Air2Ground_Header::Type::Video)
     {
         const Air2Ground_Video_Packet* hdr3 = (Air2Ground_Video_Packet*)((uint8_t*)hdr2);
-
-        if ( this->frameIndex == 0 )
+        if ( hdr3->part_index == 0 )
         {
-            if ( hdr3->part_index == 0 )
-            {
-                //this packet is frame start
-                this->frameIndex = hdr3->frame_index;
-            }
+            return hdr3->last_part == 1 ? FPD_CHAR_FRAME_SINGLE : FPD_CHAR_FRAME_START;
         }
-        else  if ( this->frameIndex != hdr3->frame_index )
+        else 
         {
-            this->gotFrameEnd = true;
+            return hdr3->last_part == 1 ? FPD_CHAR_FRAME_END : FPD_CHAR_FRAME_PART;
         }
+    }
+    else if ( hdr2->type == Air2Ground_Header::Type::Telemetry)
+    {
+        return FPD_CHAR_TELEMETRY;
+    }
+    else if ( hdr2->type == Air2Ground_Header::Type::OSD)
+    {
+        return FPD_CHAR_OSD;
+    }
+    else if ( hdr2->type == Air2Ground_Header::Type::Config)
+    {
+        return FPD_CHAR_CONFIG;
+    }
+    else
+    {
+        return FPD_CHAR_UNKNOWN;
     }
 }

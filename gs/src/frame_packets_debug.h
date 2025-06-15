@@ -17,12 +17,9 @@ private:
 
     uint8_t state;
     uint32_t first_block;
-    bool needBroken;
-    uint32_t frameIndex;
-    bool gotFrameEnd;
 
     void copyToOSD();
-    void checkFrameStartAndEnd(const Packet_Header* header);
+    uint8_t getPacketTypeChar(const Packet_Header* header);
 
 public:
 
