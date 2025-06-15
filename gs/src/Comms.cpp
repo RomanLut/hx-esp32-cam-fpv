@@ -15,6 +15,7 @@
 #include <algorithm>
 #include "main.h"
 #include "packets.h"
+#include "frame_packets_debug.h"
 
 //#define DEBUG_PCAP
 
@@ -587,6 +588,8 @@ bool Comms::process_rx_packet(PCap& pcap)
             //keep track of what interface returned what index. 
             //this should allow us to skip stale blocks sooner
             rx.pcal_last_block_index[pcap.index] = block_index;
+
+            g_framePacketsDebug.onPacketReceived(&header, block_index < rx.next_block_index);
 
             if (block_index < rx.next_block_index)
             {

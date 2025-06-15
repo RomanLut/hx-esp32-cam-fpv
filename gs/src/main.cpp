@@ -31,6 +31,7 @@
 #include "avi.h"
 #include "jpeg_parser.h"
 #include "hx_mavlink_parser.h"
+#include "frame_packets_debug.h"
 
 #include "utils.h"
 
@@ -881,7 +882,7 @@ static void comms_thread_proc()
                         video_next_part_index = 0;
                         video_frame.clear();
 
-                        s_frame_stats.add(video_restoredByFEC ? 1 : 3);
+                        s_frame_stats.add(video_restoredByFEC ? 2 : 4);
                         s_frameParts_stats.add(air2ground_video_packet.part_index);
                         s_frameQuality_stats.add(s_curr_quality);
                         s_queueUsage_stats.add(s_curr_quality);
@@ -978,7 +979,10 @@ static void comms_thread_proc()
                 uint16_t osd_data_size = air2ground_osd_packet.size - (sizeof(Air2Ground_OSD_Packet) - 1);
                 if ( ( osd_data_size >=2 ) && ( osd_data_size <= MAX_OSD_PAYLOAD_SIZE ) )
                 {
-                    g_osd.update( &air2ground_osd_packet.osd_enc_start, osd_data_size );
+                    if (!g_framePacketsDebug.isOn())
+                    {
+                        g_osd.update( &air2ground_osd_packet.osd_enc_start, osd_data_size );
+                    }
                 }
                 else
                 {
@@ -1448,7 +1452,7 @@ int run(char* argv[])
                 char overlay[32];
 
                 ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
-                ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 3.0f, ImVec2(0, 24));            
+                ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 4.0f, ImVec2(0, 24));            
 
                 sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
                 ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
@@ -2236,7 +2240,15 @@ int run(char* argv[])
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
         {
-            toggleGSRecording(0,0);
+            if ( g_framePacketsDebug.isOn() ) 
+            {
+                g_framePacketsDebug.off();
+            }
+            else
+            {
+                g_framePacketsDebug.captureFrame(false);
+            }
+            //toggleGSRecording(0,0);
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))

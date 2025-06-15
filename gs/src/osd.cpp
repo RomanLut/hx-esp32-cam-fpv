@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <vector>
 #include <string>
-#include <algorithm> 
+
 
 #include "osd.h"
 #include "imgui.h"
@@ -16,8 +16,15 @@ OSD g_osd;
 //======================================================
 OSD::OSD()
 {
-    memset( &this->buffer, 0, OSD_BUFFER_SIZE );
+    this->clear();
     this->currentFontName[0]=0;
+}
+
+//======================================================
+//======================================================
+void OSD::clear()
+{
+    memset( &this->buffer, 0, OSD_BUFFER_SIZE );
 }
 
 //======================================================
@@ -180,4 +187,11 @@ void OSD::update(const uint8_t* pData, uint16_t size)
 bool OSD::isFontError()
 {
     return !this->font || !this->font->loaded;
+}
+
+//======================================================
+//======================================================
+void OSD::setLowChar( int row, int col, uint8_t c)
+{
+    this->buffer.screenLow[row][col] = c;
 }
