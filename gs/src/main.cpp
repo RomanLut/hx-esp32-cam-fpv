@@ -270,6 +270,7 @@ mINI::INIStructure ini;
 mINI::INIFile s_iniFile("gs.ini");
 
 float video_fps = 0;
+bool had_loss = false;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
@@ -1296,9 +1297,18 @@ int run(char* argv[])
                 sprintf(buf, "%02d", (int)video_fps);
                 ImGui::SameLine();
                 ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                if ( !had_loss )
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                }
+                else
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.4f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+                }
                 ImGui::Button(buf, ImVec2(45.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
@@ -2246,7 +2256,7 @@ int run(char* argv[])
             }
             else
             {
-                g_framePacketsDebug.captureFrame(false);
+                g_framePacketsDebug.captureFrame(true);
             }
             //toggleGSRecording(0,0);
         }
@@ -2316,6 +2326,7 @@ int run(char* argv[])
         {
             last_stats_tp = Clock::now();
             video_fps = video_frame_count;
+            had_loss = s_lost_frame_count != 0;
             video_frame_count = 0;
             s_lost_frame_count = 0;
         }

@@ -589,7 +589,7 @@ bool Comms::process_rx_packet(PCap& pcap)
             //this should allow us to skip stale blocks sooner
             rx.pcal_last_block_index[pcap.index] = block_index;
 
-            g_framePacketsDebug.onPacketReceived(&header, block_index < rx.next_block_index);
+            g_framePacketsDebug.onPacketReceived(header.block_index, header.packet_index, payload + sizeof(Packet_Header), block_index < rx.next_block_index);
 
             if (block_index < rx.next_block_index)
             {
@@ -1318,6 +1318,7 @@ void Comms::process_rx_packets()
                 RX::Packet_ptr const& d = block->packets[i];
                 if (!d->is_processed)
                 {
+                    g_framePacketsDebug.onPacketRestored( block->index, i, d->data.data() );
                     //LOGI("Packet F {}", block->index * coding_k + d->index);
                     {
                         std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);   
