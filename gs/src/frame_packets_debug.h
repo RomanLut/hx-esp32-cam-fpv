@@ -17,16 +17,19 @@ private:
 
     uint8_t state;
     uint32_t first_block;
+    bool needBroken;
+    int retryCount;
 
-    void copyToOSD();
-    uint8_t getPacketTypeChar(const Packet_Header* header);
+    bool copyToOSD(); //return true if dump contains lost block
+    uint8_t getPacketTypeChar(uint32_t block_index, uint32_t packet_index, const uint8_t* data);
+    void onPacketReceivedEx(uint32_t block_index, uint32_t packet_index, const uint8_t* data, bool old, bool recovered);
 
 public:
 
     FramePacketsDebug();
     void clear();
-    void onPacketReceived(const Packet_Header* header, bool old);  //called for normal and fec packets
-    //void onPacketRestored(const Packet_Header* header);  //called for restored normal packets
+    void onPacketReceived(uint32_t block_index, uint32_t packet_index, const uint8_t* data, bool old);  //called for normal and fec packets
+    void onPacketRestored(uint32_t block_index, uint32_t packet_index, const uint8_t* data);  //called for restored normal packets
     void off();
     bool isOn();
     void captureFrame(bool broken);
