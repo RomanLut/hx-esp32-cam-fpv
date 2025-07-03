@@ -308,8 +308,7 @@ struct AirStats
     uint8_t temperature : 7;  //degree C. 0 - does not have temp sensor.
     uint8_t overheatTrottling : 1;
 //28
-    uint8_t reserved : 3; 
-    uint8_t id : 4; 
+    uint8_t reserved : 7; 
     uint8_t suspended : 1;  //camera stopped as requested by RC channel
 //29
     uint8_t fec_codec_k : 4;
