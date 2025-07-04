@@ -167,6 +167,11 @@ struct Queue
   {
     m_read_end = m_read_start;
   }
+
+  uint8_t* getBuffer() const
+  {
+    return this->m_buffer;
+  }
   
 private:
   uint8_t* m_buffer = nullptr;

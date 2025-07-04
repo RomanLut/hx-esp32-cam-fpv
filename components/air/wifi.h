@@ -54,6 +54,7 @@ uint8_t getMaxWlanOutgoingQueueUsage();
 uint8_t getMinWlanOutgoingQueueUsageSeen();
 uint8_t getMaxWlanOutgoingQueueUsageFrame();
 uint8_t getMinWlanOutgoingQueueUsageFrame();
+void deinitQueues();
 
 //todo: global stats, not wifi only. Move to separate header.
 struct Stats

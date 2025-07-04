@@ -5,98 +5,484 @@
     <title>ESP-VTX Configuration</title>
     <style>
         body {
-            font-family: Arial;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 2rem;
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
             justify-content: center;
+            align-items: flex-start;
             min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+        }
+
+        .card-header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 0.75rem;
+        }
+
+        .form-group {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            font-weight: 500;
+        }
+
+        select, input[type="checkbox"] {
+            font-size: 1rem;
+        }
+        
+        select {
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            border: 1px solid #ccc;
         }
 
         table {
             width: 100%;
-            height:100%;
-            overflow-y: scroll;
             border-collapse: collapse;
         }
 
         th, td {
             text-align: left;
-            padding: 8px;
-            border-bottom: 1px solid #ddd;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e5e7eb;
         }
 
-        tr:hover {background-color: #f5f5f5;}
+        th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover {
+            background-color: #f9fafb;
+        }
+
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
 
         button {
             display: inline-block;
-            padding: 0.5rem 1rem;
-            margin-bottom: 0;
+            padding: 0.6rem 1.2rem;
             font-size: 1rem;
-            font-weight: 400;
+            font-weight: 500;
             line-height: 1;
             text-align: center;
             white-space: nowrap;
             vertical-align: middle;
             cursor: pointer;
             border: 1px solid transparent;
-            border-radius: 0.5rem;
-            transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+            border-radius: 0.375rem;
+            transition: all 0.15s ease-in-out;
             color: #fff;
             background-color: #007bff;
             border-color: #007bff;
         }
 
         button:hover {
-            color: #fff;
             background-color: #0069d9;
             border-color: #0062cc;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            border-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .delete-btn {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            min-width: 115px;
+        }
+
+        .delete-btn:not(:disabled):hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+        }
+
+        .play-btn {
+            background-color: #28a745;
+            border-color: #28a745;
+            min-width: 115px;
+            margin-right: 20px;
+        }
+
+        .play-btn:not(:disabled):hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
+
+        .play-btn.disabled {
+            background-color: #cccccc;
+            border-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0,0,0);
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto; /* Changed to auto for vertical and horizontal centering */
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 700px;
+            position: absolute; /* Added for absolute positioning */
+            top: 50%; /* Center vertically */
+            left: 50%; /* Center horizontally */
+            transform: translate(-50%, -50%); /* Adjust for exact centering */
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            background-color: black; /* Ensure black background for the video area */
+            min-height: 400px;
+        }
+
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-icon {
+            display: inline-block;
+            animation: spin 2s linear infinite;
+            margin-left: 8px;
+        }
+
+        .loading-text-green {
+            color: #28a745; /* A shade of green */
         }
     </style>
 </head>
 <body>
-    <div>
-        <span>Wifi Channel:</span>
-        <select>
-        </select>
-        <input id="default_dvr" type="checkbox" name="default_dvr" value="enable">default_dvr_enable
-        <button onclick="submitForm()">Save</button>
+    <div class="container">
+        <div class="card">
+            <div id="settings-header" class="card-header">Settings</div>
+            <div id="settings-body">
+                <span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span>
+            </div>
+        </div>
+        <div class="card">
+            <div id="recorded-files-header" class="card-header">Recorded Files</div>
+            <table id="fileList">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Size</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="fileRows">
+                    <tr><td colspan="3" style="text-align:center"><span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span></td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div>
-        <a href=""></a>
-        <table id="fileList">
-            <thead> 
-                <tr>
-                    <th>Name</th>
-                    <th>Size</th>
-                    <th>Delete</th>
-                </tr>
-            </thead>
-            <tbody id="fileRows">
-        
-            </tbody>
-        </table>
+
+    <div id="videoModal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="close_modal()">&times;</span>
+        <div id="videoFileName" style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.75rem;"></div>
+        <div class="video-container" id="videoPlayerContainer">
+            <!-- Video player will be inserted here dynamically -->
+        </div>
+        <div class="video-controls" style="display: flex; align-items: center; margin-top: 10px;">
+            <span id="currentTime" style="margin-right: 10px;">00:00</span>
+            <input type="range" id="videoTrackbar" value="0" min="0" max="100" style="flex-grow: 1;">
+            <span id="totalTime" style="margin-left: 10px;">00:00</span>
+        </div>
+      </div>
     </div>
  
 <script>
-    function delete_file(filename) {
-        var data = {"name":filename};  
-        fetch('/delete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data),
-        }).then(response => response.json())
-        .then(data => console.log('Success:', data))
-        .catch((error) => console.log('Error:', error));
+    function isIOS() {
+        return [
+            'iPad Simulator',
+            'iPhone Simulator',
+            'iPod Simulator',
+            'iPad',
+            'iPhone',
+            'iPod'
+        ].includes(navigator.platform)
+        // iPad on iOS 13 detection
+        || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) {
+            return bytes + ' bytes';
+        } else if (bytes < 1024 * 1024) {
+            return (bytes / 1024).toFixed(0) + 'Kb';
+        } else {
+            return (bytes / (1024 * 1024)).toFixed(1) + 'Mb';
+        }
+    }
+
+    function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    function play_file(filename) {
+        document.getElementById('videoFileName').textContent = filename;
+        document.getElementById('videoModal').style.display = 'block';
+
+        const videoPlayerContainer = document.getElementById('videoPlayerContainer');
+        videoPlayerContainer.innerHTML = ''; // Clear previous player
+
+        const videoTrackbar = document.getElementById('videoTrackbar');
+        const currentTimeSpan = document.getElementById('currentTime');
+        const totalTimeSpan = document.getElementById('totalTime');
+
+        // Reset trackbar and time display
+        videoTrackbar.value = 0;
+        currentTimeSpan.textContent = '00:00';
+        totalTimeSpan.textContent = '00:00';
+        videoTrackbar.disabled = true; // Disable by default, enable if duration is available
+
+        let videoElement;
+        if (isIOS()) {
+            videoElement = document.createElement('iframe');
+            videoElement.id = 'videoStream';
+            videoElement.frameborder = '0';
+            videoElement.allowFullscreen = true;
+            videoElement.scrolling = 'no';
+        } else {
+            videoElement = document.createElement('img');
+            videoElement.id = 'videoStream';
+            videoElement.style.width = '100%';
+            videoElement.style.objectFit = 'contain';
+            videoElement.style.display = 'block'; 
+            videoElement.style.maxWidth = '100%'; 
+            videoElement.style.minHeight = '400px'; 
+        }
+        videoPlayerContainer.appendChild(videoElement);
+
+        let duration_ms = 0;
+        let seek_pos_ms = 0;
+
+        // Fetch video info (duration) from stream_info backend first
+        fetch('/stream_info?file=' + filename)
+            .then(response => response.json())
+            .then(data => {
+                const fileLength = data.file_length;
+                duration_ms = data.duration_ms;
+
+                if (duration_ms) {
+                    totalTimeSpan.textContent = formatTime(parseInt(duration_ms) / 1000);
+                    videoTrackbar.max = parseInt(duration_ms);
+                    videoTrackbar.disabled = false;
+                } else {
+                    console.warn('Duration not found from /stream_info.');
+                    videoTrackbar.disabled = true;
+                    currentTimeSpan.textContent = 'N/A';
+                    totalTimeSpan.textContent = 'N/A';
+                }
+                if (fileLength) {
+                    console.log('File Length:', fileLength);
+                } else {
+                    console.warn('File Length not found from /stream_info.');
+                }
+
+                // Now start the actual video stream
+                videoElement.src = '/stream?file=' + filename + (seek_pos_ms ? '&pos=' + seek_pos_ms : '');
+            })
+            .catch(error => {
+                console.error('Error fetching stream info:', error);
+                videoTrackbar.disabled = true;
+                currentTimeSpan.textContent = 'N/A';
+                totalTimeSpan.textContent = 'N/A';
+            });
+
+        videoTrackbar.onmousedown = videoTrackbar.ontouchstart = function() {
+            // Set min-height to current height to prevent collapse during seek
+            if (videoElement.tagName != 'IFRAME') {
+                videoElement.style.minHeight = `${videoElement.clientHeight}px`;
+            }
+        };
+
+        videoTrackbar.onmouseup = videoTrackbar.ontouchend = function() {
+            seek_pos_ms = this.value;
+            currentTimeSpan.textContent = formatTime(seek_pos_ms / 1000);
+
+            // To force a reload and close old connection, recreate the element for iOS (iframe)
+            // For other browsers (img), just update the src
+            if (isIOS()) {
+                const parent = videoElement.parentNode;
+                const newVideoElement = document.createElement('iframe');
+                newVideoElement.id = 'videoStream';
+                newVideoElement.src = `/stream?file=${filename}&pos=${seek_pos_ms}`;
+                newVideoElement.frameborder = '0';
+                newVideoElement.allowFullscreen = true;
+                newVideoElement.scrolling = 'no';
+                parent.replaceChild(newVideoElement, videoElement);
+                videoElement = newVideoElement; // Update reference
+            } else {
+                videoElement.src = ``; //force abort stream
+                videoElement.src = `/stream?file=${filename}&pos=${seek_pos_ms}`;
+            }
+        };
+
+        videoTrackbar.oninput = videoTrackbar.ontouchmove = function() {
+            // Update current time display while dragging, but don't seek
+            currentTimeSpan.textContent = formatTime(this.value / 1000);
+        };
+    }
+
+    function close_modal() {
+        document.getElementById('videoModal').style.display = 'none';
+        const videoPlayerContainer = document.getElementById('videoPlayerContainer');
+        const videoElement = document.getElementById('videoStream');
+
+        if (videoElement) {
+            if (isIOS()) {
+                // To truly stop the stream on iOS, we need to replace the iframe with a new one
+                const parent = videoElement.parentNode;
+                const newVideoElement = document.createElement('iframe');
+                newVideoElement.id = 'videoStream';
+                newVideoElement.src = '';
+                newVideoElement.frameborder = '0';
+                newVideoElement.allowFullscreen = true;
+                newVideoElement.scrolling = 'no';
+                parent.replaceChild(newVideoElement, videoElement);
+            } else {
+                // For other browsers (img), just clear the src
+                videoElement.src = '';
+            }
+        }
+        videoPlayerContainer.innerHTML = ''; // Clear the player container
+    }
+
+    function delete_file(filename, button) {
+        if (confirm(`Delete ${filename}?`)) {
+            button.innerHTML = "Delete....";
+            button.disabled = true;
+            var data = {"name":filename};  
+            fetch('/delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data),
+            }).then(response => {
+                if(response.ok) {
+                    button.innerHTML = "Deleted";
+                    var row = button.parentNode.parentNode;
+                    var playButton = row.querySelector('.play-btn');
+                    if (playButton) {
+                        playButton.disabled = true;
+                        playButton.classList.add('disabled');
+                    }
+                    var link = row.querySelector('a');
+                    if (link) {
+                        var text = document.createTextNode(link.textContent);
+                        link.parentNode.replaceChild(text, link);
+                    }
+                    const freeSpace = response.headers.get('X-Free-Space');
+                    const totalSpace = response.headers.get('X-Total-Space');
+                    if (freeSpace !== null && totalSpace !== null) {
+                        const freeSpaceInGb = parseInt(freeSpace, 10) / 16.0;
+                        const totalSpaceInGb = parseInt(totalSpace, 10) / 16.0;
+                        document.getElementById("recorded-files-header").innerHTML = `Recorded Files (Free space: ${freeSpaceInGb.toFixed(2)}GB / ${totalSpaceInGb.toFixed(2)}GB)`;
+                    }
+                } else {
+                    button.innerHTML = "Error";
+                }
+            })
+            .catch((error) => {
+                console.log('Error:', error);
+                button.innerHTML = "Error";
+                button.disabled = true;
+            });
+        }
     }
 
     function submitForm() {
+    const saveButton = document.getElementById('save-button');
+    const saveStatus = document.getElementById('save-status');
+
+    saveButton.disabled = true;
+    saveStatus.textContent = 'Saving...';
+
     var data = {};
-    data["channel"] = document.querySelector('select').value.toString();
-    data["default_dvr"] = document.getElementById("default_dvr").checked?"true":"false";
+    data["channel"] = document.getElementById('wifi-channel').value.toString();
+    data["default_dvr"] = document.getElementById("default_dvr").checked ? "true" : "false";
     var jsonData = JSON.stringify(data);
     console.log(jsonData);
+
+    const requestTime = Date.now();
+
+    let success = false;
     fetch('/configs', {
         method: 'POST',
         headers: {
@@ -104,38 +490,68 @@
         },
         body: jsonData,
     })
-    .then(response => response.json())
-    .then(data => console.log('Success:', data))
-    .catch((error) => console.log('Error:', error));
+    .then(response => {
+        success = response.ok;
+        return response;
+    })
+    .catch((error) => {
+        console.log('Error:', error);
+        success = false;
+    })
+    .finally(() => {
+        const elapsedTime = Date.now() - requestTime;
+        const remainingTime = 500 - elapsedTime;
+        
+        setTimeout(() => {
+            if (success) {
+                saveStatus.textContent = 'Saved.';
+            } else {
+                saveStatus.textContent = 'Error';
+            }
+            saveButton.disabled = false;
+        }, Math.max(0, remainingTime));
+    });
 }
 
     document.addEventListener("DOMContentLoaded", function () {
     fetch("/file_list")
         .then(response => response.json())
         .then(data => {
-            let table = document.getElementById("fileList");
             let tbody = document.getElementById("fileRows");
+            tbody.innerHTML = "";
 
-            for(let i=0; i<data.length; i++) {
-                let row = `<tr><td><a href="${data[i].name}">${data[i].name}</a></td><td>${data[i].size}</td><td><button onclick="delete_file('${data[i].name}')">Delete</button></td></tr>`;
-                tbody.innerHTML += row;
+            if (!data.sd_initialized) {
+                document.getElementById("recorded-files-header").innerHTML = "Recorded Files";
+                tbody.innerHTML = '<tr><td colspan="3">No SD Card detected</td></tr>';
+            } else if (data.sd_list_error) {
+                document.getElementById("recorded-files-header").innerHTML = "Recorded Files";
+                tbody.innerHTML = '<tr><td colspan="3">Error making file list</td></tr>';
+            } else {
+                const freeSpaceInGb = data.sd_free_space / 16.0;
+                const totalSpaceInGb = data.sd_total_space / 16.0;
+                document.getElementById("recorded-files-header").innerHTML = `Recorded Files (Free space: ${freeSpaceInGb.toFixed(2)}GB / ${totalSpaceInGb.toFixed(2)}GB)`;
+
+                if (data.files.length > 0) {
+                    for(let i=0; i<data.files.length; i++) {
+                        let row = `<tr><td><a href="${data.files[i].name}">${data.files[i].name}</a></td><td>${formatFileSize(data.files[i].size)}</td><td><button class="play-btn" onclick="play_file('${data.files[i].name}')">Play</button><button class="delete-btn" onclick="delete_file('${data.files[i].name}', this)">Delete</button></td></tr>`;
+                        tbody.innerHTML += row;
+                    }
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="3">No files found</td></tr>';
+                }
             }
+        })
+        .catch(error => {
+            console.error('Error fetching file list:', error);
+            let tbody = document.getElementById("fileRows");
+            tbody.innerHTML = '<tr><td colspan="3">Error loading files</td></tr>';
+            document.getElementById("recorded-files-header").innerHTML = "Recorded Files (Error)";
         });
     });
 
-    document.addEventListener('DOMContentLoaded', function() {
-        fetch("/configs")
-        .then(response => response.json())
-        .then(data => {
-            add_select_elements(parseInt(data.channel));
-            var checkbox = document.getElementById("default_dvr");
-            if(data.default_dvr == "true"){
-                checkbox.checked = true;
-            }
-        });
-
     function add_select_elements(default_channel){
-        var selectElement = document.querySelector('select');
+        var selectElement = document.getElementById('wifi-channel');
+        if (!selectElement) return;
         for (var i = 1; i <= 11; i++) {
             var optionElement = document.createElement('option');
             optionElement.value = i;
@@ -150,6 +566,33 @@
         }
     }
 
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch("/configs")
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('settings-header').innerText = `Settings (Firmware version: ${data.fw_version}.${data.packet_version})`;
+            document.getElementById('settings-body').innerHTML = `
+            <div class="form-group">
+                <label for="wifi-channel">Wifi Channel:</label>
+                <select id="wifi-channel">
+                </select>
+            </div>
+            <div class="form-group">
+                <input id="default_dvr" type="checkbox" name="default_dvr" value="enable">
+                <label for="default_dvr">Start recording on startup</label>
+            </div>
+            <button id="save-button" onclick="submitForm()">Save</button><span id="save-status" style="margin-left: 1rem;"></span>
+            `;
+            add_select_elements(parseInt(data.channel));
+            var checkbox = document.getElementById("default_dvr");
+            if(data.default_dvr == "true"){
+                checkbox.checked = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching settings:', error);
+            document.getElementById('settings-body').innerHTML = 'Error loading settings.';
+        });
     });
 
     

@@ -2,10 +2,11 @@
 #include "driver/temperature_sensor.h"
 #include "esp_log.h"
 
-static const char *TAG = "temp_sensor";
+#ifdef BOARD_XIAOS3SENSE
+
+static const char* TAG = "temp_sensor";
 static temperature_sensor_handle_t temp_handle = NULL;
 
-#ifdef BOARD_XIAOS3SENSE
 //=====================================================================
 //=====================================================================
 bool temperature_sensor_available()

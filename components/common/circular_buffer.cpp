@@ -136,3 +136,8 @@ uint8_t Circular_Buffer::peek( size_t offset)
     offset = (m_start + offset) % m_capacity;
     return this->m_data[offset];
 }
+
+uint8_t* Circular_Buffer::getBufferPtr()
+{
+    return this->m_data;
+}
