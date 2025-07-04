@@ -151,6 +151,15 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
 
 //===========================================================================================
 //===========================================================================================
+//free queues memory to give some space for fileserver and OTA
+void deinitQueues()
+{
+  free( s_wlan_outgoing_queue.getBuffer() );
+  delete[] s_wlan_incoming_queue.getBuffer();
+}
+
+//===========================================================================================
+//===========================================================================================
 //A task which sends encoded packets (Air2Ground) after FEC
 //from s_wlan_outgoing_queue
 IRAM_ATTR static void wifi_tx_proc(void *)
@@ -528,7 +537,7 @@ void setup_wifi_file_server(void)
 {
     esp_wifi_stop();
     ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    //ESP_ERROR_CHECK(esp_event_loop_create_default());  //loop is already initialized
     esp_netif_t *netif = esp_netif_create_default_wifi_ap();
 
     ESP_ERROR_CHECK(esp_netif_set_static_ip(netif));

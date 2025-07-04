@@ -97,9 +97,9 @@ static int64_t s_wifi_ovf_time = 0;
 
 extern WIFI_Rate s_wlan_rate;
 
-static bool SDError = false;
-static uint16_t SDTotalSpaceGB16 = 0;
-static uint16_t SDFreeSpaceGB16 = 0;
+bool SDError = false;
+uint16_t SDTotalSpaceGB16 = 0;
+uint16_t SDFreeSpaceGB16 = 0;
 static uint8_t cam_ovf_count = 0;
 static float s_camera_temperature = 0;
 
@@ -417,7 +417,7 @@ SemaphoreHandle_t s_sd_slow_buffer_mux = xSemaphoreCreateBinary();
 
 static TaskHandle_t s_sd_write_task = nullptr;
 static TaskHandle_t s_sd_enqueue_task = nullptr;
-static bool s_sd_initialized = false;
+bool s_sd_initialized = false;
 static size_t s_sd_file_size = 0;
 static uint32_t s_sd_next_session_id = 0;
 static uint32_t s_sd_next_segment_id = 0;
@@ -2946,8 +2946,11 @@ extern "C" void app_main()
     setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
-    //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
-    init_camera();
+    if ( !getButtonState() )
+    {
+        //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
+        init_camera();
+    }
 
 
 #ifdef DVR_SUPPORT
@@ -2971,6 +2974,17 @@ extern "C" void app_main()
 
         vTaskSuspend(s_wifi_rx_task);
         vTaskSuspend(s_wifi_tx_task);
+
+        //free some memory for the fileserver and OTA
+        deinitQueues();
+        free(sd_write_block);
+        heap_caps_free( s_sd_slow_buffer->getBufferPtr() );
+
+        printf("MEMORY Before setup_wifi_file_server(): \n");
+        //heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        //heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+        heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
 
         setup_wifi_file_server();
 

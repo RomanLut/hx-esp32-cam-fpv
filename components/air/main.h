@@ -263,3 +263,10 @@
 #endif
 
 extern bool isHQDVRMode();
+
+extern bool SDError;
+extern uint16_t SDTotalSpaceGB16;
+extern uint16_t SDFreeSpaceGB16;
+extern bool s_sd_initialized;
+
+void updateSDInfo();
