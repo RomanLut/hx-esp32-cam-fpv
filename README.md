@@ -156,8 +156,8 @@ The **esp32cam** doesn’t have many free pins. You can optionally solder a **RE
 
 Both internal red LED and additional LED are used for indication:
  * solid - not recording
- * blinking 1Hz - recording
- * blinking 3Hz - OTA update mode.
+ * blinking 0.5Hz - recording
+ * blinking 1Hz - OTA update mode.
  
 **REC button** is used to start/stop air unit recording. Hold **REC button** on powerup to enter OTA (over the air update) mode.
 
