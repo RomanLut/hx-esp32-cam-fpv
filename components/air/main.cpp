@@ -1211,6 +1211,7 @@ static void sd_enqueue_proc(void*)
     }
 }
 
+__attribute__((optimize("Os")))
 IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
     xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
@@ -1345,6 +1346,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue, const char *nvsName )
 {
     if ( fromValue != toValue )
@@ -1362,8 +1364,7 @@ IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue,
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
-__attribute__((optimize("Os")))
-IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
+static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
     s_recv_ground2air_packet = true;
     s_accept_connection_timeout_ms = 0;
@@ -1458,8 +1459,7 @@ IRAM_ATTR static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packe
 //=============================================================================================
 //=============================================================================================
 //process settings related to camera sensor setup
-__attribute__((optimize("Os")))
-IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
+void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 {
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
@@ -1665,6 +1665,7 @@ IRAM_ATTR void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
 {
     s_connected_gs_device_id = gsDeviceId;
@@ -1691,7 +1692,7 @@ static void unpairGS()
 
 //===========================================================================================
 //===========================================================================================
-IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
+static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
     if ( s_connected_gs_device_id == 0 ) 
     {
@@ -1726,6 +1727,7 @@ static void init_camera();
 
 //===========================================================================================
 //===========================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
 #ifdef UART_MAVLINK
@@ -2109,6 +2111,7 @@ IRAM_ATTR bool isHQDVRMode()
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
 IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 {
     if ( video_full_frame_size > s_max_frame_size )
