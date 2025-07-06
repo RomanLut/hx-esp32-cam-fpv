@@ -57,7 +57,7 @@ There is easie alternative way using **Over The Air update (OTA)**.
 
 Hold **REC** button while powering up to enter **OTA mode**. 
 
-**OTA/Fileserver mode** is indicated by LED blinking with 2 Hz frequency.
+**OTA/Fileserver mode** is indicated by LED blinking with 1 Hz frequency.
 
 * Enter **OTA mode**.
 * Connect to **espvtx** access point.
@@ -65,4 +65,4 @@ Hold **REC** button while powering up to enter **OTA mode**.
 * Select **firmware.bin** file.
 * Click **Upload**
 
-
+To upload firmware with Visual Studio Code, uncomment "OTA Update" lines in the ```platformio.ini```.
