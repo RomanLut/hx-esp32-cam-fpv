@@ -37,163 +37,6 @@
 
 #define IDX_ENTRY sizeof(avi_idx_entry_t)
 
-static const char ota_html_file[] = "\
-<!DOCTYPE html>\n\
-<html lang=\"en\">\n\
-<head>\n\
-    <meta charset=\"UTF-8\">\n\
-    <title>Firmware Upload</title>\n\
-    <style>\n\
-        body {\n\
-            font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;\n\
-            margin: 0;\n\
-            padding: 2rem;\n\
-            background-color: #f0f2f5;\n\
-            color: #333;\n\
-            display: flex;\n\
-            justify-content: center;\n\
-            align-items: flex-start;\n\
-            min-height: 100vh;\n\
-        }\n\
-\n\
-        .container {\n\
-            width: 100%;\n\
-            max-width: 800px;\n\
-        }\n\
-\n\
-        .card {\n\
-            background-color: #fff;\n\
-            border-radius: 8px;\n\
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n\
-            margin-bottom: 2rem;\n\
-            padding: 1.5rem;\n\
-        }\n\
-\n\
-        .card-header {\n\
-            font-size: 1.25rem;\n\
-            font-weight: 600;\n\
-            margin-bottom: 1rem;\n\
-            border-bottom: 1px solid #e5e7eb;\n\
-            padding-bottom: 0.75rem;\n\
-        }\n\
-\n\
-        button {\n\
-            display: inline-block;\n\
-            padding: 0.6rem 1.2rem;\n\
-            font-size: 1rem;\n\
-            font-weight: 500;\n\
-            line-height: 1;\n\
-            text-align: center;\n\
-            white-space: nowrap;\n\
-            vertical-align: middle;\n\
-            cursor: pointer;\n\
-            border: 1px solid transparent;\n\
-            border-radius: 0.375rem;\n\
-            transition: all 0.15s ease-in-out;\n\
-            color: #fff;\n\
-            background-color: #007bff;\n\
-            border-color: #007bff;\n\
-        }\n\
-\n\
-        button:not(:disabled):hover {\n\
-            background-color: #0069d9;\n\
-            border-color: #0062cc;\n\
-        }\n\
-\n\
-        button:disabled {\n\
-            background-color: #cccccc;\n\
-            border-color: #cccccc;\n\
-            cursor: not-allowed;\n\
-            opacity: 0.65;\n\
-        }\n\
-\n\
-        .progress-container {\n\
-            margin: 15px auto;\n\
-            max-width: 500px;\n\
-            height: 30px;\n\
-            background-color: #e9ecef;\n\
-            border-radius: 15px;\n\
-            overflow: hidden;\n\
-        }\n\
-\n\
-        .progress-bar {\n\
-            height: 100%;\n\
-            width: 0%;\n\
-            border-radius: 15px;\n\
-            background: repeating-linear-gradient(135deg,#336ffc,#036ffc 15px,#1163cf 15px,#1163cf 30px);\n\
-            transition: width 0.3s ease-in-out;\n\
-        }\n\
-\n\
-        .status {\n\
-            font-weight: bold;\n\
-            font-size: 1rem;\n\
-            margin-top: 1rem;\n\
-            text-align: center;\n\
-        }\n\
-\n\
-        @keyframes spin {\n\
-            0% { transform: rotate(0deg); }\n\
-            100% { transform: rotate(360deg); }\n\
-        }\n\
-\n\
-        .loading-icon {\n\
-            display: inline-block;\n\
-            animation: spin 2s linear infinite;\n\
-            margin-left: 8px;\n\
-        }\n\
-\n\
-        .loading-text-green {\n\
-            color: #28a745; /* A shade of green */\n\
-        }\n\
-        .error-text-red {\n\
-            color: #dc3545; /* A shade of red */\n\
-        }\n\
-    </style>\n\
-</head>\n\
-<body>\n\
-    <div class=\"container\">\n\
-        <div class=\"card\">\n\
-            <div class=\"card-header\">Upload Firmware</div>\n\
-            <div style=\"text-align: center;\">\n\
-                <button id=\"firmware_select_button\" onclick=\"document.getElementById('file_sel').click();\">Select Firmware File</button>\n\
-                <input type=\"file\" id=\"file_sel\" onchange=\"upload_file()\" style=\"display: none;\">\n\
-                <div class=\"progress-container\"><div class=\"progress-bar\" id=\"progress\"></div></div>\n\
-                <div class=\"status\" id=\"status_div\">Ready to upload.</div>\n\
-            </div>\n\
-        </div>\n\
-    </div>\n\
-\n\
-<script>\n\
-function upload_file() {\n\
-  document.getElementById(\"firmware_select_button\").disabled = true;\n\
-  document.getElementById(\"progress\").style.width = \"0%\";\n\
-  document.getElementById(\"status_div\").innerHTML = \"Upload in progress <span class='loading-icon'>&#9696;</span>\";\n\
-  let data = document.getElementById(\"file_sel\").files[0];\n\
-  xhr = new XMLHttpRequest();\n\
-  xhr.open(\"POST\", \"/ota\", true);\n\
-  xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');\n\
-  xhr.upload.addEventListener(\"progress\", function (event) {\n\
-     if (event.lengthComputable) {\n\
-    	 document.getElementById(\"progress\").style.width = (event.loaded / event.total) * 100 + \"%\";\n\
-     }\n\
-  });\n\
-  xhr.onreadystatechange = function () {\n\
-    if(xhr.readyState === XMLHttpRequest.DONE) {\n\
-      var status = xhr.status;\n\
-      if (status >= 200 && status < 400)\n\
-      {\n\
-        document.getElementById(\"status_div\").innerHTML = \"<span class='loading-text-green'>Upload accepted. Device will reboot.</span>\";\n\
-      } else {\n\
-        document.getElementById(\"status_div\").innerHTML = \"<span class='error-text-red'>Error!</span>\";\n\
-      }\n\
-    }\n\
-  };\n\
-  xhr.send(data);\n\
-  return false;\n\
-}\n\
-</script>\n\
-</body>\n\
-</html>";
 
 /* Max length a file path can have on storage */
 #define FILE_PATH_MAX (ESP_VFS_PATH_MAX + CONFIG_SPIFFS_OBJ_NAME_LEN)
@@ -877,9 +720,12 @@ static esp_err_t configs_handler(httpd_req_t *req)
 //-----------------------------------------------------------------------------
 static esp_err_t _ota_get_handler( httpd_req_t *req )
 {
+    extern const unsigned char html_start[] asm("_binary_index_html_start");
+    extern const unsigned char html_end[]   asm("_binary_index_html_end");
+    const size_t html_size = (html_end - html_start);
     httpd_resp_set_status( req, HTTPD_200 );
     httpd_resp_set_hdr( req, "Connection", "keep-alive" );
-    httpd_resp_send( req, ota_html_file, strlen( ota_html_file ) );
+    httpd_resp_send( req, (const char *)html_start, html_size );
     return ESP_OK;
 }
 

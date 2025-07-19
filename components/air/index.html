@@ -221,30 +221,96 @@
         .loading-text-green {
             color: #28a745; /* A shade of green */
         }
+
+        /* Tab styles */
+        .tabs {
+            display: flex;
+            margin-bottom: 1rem;
+            background-color: #e9ecef;
+            border-radius: 0.375rem;
+            padding: 0.25rem;
+        }
+
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            border: none;
+            background-color: transparent;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #495057;
+            transition: all 0.2s ease-in-out;
+            border-radius: 0.375rem;
+            flex-grow: 1;
+            text-align: center;
+        }
+
+        .tab-button:hover {
+            background-color: #dee2e6;
+            color: #0056b3;
+        }
+
+        .tab-button.active {
+            background-color: #fff;
+            color: #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="card">
-            <div id="settings-header" class="card-header">Settings</div>
-            <div id="settings-body">
-                <span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span>
+        <h1 style="text-align: center; margin-bottom: 1rem;">HX-ESP32-CAM-FPV</h1>
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab(event, 'recordings')">Recordings</button>
+            <button class="tab-button" onclick="openTab(event, 'settings')">Settings</button>
+            <button class="tab-button" onclick="openTab(event, 'update')">Update</button>
+        </div>
+
+        <div id="recordings" class="tab-content active">
+            <div class="card">
+                <div id="recorded-files-header" class="card-header">Recorded Files</div>
+                <table id="fileList">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Size</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="fileRows">
+                        <tr><td colspan="3" style="text-align:center"><span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span></td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-        <div class="card">
-            <div id="recorded-files-header" class="card-header">Recorded Files</div>
-            <table id="fileList">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Size</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody id="fileRows">
-                    <tr><td colspan="3" style="text-align:center"><span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span></td></tr>
-                </tbody>
-            </table>
+
+        <div id="settings" class="tab-content">
+            <div class="card">
+                <div id="settings-header" class="card-header">Settings</div>
+                <div id="settings-body">
+                    <span class="loading-text-green">Loading...<span class="loading-icon">&#9696;</span></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="update" class="tab-content">
+            <div class="card">
+                <div id="update-header" class="card-header">Firmware Update</div>
+                <div style="text-align: center;">
+                    <button id="firmware_select_button" onclick="document.getElementById('file_sel').click();">Select firmware.bin</button>
+                    <input type="file" id="file_sel" onchange="upload_file()" style="display: none;">
+                    <div class="progress-container"><div class="progress-bar" id="progress"></div></div>
+                    <div class="status" id="status_div">Ready to upload.</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -264,6 +330,49 @@
     </div>
  
 <script>
+    // Tab switching function
+    function openTab(evt, tabName) {
+        var i, tabcontent, tablinks;
+        tabcontent = document.getElementsByClassName("tab-content");
+        for (i = 0; i < tabcontent.length; i++) {
+            tabcontent[i].style.display = "none";
+        }
+        tablinks = document.getElementsByClassName("tab-button");
+        for (i = 0; i < tablinks.length; i++) {
+            tablinks[i].className = tablinks[i].className.replace(" active", "");
+        }
+        document.getElementById(tabName).style.display = "block";
+        evt.currentTarget.className += " active";
+    }
+
+    // Function to handle firmware upload (moved from ota_html_file)
+    function upload_file() {
+        document.getElementById("firmware_select_button").disabled = true;
+        document.getElementById("progress").style.width = "0%";
+        document.getElementById("status_div").innerHTML = "Upload in progress <span class='loading-icon'>&#9696;</span>";
+        let data = document.getElementById("file_sel").files[0];
+        xhr = new XMLHttpRequest();
+        xhr.open("POST", "/ota", true);
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.upload.addEventListener("progress", function (event) {
+            if (event.lengthComputable) {
+                document.getElementById("progress").style.width = (event.loaded / event.total) * 100 + "%";
+            }
+        });
+        xhr.onreadystatechange = function () {
+            if(xhr.readyState === XMLHttpRequest.DONE) {
+                var status = xhr.status;
+                if (status >= 200 && status < 400) {
+                    document.getElementById("status_div").innerHTML = "<span class='loading-text-green'>Upload accepted. Device will reboot.</span>";
+                } else {
+                    document.getElementById("status_div").innerHTML = "<span class='error-text-red'>Error!</span>";
+                }
+            }
+        };
+        xhr.send(data);
+        return false;
+    }
+
     function isIOS() {
         return [
             'iPad Simulator',
@@ -570,7 +679,7 @@
         fetch("/configs")
         .then(response => response.json())
         .then(data => {
-            document.getElementById('settings-header').innerText = `Settings (Firmware version: ${data.fw_version}.${data.packet_version})`;
+            document.getElementById('update-header').innerText = `Update (Current firmware version: ${data.fw_version}.${data.packet_version})`;
             document.getElementById('settings-body').innerHTML = `
             <div class="form-group">
                 <label for="wifi-channel">Wifi Channel:</label>
