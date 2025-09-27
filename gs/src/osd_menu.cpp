@@ -413,11 +413,11 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         char buf[256];
         if ( config.dataChannel.cameraStopChannel == 0 )
         {
-            sprintf(buf, "Camera Off Channel: None" );
+            sprintf(buf, "Camera Off RC Channel: None" );
         }
         else
         {
-            sprintf(buf, "Camera Off Channel: %d", (int)config.dataChannel.cameraStopChannel );
+            sprintf(buf, "Camera Off RC Channel: %d", (int)config.dataChannel.cameraStopChannel );
         }
         if ( this->drawMenuItem( buf, 2) )
         {
