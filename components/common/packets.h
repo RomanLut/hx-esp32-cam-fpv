@@ -138,14 +138,6 @@ struct DataChannelConfig
     uint8_t fec_codec_k = FEC_K;
     uint8_t fec_codec_n = FEC_N;
     uint16_t fec_codec_mtu = AIR2GROUND_MAX_MTU;
-    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
-
-    uint8_t cameraStopChannel : 5;// = 0;  //0 - none
-    uint8_t autostartRecord : 1;// = 1;
-    uint8_t mavlink2mspRC : 1;// = 0;
-    uint8_t reserved1 : 1;// = 0;
 };
 
 //======================================================
@@ -192,6 +184,17 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
 
     CameraConfig camera;
     DataChannelConfig dataChannel;
+
+    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+
+    uint8_t cameraStopChannel : 5;// = 0;  //0 - none
+    uint8_t autostartRecord : 1;// = 1;
+    uint8_t mavlink2mspRC : 1;// = 0;
+    uint8_t reserved1 : 1;// = 0;
+
+    uint32_t osdFontCRC32;
 };
 static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_MAX_MTU, "");
 
