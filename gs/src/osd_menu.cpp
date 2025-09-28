@@ -402,9 +402,25 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
+        char buf[512];
+        sprintf(buf, "OSD Font: %s", g_osd.currentFontName);
+        if (strlen(buf) > 30 )
+        {
+            buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
+        }
+        strcat(buf, "##1");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            auto it = std::find(g_osd.fontsList.begin(), g_osd.fontsList.end(), g_osd.currentFontName);
+            this->goForward( OSDMenuId::OSDFont, it != g_osd.fontsList.end() ? std::distance(g_osd.fontsList.begin(), it) : 0 );
+        }
+    }
+
+
+    {
         char buf[256];
         sprintf(buf, "Autostart recording: %s", config.misc.autostartRecord == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             config.misc.autostartRecord ^= 1;
 
@@ -421,7 +437,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         {
             sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
         }
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
         }
@@ -430,7 +446,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             config.misc.mavlink2mspRC ^= 1;
             
@@ -440,7 +456,7 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
-        if ( this->drawMenuItem( buf, 4) )
+        if ( this->drawMenuItem( buf, 5) )
         {
             if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
             {
@@ -1102,25 +1118,10 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     ImGui::Spacing();
 
     {
-        char buf[512];
-        sprintf(buf, "OSD Font: %s", g_osd.currentFontName);
-        if (strlen(buf) > 30 )
-        {
-            buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
-        }
-        strcat(buf, "##1");
-        if ( this->drawMenuItem( buf, 0) )
-        {
-            auto it = std::find(g_osd.fontsList.begin(), g_osd.fontsList.end(), g_osd.currentFontName);
-            this->goForward( OSDMenuId::OSDFont, it != g_osd.fontsList.end() ? std::distance(g_osd.fontsList.begin(), it) : 0 );
-        }
-    }
-
-    {
         char buf[256];
         const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
-        sprintf(buf, "Letterbox: %s##2", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
-        if ( this->drawMenuItem( buf, 1) )
+        sprintf(buf, "Letterbox: %s##1", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
+        if ( this->drawMenuItem( buf, 0) )
         {
             this->goForward( OSDMenuId::Letterbox, (int)s_groundstation_config.screenAspectRatio );
         }
@@ -1128,8 +1129,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Vertical Sync: %s##3", s_groundstation_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 2) )
+        sprintf(buf, "Vertical Sync: %s##2", s_groundstation_config.vsync ? "Enabled" :"Disabled");
+        if ( this->drawMenuItem( buf, 1) )
         {
             s_groundstation_config.vsync = !s_groundstation_config.vsync;
             s_hal->set_vsync(s_groundstation_config.vsync, true);
@@ -1139,8 +1140,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Interface: %s##4", s_groundstation_config.txInterface.c_str());
-        if ( this->drawMenuItem( buf, 3) )
+        sprintf(buf, "TX Interface: %s##3", s_groundstation_config.txInterface.c_str());
+        if ( this->drawMenuItem( buf, 2) )
         {
             auto rx_descriptor = s_comms.getRXDescriptor();
 
@@ -1158,8 +1159,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Power: %d##5", s_groundstation_config.txPower);
-        if ( this->drawMenuItem( buf, 4) )
+        sprintf(buf, "TX Power: %d##4", s_groundstation_config.txPower);
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
         }
@@ -1167,15 +1168,15 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Toggle Statistics##6");
-        if ( this->drawMenuItem( buf, 5) )
+        sprintf(buf, "Toggle Statistics##5");
+        if ( this->drawMenuItem( buf, 4) )
         {
             s_groundstation_config.stats = !s_groundstation_config.stats;
         }
     }
 
 
-    if ( this->drawMenuItem( "Exit To Shell##7", 6) )
+    if ( this->drawMenuItem( "Exit To Shell##7", 5) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
