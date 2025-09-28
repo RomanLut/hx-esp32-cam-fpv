@@ -1186,8 +1186,8 @@ void loadOSDFontByCRC32( uint32_t fontCRC32 )
             if ( strcmp( g_osd.currentFontName, g_osd.fontsList[i].c_str())!= 0 )
             {
                 g_osd.loadFont( g_osd.fontsList[i].c_str() );
-                return;
             }
+            return;
         }
     }
 
