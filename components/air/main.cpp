@@ -612,7 +612,7 @@ static bool init_sd()
     s_sd_initialized = true;
 
 #ifdef DVR_SUPPORT
-    s_air_record = s_ground2air_config_packet2.autostartRecord != 0;
+    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 #endif
 
     // Card has been initialized, print its properties
@@ -1398,13 +1398,13 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
             s_video_target_frame_dt = 1000000 / src.camera.fps_limit;
     }
 
-    processSetting( "AutostartRecord", dst.autostartRecord, src.autostartRecord, "autostartRecord" );
+    processSetting( "AutostartRecord", dst.misc.autostartRecord, src.misc.autostartRecord, "autostartRecord" );
 
-    processSetting( "CameraStopChannel", dst.cameraStopChannel, src.cameraStopChannel, "cameraStopCH" );
+    processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );
 
-    processSetting( "mavlink2mspRC",  dst.mavlink2mspRC, src.mavlink2mspRC, "mavlink2mspRC" );
+    processSetting( "mavlink2mspRC",  dst.misc.mavlink2mspRC, src.misc.mavlink2mspRC, "mavlink2mspRC" );
 
-    processSetting( "osdFontCRC32",  dst.osdFontCRC32, src.osdFontCRC32, "osdFontCRC32" );
+    processSetting( "osdFontCRC32",  dst.misc.osdFontCRC32, src.misc.osdFontCRC32, "osdFontCRC32" );
 
     if ( processSetting( "fec_codec_mtu", dst.dataChannel.fec_codec_mtu, src.dataChannel.fec_codec_mtu, "fec_codec_mtu") )
     {
@@ -1413,14 +1413,14 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 
     if ( s_restart_time == 0 )
     {
-        if ( dst.air_record_btn != src.air_record_btn )
+        if ( dst.misc.air_record_btn != src.misc.air_record_btn )
         {
             s_air_record = !s_air_record;
-            //dst.air_record_btn = src.air_record_btn;
+            //dst.misc.air_record_btn = src.misc.air_record_btn;
         }
 
 #if defined(ENABLE_PROFILER)
-        if ( dst.profile1_btn != src.profile1_btn )
+        if ( dst.misc.profile1_btn != src.misc.profile1_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1434,10 +1434,10 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                 LOG("Profiler started!\n");
                 s_profiler.start(500);
             }
-            dst.profile1_btn = src.profile1_btn;
+            dst.misc.profile1_btn = src.misc.profile1_btn;
         }
 
-        if ( dst.profile2_btn != src.profile2_btn )
+        if ( dst.misc.profile2_btn != src.misc.profile2_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1451,7 +1451,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                 LOG("Profiler started!\n");
                 s_profiler.start(3000);
             }
-            dst.profile2_btn = src.profile2_btn;
+            dst.misc.profile2_btn = src.misc.profile2_btn;
         }
 #endif
     }
@@ -1757,7 +1757,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     s_stats.RCPeriodMaxMS = d;
                 }
 
-                if ( s_ground2air_config_packet2.mavlink2mspRC != 0 )
+                if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
@@ -1769,10 +1769,10 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     g_msp.setRCChannels(ch);
                 }
 
-                if ( s_ground2air_config_packet2.cameraStopChannel != 0 )
+                if ( s_ground2air_config_packet2.misc.cameraStopChannel != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
-                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.cameraStopChannel ) > 1700;
+                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.misc.cameraStopChannel ) > 1700;
 
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
                     //LOG("%d %d %d %d %d\n", msg->chan9_raw, msg->chan10_raw, msg->chan11_raw, msg->chan12_raw, mavlinkParserIn.getPacketLength());
@@ -2136,6 +2136,7 @@ IRAM_ATTR void send_air2ground_config_packet()
     packet.size = sizeof(Air2Ground_Config_Packet);
     packet.dataChannel = s_ground2air_config_packet.dataChannel;
     packet.camera = s_ground2air_config_packet.camera;
+    packet.misc = s_ground2air_config_packet.misc;
     packet.version = PACKET_VERSION;
     packet.airDeviceId = s_air_device_id;
     packet.gsDeviceId = s_connected_gs_device_id;
@@ -2983,19 +2984,19 @@ void readConfig()
     s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 
-    s_ground2air_config_packet.autostartRecord = nvs_args_read( "autostartRecord", 1 );
+    s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );
 
-    s_ground2air_config_packet.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
-    if ( s_ground2air_config_packet.cameraStopChannel > 18 )
+    s_ground2air_config_packet.misc.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
+    if ( s_ground2air_config_packet.misc.cameraStopChannel > 18 )
     {
-        s_ground2air_config_packet.cameraStopChannel = 0;
+        s_ground2air_config_packet.misc.cameraStopChannel = 0;
     }
 
-    s_ground2air_config_packet.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
+    s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
 
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 
-    s_ground2air_config_packet.osdFontCRC32 = (uint32_t)nvs_args_read( "osd_font_crc32", 0 );
+    s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osd_font_crc32", 0 );
 
 }
 
