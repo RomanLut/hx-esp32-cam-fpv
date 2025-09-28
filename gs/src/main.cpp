@@ -35,6 +35,8 @@
 
 #include "utils.h"
 
+#include "lodepng.h"
+
 #ifdef TEST_LATENCY
 extern "C"
 {
@@ -325,8 +327,15 @@ bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
 uint16_t s_connected_air_device_id = 0;  //air unit this GS is connected to currently.
+
+//connection sequence:
+//1. Start: s_got_config_packet = false, s_accept_config_packet = false
+//2. Got Config packet from camera in comms thread: s_got_config_packet = false, s_accept_config_packet = true. deviceId filtering is estabilished.
+//3. Config packet is accepted by main thread. s_got_config_packet = true, s_accept_config_packet = false. Full communication is started.
 bool s_got_config_packet = false;
 bool s_accept_config_packet = false;
+
+bool s_reload_osd_font = false;
 
 static HXMavlinkParser mavlinkParserIn(true);
 
@@ -702,8 +711,10 @@ static void comms_thread_proc()
                     //accept config from camera
                     std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
                     Air2Ground_Config_Packet* airConfig = (Air2Ground_Config_Packet*)rx_data.data.data();
-                    s_ground2air_config_packet.dataChannel = airConfig->dataChannel;
                     s_ground2air_config_packet.camera = airConfig->camera;
+                    s_ground2air_config_packet.dataChannel = airConfig->dataChannel;
+                    s_ground2air_config_packet.misc = airConfig->misc;
+
                     s_accept_config_packet = true;
 
                     s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, s_connected_air_device_id );
@@ -1160,6 +1171,27 @@ void signalHandler(int signal)
         std::cout << "Received termination signal. Exiting gracefully..." << std::endl;
         exitApp();
     }
+}
+
+//===================================================================================
+//===================================================================================
+void loadOSDFontByCRC32( uint32_t fontCRC32 )
+{
+    for ( unsigned int i = 0; i < g_osd.fontsList.size(); i++ )
+    {
+        uint32_t crc32 = lodepng_crc32((const unsigned char*)(g_osd.fontsList[i].c_str()), g_osd.fontsList[i].length() );
+
+        if ( crc32 == fontCRC32 )
+        {
+            if ( strcmp( g_osd.currentFontName, g_osd.fontsList[i].c_str())!= 0 )
+            {
+                g_osd.loadFont( g_osd.fontsList[i].c_str() );
+                return;
+            }
+        }
+    }
+
+    g_osd.loadFont( "INAV_default_24.png" );
 }
 
 //===================================================================================
@@ -2137,12 +2169,12 @@ int run(char* argv[])
                 }
                 if ( ImGui::Button("Profile 500ms") )
                 {
-                    config.dataChannel.profile1_btn++;
+                    config.misc.profile1_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Button("Profile 3s") )
                 {
-                    config.dataChannel.profile2_btn++;
+                    config.misc.profile2_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
@@ -2155,7 +2187,7 @@ int run(char* argv[])
 
                 if ( ImGui::Button("Air Record") )
                 {
-                    config.dataChannel.air_record_btn++;
+                    config.misc.air_record_btn++;
                 }
 
                 ImGui::SameLine();
@@ -2245,7 +2277,7 @@ int run(char* argv[])
 
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
         {
-            config.dataChannel.air_record_btn++;
+            config.misc.air_record_btn++;
         }
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
@@ -2295,10 +2327,17 @@ int run(char* argv[])
             s_accept_config_packet = false;
             s_got_config_packet = true;
             config = s_ground2air_config_packet;
+            s_reload_osd_font = true;
         }
         else
         {
             s_ground2air_config_packet = config;
+        }
+
+        if ( s_reload_osd_font == true )
+        {
+            s_reload_osd_font = false;
+            loadOSDFontByCRC32(config.misc.osdFontCRC32);
         }
     };
 

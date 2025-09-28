@@ -4,6 +4,8 @@
 #include "osd.h"
 #include "main.h"
 #include "Comms.h"
+#include "lodepng.h"
+
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -401,36 +403,36 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Autostart recording: %s", config.dataChannel.autostartRecord == 1? "On" : "Off");
+        sprintf(buf, "Autostart recording: %s", config.misc.autostartRecord == 1? "On" : "Off");
         if ( this->drawMenuItem( buf, 1) )
         {
-            config.dataChannel.autostartRecord ^= 1;
+            config.misc.autostartRecord ^= 1;
 
         }
     }
 
     {
         char buf[256];
-        if ( config.dataChannel.cameraStopChannel == 0 )
+        if ( config.misc.cameraStopChannel == 0 )
         {
             sprintf(buf, "Camera Off RC Channel: None" );
         }
         else
         {
-            sprintf(buf, "Camera Off RC Channel: %d", (int)config.dataChannel.cameraStopChannel );
+            sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
         }
         if ( this->drawMenuItem( buf, 2) )
         {
-            this->goForward( OSDMenuId::CameraStopCH, (int)config.dataChannel.cameraStopChannel );
+            this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
         }
     }
 
     {
         char buf[256];
-        sprintf(buf, "Mavlink2 to Msp RC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
+        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
         if ( this->drawMenuItem( buf, 3) )
         {
-            config.dataChannel.mavlink2mspRC ^= 1;
+            config.misc.mavlink2mspRC ^= 1;
             
         }
     }
@@ -967,7 +969,7 @@ void OSDMenu::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
-            config.dataChannel.cameraStopChannel = i;
+            config.misc.cameraStopChannel = i;
             bExit = true;
         }
     }
@@ -1212,9 +1214,10 @@ void OSDMenu::drawOSDFontMenu(Ground2Air_Config_Packet& config)
         {
             if ( strcmp( g_osd.currentFontName, g_osd.fontsList[i].c_str())!= 0) 
             {
-                g_osd.loadFont(g_osd.fontsList[i].c_str());
                 ini["gs"]["osd_font"] = g_osd.fontsList[i];
                 s_iniFile.write(ini);
+                config.misc.osdFontCRC32 = lodepng_crc32((const unsigned char*)(g_osd.fontsList[i].c_str()), g_osd.fontsList[i].length() );
+                s_reload_osd_font = true;
                 bExit = true;
             }
             else
