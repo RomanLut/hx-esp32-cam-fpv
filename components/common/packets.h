@@ -142,6 +142,23 @@ struct DataChannelConfig
 
 //======================================================
 //======================================================
+struct MiscConfig
+{
+    //basically is not config variables, but we use config packe to transfer them
+    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
+    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
+
+    uint8_t cameraStopChannel : 5;// = 0;  //0 - none
+    uint8_t autostartRecord : 1;// = 1;
+    uint8_t mavlink2mspRC : 1;// = 0;
+    uint8_t reserved1 : 1;// = 0;
+
+    uint32_t osdFontCRC32;
+};
+
+//======================================================
+//======================================================
 struct Ground2Air_Header
 {
     enum class Type : uint8_t
@@ -184,17 +201,7 @@ struct Ground2Air_Config_Packet : Ground2Air_Header
 
     CameraConfig camera;
     DataChannelConfig dataChannel;
-
-    uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
-    uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
-
-    uint8_t cameraStopChannel : 5;// = 0;  //0 - none
-    uint8_t autostartRecord : 1;// = 1;
-    uint8_t mavlink2mspRC : 1;// = 0;
-    uint8_t reserved1 : 1;// = 0;
-
-    uint32_t osdFontCRC32;
+    MiscConfig misc;
 };
 static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_MAX_MTU, "");
 
@@ -225,6 +232,7 @@ struct Air2Ground_Config_Packet : Air2Ground_Header
 {
     CameraConfig camera;
     DataChannelConfig dataChannel;
+    MiscConfig misc;
 };
 
 static_assert(sizeof(Air2Ground_Config_Packet) <= AIR2GROUND_MIN_MTU, "");
