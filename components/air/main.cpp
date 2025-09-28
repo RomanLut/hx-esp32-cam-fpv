@@ -2994,10 +2994,9 @@ void readConfig()
 
     s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
 
+    s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osdFontCRC32", 0 );
+
     s_ground2air_config_packet2 = s_ground2air_config_packet;
-
-    s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osd_font_crc32", 0 );
-
 }
 
 //=============================================================================================
