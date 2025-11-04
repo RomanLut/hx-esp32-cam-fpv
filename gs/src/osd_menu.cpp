@@ -162,6 +162,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
+        case OSDMenuId::Debug: this->drawDebugMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -1166,15 +1167,10 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    if ( this->drawMenuItem( "Debug...", 4) )
     {
-        char buf[256];
-        sprintf(buf, "Toggle Statistics##5");
-        if ( this->drawMenuItem( buf, 4) )
-        {
-            s_groundstation_config.stats = !s_groundstation_config.stats;
-        }
+        this->goForward( OSDMenuId::Debug, 0 );
     }
-
 
     if ( this->drawMenuItem( "Exit To Shell##7", 5) )
     {
@@ -1274,6 +1270,57 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
+//=======================================================
+//=======================================================
+void OSDMenu::drawDebugMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Debug" );
+    ImGui::Spacing();
+
+    {
+        char buf[256];
+        sprintf(buf, "Toggle Statistics##0");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            s_groundstation_config.stats = !s_groundstation_config.stats;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Draw packets continuously##1");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            g_framePacketsDebug.captureFrame(false);
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Draw packets till error##2");
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            g_framePacketsDebug.captureFrame(true);
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Hide packets##3");
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            g_framePacketsDebug.off();
+        }
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
 void OSDMenu::goForward(OSDMenuId newMenuId, int newItem)
 {
     this->backMenuIds.push_back(this->menuId);
@@ -1294,6 +1341,3 @@ void OSDMenu::goBack()
         this->backMenuItems.pop_back();
     }
 }
-
-
-

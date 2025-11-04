@@ -28,7 +28,8 @@ enum class OSDMenuId
     GSTxPower,
     GSTxInterface, 
     Image,
-    CameraStopCH
+    CameraStopCH,
+    Debug
 };
 
 //=======================================================
@@ -91,6 +92,7 @@ private:
     void searchNextWifiChannel(Ground2Air_Config_Packet& config);
     void drawImageSettingsMenu(Ground2Air_Config_Packet& config);
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
+    void drawDebugMenu(Ground2Air_Config_Packet& config);
 };
 
 extern OSDMenu g_osdMenu;

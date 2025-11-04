@@ -2282,6 +2282,7 @@ int run(char* argv[])
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
         {
+            /*
             if ( g_framePacketsDebug.isOn() ) 
             {
                 g_framePacketsDebug.off();
@@ -2289,8 +2290,8 @@ int run(char* argv[])
             else
             {
                 g_framePacketsDebug.captureFrame(true);
-            }
-            //toggleGSRecording(0,0);
+            }*/
+            toggleGSRecording(0,0);
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
