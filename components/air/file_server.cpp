@@ -675,7 +675,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
 
         snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
         cJSON_AddStringToObject(root,"channel",channel_str);
-        cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.dataChannel.autostartRecord ? "true" : "false");
+        cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.misc.autostartRecord ? "true" : "false");
         cJSON_AddStringToObject(root, "fw_version", FW_VERSION);
         snprintf(packet_version_str, sizeof(packet_version_str), "%d", PACKET_VERSION);
         cJSON_AddStringToObject(root, "packet_version", packet_version_str);
@@ -705,8 +705,8 @@ static esp_err_t configs_handler(httpd_req_t *req)
         cJSON *default_dvr = cJSON_GetObjectItem(root, "default_dvr");
         if (default_dvr != NULL && cJSON_IsString(default_dvr)) 
         {
-            s_ground2air_config_packet.dataChannel.autostartRecord = strcmp(default_dvr->valuestring, "true") == 0;
-            nvs_args_set("autostartRecord", s_ground2air_config_packet.dataChannel.autostartRecord ? 1 : 0);
+            s_ground2air_config_packet.misc.autostartRecord = strcmp(default_dvr->valuestring, "true") == 0;
+            nvs_args_set("autostartRecord", s_ground2air_config_packet.misc.autostartRecord ? 1 : 0);
         }        
         
         cJSON_Delete(root);

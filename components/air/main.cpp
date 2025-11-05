@@ -117,10 +117,6 @@ static int64_t s_accept_connection_timeout_ms = 0;
 
 #ifdef UART_MAVLINK
 
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
-//constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;
-constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 128;
-
 static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
 static int s_mavlinkOutBufferCount = 0;
 #endif
@@ -616,7 +612,7 @@ static bool init_sd()
     s_sd_initialized = true;
 
 #ifdef DVR_SUPPORT
-    s_air_record = s_ground2air_config_packet2.dataChannel.autostartRecord != 0;
+    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 #endif
 
     // Card has been initialized, print its properties
@@ -1323,7 +1319,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
 
-    auto res = s_fec_decoder.packetFilter.filter_packet( data, size );
+    auto res = s_fec_decoder.packetFilter.filter_packet( data, size, GROUND2AIR_MAX_MTU );
     if ( res != PacketFilter::PacketFilterResult::Pass)
     {
         s_stats.inRejectedPacketCounter++;
@@ -1402,22 +1398,29 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
             s_video_target_frame_dt = 1000000 / src.camera.fps_limit;
     }
 
-    processSetting( "AutostartRecord", dst.dataChannel.autostartRecord, src.dataChannel.autostartRecord, "autostartRecord" );
+    processSetting( "AutostartRecord", dst.misc.autostartRecord, src.misc.autostartRecord, "autostartRecord" );
 
-    processSetting( "CameraStopChannel", dst.dataChannel.cameraStopChannel, src.dataChannel.cameraStopChannel, "cameraStopCH" );
+    processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );
 
-    processSetting( "mavlink2mspRC",  dst.dataChannel.mavlink2mspRC, src.dataChannel.mavlink2mspRC, "mavlink2mspRC" );
+    processSetting( "mavlink2mspRC",  dst.misc.mavlink2mspRC, src.misc.mavlink2mspRC, "mavlink2mspRC" );
+
+    processSetting( "osdFontCRC32",  dst.misc.osdFontCRC32, src.misc.osdFontCRC32, "osdFontCRC32" );
+
+    if ( processSetting( "fec_codec_mtu", dst.dataChannel.fec_codec_mtu, src.dataChannel.fec_codec_mtu, "fec_codec_mtu") )
+    {
+        s_fec_encoder.switch_mtu( src.dataChannel.fec_codec_mtu );
+    }
 
     if ( s_restart_time == 0 )
     {
-        if ( dst.dataChannel.air_record_btn != src.dataChannel.air_record_btn )
+        if ( dst.misc.air_record_btn != src.misc.air_record_btn )
         {
             s_air_record = !s_air_record;
-            //dst.dataChannel.air_record_btn = src.dataChannel.air_record_btn;
+            //dst.misc.air_record_btn = src.misc.air_record_btn;
         }
 
 #if defined(ENABLE_PROFILER)
-        if ( dst.dataChannel.profile1_btn != src.dataChannel.profile1_btn )
+        if ( dst.misc.profile1_btn != src.misc.profile1_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1431,10 +1434,10 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                 LOG("Profiler started!\n");
                 s_profiler.start(500);
             }
-            dst.dataChannel.profile1_btn = src.dataChannel.profile2_btn;
+            dst.misc.profile1_btn = src.misc.profile1_btn;
         }
 
-        if ( dst.dataChannel.profile2_btn != src.dataChannel.profile2_btn )
+        if ( dst.misc.profile2_btn != src.misc.profile2_btn )
         {
             if ( s_profiler.isActive())
             {
@@ -1448,7 +1451,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                 LOG("Profiler started!\n");
                 s_profiler.start(3000);
             }
-            dst.dataChannel.profile2_btn = src.dataChannel.profile2_btn;
+            dst.misc.profile2_btn = src.misc.profile2_btn;
         }
 #endif
     }
@@ -1754,7 +1757,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     s_stats.RCPeriodMaxMS = d;
                 }
 
-                if ( s_ground2air_config_packet2.dataChannel.mavlink2mspRC != 0 )
+                if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
@@ -1766,10 +1769,10 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     g_msp.setRCChannels(ch);
                 }
 
-                if ( s_ground2air_config_packet2.dataChannel.cameraStopChannel != 0 )
+                if ( s_ground2air_config_packet2.misc.cameraStopChannel != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
-                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.dataChannel.cameraStopChannel ) > 1700;
+                    s_camera_stopped_requested = msg->getChannelValue( s_ground2air_config_packet2.misc.cameraStopChannel ) > 1700;
 
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
                     //LOG("%d %d %d %d %d\n", msg->chan9_raw, msg->chan10_raw, msg->chan11_raw, msg->chan12_raw, mavlinkParserIn.getPacketLength());
@@ -1800,7 +1803,8 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 {
     s_stats.video_data += s_video_frame_data_size;
 
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
 
     if(!packet_data)
     {
@@ -1836,7 +1840,8 @@ IRAM_ATTR void send_air2ground_video_packet(bool last)
 //this currently called every frame: 50...11 fps
 //30 fps: 30 * 128 = 3840 bytes/sec or 38400 baud
 //11 fps: 11 * 128 - 1408 = 14080 baud
-//todo: increase max mavlink payload size to 1K. Packets are 1.4K anyway. With 128 bytes we can not push 115200 mavlink stream currently.
+//todo: increase max mavlink payload size to AIR2GROUD_MIN_MTU-sizeof(Ait2Ground_Header). 
+//With 128 bytes we can not push 115200 mavlink stream currently.
 //also UART RX ring buffer of 512 can not handle 115200 at 11 fps
 IRAM_ATTR void send_air2ground_data_packet()
 {
@@ -1863,7 +1868,8 @@ IRAM_ATTR void send_air2ground_data_packet()
 
     if ( s_mavlinkOutBufferCount < MAX_TELEMETRY_PAYLOAD_SIZE ) return; //todo: or agregationtime
 
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
     if(!packet_data)
     {
         LOG("no data buf!\n");
@@ -1900,9 +1906,112 @@ IRAM_ATTR void send_air2ground_data_packet()
 
 //=============================================================================================
 //=============================================================================================
+__attribute__((optimize("Os")))
+IRAM_ATTR uint16_t encodeOSDData(uint8_t* buffer)
+{
+	//RLE encoding
+    //we hope that OSD content is sparse, and encoded data will fit into MAX_OSD_PAYLOAD_SIZE
+	//no more than MAX_OSD_PAYLOAD_SIZE bytes output
+
+	//0 and 255 are special symbols
+	//255 [char_low] - font bank switch
+	//0 [flags:2,count:6] [char_low] - font bank switch, blink switch and character repeat
+    //original 0 is sent as 32
+    //original 0xff, 0x100 and 0x1ff are forcibly sent inside command 0
+
+	uint8_t osdPos_y = 0;
+	uint8_t osdPos_x = 0;
+
+    int bytesCount = 0;
+
+    bool highBank = false;
+
+    while (bytesCount < (MAX_OSD_PAYLOAD_SIZE - 3 - 2) ) 
+    {
+        uint16_t lastChar;
+        int count = 0;
+
+        while ( true )
+        {
+            uint16_t c = g_osd.getChar( osdPos_y, osdPos_x );
+            if (c == 0) c = 32;
+
+            if (count == 0)
+            {
+                lastChar = c;
+            }
+            else if ((lastChar != c) || (count == 127))
+            {
+                break;
+            }
+
+            count++;
+
+            osdPos_x++;
+            if (osdPos_x == OSD_COLS)
+            {
+                osdPos_x = 0;
+                osdPos_y++;
+                if (osdPos_y == OSD_ROWS)
+                {
+                    break;
+                }
+            }
+        }
+
+        uint8_t cmd = 0;
+        uint8_t lastCharLow = (uint8_t)(lastChar & 0xff);
+
+        bool highBank1 = lastChar > 255;
+        if (highBank1 != highBank)
+        {
+            cmd |= 128;//switch bank attr
+            highBank = highBank1;
+        }
+
+        if (count == 1 && cmd == 128)
+        {
+            *buffer++ = 255;  //short command for bank switch with char following
+            *buffer++ = lastCharLow;
+            bytesCount += 2;
+        }
+        else if ((count > 2) || (cmd != 0) || (lastCharLow == 0xff) || (lastCharLow == 0))
+        {
+            cmd |= count;  //long command for bank switch and symbol repeat
+            *buffer++ = 0;
+            *buffer++ = cmd;
+            *buffer++ = lastCharLow;
+            bytesCount += 3;
+        }
+        else if (count == 2)  //cmd == 0 here
+        {
+            *buffer++ = lastCharLow;
+            *buffer++ = lastCharLow;
+            bytesCount += 2;
+        }
+        else  //count = 1
+        {
+            *buffer++ = lastCharLow;
+            bytesCount++;
+        }
+
+        if (osdPos_y == OSD_ROWS)
+        {
+            break;
+        }
+    }
+    *buffer++ = 0;  //command 0 with length=0 -> stop
+    *buffer++ = 0;
+
+    return bytesCount + 2;
+}
+
+//=============================================================================================
+//=============================================================================================
 IRAM_ATTR void send_air2ground_osd_packet()
 {
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
 
     if(!packet_data)
     {
@@ -1911,8 +2020,11 @@ IRAM_ATTR void send_air2ground_osd_packet()
     }
 
     Air2Ground_OSD_Packet& packet = *(Air2Ground_OSD_Packet*)packet_data;
+
+    uint16_t osd_enc_size = encodeOSDData(&packet.osd_enc_start);
+
     packet.type = Air2Ground_Header::Type::OSD;
-    packet.size = sizeof(Air2Ground_OSD_Packet);
+    packet.size = sizeof(Air2Ground_OSD_Packet) - 1 + osd_enc_size;
     packet.pong = s_ground2air_config_packet.ping;
     packet.version = PACKET_VERSION;
     packet.airDeviceId = s_air_device_id;
@@ -1995,8 +2107,6 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.suspended = s_camera_stopped != 0;
 
-    memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
-    
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -2013,7 +2123,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 //=============================================================================================
 IRAM_ATTR void send_air2ground_config_packet()
 {
-    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+    uint32_t size;
+    uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &size);
     if( !packet_data )
     {
         LOG("no data buf!\n");
@@ -2025,6 +2136,7 @@ IRAM_ATTR void send_air2ground_config_packet()
     packet.size = sizeof(Air2Ground_Config_Packet);
     packet.dataChannel = s_ground2air_config_packet.dataChannel;
     packet.camera = s_ground2air_config_packet.camera;
+    packet.misc = s_ground2air_config_packet.misc;
     packet.version = PACKET_VERSION;
     packet.airDeviceId = s_air_device_id;
     packet.gsDeviceId = s_connected_gs_device_id;
@@ -2042,7 +2154,7 @@ IRAM_ATTR void send_air2ground_config_packet()
     }
 }
 
-constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Video_Packet);
+constexpr size_t MAX_VIDEO_DATA_PAYLOAD_SIZE = AIR2GROUND_MAX_MTU - sizeof(Air2Ground_Video_Packet);
 
 static const int WifiRateBandwidth[] = 
 {
@@ -2447,10 +2559,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             while (count > 0)
             {
                 //fill the buffer
-                uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
+                uint32_t current_packet_size;
+                uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true, &current_packet_size);
                 uint8_t* start_ptr = packet_data + sizeof(Air2Ground_Video_Packet) + s_video_frame_data_size;
                 uint8_t* ptr = start_ptr;
-                size_t c = std::min(MAX_VIDEO_DATA_PAYLOAD_SIZE - s_video_frame_data_size, count);
+                size_t c = std::min((size_t)( current_packet_size - sizeof(Air2Ground_Video_Packet) - s_video_frame_data_size), count);
 
                 count -= c;
                 s_video_frame_data_size += c;
@@ -2524,7 +2637,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 src += c;
 #endif
 
-                if (s_video_frame_data_size == MAX_VIDEO_DATA_PAYLOAD_SIZE) 
+                if (s_video_frame_data_size == ( current_packet_size - sizeof(Air2Ground_Video_Packet)) ) 
                 {
                     //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
                     //if wifi send queue was overloaded, do not send frame data till the end of the frame. 
@@ -2816,6 +2929,15 @@ void readConfig()
         nvs_args_set("fec_n", s_ground2air_config_packet.dataChannel.fec_codec_n);
     }
 
+    s_ground2air_config_packet.dataChannel.fec_codec_mtu = (uint8_t)nvs_args_read( "fec_codec_mtu", AIR2GROUND_MAX_MTU );
+    if ( 
+        ( s_ground2air_config_packet.dataChannel.fec_codec_mtu < AIR2GROUND_MIN_MTU ) ||
+        ( s_ground2air_config_packet.dataChannel.fec_codec_mtu > AIR2GROUND_MAX_MTU ) 
+    )
+    {
+        s_ground2air_config_packet.dataChannel.fec_codec_mtu = AIR2GROUND_MAX_MTU;
+    }
+
     s_ground2air_config_packet.camera.resolution = (Resolution)nvs_args_read("resolution", (uint32_t)Resolution::SVGA);
     if ( s_ground2air_config_packet.camera.resolution > Resolution::HD  )
     {
@@ -2862,15 +2984,17 @@ void readConfig()
     s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 
-    s_ground2air_config_packet.dataChannel.autostartRecord = nvs_args_read( "autostartRecord", 1 );
+    s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );
 
-    s_ground2air_config_packet.dataChannel.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
-    if ( s_ground2air_config_packet.dataChannel.cameraStopChannel > 18 )
+    s_ground2air_config_packet.misc.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
+    if ( s_ground2air_config_packet.misc.cameraStopChannel > 18 )
     {
-        s_ground2air_config_packet.dataChannel.cameraStopChannel = 0;
+        s_ground2air_config_packet.misc.cameraStopChannel = 0;
     }
 
-    s_ground2air_config_packet.dataChannel.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
+    s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
+
+    s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osdFontCRC32", 0 );
 
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 }

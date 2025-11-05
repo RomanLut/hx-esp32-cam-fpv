@@ -24,7 +24,8 @@ SRCS := src/main.cpp \
 	src/socket.cpp \
 	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
-	src/cpu_temp.cpp 
+	src/cpu_temp.cpp \
+	src/frame_packets_debug.cpp 
 	
 
 SRCS += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
@@ -68,8 +69,16 @@ INCLUDE  := -Isrc \
 	-I$(IMGUI_DIR) \
 	-I$(IMGUI_DIR)/backends
 
+# Debug flags
+DEBUG_FLAGS := -g -O0 -UNDEBUG
+
 # C++ flags
-CXXFLAGS := -std=c++17 `sdl2-config --cflags` -O3 -DNDEBUG -ffast-math -funroll-loops -Wall $(INCLUDE)
+CXXFLAGS := -std=c++17 `sdl2-config --cflags` -ffast-math -funroll-loops -Wall $(INCLUDE)
+ifdef DEBUG
+CXXFLAGS += $(DEBUG_FLAGS)
+else
+CXXFLAGS += -O3 -DNDEBUG
+endif
 CXXFLAGS += -DIMGUI_IMPL_OPENGL_ES2
 CFLAGS = $(CXXFLAGS)
 
@@ -125,7 +134,11 @@ check:
 
 .PHONY: help
 help:
-	@echo available targets: all dist clean distclean install uninstall check
+	@echo available targets: all dist clean distclean install uninstall check debug
+
+debug: CXXFLAGS += $(DEBUG_FLAGS)
+debug: CFLAGS += $(DEBUG_FLAGS)
+debug: all
 
 $(BIN): $(OBJS)
 	$(LINK.o) $^ $(LDLIBS)

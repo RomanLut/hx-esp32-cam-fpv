@@ -14,6 +14,8 @@
 #include "structures.h"
 #include <algorithm>
 #include "main.h"
+#include "packets.h"
+#include "frame_packets_debug.h"
 
 //#define DEBUG_PCAP
 
@@ -22,9 +24,6 @@ Comms s_comms;
 static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
-
-static constexpr size_t MAX_PACKET_SIZE = 4192;
-static constexpr size_t MAX_USER_PACKET_SIZE = 1470;
 
 static constexpr size_t DEFAULT_RATE_HZ = 26000000;
 
@@ -113,14 +112,14 @@ struct Comms::TX
 
     struct Packet 
     {
-        std::vector<uint8_t> data;
+        std::vector<uint8_t> data;      //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
     };
     using Packet_ptr = Pool<Packet>::Ptr;
     Pool<Packet> packet_pool;
 
-    size_t transport_packet_size = 0;
-    size_t streaming_packet_size = 0;
-    size_t payload_size = 0;
+    size_t transport_packet_size = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+    size_t streaming_packet_size = 0;   //Packet_Header + mtu
+    size_t payload_size = 0;            //mtu
 
     ////////
     //These are accessed by both the TX thread and the main thread
@@ -155,9 +154,9 @@ struct Comms::RX
     std::vector<std::unique_ptr<PCap>> pcaps;
     std::vector<uint32_t> pcal_last_block_index;
 
-    size_t transport_packet_size = 0;
-    size_t streaming_packet_size = 0;
-    size_t payload_size = 0;
+    size_t transport_packet_size = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+    size_t streaming_packet_size = 0;   //Packet_Header + mtu
+    size_t payload_size = 0;            //mtu
 
 
     struct Packet
@@ -165,7 +164,8 @@ struct Comms::RX
         bool is_processed = false;
         bool restoredByFEC;
         uint32_t index = 0;
-        std::vector<uint8_t> data;
+        uint16_t size;  //size of user data without Packet_header
+        std::vector<uint8_t> data;   //data without Packet_Header - current mtu
     };
 
     using Packet_ptr = Pool<Packet>::Ptr;
@@ -204,13 +204,14 @@ struct Comms::RX
 //===================================================================================
 static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_t block_index, uint8_t packet_index)
 {
-    assert(packet.data.size() >= header_offset + sizeof(Comms::TX::Packet));
+    //header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+    assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
 
     s_comms.packetFilter.apply_packet_header_data(&header);
 
-    header.size = packet.data.size() - header_offset;
+    header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
     header.block_index = block_index;
     header.packet_index = packet_index;
 }
@@ -219,7 +220,7 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
 //===================================================================================
 struct Comms::Impl
 {
-    size_t tx_packet_header_length = 0;
+    size_t tx_packet_header_length = 0;  //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
 
     TX tx;
     RX rx;
@@ -416,9 +417,7 @@ void Comms::prepare_tx_packet_header(uint8_t* buffer)
 bool Comms::process_rx_packet(PCap& pcap)
 {
     struct pcap_pkthdr* pcap_packet_header = nullptr;
-
-    uint8_t payload_buffer[MAX_PACKET_SIZE];
-    uint8_t* payload = payload_buffer;
+    uint8_t* payload;
 
     while (true)
     {
@@ -522,11 +521,14 @@ bool Comms::process_rx_packet(PCap& pcap)
             return true; 
         }
 */
-        s_gs_stats.inPacketCounter[pcap.index]++;
+        if ( pcap.index < 2 )
+        {
+            s_gs_stats.inPacketCounter[pcap.index]++;
+        }
 
         Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
 
-        auto res = s_comms.packetFilter.filter_packet( payload, bytes );
+        auto res = s_comms.packetFilter.filter_packet( payload, bytes, m_rx_descriptor.mtu );
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
             //s_stats.inRejectedPacketCounter++;
@@ -554,7 +556,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
         RX& rx = m_impl->rx;
         rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
-        
+
         {
             std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
 
@@ -587,6 +589,8 @@ bool Comms::process_rx_packet(PCap& pcap)
             //this should allow us to skip stale blocks sooner
             rx.pcal_last_block_index[pcap.index] = block_index;
 
+            g_framePacketsDebug.onPacketReceived(header.block_index, header.packet_index, payload + sizeof(Packet_Header), block_index < rx.next_block_index);
+
             if (block_index < rx.next_block_index)
             {
                 //LOGW("Old packet: {} < {}", block_index, rx.next_block_index);
@@ -609,9 +613,10 @@ bool Comms::process_rx_packet(PCap& pcap)
             }
 
             RX::Packet_ptr packet = rx.packet_pool.acquire();
-            packet->data.resize(bytes - sizeof(Packet_Header));
+            packet->data.resize(header.size);
             packet->index = packet_index;
-            memcpy(packet->data.data(), payload + sizeof(Packet_Header), bytes - sizeof(Packet_Header));
+            packet->size = header.size;
+            memcpy(packet->data.data(), payload + sizeof(Packet_Header), header.size);
 
             //store packet
             if (packet_index >= m_rx_descriptor.coding_k)
@@ -763,7 +768,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     m_impl.reset(new Impl);
 
     m_tx_descriptor = tx_descriptor;
-    m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, MAX_USER_PACKET_SIZE);
+    //m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_tx_descriptor.coding_k == 0 || 
         m_tx_descriptor.coding_n < m_tx_descriptor.coding_k || 
@@ -797,7 +802,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
 
     setMonitorMode( this->m_rx_descriptor.interfaces );
 
-    this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, MAX_USER_PACKET_SIZE);
+    //this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_rx_descriptor.coding_k == 0 || 
         m_rx_descriptor.coding_n < m_rx_descriptor.coding_k || 
@@ -841,8 +846,8 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     {
         if (packet.data.empty())
         {
-            packet.data.resize(m_payload_offset);
-            prepare_tx_packet_header(packet.data.data());
+            packet.data.resize(m_payload_offset);           //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header
+            prepare_tx_packet_header(packet.data.data());   //prepare RADIOTAP_HEADER, WLAN_IEEE_HEADER_GROUND2AIR
         }
         else
             packet.data.resize(m_payload_offset);
@@ -853,7 +858,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
         packet.index = 0;
         packet.is_processed = false;
         packet.data.clear();
-        packet.data.reserve(m_impl->rx.transport_packet_size);
+        packet.data.reserve(m_impl->rx.payload_size);  
     };
     m_impl->rx.block_pool.on_acquire = [this](RX::Block& block) 
     {
@@ -1035,6 +1040,8 @@ void Comms::tx_thread_proc()
 
             if (packet)
             {
+                //m_packet_header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
+                //packet->data() + m_packet_header_offset => Packet_Header
                 seal_packet(*packet, m_packet_header_offset, tx.last_block_index, tx.block_packets.size());
                 tx.ready_packet_queue.push_back(packet); //ready to send
                 tx.block_packets.push_back(packet);
@@ -1050,15 +1057,15 @@ void Comms::tx_thread_proc()
 
                 //init data for the fec_encode
                 for (size_t i = 0; i < coding_k; i++)
-                    tx.fec_src_packet_ptrs[i] = tx.block_packets[i]->data.data() + m_payload_offset;
+                    tx.fec_src_packet_ptrs[i] = tx.block_packets[i]->data.data() + m_payload_offset;  //points to mtu
 
                 size_t fec_count = coding_n - coding_k;
                 tx.block_fec_packets.resize(fec_count);
                 for (size_t i = 0; i < fec_count; i++)
                 {
                     tx.block_fec_packets[i] = tx.packet_pool.acquire();
-                    tx.block_fec_packets[i]->data.resize(tx.transport_packet_size);
-                    tx.fec_dst_packet_ptrs[i] = tx.block_fec_packets[i]->data.data() + m_payload_offset;
+                    tx.block_fec_packets[i]->data.resize(tx.transport_packet_size);  //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
+                    tx.fec_dst_packet_ptrs[i] = tx.block_fec_packets[i]->data.data() + m_payload_offset;  //points to mtu
                 }
 
                 //encode
@@ -1121,7 +1128,7 @@ void Comms::tx_thread_proc()
                 static size_t xxx_real_data = 0;
                 static std::chrono::system_clock::time_point xxx_last_tp = std::chrono::system_clock::now();
                 xxx_data += tx_buffer.size();
-                xxx_real_data += MAX_USER_PACKET_SIZE;
+                xxx_real_data += AIR2GROUND_MAX_MTU;
                 auto now = std::chrono::system_clock::now();
                 if (now - xxx_last_tp >= std::chrono::seconds(1))
                 {
@@ -1139,6 +1146,10 @@ void Comms::tx_thread_proc()
 
 //===================================================================================
 //===================================================================================
+//appends data to current packet
+//or appends and flushes
+//currently flush=true is always used
+//because we want the data headers to be on the beginning of each block
 void Comms::send(void const* _data, size_t size, bool flush)
 {
     TX& tx = m_impl->tx;
@@ -1196,7 +1207,6 @@ void Comms::process_rx_packets()
 {
     RX& rx = m_impl->rx;
     uint32_t coding_k = m_rx_descriptor.coding_k;
-    //uint32_t coding_n = m_rx_descriptor.coding_n;
 
     std::unique_lock<std::mutex> lg(rx.block_queue_mutex);
 
@@ -1263,6 +1273,11 @@ void Comms::process_rx_packets()
             std::array<unsigned int, 32> indices;
             size_t primary_index = 0;
             size_t used_fec_index = 0;
+
+            size_t blockPacketsSize = block->fec_packets[0]->size;
+
+            //LOGD("blockpacketssize {} {}!!!", block->fec_packets.size(), blockPacketsSize);
+
             for (size_t i = 0; i < coding_k; i++)
             {
                 if (primary_index < block->packets.size() && i == block->packets[primary_index]->index)
@@ -1286,14 +1301,15 @@ void Comms::process_rx_packets()
                 if (i >= block->packets.size() || i != block->packets[i]->index)
                 {
                     block->packets.insert(block->packets.begin() + i, rx.packet_pool.acquire());
-                    block->packets[i]->data.resize(rx.payload_size);
+                    block->packets[i]->data.resize(blockPacketsSize);
+                    block->packets[i]->size = blockPacketsSize;
                     block->packets[i]->index = i;
                     rx.fec_dst_packet_ptrs[fec_index++] = block->packets[i]->data.data();
                 }
             }
 
             lg.unlock(); //not need to hold the mutex locked - give the rx_proc a chance to get its data in
-            fec_decode(rx.fec, rx.fec_src_packet_ptrs.data(), rx.fec_dst_packet_ptrs.data(), indices.data(), rx.payload_size);
+            fec_decode(rx.fec, rx.fec_src_packet_ptrs.data(), rx.fec_dst_packet_ptrs.data(), indices.data(), blockPacketsSize);
             lg.lock(); //relock the mutex
 
             //now dispatch them
@@ -1302,6 +1318,7 @@ void Comms::process_rx_packets()
                 RX::Packet_ptr const& d = block->packets[i];
                 if (!d->is_processed)
                 {
+                    g_framePacketsDebug.onPacketRestored( block->index, i, d->data.data() );
                     //LOGI("Packet F {}", block->index * coding_k + d->index);
                     {
                         std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);   

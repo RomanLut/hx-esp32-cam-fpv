@@ -4,6 +4,9 @@
 #include "osd.h"
 #include "main.h"
 #include "Comms.h"
+#include "lodepng.h"
+#include "frame_packets_debug.h"
+
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -160,6 +163,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
+        case OSDMenuId::Debug: this->drawDebugMenu(config); break;
     }
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
@@ -400,38 +404,70 @@ void OSDMenu::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        char buf[256];
-        sprintf(buf, "Autostart recording: %s", config.dataChannel.autostartRecord == 1? "On" : "Off");
+        char buf[512];
+        sprintf(buf, "OSD Font: %s", g_osd.currentFontName);
+        if (strlen(buf) > 30 )
+        {
+            buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
+        }
+        strcat(buf, "##1");
         if ( this->drawMenuItem( buf, 1) )
         {
-            config.dataChannel.autostartRecord ^= 1;
+            auto it = std::find(g_osd.fontsList.begin(), g_osd.fontsList.end(), g_osd.currentFontName);
+            this->goForward( OSDMenuId::OSDFont, it != g_osd.fontsList.end() ? std::distance(g_osd.fontsList.begin(), it) : 0 );
+        }
+    }
+
+
+    {
+        char buf[256];
+        sprintf(buf, "Autostart recording: %s", config.misc.autostartRecord == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            config.misc.autostartRecord ^= 1;
 
         }
     }
 
     {
         char buf[256];
-        if ( config.dataChannel.cameraStopChannel == 0 )
+        if ( config.misc.cameraStopChannel == 0 )
         {
-            sprintf(buf, "Camera Off Channel: None" );
+            sprintf(buf, "Camera Off RC Channel: None" );
         }
         else
         {
-            sprintf(buf, "Camera Off Channel: %d", (int)config.dataChannel.cameraStopChannel );
+            sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
         }
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
-            this->goForward( OSDMenuId::CameraStopCH, (int)config.dataChannel.cameraStopChannel );
+            this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
         }
     }
 
     {
         char buf[256];
-        sprintf(buf, "Mavlink2 to Msp RC: %s", config.dataChannel.mavlink2mspRC == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 3) )
+        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 4) )
         {
-            config.dataChannel.mavlink2mspRC ^= 1;
+            config.misc.mavlink2mspRC ^= 1;
             
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
+        if ( this->drawMenuItem( buf, 5) )
+        {
+            if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
+            {
+                config.dataChannel.fec_codec_mtu = AIR2GROUND_MIN_MTU;
+            }
+            else
+            {
+                config.dataChannel.fec_codec_mtu = AIR2GROUND_MAX_MTU;
+            }
         }
     }
 
@@ -951,7 +987,7 @@ void OSDMenu::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
-            config.dataChannel.cameraStopChannel = i;
+            config.misc.cameraStopChannel = i;
             bExit = true;
         }
     }
@@ -1084,25 +1120,10 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     ImGui::Spacing();
 
     {
-        char buf[512];
-        sprintf(buf, "OSD Font: %s", g_osd.currentFontName);
-        if (strlen(buf) > 30 )
-        {
-            buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
-        }
-        strcat(buf, "##1");
-        if ( this->drawMenuItem( buf, 0) )
-        {
-            auto it = std::find(g_osd.fontsList.begin(), g_osd.fontsList.end(), g_osd.currentFontName);
-            this->goForward( OSDMenuId::OSDFont, it != g_osd.fontsList.end() ? std::distance(g_osd.fontsList.begin(), it) : 0 );
-        }
-    }
-
-    {
         char buf[256];
         const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
-        sprintf(buf, "Letterbox: %s##2", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
-        if ( this->drawMenuItem( buf, 1) )
+        sprintf(buf, "Letterbox: %s##1", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
+        if ( this->drawMenuItem( buf, 0) )
         {
             this->goForward( OSDMenuId::Letterbox, (int)s_groundstation_config.screenAspectRatio );
         }
@@ -1110,8 +1131,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Vertical Sync: %s##3", s_groundstation_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 2) )
+        sprintf(buf, "Vertical Sync: %s##2", s_groundstation_config.vsync ? "Enabled" :"Disabled");
+        if ( this->drawMenuItem( buf, 1) )
         {
             s_groundstation_config.vsync = !s_groundstation_config.vsync;
             s_hal->set_vsync(s_groundstation_config.vsync, true);
@@ -1121,8 +1142,8 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Interface: %s##4", s_groundstation_config.txInterface.c_str());
-        if ( this->drawMenuItem( buf, 3) )
+        sprintf(buf, "TX Interface: %s##3", s_groundstation_config.txInterface.c_str());
+        if ( this->drawMenuItem( buf, 2) )
         {
             auto rx_descriptor = s_comms.getRXDescriptor();
 
@@ -1140,24 +1161,19 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Power: %d##5", s_groundstation_config.txPower);
-        if ( this->drawMenuItem( buf, 4) )
+        sprintf(buf, "TX Power: %d##4", s_groundstation_config.txPower);
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
         }
     }
 
+    if ( this->drawMenuItem( "Debuging...", 4) )
     {
-        char buf[256];
-        sprintf(buf, "Toggle Statistics##6");
-        if ( this->drawMenuItem( buf, 5) )
-        {
-            s_groundstation_config.stats = !s_groundstation_config.stats;
-        }
+        this->goForward( OSDMenuId::Debug, 0 );
     }
 
-
-    if ( this->drawMenuItem( "Exit To Shell##7", 6) )
+    if ( this->drawMenuItem( "Exit To Shell##7", 5) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
@@ -1196,9 +1212,10 @@ void OSDMenu::drawOSDFontMenu(Ground2Air_Config_Packet& config)
         {
             if ( strcmp( g_osd.currentFontName, g_osd.fontsList[i].c_str())!= 0) 
             {
-                g_osd.loadFont(g_osd.fontsList[i].c_str());
                 ini["gs"]["osd_font"] = g_osd.fontsList[i];
                 s_iniFile.write(ini);
+                config.misc.osdFontCRC32 = lodepng_crc32((const unsigned char*)(g_osd.fontsList[i].c_str()), g_osd.fontsList[i].length() );
+                s_reload_osd_font = true;
                 bExit = true;
             }
             else
@@ -1254,6 +1271,57 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
 
 //=======================================================
 //=======================================================
+//=======================================================
+//=======================================================
+void OSDMenu::drawDebugMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Debugging" );
+    ImGui::Spacing();
+
+    {
+        char buf[256];
+        sprintf(buf, "Toggle Statistics##0");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            s_groundstation_config.stats = !s_groundstation_config.stats;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Draw packets##1");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            g_framePacketsDebug.captureFrame(false);
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Draw packets till loss##2");
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            g_framePacketsDebug.captureFrame(true);
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Hide packets##3");
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            g_framePacketsDebug.off();
+        }
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
 void OSDMenu::goForward(OSDMenuId newMenuId, int newItem)
 {
     this->backMenuIds.push_back(this->menuId);
@@ -1274,6 +1342,3 @@ void OSDMenu::goBack()
         this->backMenuItems.pop_back();
     }
 }
-
-
-

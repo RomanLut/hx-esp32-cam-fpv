@@ -529,7 +529,7 @@ bool PI_HAL::update_display()
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(get_display_size());
     ImGui::SetNextWindowBgAlpha(0);
-    ImGui::Begin("", nullptr, ImGuiWindowFlags_NoTitleBar | 
+    ImGui::Begin("mainWindow", nullptr, ImGuiWindowFlags_NoTitleBar | 
                             ImGuiWindowFlags_NoResize | 
                             ImGuiWindowFlags_NoMove | 
                             ImGuiWindowFlags_NoScrollbar | 

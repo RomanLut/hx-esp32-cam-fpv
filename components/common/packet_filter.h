@@ -28,7 +28,7 @@ public:
     void set_packet_header_data( uint16_t from_device_id, uint16_t to_device_id );
     IRAM_ATTR void apply_packet_header_data( Packet_Header* packet );
     void set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id );
-    IRAM_ATTR PacketFilterResult filter_packet( const void* data, size_t size ); 
+    IRAM_ATTR PacketFilterResult filter_packet( const void* data, size_t size, size_t mtu ); 
 
 private:
 

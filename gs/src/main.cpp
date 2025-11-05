@@ -31,8 +31,11 @@
 #include "avi.h"
 #include "jpeg_parser.h"
 #include "hx_mavlink_parser.h"
+#include "frame_packets_debug.h"
 
 #include "utils.h"
+
+#include "lodepng.h"
 
 #ifdef TEST_LATENCY
 extern "C"
@@ -269,6 +272,7 @@ mINI::INIStructure ini;
 mINI::INIFile s_iniFile("gs.ini");
 
 float video_fps = 0;
+bool had_loss = false;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
@@ -323,8 +327,15 @@ bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
 uint16_t s_connected_air_device_id = 0;  //air unit this GS is connected to currently.
+
+//connection sequence:
+//1. Start: s_got_config_packet = false, s_accept_config_packet = false
+//2. Got Config packet from camera in comms thread: s_got_config_packet = false, s_accept_config_packet = true. deviceId filtering is estabilished.
+//3. Config packet is accepted by main thread. s_got_config_packet = true, s_accept_config_packet = false. Full communication is started.
 bool s_got_config_packet = false;
 bool s_accept_config_packet = false;
+
+bool s_reload_osd_font = false;
 
 static HXMavlinkParser mavlinkParserIn(true);
 
@@ -480,7 +491,7 @@ static void comms_thread_proc()
 
     struct RX_Data
     {
-        std::array<uint8_t, AIR2GROUND_MTU> data;
+        std::array<uint8_t, AIR2GROUND_MAX_MTU> data;
         size_t size;
         int16_t rssi = 0;
     };
@@ -518,7 +529,7 @@ static void comms_thread_proc()
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
             s_gs_stats = GSStats();
-            s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
+            s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;  //effectively: = s_gs_stats.lastPacketIndex 
 
             last_stats_tp = Clock::now();
         }
@@ -546,6 +557,7 @@ static void comms_thread_proc()
                 config.crc = 0;  //do calculate crc with crc field = 0
                 config.crc = crc8(0, &config, sizeof(config)); 
                 s_comms.send(&config, sizeof(config), true);
+                //LOGD("send config packet");
             }
             else
             {
@@ -699,8 +711,10 @@ static void comms_thread_proc()
                     //accept config from camera
                     std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
                     Air2Ground_Config_Packet* airConfig = (Air2Ground_Config_Packet*)rx_data.data.data();
-                    s_ground2air_config_packet.dataChannel = airConfig->dataChannel;
                     s_ground2air_config_packet.camera = airConfig->camera;
+                    s_ground2air_config_packet.dataChannel = airConfig->dataChannel;
+                    s_ground2air_config_packet.misc = airConfig->misc;
+
                     s_accept_config_packet = true;
 
                     s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, s_connected_air_device_id );
@@ -880,7 +894,7 @@ static void comms_thread_proc()
                         video_next_part_index = 0;
                         video_frame.clear();
 
-                        s_frame_stats.add(video_restoredByFEC ? 1 : 3);
+                        s_frame_stats.add(video_restoredByFEC ? 2 : 4);
                         s_frameParts_stats.add(air2ground_video_packet.part_index);
                         s_frameQuality_stats.add(s_curr_quality);
                         s_queueUsage_stats.add(s_curr_quality);
@@ -974,7 +988,18 @@ static void comms_thread_proc()
                 s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
                 s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
-                g_osd.update( &air2ground_osd_packet.buffer );
+                uint16_t osd_data_size = air2ground_osd_packet.size - (sizeof(Air2Ground_OSD_Packet) - 1);
+                if ( ( osd_data_size >=2 ) && ( osd_data_size <= MAX_OSD_PAYLOAD_SIZE ) )
+                {
+                    if (!g_framePacketsDebug.isOn())
+                    {
+                        g_osd.update( &air2ground_osd_packet.osd_enc_start, osd_data_size );
+                    }
+                }
+                else
+                {
+                    LOGE("OSD Enc Data size incorrect{}", osd_data_size);
+                }
 
                 s_last_stats_packet_tp = Clock::now();
             }
@@ -1150,6 +1175,27 @@ void signalHandler(int signal)
 
 //===================================================================================
 //===================================================================================
+void loadOSDFontByCRC32( uint32_t fontCRC32 )
+{
+    for ( unsigned int i = 0; i < g_osd.fontsList.size(); i++ )
+    {
+        uint32_t crc32 = lodepng_crc32((const unsigned char*)(g_osd.fontsList[i].c_str()), g_osd.fontsList[i].length() );
+
+        if ( crc32 == fontCRC32 )
+        {
+            if ( strcmp( g_osd.currentFontName, g_osd.fontsList[i].c_str())!= 0 )
+            {
+                g_osd.loadFont( g_osd.fontsList[i].c_str() );
+            }
+            return;
+        }
+    }
+
+    g_osd.loadFont( "INAV_default_24.png" );
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -1283,9 +1329,18 @@ int run(char* argv[])
                 sprintf(buf, "%02d", (int)video_fps);
                 ImGui::SameLine();
                 ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                if ( !had_loss )
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+                }
+                else
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.4f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+                }
                 ImGui::Button(buf, ImVec2(45.0f, 0));
                 ImGui::PopStyleColor(3);
                 ImGui::PopID();
@@ -1439,7 +1494,7 @@ int run(char* argv[])
                 char overlay[32];
 
                 ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
-                ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 3.0f, ImVec2(0, 24));            
+                ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 4.0f, ImVec2(0, 24));            
 
                 sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
                 ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
@@ -1543,8 +1598,10 @@ int run(char* argv[])
 
                         ImGui::TableSetColumnIndex(1);
 
-                        ImGui::Text("%.1f,%.1f%%", calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[0]),
-                            calcLossRatio(s_last_airStats.outPacketRate, s_last_gs_stats.inPacketCounter[1]));
+                        int n = (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n;
+                        ImGui::Text("%.1f,%.1f%%", 
+                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[0]),
+                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[1]));
                     }
 /*
                     {
@@ -1870,7 +1927,7 @@ int run(char* argv[])
 
         }
         ImGui::End();
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar();
 
         //------------ osd menu
         g_osdMenu.draw(config);
@@ -2112,12 +2169,12 @@ int run(char* argv[])
                 }
                 if ( ImGui::Button("Profile 500ms") )
                 {
-                    config.dataChannel.profile1_btn++;
+                    config.misc.profile1_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Button("Profile 3s") )
                 {
-                    config.dataChannel.profile2_btn++;
+                    config.misc.profile2_btn++;
                 }
                 ImGui::SameLine();
                 if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
@@ -2130,7 +2187,7 @@ int run(char* argv[])
 
                 if ( ImGui::Button("Air Record") )
                 {
-                    config.dataChannel.air_record_btn++;
+                    config.misc.air_record_btn++;
                 }
 
                 ImGui::SameLine();
@@ -2220,11 +2277,20 @@ int run(char* argv[])
 
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
         {
-            config.dataChannel.air_record_btn++;
+            config.misc.air_record_btn++;
         }
 
         if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
         {
+            /*
+            if ( g_framePacketsDebug.isOn() ) 
+            {
+                g_framePacketsDebug.off();
+            }
+            else
+            {
+                g_framePacketsDebug.captureFrame(true);
+            }*/
             toggleGSRecording(0,0);
         }
 
@@ -2262,10 +2328,17 @@ int run(char* argv[])
             s_accept_config_packet = false;
             s_got_config_packet = true;
             config = s_ground2air_config_packet;
+            s_reload_osd_font = true;
         }
         else
         {
             s_ground2air_config_packet = config;
+        }
+
+        if ( s_reload_osd_font == true )
+        {
+            s_reload_osd_font = false;
+            loadOSDFontByCRC32(config.misc.osdFontCRC32);
         }
     };
 
@@ -2293,6 +2366,7 @@ int run(char* argv[])
         {
             last_stats_tp = Clock::now();
             video_fps = video_frame_count;
+            had_loss = s_lost_frame_count != 0;
             video_frame_count = 0;
             s_lost_frame_count = 0;
         }
@@ -2857,11 +2931,11 @@ int main(int argc, const char* argv[])
 
     rx_descriptor.coding_k = s_ground2air_config_packet.dataChannel.fec_codec_k;
     rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
-    rx_descriptor.mtu = s_ground2air_config_packet.dataChannel.fec_codec_mtu;
+    rx_descriptor.mtu = AIR2GROUND_MAX_MTU;
 
     tx_descriptor.coding_k = 2;
     tx_descriptor.coding_n = 3;
-    tx_descriptor.mtu = GROUND2AIR_DATA_MAX_SIZE;
+    tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
 
 #ifdef USE_MAVLINK
     init_uart();
