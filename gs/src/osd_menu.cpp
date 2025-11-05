@@ -5,6 +5,7 @@
 #include "main.h"
 #include "Comms.h"
 #include "lodepng.h"
+#include "frame_packets_debug.h"
 
 
 #define SEARCH_TIME_STEP_MS 1000
@@ -1167,7 +1168,7 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Debug...", 4) )
+    if ( this->drawMenuItem( "Debuging...", 4) )
     {
         this->goForward( OSDMenuId::Debug, 0 );
     }
@@ -1274,7 +1275,7 @@ void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawDebugMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Menu -> Debug" );
+    this->drawMenuTitle( "Menu -> Debugging" );
     ImGui::Spacing();
 
     {
@@ -1288,7 +1289,7 @@ void OSDMenu::drawDebugMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Draw packets continuously##1");
+        sprintf(buf, "Draw packets##1");
         if ( this->drawMenuItem( buf, 1) )
         {
             g_framePacketsDebug.captureFrame(false);
@@ -1297,7 +1298,7 @@ void OSDMenu::drawDebugMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Draw packets till error##2");
+        sprintf(buf, "Draw packets till loss##2");
         if ( this->drawMenuItem( buf, 2) )
         {
             g_framePacketsDebug.captureFrame(true);
