@@ -32,6 +32,14 @@
 
 ```sudo mv pishrink.sh /usr/local/bin```
 
+- zero free space to make compressed image smaller:
+
+  ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh```
+
+  ```sudo chmod +x zero_free_space.sh```
+
+  ```./zero_free_space.sh```
+
 - Check the mount point path of your USB drive by entering:
 
 ```lsblk```
