@@ -1,12 +1,40 @@
 
 # Making image file from SD card for release (Radxa Zero 3W)
-- Create SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB** SD Card
+
+- use radxa with USB-LAN adapter to be able to ssh
+
+- create SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB** SD Card
+  or use previous release. In previous release, update RubyFPV using it's interface.
 
 - install fan control service [/doc/installing_fan_control_service.md ](/doc/installing_fan_control_service.md)
 
-- Boot **hx-esp32-cam-gs** software
+- boot RubyFPV to install drivers
 
-- Exit to shell
+- test **hx-esp32-cam-gs** software
+
+- set default GS settings before doing next steps
+
+- boot **hx-esp32-cam-gs** software
+
+- exit to shell
+
+* Actualise time to solve 'cetificate is not trusted' errors:
+
+  ```sudo timedatectl set-ntp true```
+
+- check that credentialsare not used:
+
+    ```cd ~/esp32-cam-fpv/```
+
+    ```git config --show-origin credential.helper``` should be empty.
+
+    ```git remote -v``` should not show credentials in url.
+
+- Delete GS recordings:
+
+    ```cd ~/esp32-cam-fpv/gs/```
+
+    ```rm *.avi```
 
 - zero free space to make compressed image smaller:
 
