@@ -25,8 +25,13 @@ Open source digital FPV system based on esp32cam.
 - [x] dualboot images
 - [x] saving settings on camera
 - [x] **Release v0.3.2**
+- [x] use smaller packets for less losses (MTU selection)
+- [x] ESP32 S3 OTA mode
+- [x] camera web interface
+- [x] **Release v0.4.3**
+- [ ] ESP32 C5 support
+- [ ] ESP32 C5 5GHz wifi support
 - [ ] dualboot image for RPI
-- [ ] use smaller packets for less losses?
 - [ ] retransmissions ?
 - [ ] measure latency properly
 - [ ] study which components introduce latency
@@ -39,7 +44,8 @@ Open source digital FPV system based on esp32cam.
 - [ ] EIS
 - [ ] Android GS
 - [ ] Meta Quest 2 GS
-- [ ] lost frames inpainting ?
+- [ ] lost frames inpainting using neural network ?
+- [ ] JPEG artefacts removal using neural network?
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
