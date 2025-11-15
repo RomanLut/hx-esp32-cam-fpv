@@ -189,20 +189,7 @@ Internal yellow LED conflicts with SD card and thus can not be used for indicati
 
 A jumper should be soldered on **J3** to enable SD card usage (somehow it works without it, but is required for stable operation).
 
----
-
-Existing **Boot** button is used to start/stop air unit recording.
-
-🔧 How to Enter OTA Mode on ESP32-S3:
-
-Power on the ESP32-S3.
-- Wait 3 seconds, then press and hold the **Boot** button.
-- Keep holding until the status LED starts blinking (after ~5 seconds).
-- Connect to the "espvtx" Wi-Fi access point.
-- Open a browser and go to: http://192.168.4.1/ota
-- Upload firmware.bin
-- ⚠️ Note: If you press the Boot button too early (immediately after power-up), the ESP32-S3 will enter bootloader mode instead of OTA mode.
----  
+Existing **Boot** button is used to start/stop air unit recording and enter OTA mode.
 
 ## Air Unit Variant 3: **Seed Studio XIAO ESP32 S3 Sense** + OV5640 + M12 120° lens (recommended)
 
