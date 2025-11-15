@@ -1,7 +1,7 @@
 
 # Making image file from SD card for release (Radxa Zero 3W)
 
-- use radxa with USB-LAN adapter to be able to ssh
+- use radxa with USB-LAN adapter to be able to ssh (radxa/radxa)
 
 - create SD Card with Dualboot RubyFPV Image [/doc/adding_gs_software_to_ruby_sd_radxa3.md](/doc/adding_gs_software_to_ruby_sd_radxa3.md) on **8GB** SD Card
   or use previous release. In previous release, update RubyFPV using it's interface.
