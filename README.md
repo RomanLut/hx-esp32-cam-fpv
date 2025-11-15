@@ -427,6 +427,9 @@ Space                 | Exit application
 ESC                   | Close OSD menu or exit application
 d                     | Open Development UI
 
+# Camera web interface and OTA update
+
+OTA firmware update and recordings playback are available in camera web interface: [/doc/web_interface.md](/doc/web_interface.md)
 
 # Considerations
 
