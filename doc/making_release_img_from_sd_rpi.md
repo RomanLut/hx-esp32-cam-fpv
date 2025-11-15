@@ -1,8 +1,10 @@
 
 # Making image file from SD card for release
-- Build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **16GB** or **32BG** SD Card
+- use RPI2W with USB-LAN adapter to be able to ssh (pi/1234)
+
+- build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **8GB** (recommended), **16GB** or **32BG** SD Card
  
-- Insert SD card into PRI 2W and compile rtl8812au driver.
+- insert SD card into PRI 2W and compile rtl8812au driver.
 
 - set default GS settings before doing next steps
 
@@ -31,14 +33,6 @@
 ```sudo chmod +x pishrink.sh```
 
 ```sudo mv pishrink.sh /usr/local/bin```
-
-- zero free space to make compressed image smaller:
-
-  ```wget https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh```
-
-  ```sudo chmod +x zero_free_space.sh```
-
-  ```./zero_free_space.sh```
 
 - Check the mount point path of your USB drive by entering:
 
