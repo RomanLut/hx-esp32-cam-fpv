@@ -1,4 +1,7 @@
 # hx-esp32-cam-fpv
+
+DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
+
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
 - [x] Mavlink telemetry and RC
@@ -46,6 +49,7 @@ Open source digital FPV system based on esp32cam.
 - [ ] Meta Quest 2 GS
 - [ ] lost frames inpainting using neural network ?
 - [ ] JPEG artefacts removal using neural network?
+
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
