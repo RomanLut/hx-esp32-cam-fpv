@@ -115,7 +115,53 @@
 #endif
 //===============================================================
 
-//write raw MJPEG stream instead of avi
+//===============================================================
+//===============================================================
+
+#ifdef BOARD_ESP32C5
+
+//  Debug is on USB UART
+//  UART1:  MSP-OSD  RX=D3 TX=D1
+//  UART2:  MAVLINK  RX=D6 TX=D&
+//  REC BUTTON: GPIO0  (existing flash button)
+//  STATUS LED: GPIO1
+
+//define to use DisplayPort OSD on UART1
+#define UART_MSP_OSD UART_NUM_1
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+
+//define to use mavlink telemetry on UART2 
+#define UART_MAVLINK LP_UART_NUM_0
+#define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
+
+#define CAMERA_MODEL_XIAO_ESP32S3
+//#define DVR_SUPPORT
+#define STATUS_LED_PIN GPIO_NUM_1
+#define STATUS_LED_ON 1
+#define STATUS_LED_OFF 0
+#define REC_BUTTON_PIN  GPIO_NUM_0 //dedicated REC button pin
+
+#define INIT_UART_1
+#define TXD1_PIN    GPIO_NUM_2 //D1
+#define RXD1_PIN    GPIO_NUM_4 //D3
+#define UART1_BAUDRATE 115200
+
+#define INIT_LP_UART_NUM_0
+#define LTXD0_PIN    GPIO_NUM_43 //D6
+#define LRXD0_PIN    GPIO_NUM_44 //D7
+#define LUART0_BAUDRATE 115200
+//----------------------
+
+#endif
+//===============================================================
+
+
+
+
+
+//uncomment to write raw MJPEG stream instead of avi
 //#define WRITE_RAW_MJPEG_STREAM
 
 //#define TEST_AVI_FRAMES
