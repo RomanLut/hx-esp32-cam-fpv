@@ -10,4 +10,4 @@
 #endif
 
 void init_crc8_table();
-IRAM_ATTR uint8_t crc8(uint8_t crc, const void *c_ptr, size_t len);
+uint8_t crc8(uint8_t crc, const void *c_ptr, size_t len);

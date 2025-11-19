@@ -14,20 +14,20 @@
 
 /////////////////////////////////////////////////////////////////////////
 
-IRAM_ATTR bool start_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet, size_t size);
-IRAM_ATTR void end_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
-IRAM_ATTR void cancel_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
-IRAM_ATTR bool start_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
-IRAM_ATTR void end_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
-IRAM_ATTR void cancel_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
+bool start_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet, size_t size);
+void end_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
+void cancel_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
+bool start_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
+void end_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
+void cancel_reading_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet);
 
 
-IRAM_ATTR bool start_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet, size_t size);
-IRAM_ATTR void end_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
-IRAM_ATTR void cancel_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
-IRAM_ATTR bool start_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
-IRAM_ATTR void end_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
-IRAM_ATTR void cancel_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
+bool start_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet, size_t size);
+void end_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
+void cancel_writing_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
+bool start_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
+void end_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
+void cancel_reading_wlan_incoming_packet(Wlan_Incoming_Packet& packet);
 
 
 struct Queue

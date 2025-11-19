@@ -177,25 +177,21 @@ static int write_addr_reg(uint8_t slv_addr, const uint16_t reg, uint16_t x_value
 static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sys_div, int pre_div, bool root_2x, int pclk_root_div, bool pclk_manual, int pclk_div)
 {
     const float pll_pre_div2x_map[] = { 1, 1, 2, 3, 4, 1.5, 6, 2.5, 8};
-    const int pll_pclk_root_div_map[] = { 1, 2, 4, 8 };
+    //const int pll_pclk_root_div_map[] = { 1, 2, 4, 8 };
 
     if(!pll_sys_div) {
         pll_sys_div = 1;
     }
 
     float pll_pre_div = pll_pre_div2x_map[pre_div];
-    unsigned int root_2x_div = root_2x?2:1;
-    unsigned int pll_pclk_root_div = pll_pclk_root_div_map[pclk_root_div];
-
     unsigned int REFIN = xclk / pll_pre_div;
-
+    unsigned int root_2x_div = root_2x?2:1;
     unsigned int VCO = REFIN * pll_multiplier / root_2x_div;
-
     unsigned int PLL_CLK = pll_bypass?(xclk):(VCO / pll_sys_div * 2 / 5);//5 here is 10bit mode / 2, for 8bit it should be 4 (reg 0x3034)
-
-    unsigned int PCLK = PLL_CLK / pll_pclk_root_div / ((pclk_manual && pclk_div)?pclk_div:2);
-
     unsigned int SYSCLK = PLL_CLK / 4;
+
+    //unsigned int pll_pclk_root_div = pll_pclk_root_div_map[pclk_root_div];
+    //unsigned int PCLK = PLL_CLK / pll_pclk_root_div / ((pclk_manual && pclk_div)?pclk_div:2);
 
     //ESP_LOGI(TAG, "Calculated XVCLK: %d Hz, REFIN: %u Hz, VCO: %u Hz, PLL_CLK: %u Hz, SYSCLK: %u Hz, PCLK: %u Hz", xclk, REFIN, VCO, PLL_CLK, SYSCLK, PCLK);
     return SYSCLK;
