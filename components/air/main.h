@@ -136,7 +136,7 @@
 #define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
-#define CAMERA_MODEL_XIAO_ESP32S3
+#define CAMERA_MODEL_ESP32C5
 //#define DVR_SUPPORT
 #define STATUS_LED_PIN GPIO_NUM_1
 #define STATUS_LED_ON 1
@@ -149,8 +149,8 @@
 #define UART1_BAUDRATE 115200
 
 #define INIT_LP_UART_NUM_0
-#define LTXD0_PIN    GPIO_NUM_43 //D6
-#define LRXD0_PIN    GPIO_NUM_44 //D7
+#define LTXD0_PIN    GPIO_NUM_24 //D24
+#define LRXD0_PIN    GPIO_NUM_23 //D23
 #define LUART0_BAUDRATE 115200
 //----------------------
 
@@ -304,6 +304,26 @@
 #define PCLK_GPIO_NUM     13
 
 #define LED_GPIO_NUM      21  //also used as SDCard CS
+
+#elif defined(CAMERA_MODEL_ESP32C5)
+#define PWDN_GPIO_NUM     -1
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM     4
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     25
+
+#define Y9_GPIO_NUM       3
+#define Y8_GPIO_NUM       0
+#define Y7_GPIO_NUM       1
+#define Y6_GPIO_NUM       6
+#define Y5_GPIO_NUM       7
+#define Y4_GPIO_NUM       8
+#define Y3_GPIO_NUM       9
+#define Y2_GPIO_NUM       10
+#define VSYNC_GPIO_NUM    18
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     2
+
 #else
 #error "Camera model not selected"
 #endif
