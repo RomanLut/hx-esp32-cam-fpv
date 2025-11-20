@@ -80,7 +80,7 @@
 
 //  Debug is on USB UART
 //  UART1:  MSP-OSD  RX=D3 TX=D1
-//  UART2:  MAVLINK  RX=D6 TX=D&
+//  UART2:  MAVLINK  RX=D6 TX=D7
 //  REC BUTTON: GPIO0  (existing flash button)
 //  STATUS LED: GPIO1
 
@@ -122,7 +122,7 @@
 
 //  Debug is on USB UART
 //  UART1:  MSP-OSD  RX=D3 TX=D1
-//  UART2:  MAVLINK  RX=D6 TX=D&
+//  UART2:  MAVLINK  RX=D23 TX=D24
 //  REC BUTTON: GPIO0  (existing flash button)
 //  STATUS LED: GPIO1
 
@@ -138,10 +138,11 @@
 
 #define CAMERA_MODEL_ESP32C5
 //#define DVR_SUPPORT
-#define STATUS_LED_PIN GPIO_NUM_1
-#define STATUS_LED_ON 1
-#define STATUS_LED_OFF 0
-#define REC_BUTTON_PIN  GPIO_NUM_0 //dedicated REC button pin
+//RGB LED GPIO27
+//#define STATUS_LED_PIN GPIO_NUM_1
+//#define STATUS_LED_ON 1
+//#define STATUS_LED_OFF 0
+#define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
 #define INIT_UART_1
 #define TXD1_PIN    GPIO_NUM_2 //D1

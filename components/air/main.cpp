@@ -3012,7 +3012,7 @@ extern "C" void app_main()
 {
     //esp_task_wdt_init();
 
-#ifdef BOARD_XIAOS3SENSE
+#ifdef BOARD_XIAOS3SENSE || BOARD_ESP32C5
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
