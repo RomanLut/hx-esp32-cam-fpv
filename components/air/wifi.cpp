@@ -416,6 +416,19 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
 
     ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
     ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
+    
+#ifdef BOARD_ESP32C5
+    // Enable both 2.4GHz and 5GHz bands by default
+    wifi_country_t country_config = {
+        {'U','S','F'},
+        1,
+        165,  // Support channels 1-165 (both 2.4GHz and 5GHz)
+        20,
+        WIFI_COUNTRY_POLICY_AUTO
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_country(&country_config));
+#endif
+    
     ESP_ERROR_CHECK(esp_wifi_set_channel(chn, WIFI_SECOND_CHAN_NONE));
 
     wifi_promiscuous_filter_t filter = 
@@ -450,7 +463,6 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
 
     ESP_LOGI(TAG,"Initialized");
 }
-
 
 esp_err_t set_wifi_fixed_rate(WIFI_Rate value)
 {
@@ -631,4 +643,3 @@ uint8_t getMinWlanOutgoingQueueUsageFrame()
 
     return v == -1? 0 : v * 100 / c;
 }
-
