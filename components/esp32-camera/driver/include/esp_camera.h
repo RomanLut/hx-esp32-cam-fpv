@@ -76,7 +76,7 @@
  * @brief define for if chip supports camera
  */
 #define ESP_CAMERA_SUPPORTED (CONFIG_IDF_TARGET_ESP32 | CONFIG_IDF_TARGET_ESP32S3 | \
-                             CONFIG_IDF_TARGET_ESP32S2)
+                             CONFIG_IDF_TARGET_ESP32S2 | CONFIG_IDF_TARGET_ESP32C5)
 
 #ifdef __cplusplus
 extern "C" {
@@ -250,4 +250,3 @@ extern bool getOVFFlagAndReset();
 #endif
 
 #include "img_converters.h"
-
