@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "ll_cam.h"
 #include "cam_hal.h"
@@ -23,12 +24,14 @@
 #include "driver/parlio_types.h"
 #include "driver/gpio.h"
 #include "esp_private/gpio.h"
-// #include "soc/rdma_struct.h"
-// #include "soc/rdma_periph.h"
-// #include "soc/rdma_reg.h"
 #include "hal/clk_gate_ll.h"
 
 #define CAM_V_SYNC_IDX 0
+#define MIN_FRAME_ALLOC_SIZE 160
+
+#ifndef CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE
+#define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 0x8000
+#endif
 
 // Forward declaration for helper function
 static bool ll_cam_calc_rgb_dma_sizes(cam_obj_t *cam);
@@ -38,99 +41,120 @@ static const char *TAG = "c5 ll_cam";
 // ESP32C5 camera context using PARLIO RX
 typedef struct {
     parlio_rx_unit_handle_t rx_unit;           /*!< PARLIO RX unit handle */
-    parlio_rx_delimiter_handle_t delimiter;    /*!< Software delimiter for JPEG parsing */
-    uint8_t *recv_buf;                         /*!< Receive buffer */
-    size_t buf_size;                           /*!< Buffer size */
-    size_t received_bytes;                     /*!< Bytes received in current frame */
-    bool frame_started;                        /*!< Whether we've found SOI marker */
-    QueueHandle_t event_queue;                 /*!< Event queue for camera events */
-    TaskHandle_t task_handle;                  /*!< Camera task handle */
-    intr_handle_t intr_handle;                 /*!< Interrupt handle */
+    parlio_rx_delimiter_handle_t delimiter;    /*!< Software delimiter */
+    uint8_t *payload_buffer;                   /*!< PARLIO payload buffer */
+    size_t payload_size;                       /*!< Payload buffer size */
+    
+    // JPEG frame capture state
+    volatile struct {
+        uint8_t *frame_buffer;                 /*!< Current frame buffer */
+        uint32_t frame_length;                 /*!< Allocated frame length */
+        uint32_t index;                        /*!< Current write index */
+        uint8_t last_byte;                     /*!< Last received byte (for marker detection) */
+        uint32_t captured : 1;                 /*!< Frame capture in progress */
+    } jpeg_state;
+    
+    uint32_t alloc_size;                       /*!< Frame allocation size */
+    uint32_t alloc_heap_caps;                  /*!< Heap caps for allocation */
     bool jpeg_mode;                            /*!< JPEG mode flag */
-    uint16_t width;                            /*!< Image width */
-    uint16_t height;                           /*!< Image height */
-    uint8_t in_bytes_per_pixel;                /*!< Input bytes per pixel */
-    uint8_t fb_bytes_per_pixel;                 /*!< Frame buffer bytes per pixel */
 } esp32c5_cam_context_t;
 
 // Global camera context
 static esp32c5_cam_context_t *s_cam_ctx = NULL;
 
-// JPEG frame parsing function
-static bool IRAM_ATTR ll_cam_check_jpeg_frame(const uint8_t *data, size_t len, bool *frame_started, bool *frame_complete) {
-    *frame_complete = false;
-
-    for (size_t i = 0; i < len - 1; i++) {
-        // Look for SOI marker (0xFF 0xD8)
-        if (data[i] == 0xFF && data[i + 1] == 0xD8) {
-            *frame_started = true;
-        }
-        // Look for EOI marker (0xFF 0xD9)
-        else if (*frame_started && data[i] == 0xFF && data[i + 1] == 0xD9) {
-            *frame_complete = true;
-            break;
-        }
-    }
-
-    return *frame_started;
-}
-
-// PARLIO RX callbacks
-static bool CAMERA_ISR_IRAM_ATTR ll_cam_parlio_rx_callback(parlio_rx_unit_handle_t rx_unit,
-                                                          const parlio_rx_event_data_t *edata,
-                                                          void *user_ctx) {
+// PARLIO partial receive callback - handles JPEG frame detection and buffering
+static bool CAMERA_ISR_IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_unit,
+                                                            const parlio_rx_event_data_t *edata,
+                                                            void *user_ctx) {
     cam_obj_t *cam = (cam_obj_t *)user_ctx;
+    const uint8_t *data = edata->data;
+    const uint32_t received_bytes = edata->recv_bytes;
     BaseType_t HPTaskAwoken = pdFALSE;
-
-    if (s_cam_ctx->jpeg_mode) {
-        // JPEG mode: parse received data for complete frames
-        if (edata->recv_bytes > 1) {
-            bool frame_complete = false;
-            s_cam_ctx->frame_started = ll_cam_check_jpeg_frame(edata->data,
-                                                             edata->recv_bytes,
-                                                             &s_cam_ctx->frame_started,
-                                                             &frame_complete);
-
-            // Only send frame complete event when we've found the EOI marker
-            if (frame_complete) {
-                s_cam_ctx->received_bytes += edata->recv_bytes;
-                ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
-                // Reset frame state for next frame
-                s_cam_ctx->frame_started = false;
-                s_cam_ctx->received_bytes = 0;
-            } else {
-                // Continue receiving more data
-                s_cam_ctx->received_bytes += edata->recv_bytes;
-            }
-        }
-    } else {
-        // RGB/YUV mode: send event on every receive completion
-        if (edata->recv_bytes > 0) {
+    
+    if (!s_cam_ctx->jpeg_mode) {
+        // For RGB/YUV modes, just signal frame complete on each receive
+        if (received_bytes > 0) {
             ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
         }
+        return (HPTaskAwoken == pdTRUE);
     }
-
-    return (HPTaskAwoken == pdTRUE);
-}
-
-static bool CAMERA_ISR_IRAM_ATTR ll_cam_parlio_timeout_callback(parlio_rx_unit_handle_t rx_unit,
-                                                               const parlio_rx_event_data_t *edata,
-                                                               void *user_ctx) {
-    cam_obj_t *cam = (cam_obj_t *)user_ctx;
-    BaseType_t HPTaskAwoken = pdFALSE;
-
-    if (s_cam_ctx->jpeg_mode) {
-        // For JPEG, timeout might indicate end of frame in some cases
-        if (s_cam_ctx->received_bytes > 0) {
-            ESP_LOGW(TAG, "JPEG frame timeout, received %u bytes", s_cam_ctx->received_bytes);
-            s_cam_ctx->frame_started = false;
-            s_cam_ctx->received_bytes = 0;
+    
+    // JPEG mode: scan for SOI (0xFF 0xD8) and EOI (0xFF 0xD9) markers
+    for (uint16_t index = 0; index < received_bytes; index++) {
+        uint8_t current_byte = data[index];
+        
+        // If we're currently capturing a frame
+        if (s_cam_ctx->jpeg_state.captured && s_cam_ctx->jpeg_state.frame_buffer) {
+            if (s_cam_ctx->jpeg_state.index < s_cam_ctx->jpeg_state.frame_length) {
+                s_cam_ctx->jpeg_state.frame_buffer[s_cam_ctx->jpeg_state.index++] = current_byte;
+            } else {
+                // Buffer overflow - abort this frame
+                s_cam_ctx->jpeg_state.captured = false;
+                free(s_cam_ctx->jpeg_state.frame_buffer);
+                s_cam_ctx->jpeg_state.frame_buffer = NULL;
+                s_cam_ctx->jpeg_state.frame_length = 0;
+                s_cam_ctx->jpeg_state.last_byte = current_byte;
+                ESP_EARLY_LOGW(TAG, "JPEG buffer overflow");
+                break;
+            }
+            
+            // Check for EOI marker (0xFF 0xD9)
+            if (s_cam_ctx->jpeg_state.index > MIN_FRAME_ALLOC_SIZE && 
+                s_cam_ctx->jpeg_state.last_byte == 0xFF && 
+                current_byte == 0xD9 && 
+                s_cam_ctx->jpeg_state.index < s_cam_ctx->jpeg_state.frame_length) {
+                
+                // Frame complete! Copy to DMA buffer and signal
+                s_cam_ctx->jpeg_state.captured = false;
+                
+                // Copy frame to camera's DMA buffer
+                if (cam->dma_buffer && s_cam_ctx->jpeg_state.index <= cam->dma_buffer_size) {
+                    memcpy(cam->dma_buffer, s_cam_ctx->jpeg_state.frame_buffer, s_cam_ctx->jpeg_state.index);
+                    
+                    // Free the temporary frame buffer
+                    free(s_cam_ctx->jpeg_state.frame_buffer);
+                    s_cam_ctx->jpeg_state.frame_buffer = NULL;
+                    s_cam_ctx->jpeg_state.frame_length = 0;
+                    
+                    // Signal frame complete
+                    ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
+                } else {
+                    ESP_EARLY_LOGW(TAG, "DMA buffer too small or NULL");
+                    free(s_cam_ctx->jpeg_state.frame_buffer);
+                    s_cam_ctx->jpeg_state.frame_buffer = NULL;
+                    s_cam_ctx->jpeg_state.frame_length = 0;
+                }
+            }
         }
-    } else {
-        // Handle timeout (could be end of frame in some cases)
-        ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
+        
+        // Check for SOI marker (0xFF 0xD8) to start new frame
+        if (!s_cam_ctx->jpeg_state.captured && 
+            s_cam_ctx->jpeg_state.last_byte == 0xFF && 
+            current_byte == 0xD8) {
+            
+            // Allocate new frame buffer if needed
+            if (!s_cam_ctx->jpeg_state.frame_buffer) {
+                s_cam_ctx->jpeg_state.frame_length = s_cam_ctx->alloc_size;
+                s_cam_ctx->jpeg_state.frame_buffer = heap_caps_malloc(
+                    s_cam_ctx->jpeg_state.frame_length, 
+                    s_cam_ctx->alloc_heap_caps);
+                
+                if (!s_cam_ctx->jpeg_state.frame_buffer) {
+                    s_cam_ctx->jpeg_state.last_byte = current_byte;
+                    continue;
+                }
+            }
+            
+            // Start capturing
+            s_cam_ctx->jpeg_state.captured = true;
+            s_cam_ctx->jpeg_state.index = 0;
+            s_cam_ctx->jpeg_state.frame_buffer[s_cam_ctx->jpeg_state.index++] = s_cam_ctx->jpeg_state.last_byte;
+            s_cam_ctx->jpeg_state.frame_buffer[s_cam_ctx->jpeg_state.index++] = current_byte;
+        }
+        
+        s_cam_ctx->jpeg_state.last_byte = current_byte;
     }
-
+    
     return (HPTaskAwoken == pdTRUE);
 }
 
@@ -148,7 +172,8 @@ bool ll_cam_start(cam_obj_t *cam, int frame_pos)
 {
     esp_err_t ret = ESP_OK;
 
-    if (!s_cam_ctx || !s_cam_ctx->rx_unit) {
+    if (!s_cam_ctx || !s_cam_ctx->rx_unit || !s_cam_ctx->payload_buffer) {
+        ESP_LOGE(TAG, "Invalid context or payload buffer");
         return false;
     }
 
@@ -159,21 +184,27 @@ bool ll_cam_start(cam_obj_t *cam, int frame_pos)
         return false;
     }
 
-    // Start receiving data
+    // Start software delimiter if in JPEG mode
+    if (s_cam_ctx->jpeg_mode && s_cam_ctx->delimiter) {
+        ret = parlio_rx_soft_delimiter_start_stop(s_cam_ctx->rx_unit, s_cam_ctx->delimiter, true);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start software delimiter: %s", esp_err_to_name(ret));
+            return false;
+        }
+    }
+
+    // Start receiving data into payload buffer
     parlio_receive_config_t recv_cfg = {
         .delimiter = s_cam_ctx->delimiter,
         .flags = {
-            .partial_rx_en = 1,  // Enable partial receive for continuous data
+            .partial_rx_en = 1,  // Enable partial receive for continuous data streaming
         }
     };
 
-    // Use camera's DMA buffer for receiving data
-    uint8_t *dma_buffer = (uint8_t *)cam->dma_buffer;
-    size_t dma_size = cam->dma_buffer_size;
-
+    // Use PARLIO's internal payload buffer (not camera's DMA buffer)
     ret = parlio_rx_unit_receive(s_cam_ctx->rx_unit,
-                                dma_buffer,
-                                dma_size,
+                                s_cam_ctx->payload_buffer,
+                                s_cam_ctx->payload_size,
                                 &recv_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start PARLIO RX receive: %s", esp_err_to_name(ret));
@@ -199,10 +230,16 @@ esp_err_t ll_cam_deinit(cam_obj_t *cam)
             s_cam_ctx->delimiter = NULL;
         }
 
-        // Free receive buffer
-        if (s_cam_ctx->recv_buf) {
-            free(s_cam_ctx->recv_buf);
-            s_cam_ctx->recv_buf = NULL;
+        // Free payload buffer
+        if (s_cam_ctx->payload_buffer) {
+            free(s_cam_ctx->payload_buffer);
+            s_cam_ctx->payload_buffer = NULL;
+        }
+
+        // Free any pending JPEG frame buffer
+        if (s_cam_ctx->jpeg_state.frame_buffer) {
+            free(s_cam_ctx->jpeg_state.frame_buffer);
+            s_cam_ctx->jpeg_state.frame_buffer = NULL;
         }
 
         // Free context
@@ -235,30 +272,37 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config)
 
     // Store camera parameters
     s_cam_ctx->jpeg_mode = (config->pixel_format == PIXFORMAT_JPEG);
-    s_cam_ctx->width = config->frame_size;  // This needs to be converted from frame_size enum
-    s_cam_ctx->height = config->frame_size; // This needs to be converted from frame_size enum
-    s_cam_ctx->in_bytes_per_pixel = 1;      // Default, will be updated later
-    s_cam_ctx->fb_bytes_per_pixel = 1;      // Default, will be updated later
+    s_cam_ctx->payload_size = CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE;
+    
+    // Set default allocation size (will be updated by ll_cam_dma_sizes)
+    s_cam_ctx->alloc_size = cam->recv_size;
+    s_cam_ctx->alloc_heap_caps = MALLOC_CAP_INTERNAL;
 
     // Configure PARLIO RX unit
+    // ESP32-C5 does NOT support valid signals with 8 data lines, so we use software delimiter
     parlio_rx_unit_config_t rx_config = {
         .trans_queue_depth = 8,
-        .max_recv_size = cam->dma_buffer_size,
+        .max_recv_size = 0xFFFF,  // Maximum receive size
         .data_width = 8,  // 8 data lines (D0-D7)
-        .clk_src = PARLIO_CLK_SRC_EXTERNAL,  // Use external PCLK
-        .ext_clk_freq_hz = 0,  // 0 for external clock (PCLK from camera)
-        .exp_clk_freq_hz = config->xclk_freq_hz,  // Expected sample frequency
-        .data_gpio_nums = {
-            config->pin_d0, config->pin_d1, config->pin_d2, config->pin_d3,
-            config->pin_d4, config->pin_d5, config->pin_d6, config->pin_d7,
-            -1, -1, -1, -1, -1, -1, -1, -1  // Pad to 16
-        },
-        .valid_gpio_num = config->pin_href,  // HREF as valid signal
+        .clk_src = PARLIO_CLK_SRC_EXTERNAL,  // Use external PCLK from camera
+        .ext_clk_freq_hz = 120 * 1000 * 1000,  // Expected external clock frequency (high estimate)
+        .clk_in_gpio_num = config->pin_pclk,  // PCLK input pin
+        .clk_out_gpio_num = -1,  // No clock output
+        .valid_gpio_num = -1,  // ESP32-C5 doesn't support valid signal with 8 data lines
         .flags = {
             .free_clk = 1,       // PCLK is a free-running clock
             .allow_pd = 1,       // Allow power down
         }
     };
+    
+    // Copy data GPIO pins
+    for (int i = 0; i < 8; i++) {
+        rx_config.data_gpio_nums[i] = (&config->pin_d0)[i];
+    }
+    // Pad remaining pins with -1
+    for (int i = 8; i < PARLIO_RX_UNIT_MAX_DATA_WIDTH; i++) {
+        rx_config.data_gpio_nums[i] = -1;
+    }
 
     // Create PARLIO RX unit
     ret = parlio_new_rx_unit(&rx_config, &s_cam_ctx->rx_unit);
@@ -267,28 +311,30 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config)
         return ret;
     }
 
-    // Create level delimiter (for now, using the same config for both modes)
-    parlio_rx_level_delimiter_config_t delim_config = {
-        .valid_sig_line_id = 8,  // Use one of the extra lines for valid signal (arbitrary choice)
-        .sample_edge = PARLIO_SAMPLE_EDGE_POS,  // Sample on rising edge
+    // Create software delimiter (required for ESP32-C5 since no valid signal support)
+    parlio_rx_soft_delimiter_config_t delim_config = {
+        .sample_edge = PARLIO_SAMPLE_EDGE_POS,  // Sample on positive edge
         .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
-        .eof_data_len = s_cam_ctx->jpeg_mode ? 100000 : cam->dma_half_buffer_size,  // Large for JPEG, specific for RGB
-        .timeout_ticks = 1000,  // Timeout in APB clock ticks
-        .flags = {
-            .active_low_en = 0,  // Active high HREF
-        }
+        .eof_data_len = s_cam_ctx->payload_size,
+        .timeout_ticks = 0,  // No timeout
     };
 
-    ret = parlio_new_rx_level_delimiter(&delim_config, &s_cam_ctx->delimiter);
+    ret = parlio_new_rx_soft_delimiter(&delim_config, &s_cam_ctx->delimiter);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create level delimiter: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to create software delimiter: %s", esp_err_to_name(ret));
         return ret;
+    }
+
+    // Allocate payload buffer for PARLIO (internal DMA buffer)
+    s_cam_ctx->payload_buffer = heap_caps_malloc(s_cam_ctx->payload_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (!s_cam_ctx->payload_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate payload buffer");
+        return ESP_ERR_NO_MEM;
     }
 
     // Register RX callbacks
     parlio_rx_event_callbacks_t cbs = {
-        .on_receive_done = ll_cam_parlio_rx_callback,
-        .on_timeout = ll_cam_parlio_timeout_callback,
+        .on_partial_receive = on_partial_receive_callback,
     };
 
     ret = parlio_rx_unit_register_event_callbacks(s_cam_ctx->rx_unit, &cbs, cam);
@@ -297,9 +343,6 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config)
         return ret;
     }
 
-    // Store buffer info for reference (PARLIO uses camera's DMA buffer directly)
-    s_cam_ctx->buf_size = cam->dma_buffer_size;
-
     cam->vsync_pin = config->pin_vsync;
     cam->vsync_invert = 0;
 
@@ -307,6 +350,8 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config)
     if (ret != ESP_OK) {
         return ret;
     }
+
+    ESP_LOGI(TAG, "PARLIO RX configured: 8-bit data, software delimiter, payload_size=%d", s_cam_ctx->payload_size);
 
     return ESP_OK;
 }
