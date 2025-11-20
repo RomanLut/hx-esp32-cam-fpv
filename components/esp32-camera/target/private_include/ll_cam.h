@@ -27,6 +27,8 @@
 #include "esp32s2/rom/lldesc.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/rom/lldesc.h"
+#elif CONFIG_IDF_TARGET_ESP32C5
+#include "esp32c5/rom/lldesc.h"
 #endif
 #include "esp_log.h"
 #include "esp_camera.h"

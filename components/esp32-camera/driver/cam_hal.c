@@ -29,6 +29,8 @@
 #include "esp32s2/rom/ets_sys.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/rom/ets_sys.h"
+#elif CONFIG_IDF_TARGET_ESP32C5
+#include "esp32c5/rom/ets_sys.h"
 #endif
 #endif // ESP_IDF_VERSION_MAJOR
 #define ESP_CAMERA_ETS_PRINTF ets_printf

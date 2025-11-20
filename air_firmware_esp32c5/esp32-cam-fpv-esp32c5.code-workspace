@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "lib",
+			"path": "../components/air/"
+		},
+		{
+			"name": "lib",
+			"path": "../components/common/"
+		},
+		{
+			"name": "lib",
+			"path": "../components/esp32-camera/"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"array": "cpp",
+			"string": "cpp",
+			"string_view": "cpp",
+			"initializer_list": "cpp",
+			"utility": "cpp",
+			"functional": "cpp",
+			"*.tcc": "cpp",
+			"stdint.h": "c",
+			"random": "cpp",
+			"ostream": "cpp",
+			"cstdint": "cpp",
+			"algorithm": "cpp"
+		}
+	}
+}

@@ -2467,7 +2467,10 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #endif            
 #ifdef BOARD_XIAOS3SENSE
         //ESP32S3 - sample offset: 0, stride: 1
-        const uint8_t* src = (const uint8_t*)data;  
+        const uint8_t* src = (const uint8_t*)data;
+#endif
+#ifdef BOARD_ESP32C5
+        const uint8_t* src = (const uint8_t*)data;
 #endif
         uint8_t* clrSrc = (uint8_t*)src;
 
@@ -2633,6 +2636,10 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
 #ifdef BOARD_XIAOS3SENSE
                 //ESP32S3 - sample offset: 0, stride: 1
+                memcpy( ptr, src, c);
+                src += c;
+#endif
+#ifdef BOARD_ESP32C5
                 memcpy( ptr, src, c);
                 src += c;
 #endif
@@ -3046,7 +3053,7 @@ extern "C" void app_main()
 
 #ifdef INIT_UART_0
     printf("Init UART0...\n");
-    uart_config_t uart_config0 = 
+    uart_config_t uart_config0 =
     {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -3054,9 +3061,13 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config0) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 256, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, TXD0_PIN, RXD0_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
@@ -3146,7 +3157,7 @@ extern "C" void app_main()
 #ifdef INIT_UART_1
     printf("Init UART1...\n");
 
-    uart_config_t uart_config1 = 
+    uart_config_t uart_config1 =
     {
         .baud_rate = UART1_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
@@ -3154,9 +3165,13 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, UART1_RX_BUFFER_SIZE, UART1_TX_BUFFER_SIZE, 0, NULL, 0));
@@ -3168,7 +3183,7 @@ extern "C" void app_main()
 #ifdef INIT_UART_2
     printf("Init UART2...\n");
 
-    uart_config_t uart_config2 = 
+    uart_config_t uart_config2 =
     {
         .baud_rate = UART2_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
@@ -3176,9 +3191,13 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, UART2_RX_BUFFER_SIZE, UART2_TX_BUFFER_SIZE, 0, NULL, 0));
