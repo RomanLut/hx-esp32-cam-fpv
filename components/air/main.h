@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstring>
 
+#include "safe_printf.h"
+
 #define UART_RX_BUFFER_SIZE_MSP_OSD      512
 #define UART_TX_BUFFER_SIZE_MSP_OSD      256
 
@@ -335,5 +337,8 @@ extern bool SDError;
 extern uint16_t SDTotalSpaceGB16;
 extern uint16_t SDFreeSpaceGB16;
 extern bool s_sd_initialized;
+
+extern int s_uart_verbose;
+#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 void updateSDInfo();

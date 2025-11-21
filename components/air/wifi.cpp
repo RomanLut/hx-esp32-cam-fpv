@@ -1,7 +1,9 @@
 #include "main.h"
 
 #include "wifi.h"
+#include "esp_wifi.h"
 #include "esp_log.h"
+#include "esp_wifi_types.h"
 #include "structures.h"
 #include "fec_codec.h"
 #include "crc.h"
@@ -9,11 +11,11 @@
 
 #include "vcd_profiler.h"
 
+
+
 static const char * TAG="wifi_task";
 
 #define TX_COMPLETION_CB
-
-#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 Ground2Air_Data_Packet s_ground2air_data_packet;
 
@@ -414,23 +416,36 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
     xSemaphoreGive(s_wifi_tx_done_semaphore);
 #endif
 
-    ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
-    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
-    
 #ifdef BOARD_ESP32C5
     // Enable both 2.4GHz and 5GHz bands by default
     wifi_country_t country_config = {
-        {'U','S','F'},
-        1,
-        165,  // Support channels 1-165 (both 2.4GHz and 5GHz)
-        20,
-        WIFI_COUNTRY_POLICY_AUTO
+        .cc = "01", // World-wide safe mode
+        .schan = 1,
+        .nchan = 14, // Enable all 2.4GHz channels (1-14)
+        .max_tx_power = 20,
+        .policy = WIFI_COUNTRY_POLICY_AUTO,
     };
+    country_config.wifi_5g_channel_mask = 0; // Allow all 5GHz channels
     ESP_ERROR_CHECK(esp_wifi_set_country(&country_config));
 #endif
-    
+
+    //set channel before seting rate and bandwidth to select correct band (2.4/5Ghz)
     ESP_ERROR_CHECK(esp_wifi_set_channel(chn, WIFI_SECOND_CHAN_NONE));
 
+    ESP_ERROR_CHECK(set_wifi_fixed_rate(wifi_rate));
+
+    //ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
+
+#if SOC_WIFI_SUPPORT_5G
+    wifi_bandwidths_t bw = {
+        .ghz_2g = WIFI_BW_HT20,   // 20 MHz on 2.4 GHz
+        .ghz_5g = WIFI_BW_HT20    // 20 MHz on 5 GHz
+    };
+    ESP_ERROR_CHECK( esp_wifi_set_bandwidths(ESP_WIFI_IF, &bw) );
+#else
+    ESP_ERROR_CHECK( esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20) );
+#endif    
+    
     wifi_promiscuous_filter_t filter = 
     {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_DATA
@@ -466,7 +481,20 @@ void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_re
 
 esp_err_t set_wifi_fixed_rate(WIFI_Rate value)
 {
-    uint8_t rates[] = 
+#if SOC_WIFI_SUPPORT_5G
+    // For dual-band capable chips, we must use esp_wifi_set_protocols()
+    // to set protocols for both bands.
+    // We enable 11b/g/n on 2.4GHz and 11n on 5GHz.
+    // We do not enable 11ac on 5Ghz because setting rate below will fail
+    // We do not enable older 11a on 5Ghz
+    wifi_protocols_t protocols = {.ghz_2g = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N, .ghz_5g = WIFI_PROTOCOL_11N};
+    ESP_ERROR_CHECK(esp_wifi_set_protocols(ESP_WIFI_IF, &protocols));
+#else
+    // For single-band chips, use esp_wifi_set_protocol().
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(ESP_WIFI_IF, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
+#endif
+
+    wifi_phy_rate_t rates[] =
     {
         WIFI_PHY_RATE_2M_L,
         WIFI_PHY_RATE_2M_S,
@@ -502,11 +530,13 @@ esp_err_t set_wifi_fixed_rate(WIFI_Rate value)
         WIFI_PHY_RATE_MCS7_LGI,
         WIFI_PHY_RATE_MCS7_SGI,
     };
-    //esp_err_t err = esp_wifi_internal_set_fix_rate(ESP_WIFI_IF, true, (wifi_phy_rate_t)rates[(int)value]);
-    esp_err_t err = esp_wifi_config_80211_tx_rate(ESP_WIFI_IF, (wifi_phy_rate_t)rates[(int)value]);
-    //esp_err_t err = esp_wifi_internal_set_fix_rate(ESP_WIFI_IF, true, (wifi_phy_rate_t)value);
-    if (err == ESP_OK)
+
+    LOG("Setting rate: %d\n %d", (int)value, (int)rates[(int)value] );
+    esp_err_t err = esp_wifi_config_80211_tx_rate(ESP_WIFI_IF, rates[(int)value]);
+    if (err == ESP_OK) 
+    {
         s_wlan_rate = value;
+    }
     return err;
 }
 
@@ -530,7 +560,8 @@ static esp_err_t esp_netif_set_static_ip(esp_netif_t *netif)
     ip.ip.addr = ipaddr_addr("192.168.4.1");
     ip.netmask.addr = ipaddr_addr("255.255.255.0");
     ip.gw.addr = ipaddr_addr("192.168.4.1");
-    if (esp_netif_set_ip_info(netif, &ip) != ESP_OK) {
+    if (esp_netif_set_ip_info(netif, &ip) != ESP_OK) 
+    {
         ESP_LOGE(TAG, "Failed to set ip info");
         esp_netif_dhcps_start(netif);
         return ESP_FAIL;

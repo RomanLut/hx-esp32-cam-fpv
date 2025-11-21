@@ -18,9 +18,6 @@
 #define SYM_TO_MWC      '<'
 #define SYM_UNSUPPORTED '!'
 
-#include "safe_printf.h"
-#define LOG(...) do { if (true) SAFE_PRINTF(__VA_ARGS__); } while (false) 
-
 MSP g_msp;
 
 //======================================================

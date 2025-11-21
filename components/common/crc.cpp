@@ -23,18 +23,25 @@ IRAM_ATTR uint8_t crc8(uint8_t crc, const void *c_ptr, size_t len)
         do
         {
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 7:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 6:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 5:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 4:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 3:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 2:
             crc = s_crc8_table[crc ^ (*c++)];
+            /* fallthrough */
         case 1:
             crc = s_crc8_table[crc ^ (*c++)];
         } while (--n > 0);

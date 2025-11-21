@@ -122,9 +122,7 @@ static int s_mavlinkOutBufferCount = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
-static int s_uart_verbose = 1;
-
-#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
+int s_uart_verbose = 1;
 
 /////////////////////////////////////////////////////////////////////////
 
@@ -3012,7 +3010,7 @@ extern "C" void app_main()
 {
     //esp_task_wdt_init();
 
-#ifdef BOARD_XIAOS3SENSE || BOARD_ESP32C5
+#if defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
