@@ -14,9 +14,6 @@
 //===============================================================
 //For esp32cam
 
-//for development - enabled debug output on normal UART pins (1,3)
-//#define USBUART_DEBUG_OUTPUT
-
 #ifdef BOARD_ESP32CAM
 
 //   Debug log on pin 33 (existing LED)

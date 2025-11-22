@@ -59,6 +59,8 @@
 
 #include "temperature_sensor.h"
 
+#include "mock_camera.h"
+
 static int s_stats_last_tp = -10000;
 static int s_last_osd_packet_tp = -10000;
 static int s_last_config_packet_tp = -10000;
@@ -1465,9 +1467,13 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
+#ifdef USE_MOCK_CAMERA
+    sensor_t* s = mock_camera_sensor_get();
+#else
     sensor_t* s = esp_camera_sensor_get();
+#endif
 
-#ifdef SENSOR_OV5640
+    #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
     src.camera.aec2 = false;
 #endif
@@ -2358,8 +2364,12 @@ IRAM_ATTR void applyAdaptiveQuality()
     if (s_quality != quality1)
     {
         s_quality = quality1;
-        sensor_t* s = esp_camera_sensor_get(); 
-        s->set_quality(s, s_quality); 
+#ifdef USE_MOCK_CAMERA
+        sensor_t* s = mock_camera_sensor_get();
+#else
+        sensor_t* s = esp_camera_sensor_get();
+#endif
+        s->set_quality(s, s_quality);
 
         int sharpness1 = s_ground2air_config_packet.camera.sharpness;
 
@@ -2459,16 +2469,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     {
         s_fec_encoder.lock();
 
-#ifdef BOARD_ESP32CAM
+#if defined(USE_MOCK_CAMERA) || defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
+        //sample offset: 0, stride: 1
+        const uint8_t* src = (const uint8_t*)data;
+#elif defined(BOARD_ESP32CAM)
         //ESP32 - sample offset: 2, stride: 4
         const uint8_t* src = (const uint8_t*)data + 2;  // jump to the sample1 of DMA element
-#endif            
-#ifdef BOARD_XIAOS3SENSE
-        //ESP32S3 - sample offset: 0, stride: 1
-        const uint8_t* src = (const uint8_t*)data;
-#endif
-#ifdef BOARD_ESP32C5
-        const uint8_t* src = (const uint8_t*)data;
 #endif
         uint8_t* clrSrc = (uint8_t*)src;
 
@@ -2517,7 +2523,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
             else 
             {
-#ifdef BOARD_XIAOS3SENSE
+#if defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
                 //ov5640: check if 16 bytes at the end of the block are zero
                 const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
                 if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
@@ -2526,6 +2532,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     last = true;
                 }
 #endif
+
                 if (last) //find the end marker for JPEG. Data after that can be discarded
                 {
                     //edge case - 0xFF at the end of prev block, 0xD9 on the start of this
@@ -2574,7 +2581,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
 #endif
 
-#ifdef BOARD_ESP32CAM
+#if defined(USE_MOCK_CAMERA) || defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
+                //ESP32S3 - sample offset: 0, stride: 1
+                memcpy( ptr, src, c);
+                src += c;
+#elif defined(BOARD_ESP32CAM)
                 //ESP32 - sample offset: 2, stride: 4
                 size_t c8 = c >> 3;
                 
@@ -2630,16 +2641,6 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 {
                     *ptr++ = *src; src += stride;
                 }
-#endif
-
-#ifdef BOARD_XIAOS3SENSE
-                //ESP32S3 - sample offset: 0, stride: 1
-                memcpy( ptr, src, c);
-                src += c;
-#endif
-#ifdef BOARD_ESP32C5
-                memcpy( ptr, src, c);
-                src += c;
 #endif
 
                 if (s_video_frame_data_size == ( current_packet_size - sizeof(Air2Ground_Video_Packet)) ) 
@@ -2752,13 +2753,14 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
         }
 
+#if !defined(USE_MOCK_CAMERA)
         //zero start of the DMA block
         for ( int i = 0; i < 16; i++ )
         {
             *clrSrc = 0;
             clrSrc += stride;
         }
-
+#endif
         s_fec_encoder.unlock();
     }
 
@@ -3085,7 +3087,11 @@ extern "C" void app_main()
     if ( !getButtonState() )
     {
         //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
+#ifdef USE_MOCK_CAMERA
+        init_mock_camera();
+#else
         init_camera();
+#endif
     }
 
 
@@ -3350,6 +3356,10 @@ extern "C" void app_main()
         xSemaphoreGive(s_serial_mux);
 #endif
 */
+
+#ifdef USE_MOCK_CAMERA
+        mock_camera_process();
+#endif
 
 #ifdef UART_MSP_OSD
         //the msp.loop() should be called every ~10ms
