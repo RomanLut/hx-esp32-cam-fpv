@@ -3208,6 +3208,26 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 #endif
 
+#ifdef INIT_LP_UART_NUM_0
+    printf("Init LP_UART_NUM_0...\n");
+
+    uart_config_t uart_config_lp0 =
+    {
+        .baud_rate = LUART0_BAUDRATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, //This must be disabled for LP UART
+        .rx_flow_ctrl_thresh = 0,              //This must be 0 when flow control is disabled
+        .lp_source_clk = LP_UART_SCLK_DEFAULT,
+        .flags = 0
+    };
+
+    ESP_ERROR_CHECK(uart_param_config(LP_UART_NUM_0, &uart_config_lp0));
+    ESP_ERROR_CHECK(uart_driver_install(LP_UART_NUM_0, LP_UART0_RX_BUFFER_SIZE, LP_UART0_TX_BUFFER_SIZE, 0, NULL, 0));
+#endif
+
+
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);

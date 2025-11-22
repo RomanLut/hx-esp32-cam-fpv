@@ -149,8 +149,8 @@
 #define UART1_BAUDRATE 115200
 
 #define INIT_LP_UART_NUM_0
-#define LTXD0_PIN    GPIO_NUM_24 //D24
-#define LRXD0_PIN    GPIO_NUM_23 //D23
+#define LTXD0_PIN    GPIO_NUM_5 //non-remapable
+#define LRXD0_PIN    GPIO_NUM_4 //non-remapable
 #define LUART0_BAUDRATE 115200
 //----------------------
 

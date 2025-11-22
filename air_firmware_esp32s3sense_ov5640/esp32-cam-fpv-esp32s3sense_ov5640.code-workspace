@@ -28,7 +28,9 @@
 			"stdint.h": "c",
 			"random": "cpp",
 			"ostream": "cpp",
-			"cstdint": "cpp"
+			"cstdint": "cpp",
+			"cstddef": "cpp",
+			"algorithm": "cpp"
 		}
 	}
 }
