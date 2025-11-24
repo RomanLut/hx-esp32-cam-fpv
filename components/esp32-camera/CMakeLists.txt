@@ -77,8 +77,8 @@ if(IDF_TARGET STREQUAL "esp32" OR IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET ST
 
   if(IDF_TARGET STREQUAL "esp32c5")
     list(APPEND COMPONENT_SRCS
+      target/xclk.c
       target/esp32c5/ll_cam.c
-      target/esp32c5/xclk.c
       )
   endif()
 

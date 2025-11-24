@@ -3291,12 +3291,16 @@ extern "C" void app_main()
                 if ( s_camera_stopped )
                 {
                     LOG("Camera stopped\n");
+#if !defined(USE_MOCK_CAMERA)
                     esp_camera_deinit();
+#endif                    
                 }
                 else
                 {
                     LOG("Camera started\n");
+#if !defined(USE_MOCK_CAMERA)
                     init_camera();
+#endif                    
                 }
             }
         }

@@ -44,6 +44,11 @@
 # include "esp_private/gdma.h"
 #endif
 
+// PARLIO includes for ESP32C5
+#if CONFIG_IDF_TARGET_ESP32C5
+# include "driver/parlio_rx.h"
+#endif
+
 #if CONFIG_LCD_CAM_ISR_IRAM_SAFE
 #define CAMERA_ISR_IRAM_FLAG ESP_INTR_FLAG_IRAM
 #define CAMERA_ISR_IRAM_ATTR IRAM_ATTR
@@ -119,6 +124,26 @@ typedef struct {
     intr_handle_t dma_intr_handle;//ESP32-S3
 #if SOC_GDMA_SUPPORTED
     gdma_channel_handle_t dma_channel_handle;//ESP32-S3
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    // ESP32C5 PARLIO specific fields
+    parlio_rx_unit_handle_t rx_unit;           /*!< PARLIO RX unit handle */
+    parlio_rx_delimiter_handle_t delimiter;    /*!< Software delimiter */
+    uint8_t *payload_buffer;                   /*!< PARLIO payload buffer */
+    size_t payload_size;                       /*!< Payload buffer size */
+
+    // JPEG frame capture state
+    volatile struct {
+        uint8_t *frame_buffer;                 /*!< Current frame buffer */
+        uint32_t frame_length;                 /*!< Allocated frame length */
+        uint32_t index;                        /*!< Current write index */
+        uint8_t last_byte;                     /*!< Last received byte (for marker detection) */
+        uint32_t captured : 1;                 /*!< Frame capture in progress */
+    } jpeg_state;
+
+    uint32_t alloc_size;                       /*!< Frame allocation size */
+    uint32_t alloc_heap_caps;                  /*!< Heap caps for allocation */
 #endif
 
     uint8_t jpeg_mode;

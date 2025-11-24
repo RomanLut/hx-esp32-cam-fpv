@@ -29,7 +29,8 @@
 			"random": "cpp",
 			"ostream": "cpp",
 			"cstdint": "cpp",
-			"algorithm": "cpp"
+			"algorithm": "cpp",
+			"string.h": "c"
 		}
 	}
 }

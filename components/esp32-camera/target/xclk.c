@@ -3,6 +3,8 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "xclk.h"
 #include "esp_camera.h"
 
@@ -47,7 +49,7 @@ esp_err_t camera_enable_out_clock(const camera_config_t* config)
     }
 
     g_ledc_channel = config->ledc_channel;
-    ledc_channel_config_t ch_conf;
+    ledc_channel_config_t ch_conf = {0};
     ch_conf.gpio_num = config->pin_xclk;
     ch_conf.speed_mode = LEDC_LOW_SPEED_MODE;
     ch_conf.channel = config->ledc_channel;
