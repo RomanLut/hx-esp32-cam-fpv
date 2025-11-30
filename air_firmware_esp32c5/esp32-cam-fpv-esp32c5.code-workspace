@@ -30,7 +30,10 @@
 			"ostream": "cpp",
 			"cstdint": "cpp",
 			"algorithm": "cpp",
-			"string.h": "c"
+			"string.h": "c",
+			"cstring": "cpp",
+			"variant": "c",
+			"span": "c"
 		}
 	}
 }

@@ -30,7 +30,8 @@
 			"ostream": "cpp",
 			"cstdint": "cpp",
 			"cstddef": "cpp",
-			"algorithm": "cpp"
+			"algorithm": "cpp",
+			"cstring": "cpp"
 		}
 	}
 }

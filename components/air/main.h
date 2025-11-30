@@ -131,16 +131,13 @@
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
 //define to use mavlink telemetry on UART2 
+/*
 #define UART_MAVLINK LP_UART_NUM_0
 #define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
-
+*/
 #define CAMERA_MODEL_ESP32C5
-//#define DVR_SUPPORT
 //RGB LED GPIO27
-//#define STATUS_LED_PIN GPIO_NUM_1
-//#define STATUS_LED_ON 1
-//#define STATUS_LED_OFF 0
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
 #define INIT_UART_1
@@ -148,10 +145,12 @@
 #define RXD1_PIN    GPIO_NUM_23 //D23
 #define UART1_BAUDRATE 115200
 
+/*
 #define INIT_LP_UART_NUM_0
 #define LTXD0_PIN    GPIO_NUM_5 //non-remapable
 #define LRXD0_PIN    GPIO_NUM_4 //non-remapable
 #define LUART0_BAUDRATE 115200
+*/
 //----------------------
 
 #endif

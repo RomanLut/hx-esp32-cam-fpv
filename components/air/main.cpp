@@ -3006,6 +3006,9 @@ void readConfig()
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 }
 
+extern volatile int pk;
+extern volatile int pk2;
+
 //=============================================================================================
 //=============================================================================================
 extern "C" void app_main()
@@ -3227,6 +3230,18 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(uart_driver_install(LP_UART_NUM_0, LP_UART0_RX_BUFFER_SIZE, LP_UART0_TX_BUFFER_SIZE, 0, NULL, 0));
 #endif
 
+#if defined(BOARD_ESP32C5)
+//-------------------------
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << 4;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&io_conf);
+    
+//-------------------------
+#endif
 
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
@@ -3262,7 +3277,7 @@ extern "C" void app_main()
             if (s_uart_verbose > 0 )
             {
                 LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
-                    s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
+                    pk, /*s_stats.wlan_data_sent,*/ pk2, /*s_stats.wlan_data_received,*/ s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_actual_capture_fps_expected, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
                     s_stats.in_telemetry_data, s_stats.out_telemetry_data,

@@ -84,7 +84,14 @@
 
 typedef enum {
     CAM_IN_SUC_EOF_EVENT = 0,
-    CAM_VSYNC_EVENT
+    CAM_VSYNC_EVENT,
+    CAM_PARLIO_DATA
+} cam_event_kind_t;
+
+typedef struct {
+    cam_event_kind_t kind;
+    const uint8_t *data;
+    uint16_t length;
 } cam_event_t;
 
 typedef enum {
@@ -134,16 +141,13 @@ typedef struct {
     size_t payload_size;                       /*!< Payload buffer size */
 
     // JPEG frame capture state
-    volatile struct {
-        uint8_t *frame_buffer;                 /*!< Current frame buffer */
+    struct {
+        uint16_t dma_buffer_index;             /*!< Current target DMA halfbuffer index */
+        uint16_t index;                        /*!< Current write index */
         uint32_t frame_length;                 /*!< Allocated frame length */
-        uint32_t index;                        /*!< Current write index */
-        uint8_t last_byte;                     /*!< Last received byte (for marker detection) */
-        uint32_t captured : 1;                 /*!< Frame capture in progress */
+        uint8_t  last_byte;                     /*!< Last received byte (for marker detection) */
+        uint8_t  capture : 1;                 /*!< Frame capture in progress */
     } jpeg_state;
-
-    uint32_t alloc_size;                       /*!< Frame allocation size */
-    uint32_t alloc_heap_caps;                  /*!< Heap caps for allocation */
 #endif
 
     uint8_t jpeg_mode;
@@ -173,6 +177,7 @@ typedef struct {
 
 bool ll_cam_stop(cam_obj_t *cam);
 bool ll_cam_start(cam_obj_t *cam, int frame_pos);
+bool ll_cam_start_continuous(cam_obj_t *cam);
 esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config);
 esp_err_t ll_cam_deinit(cam_obj_t *cam);
 void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en);
@@ -189,4 +194,4 @@ void ll_cam_dma_reset(cam_obj_t *cam);
 #endif
 
 // implemented in cam_hal
-void ll_cam_send_event(cam_obj_t *cam, cam_event_t cam_event, BaseType_t * HPTaskAwoken);
+void ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseType_t * HPTaskAwoken);

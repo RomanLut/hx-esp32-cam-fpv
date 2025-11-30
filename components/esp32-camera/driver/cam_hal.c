@@ -109,26 +109,100 @@ static bool cam_start_frame(int * frame_pos)
     return false;
 }
 
-void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t cam_event, BaseType_t * HPTaskAwoken)
+void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseType_t * HPTaskAwoken)
 {
-    if (xQueueSendFromISR(cam->event_queue, (void *)&cam_event, HPTaskAwoken) != pdTRUE) {
+    if (xQueueSendFromISR(cam->event_queue, (void *)cam_event, HPTaskAwoken) != pdTRUE) {
         ll_cam_stop(cam);
         cam->state = CAM_STATE_IDLE;
-        ESP_CAMERA_ETS_PRINTF(DRAM_STR("cam_hal: EV-%s-OVF\r\n"), cam_event==CAM_IN_SUC_EOF_EVENT ? DRAM_STR("EOF") : DRAM_STR("VSYNC"));
+        ESP_CAMERA_ETS_PRINTF(DRAM_STR("cam_hal: EV-%s-OVF\r\n"), cam_event->kind==CAM_IN_SUC_EOF_EVENT ? DRAM_STR("EOF") : DRAM_STR("VSYNC"));
         s_ovf_flag = true;
     }
 }
 
-//Copy fram from DMA dma_buffer to fram dma_buffer
+volatile int pk2 = 0;
 
-
+#if CONFIG_IDF_TARGET_ESP32C5
+//-------------------------------------------------------------------------------------
 static void cam_task(void *arg)
 {
     int cnt = 0;
     int frame_pos = 0;
     cam_obj->state = CAM_STATE_IDLE;
-    cam_event_t cam_event = 0;
+    cam_event_t cam_event = {};
 
+
+    const uint8_t *data;
+    uint32_t availBytes;
+
+    xQueueReset(cam_obj->event_queue);
+
+    while (1) {
+        xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
+        DBG_PIN_SET(1);
+        gpio_set_level(4, 1);
+
+        //pk2++;
+
+        if (cam_event.kind == CAM_PARLIO_DATA) 
+        {
+            data = cam_event.data;
+            availBytes = cam_event.length;
+
+            int index = 0;
+
+            if ( cam_obj->state == CAM_STATE_IDLE ) 
+            {
+                while ( availBytes > 1 )
+                {
+                    if ( (data[index] == 0xff) && (data[index+1] == 0xd8 ) )
+                    {
+                        pk2++;
+                        cam_obj->state = CAM_STATE_READ_BUF;
+                        data_available_callback((void *)cam_obj,0,0,0); //start frame
+                        break;
+                    }
+                    index++;
+                    availBytes--;
+                }
+            }
+
+            if (cam_obj->state == CAM_STATE_READ_BUF)
+            {
+                //look for end of frame in the buffer
+
+                int index2 = index;
+                int availBytes2 = availBytes;
+                while ( availBytes2 > 1)
+                {
+                    if ( (data[index2] == 0xff) && (data[index2+1] == 0xd9 ) )
+                    {
+                        cam_obj->state = CAM_STATE_IDLE;
+                        availBytes = index2-index+2;
+                    }
+                    index2++;
+                    availBytes2--;
+                }
+
+                data_available_callback((void *)cam_obj,
+                    data + index,
+                    availBytes,
+                    cam_obj->state == CAM_STATE_IDLE);
+
+            }
+        }
+
+        gpio_set_level(4, 0);
+        DBG_PIN_SET(0);
+    }
+}
+#else
+//-------------------------------------------------------------------------------------
+static void cam_task(void *arg)
+{
+    int cnt = 0;
+    int frame_pos = 0;
+    cam_obj->state = CAM_STATE_IDLE;
+    cam_event_t cam_event = {};
 
 
     xQueueReset(cam_obj->event_queue);
@@ -139,7 +213,7 @@ static void cam_task(void *arg)
         switch (cam_obj->state) {
 
             case CAM_STATE_IDLE: {
-                if (cam_event == CAM_VSYNC_EVENT) {
+                if (cam_event.kind == CAM_VSYNC_EVENT) {
                     //DBG_PIN_SET(1);
                     if(cam_start_frame(&frame_pos)){
                         cam_obj->frames[frame_pos].fb.len = 0;
@@ -154,7 +228,7 @@ static void cam_task(void *arg)
                 camera_fb_t * frame_buffer_event = &cam_obj->frames[frame_pos].fb;
                 size_t pixels_per_dma = (cam_obj->dma_half_buffer_size * cam_obj->fb_bytes_per_pixel) / (cam_obj->dma_bytes_per_item * cam_obj->in_bytes_per_pixel);
 
-                if (cam_event == CAM_IN_SUC_EOF_EVENT) {
+                if (cam_event.kind == CAM_IN_SUC_EOF_EVENT) {
                     if(!cam_obj->psram_mode){
                         if (cam_obj->fb_size < (frame_buffer_event->len + pixels_per_dma)) {
                             ESP_LOGW(TAG, "FB-OVF");
@@ -181,7 +255,7 @@ static void cam_task(void *arg)
 
                     cnt++;
 
-                } else if (cam_event == CAM_VSYNC_EVENT) {
+                } else if (cam_event.kind == CAM_VSYNC_EVENT) {
                     //DBG_PIN_SET(1);
                     ll_cam_stop(cam_obj);
 
@@ -253,6 +327,7 @@ static void cam_task(void *arg)
         DBG_PIN_SET(0);
     }
 }
+#endif        
 
 static lldesc_t * allocate_dma_descriptors(uint32_t count, uint16_t size, uint8_t * buffer)
 {
@@ -337,12 +412,22 @@ static esp_err_t cam_dma_config(const camera_config_t *config)
     }
 
     if (!cam_obj->psram_mode) {
+
+#if CONFIG_IDF_TARGET_ESP32C5        
+        cam_obj->dma_buffer = (uint8_t *)heap_caps_malloc(cam_obj->dma_buffer_size * sizeof(uint8_t), MALLOC_CAP_INTERNAL);
+        if(NULL == cam_obj->dma_buffer) {
+            ESP_LOGE(TAG,"%s(%d): DMA buffer %d Byte malloc failed, the current largest free block:%d Byte", __FUNCTION__, __LINE__,
+                     (int) cam_obj->dma_buffer_size, (int) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+            return ESP_FAIL;
+        }
+#else
         cam_obj->dma_buffer = (uint8_t *)heap_caps_malloc(cam_obj->dma_buffer_size * sizeof(uint8_t), MALLOC_CAP_DMA);
         if(NULL == cam_obj->dma_buffer) {
             ESP_LOGE(TAG,"%s(%d): DMA buffer %d Byte malloc failed, the current largest free block:%d Byte", __FUNCTION__, __LINE__,
                      (int) cam_obj->dma_buffer_size, (int) heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
             return ESP_FAIL;
         }
+#endif        
 
         cam_obj->dma = allocate_dma_descriptors(cam_obj->dma_node_cnt, cam_obj->dma_node_buffer_size, cam_obj->dma_buffer);
         CAM_CHECK(cam_obj->dma != NULL, "dma malloc failed", ESP_FAIL);
@@ -356,7 +441,12 @@ esp_err_t cam_init(const camera_config_t *config)
     CAM_CHECK(NULL != config, "config pointer is invalid", ESP_ERR_INVALID_ARG);
 
     esp_err_t ret = ESP_OK;
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    cam_obj = (cam_obj_t *)heap_caps_calloc(1, sizeof(cam_obj_t), MALLOC_CAP_INTERNAL);
+#else    
     cam_obj = (cam_obj_t *)heap_caps_calloc(1, sizeof(cam_obj_t), MALLOC_CAP_DMA);
+#endif    
     CAM_CHECK(NULL != cam_obj, "lcd_cam object malloc error", ESP_ERR_NO_MEM);
 
     cam_obj->swap_data = 0;
@@ -438,6 +528,11 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
 
     ESP_LOGI(TAG, "cam config ok");
     data_available_callback=config->data_available_callback;
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    ll_cam_start_continuous(cam_obj);
+#endif
+
     return ESP_OK;
 
 err:

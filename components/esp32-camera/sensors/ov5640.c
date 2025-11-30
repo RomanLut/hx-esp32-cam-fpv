@@ -315,7 +315,7 @@ static int set_image_options(sensor_t *sensor)
 
     // compression
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-        reg21 |= 0x20;
+        reg21 |= 0x20; 
     }
 
     // binning
@@ -368,6 +368,12 @@ static int set_image_options(sensor_t *sensor)
             || write_reg(sensor->slv_addr, X_INCREMENT, 0x31)//odd:3, even: 1
             || write_reg(sensor->slv_addr, Y_INCREMENT, 0x31);//odd:3, even: 1
     }
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    //set compression mode timing 1 - plk isfired only for valid data
+    //default is mode 2 - pclk is free running
+    //write_reg(sensor->slv_addr, 0x4713, 0x01);
+#endif    
 
     ESP_LOGD(TAG, "Set Image Options: Compression: %u, Binning: %u, V-Flip: %u, H-Mirror: %u, Reg-4514: 0x%02x",
         sensor->pixformat == PIXFORMAT_JPEG, sensor->status.binning, sensor->status.vflip, sensor->status.hmirror, reg4514);
@@ -428,7 +434,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+//#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
+#ifdef CONFIG_IDF_TARGET_ESP32S3 
         /*
         //10MHz PCLK
         uint8_t sys_mul = 200;
@@ -441,68 +448,69 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
         */
 
+
         //https://patchwork.kernel.org/project/linux-media/patch/20181113130325.28975-2-maxime.ripard@bootlin.com/
 
         //for XLCK=20Mhz
         if (framesize == FRAMESIZE_SVGA ) //800x600
         {
             //ret = set_pll(sensor, false, 30, 1, 1, false, 3, true, 3); //10 mhz pclk
-            ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //20 mhz pclk
+            ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //50 mhz pclk 36.4 FPS
         }
         else if (framesize == FRAMESIZE_P_HD) //800x456
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //15.3 mhz pclk
+                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //38.33 mhz pclk  28.4 FPS
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //20 mhz pclk
+                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk  37 FPS
             }
         }
         else if (framesize == FRAMESIZE_VGA) //640x480
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //20 mhz pclk
+                ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //50 mhz pclk 72.9 FPS
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); 
+                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk 72.2 FPS
             }
         }
         else if (framesize == FRAMESIZE_P_3MP) //640x360
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //15.3 mhz pclk
+                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //38.33 mhz pclk
                 //ret = set_pll(sensor, false, 5, 1, 1, false, 2, true, 3);
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //20 mhz pclk
+                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk  ~37 FPS
             }
         }
         else if (framesize == FRAMESIZE_XGA)  //1024x768 
         {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.3 mhz pclk 
+            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //39 mhz pclk  ~37 FPS
         }
         else if (framesize == FRAMESIZE_P_FHD)  //1024x576 
         {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //19.3 mhz pclk
+            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //48.33 mhz pclk  35.8 FPS
         }
         else if (framesize == FRAMESIZE_SXGA)  //1280x960
         {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.6 mhz pclk
+            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //39 mhz pclk  42.1 FPS
         }
-        else if (framesize == FRAMESIZE_HD)  //1280x720 //19.3 mhz pclk
+        else if (framesize == FRAMESIZE_HD)  //1280x720 
         {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3); 
+            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //48.33 mhz pclk 35.8 FPS
         }
         else 
         {
             //ret = set_pll(sensor, false, 19, 1, 1, false, 3, true, 4); 
-            ret = set_pll(sensor, false, 19, 1, 1, false, 2, true, 3); 
+            ret = set_pll(sensor, false, 19, 1, 1, false, 2, true, 3); //31.67 mhz pclk 46.2FPS
         }
 #else
         //10MHz PCLK
@@ -512,6 +520,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         } else if(framesize < FRAMESIZE_XGA){
             sys_mul = 180;
         }
+
+
+        sys_mul = 70;
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
         //Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
 #endif        
