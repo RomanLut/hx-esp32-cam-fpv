@@ -122,11 +122,15 @@ void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseTyp
 volatile int pk2 = 0;
 
 #if CONFIG_IDF_TARGET_ESP32C5
+
+#define MAX_FRAME_SIZE (500*1024)
+
 //-------------------------------------------------------------------------------------
 static void cam_task(void *arg)
 {
     static uint8_t lastByte = 0;
     static uint8_t byteFF = 0xff;
+    static uint32_t frameSize = 0;
 
     cam_obj->state = CAM_STATE_IDLE;
     xQueueReset(cam_obj->event_queue);
@@ -136,6 +140,10 @@ static void cam_task(void *arg)
         cam_event_t cam_event;
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
         //the only possible event type is cam_event.kind == CAM_PARLIO_DATA) 
+
+//#ifdef PROFILE_CAMERA_DATA    
+//        s_profiler.set(PF_PARLIO_DATA, 1);
+//#endif
 
         gpio_set_level(4, 1);
 
@@ -160,12 +168,14 @@ static void cam_task(void *arg)
                             //frame started in the prev block
                             //pass 0xff explicitly
                             data_available_callback((void *)cam_obj, &byteFF, 1, false);
+                            frameSize = 1;
                         }
                         else
                         {
                             //point to 0xff 0xd8
                             pData--;
                             availBytes++;
+                            frameSize = 0;
                         }
                         break;
                     }
@@ -179,13 +189,13 @@ static void cam_task(void *arg)
             {
                 uint32_t frameBytes = availBytes;
 
-
-
                 //look for end of frame in the buffer
                 const uint8_t* pData2 = pData;
                 uint32_t availBytes2 = availBytes;
 
-                while ( availBytes2 > 0)
+                //REVIEW: can free few CPU cycles by skipping search in the first 512 bytes of frame
+
+                while (availBytes2 > 0)
                 {
                     const uint8_t b = *pData2;
                     if ( (b == 0xd9) && (lastByte == 0xff) )
@@ -201,6 +211,12 @@ static void cam_task(void *arg)
                     availBytes2--;
                 }
 
+                if ( frameSize > MAX_FRAME_SIZE)
+                {
+                    //looks like broken frame
+                    cam_obj->state = CAM_STATE_IDLE;
+                }
+
                 data_available_callback((void *)cam_obj,
                     pData,
                     frameBytes,
@@ -208,10 +224,17 @@ static void cam_task(void *arg)
                 
                 pData += frameBytes;
                 availBytes -= frameBytes;
+                frameSize += frameBytes;
+
             }
         }
 
         gpio_set_level(4, 0);
+
+//#ifdef PROFILE_CAMERA_DATA    
+//        s_profiler.set(PF_PARLIO_DATA, 0);
+//#endif
+
     }
 }
 #else

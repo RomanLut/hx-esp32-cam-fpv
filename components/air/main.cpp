@@ -2502,6 +2502,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
         {
             count /= stride;
 
+//do not perform additional frame end check on C5. Frame boundary is precise on C5.
+#if !defined(BOARD_ESP32C5)
+
             //check if we missed last block due to VSYNK near the end of prev (last) block
             // if block starts with 16 zero bytes - it is either not filled at all (ov2640)
             //or is fully filled with zeros(ov5640)
@@ -2522,7 +2525,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
             else 
             {
-#if defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
+#if defined(BOARD_XIAOS3SENSE)
                 //ov5640: check if 16 bytes at the end of the block are zero
                 const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
                 if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
@@ -2561,6 +2564,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     }
                 }
             }
+#endif //BOARD_ESP32C5
 
             s_lastByte_ff = count > 0 ? src[count-1] == 0xFF : false;
             while (count > 0)
@@ -2677,7 +2681,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
         //////////////////
 
-        if (last)  //note: can occur multiple times during frame
+        if (last)  //note: can occur multiple times during frame on esp32 snd esp32s3
         {
             //end of frame - send leftover
             if ( s_video_frame_started )
@@ -2752,7 +2756,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
         }
 
-#if !defined(USE_MOCK_CAMERA)
+//do no clear mock camera data
+//do not clear buffer on C5. Frame detection is different onf C5.
+#if !defined(USE_MOCK_CAMERA) && !defined(BOARD_ESP32C5)
         //zero start of the DMA block
         for ( int i = 0; i < 16; i++ )
         {
