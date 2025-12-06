@@ -3011,6 +3011,16 @@ void readConfig()
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 }
 
+//=============================================================================================
+//=============================================================================================
+#ifdef DVR_SUPPORT
+#if defined(BOARD_XIAOS3SENSE)
+void mountUSBDisk()
+{
+}
+#endif
+#endif
+
 extern volatile int pk;
 extern volatile int pk2;
 
@@ -3137,6 +3147,10 @@ extern "C" void app_main()
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
 
         setup_wifi_file_server();
+
+#if defined(BOARD_XIAOS3SENSE)
+        mountUSBDisk();
+#endif
 
         while (true)
         {
