@@ -120,50 +120,33 @@
 #ifdef BOARD_ESP32C5
 
 //  Debug is on USB UART
-//  UART1:  MSP-OSD  RX=D3 TX=D1
-//  UART2:  MAVLINK  RX=D23 TX=D24
-//  REC BUTTON: GPIO0  (existing flash button)
-//  STATUS LED: GPIO1
+//  UART1:  MSP-OSD  RX=13 TX=11
+//  UART2:  MAVLINK  RX=23 TX=24
+//  REC BUTTON: GPIO_NUM_28 (existing flash button)
 
 //define to use DisplayPort OSD on UART0
-//#define UART_MSP_OSD UART_NUM_0
-//#define INIT_UART_0
-#define TXD0_PIN    11
-#define RXD0_PIN    12
+#define UART_MSP_OSD UART_NUM_0
+#define INIT_UART_0
+#define TXD0_PIN    GPIO_NUM_11
+#define RXD0_PIN    GPIO_NUM_12
 #define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
 //define to use mavlink telemetry on UART1 
-//#define UART_MAVLINK UART_NUM_1
-//#define INIT_UART_1
+#define UART_MAVLINK UART_NUM_1
+#define INIT_UART_1
 #define TXD1_PIN    GPIO_NUM_24 //D24
 #define RXD1_PIN    GPIO_NUM_23 //D23
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 #define UART1_BAUDRATE 115200
 
-#define CAMERA_MODEL_ESP32C5
-
-//RGB LED GPIO27
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
-//----------------------
-
-/*
-//#define UART_MAVLINK LP_UART_NUM_0
-#define INIT_LP_UART_NUM_0
-#define LTXD0_PIN    GPIO_NUM_5 //non-remapable
-#define LRXD0_PIN    GPIO_NUM_4 //non-remapable
-#define LUART0_BAUDRATE 115200
-#define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
-#define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
-*/
+#define CAMERA_MODEL_ESP32C5
 
 #endif
 //===============================================================
-
-
-
 
 
 //uncomment to write raw MJPEG stream instead of avi

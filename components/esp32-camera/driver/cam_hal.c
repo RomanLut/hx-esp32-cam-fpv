@@ -125,66 +125,93 @@ volatile int pk2 = 0;
 //-------------------------------------------------------------------------------------
 static void cam_task(void *arg)
 {
+    static uint8_t lastByte = 0;
+    static uint8_t byteFF = 0xff;
+
     cam_obj->state = CAM_STATE_IDLE;
-    cam_event_t cam_event = {};
-
-    uint8_t *data;
-    uint32_t availBytes;
-
     xQueueReset(cam_obj->event_queue);
 
-    while (1) {
+    while (1) 
+    {
+        cam_event_t cam_event;
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
         //the only possible event type is cam_event.kind == CAM_PARLIO_DATA) 
 
-        DBG_PIN_SET(1);
         gpio_set_level(4, 1);
 
-        data = cam_event.data;
-        availBytes = cam_event.length;
+        const uint8_t* pData = cam_event.data;
+        uint32_t availBytes = cam_event.length;
 
-        int index = 0;
-
-        if ( cam_obj->state == CAM_STATE_IDLE ) 
+        while ( availBytes > 0 )
         {
-            while ( availBytes > 1 )
+            if ( cam_obj->state == CAM_STATE_IDLE ) 
             {
-                if ( (data[index] == 0xff) && (data[index+1] == 0xd8 ) )
+                while ( availBytes > 0 )
                 {
-                    pk2++;
-                    cam_obj->state = CAM_STATE_READ_BUF;
-                    data_available_callback((void *)cam_obj,0,0,0); //start frame
-                    break;
-                }
-                index++;
-                availBytes--;
-            }
-        }
+                    const uint8_t b = *pData;
+                    if ( ( b == 0xd8) && (lastByte == 0xff) )
+                    {
+                        lastByte = 0;
+                        cam_obj->state = CAM_STATE_READ_BUF;
+                        data_available_callback((void *)cam_obj,0,0,0); //start frame
 
-        if ((cam_obj->state == CAM_STATE_READ_BUF) && (availBytes > 1))
-        {
-            //look for end of frame in the buffer
-            int index2 = index+1;
-            int availBytes2 = availBytes-1;
-            while ( availBytes2 > 1)
-            {
-                if ( (data[index2] == 0xff) && (data[index2+1] == 0xd9 ) )
-                {
-                    cam_obj->state = CAM_STATE_IDLE;
-                    availBytes = index2-index+2;
-                    break;
+                        if ( pData == cam_event.data)
+                        {
+                            //frame started in the prev block
+                            //pass 0xff explicitly
+                            data_available_callback((void *)cam_obj, &byteFF, 1, false);
+                        }
+                        else
+                        {
+                            //point to 0xff 0xd8
+                            pData--;
+                            availBytes++;
+                        }
+                        break;
+                    }
+                    lastByte = b;
+                    pData++;
+                    availBytes--;
                 }
-                index2++;
-                availBytes2--;
             }
-            data_available_callback((void *)cam_obj,
-                data + index,
-                availBytes,
-                cam_obj->state == CAM_STATE_IDLE);
+
+            if ((cam_obj->state == CAM_STATE_READ_BUF) && (availBytes > 0))
+            {
+                uint32_t frameBytes = availBytes;
+
+
+
+                //look for end of frame in the buffer
+                const uint8_t* pData2 = pData;
+                uint32_t availBytes2 = availBytes;
+
+                while ( availBytes2 > 0)
+                {
+                    const uint8_t b = *pData2;
+                    if ( (b == 0xd9) && (lastByte == 0xff) )
+                    {
+                        pk2++;
+                        cam_obj->state = CAM_STATE_IDLE;
+                        frameBytes = (pData2 - pData) + 1;  //include 0xd9
+                        lastByte = b;
+                        break;
+                    }
+                    lastByte = b;
+                    pData2++;
+                    availBytes2--;
+                }
+
+                data_available_callback((void *)cam_obj,
+                    pData,
+                    frameBytes,
+                    cam_obj->state == CAM_STATE_IDLE);
+                
+                pData += frameBytes;
+                availBytes -= frameBytes;
+            }
         }
 
         gpio_set_level(4, 0);
-        DBG_PIN_SET(0);
     }
 }
 #else
