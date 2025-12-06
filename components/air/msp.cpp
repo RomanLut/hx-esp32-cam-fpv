@@ -416,7 +416,7 @@ void MSP::loop()
 #ifdef MSP_PROTOCOL_LOG_ERRORS
   if ( this->lastLoop && (delta > 30000) )
   {
-    LOG("MSP:Loop() delta=%d", delta);
+    LOG("MSP:Loop() delta=%lld\n", delta);
   }
 #endif
   this->lastLoop = now;

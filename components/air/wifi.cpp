@@ -532,8 +532,30 @@ esp_err_t set_wifi_fixed_rate(WIFI_Rate value)
     };
 
     LOG("Setting rate: %d\n %d", (int)value, (int)rates[(int)value] );
+
+#if SOC_WIFI_SUPPORT_5G
+    //esp_wifi_config_80211_tx_rate() does not work on esp32c. SDK Bug? 
+    //It is noted that wifi_config_80211_tx_rate() does not work of ax protocol, but we disabled it...    
+    //use esp_wifi_config_80211_tx() to change all packets
+    wifi_phy_mode_t phy_mode;
+    if (value <= WIFI_Rate::RATE_B_11M_CCK_S) 
+    {
+        phy_mode = WIFI_PHY_MODE_11B;
+    } 
+    else if (value <= WIFI_Rate::RATE_G_54M_ODFM) 
+    {
+        phy_mode = WIFI_PHY_MODE_11G;
+    } 
+    else 
+    {
+        phy_mode = WIFI_PHY_MODE_HT20;
+    }
+    wifi_tx_rate_config_t config = { .phymode = phy_mode, .rate = rates[(int)value] };
+    esp_err_t err = esp_wifi_config_80211_tx(ESP_WIFI_IF, &config);
+#else
     esp_err_t err = esp_wifi_config_80211_tx_rate(ESP_WIFI_IF, rates[(int)value]);
-    if (err == ESP_OK) 
+#endif
+    if (err == ESP_OK)
     {
         s_wlan_rate = value;
     }

@@ -177,7 +177,7 @@ typedef struct {
 
 bool ll_cam_stop(cam_obj_t *cam);
 bool ll_cam_start(cam_obj_t *cam, int frame_pos);
-bool ll_cam_start_continuous(cam_obj_t *cam);
+bool ll_cam_start_continuous(cam_obj_t *cam, const camera_config_t *config );
 esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config);
 esp_err_t ll_cam_deinit(cam_obj_t *cam);
 void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en);

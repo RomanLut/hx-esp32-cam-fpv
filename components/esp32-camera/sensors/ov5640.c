@@ -369,12 +369,6 @@ static int set_image_options(sensor_t *sensor)
             || write_reg(sensor->slv_addr, Y_INCREMENT, 0x31);//odd:3, even: 1
     }
 
-#if CONFIG_IDF_TARGET_ESP32C5
-    //set compression mode timing 1 - plk isfired only for valid data
-    //default is mode 2 - pclk is free running
-    //write_reg(sensor->slv_addr, 0x4713, 0x01);
-#endif    
-
     ESP_LOGD(TAG, "Set Image Options: Compression: %u, Binning: %u, V-Flip: %u, H-Mirror: %u, Reg-4514: 0x%02x",
         sensor->pixformat == PIXFORMAT_JPEG, sensor->status.binning, sensor->status.vflip, sensor->status.hmirror, reg4514);
     return ret;

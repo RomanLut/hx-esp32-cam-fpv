@@ -33,7 +33,8 @@
 			"string.h": "c",
 			"cstring": "cpp",
 			"variant": "c",
-			"span": "c"
+			"span": "c",
+			"cassert": "cpp"
 		}
 	}
 }

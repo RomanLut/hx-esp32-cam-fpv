@@ -50,6 +50,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
 void cam_stop(void);
 
 void cam_start(void);
+void cam_start_continuous(const camera_config_t *config);
 
 camera_fb_t *cam_take(TickType_t timeout);
 

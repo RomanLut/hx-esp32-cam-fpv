@@ -40,17 +40,16 @@ static const char *TAG = "c5 ll_cam";
 
 
 volatile int pk = 0;
+extern volatile int pk2;
 
 // PARLIO partial receive callback - handles JPEG frame detection and buffering
 static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_unit,
                                                             const parlio_rx_event_data_t *edata,
                                                             void *user_ctx) {
 
-//gpio_set_level(4, 1);
-
     cam_obj_t *cam_obj = (cam_obj_t *)user_ctx;
     const uint8_t *data = edata->data;
-    uint32_t received_bytes = edata->recv_bytes;  //1024 bytes
+    uint32_t received_bytes = edata->recv_bytes;
     BaseType_t HPTaskAwoken = pdFALSE;
 
     pk++;
@@ -58,84 +57,6 @@ static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_uni
     //send event to cam_task
     cam_event_t event = { .kind = CAM_PARLIO_DATA, .data = data, .length = (uint16_t)received_bytes };
     ll_cam_send_event(cam_obj, &event, &HPTaskAwoken);
-
-
-/*
-    uint16_t index = 0;
-
-    while (index < received_bytes)
-    {
-        uint8_t* target_ptr = cam_obj->dma_buffer + (cam_obj->jpeg_state.dma_buffer_index * cam_obj->dma_half_buffer_size) + cam_obj->jpeg_state.index;
-
-//        pk2+= (uint16_t)cam_obj->dma_buffer;
-//        pk2+= (uint16_t)cam_obj->jpeg_state.dma_buffer_index;
-//        pk2+= (uint16_t)cam_obj->jpeg_state.index;
-
-
-        if (cam_obj->jpeg_state.capture)
-        {
-            for (; (index < received_bytes) && cam_obj->jpeg_state.capture; index++)
-            {
-                uint8_t current_byte = data[index];
-                *target_ptr++ = current_byte;
-                cam_obj->jpeg_state.index++;
-
-                if ( (cam_obj->jpeg_state.last_byte == 0xFF) && (current_byte == 0xD9) )
-                {
-                    // Frame complete
-                    pk2++;
-
-                    //fill dma buffer to the end
-                    while ( cam_obj->jpeg_state.index < cam_obj->dma_half_buffer_size )
-                    {
-                        *target_ptr++ = 0;
-                        cam_obj->jpeg_state.index++;
-                    }
-
-                    cam_obj->jpeg_state.capture = false;
-                }
-
-                //DMA buffer filled fully
-                if ( cam_obj->jpeg_state.index >= cam_obj->dma_half_buffer_size )
-                {
-                    //pass buffer to cam_task
-
-                    cam_obj->jpeg_state.dma_buffer_index++;
-                    if ( cam_obj->jpeg_state.dma_buffer_index >= cam_obj->dma_half_buffer_cnt )
-                    {
-                        cam_obj->jpeg_state.dma_buffer_index = 0;
-                    }
-
-                    cam_obj->jpeg_state.index = 0;
-                    target_ptr = cam_obj->dma_buffer + (cam_obj->jpeg_state.dma_buffer_index * cam_obj->dma_half_buffer_size);
-                }
-
-                cam_obj->jpeg_state.last_byte = current_byte;
-            }
-        }
-        else
-        {
-            for (; (index < received_bytes) && !cam_obj->jpeg_state.capture; index++)
-            {
-                uint8_t current_byte = data[index];
-
-                if ( (cam_obj->jpeg_state.last_byte == 0xFF) && (current_byte == 0xD8) )
-                {
-                    cam_obj->jpeg_state.capture = true;
-
-                    //start of frame is always at the start of DMA buffer so we do not have to check for bounds
-                    *target_ptr++ = 0xFF;
-                    cam_obj->jpeg_state.index++;
-                    *target_ptr++ = 0xD8;
-                    cam_obj->jpeg_state.index++;
-                }
-
-                cam_obj->jpeg_state.last_byte = current_byte;
-            }
-        }
-    }
-*/
-//gpio_set_level(4,0);
 
     return (HPTaskAwoken == pdTRUE);
 }
@@ -157,9 +78,79 @@ bool ll_cam_start(cam_obj_t *cam, int frame_pos)
     return true;
 }
 
-bool ll_cam_start_continuous(cam_obj_t *cam)
+bool ll_cam_start_continuous(cam_obj_t *cam, const camera_config_t *config)
 {
     esp_err_t ret = ESP_OK;
+
+    // Configure PARLIO RX unit
+    // ESP32-C5 does NOT support valid signals with 8 data lines, so we use software delimiter
+
+    parlio_rx_unit_config_t rx_config = {
+        .trans_queue_depth = 8,  //NOTE: does not matter in the infinite transation mode
+        .max_recv_size = 0xffff, //CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE,  // Maximum receive size
+        .data_width = 8,  // 8 data lines (D0-D7)
+        .clk_src = PARLIO_CLK_SRC_EXTERNAL,  // Use external PCLK from camera
+        .ext_clk_freq_hz = 120 * 1000 * 1000,  // Expected external clock frequency (high estimate)
+        .clk_in_gpio_num = config->pin_pclk,  // PCLK input pin
+        .clk_out_gpio_num = -1,  // No clock output
+        .valid_gpio_num = -1,  // ESP32-C5 doesn't support valid signal with 8 data lines
+        .flags = {
+            //NOTE: free_clk does not matter in the infinite transation mode
+            .free_clk = 1,       // PCLK is a free-running clock
+            .allow_pd = 1,       // Allow power down
+        }
+    };
+
+    // Copy data GPIO pins
+    rx_config.data_gpio_nums[0] = config->pin_d0;
+    rx_config.data_gpio_nums[1] = config->pin_d1;
+    rx_config.data_gpio_nums[2] = config->pin_d2;
+    rx_config.data_gpio_nums[3] = config->pin_d3;
+    rx_config.data_gpio_nums[4] = config->pin_d4;
+    rx_config.data_gpio_nums[5] = config->pin_d5;
+    rx_config.data_gpio_nums[6] = config->pin_d6;
+    rx_config.data_gpio_nums[7] = config->pin_d7;
+
+    // Create PARLIO RX unit
+    ret = parlio_new_rx_unit(&rx_config, &cam->rx_unit);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create PARLIO RX unit: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Create software delimiter (required for ESP32-C5 since no valid signal support)
+    parlio_rx_soft_delimiter_config_t delim_config = {
+        .sample_edge = PARLIO_SAMPLE_EDGE_NEG,   //BUG in SDK: actually sets rising edge
+        .eof_data_len = cam->payload_size,
+        .timeout_ticks = 0,  // No timeout
+    };
+
+    ret = parlio_new_rx_soft_delimiter(&delim_config, &cam->delimiter);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create software delimiter: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    // Allocate payload buffer for PARLIO (internal DMA buffer)
+    cam->payload_buffer = heap_caps_malloc(cam->payload_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+    if (!cam->payload_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate payload buffer");
+        return ESP_ERR_NO_MEM;
+    }
+
+    // Register RX callbacks
+    parlio_rx_event_callbacks_t cbs = {
+        .on_partial_receive = on_partial_receive_callback,
+    };
+
+    ret = parlio_rx_unit_register_event_callbacks(cam->rx_unit, &cbs, cam);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register RX callbacks: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "PARLIO RX configured: 8-bit data, software delimiter, payload_size=%d", cam->payload_size);
+
 
     if (!cam->rx_unit || !cam->payload_buffer) {
         ESP_LOGE(TAG, "Invalid context or payload buffer");
@@ -242,76 +233,6 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config)
     cam->jpeg_state.index = 0;  
     cam->jpeg_state.frame_length = 0;
     cam->jpeg_state.last_byte = 0;
-
-    // Configure PARLIO RX unit
-    // ESP32-C5 does NOT support valid signals with 8 data lines, so we use software delimiter
-    parlio_rx_unit_config_t rx_config = {
-        .trans_queue_depth = 8,
-        .max_recv_size = 0xFFFF,  // Maximum receive size
-        .data_width = 8,  // 8 data lines (D0-D7)
-        .clk_src = PARLIO_CLK_SRC_EXTERNAL,  // Use external PCLK from camera
-        .ext_clk_freq_hz = 80 * 1000 * 1000,  // Expected external clock frequency (high estimate)
-        .exp_clk_freq_hz = 80 * 1000 * 1000,  // Expected external clock frequency (high estimate)
-        .clk_in_gpio_num = config->pin_pclk,  // PCLK input pin
-        .clk_out_gpio_num = -1,  // No clock output
-        .valid_gpio_num = -1,  // ESP32-C5 doesn't support valid signal with 8 data lines
-        .flags = {
-            //.free_clk = 1,       // PCLK is a free-running clock
-            .free_clk = 0,       // PCLK is NOT free-running clock
-            .allow_pd = 0,       // Allow power down
-        }
-    };
-
-    // Copy data GPIO pins
-    rx_config.data_gpio_nums[0] = config->pin_d0;
-    rx_config.data_gpio_nums[1] = config->pin_d1;
-    rx_config.data_gpio_nums[2] = config->pin_d2;
-    rx_config.data_gpio_nums[3] = config->pin_d3;
-    rx_config.data_gpio_nums[4] = config->pin_d4;
-    rx_config.data_gpio_nums[5] = config->pin_d5;
-    rx_config.data_gpio_nums[6] = config->pin_d6;
-    rx_config.data_gpio_nums[7] = config->pin_d7;
-
-    // Create PARLIO RX unit
-    ret = parlio_new_rx_unit(&rx_config, &cam->rx_unit);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create PARLIO RX unit: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    // Create software delimiter (required for ESP32-C5 since no valid signal support)
-    parlio_rx_soft_delimiter_config_t delim_config = {
-        .sample_edge = PARLIO_SAMPLE_EDGE_POS,  // Sample on positive edge
-        .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
-        .eof_data_len = cam->payload_size,
-        .timeout_ticks = 0,  // No timeout
-    };
-
-    ret = parlio_new_rx_soft_delimiter(&delim_config, &cam->delimiter);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create software delimiter: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    // Allocate payload buffer for PARLIO (internal DMA buffer)
-    cam->payload_buffer = heap_caps_malloc(cam->payload_size, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
-    if (!cam->payload_buffer) {
-        ESP_LOGE(TAG, "Failed to allocate payload buffer");
-        return ESP_ERR_NO_MEM;
-    }
-
-    // Register RX callbacks
-    parlio_rx_event_callbacks_t cbs = {
-        .on_partial_receive = on_partial_receive_callback,
-    };
-
-    ret = parlio_rx_unit_register_event_callbacks(cam->rx_unit, &cbs, cam);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to register RX callbacks: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    ESP_LOGI(TAG, "PARLIO RX configured: 8-bit data, software delimiter, payload_size=%d", cam->payload_size);
 
     return ESP_OK;
 }

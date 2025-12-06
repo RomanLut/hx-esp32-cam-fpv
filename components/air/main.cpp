@@ -1666,7 +1666,6 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(lenc, lenc, int);
 #undef APPLY
 #undef SAVE
-
     dst = src;
 }
 
@@ -3276,13 +3275,16 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
-                    pk, /*s_stats.wlan_data_sent,*/ pk2, /*s_stats.wlan_data_received,*/ s_stats.wlan_error_count, s_stats.fec_spin_count,
+                //LOG is busy wait for ~11ms
+                //ESP_LOGI is task yeld for ~13ms
+                //LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
+                ESP_LOGI( "Main", "WLAN S: %d, R: %d, E: %u, F: %u, D: %u, %%: %d...%d || FPS: %d(%d), D: %u || SD D: %u, E: %u || TLM IN: %u OUT: %u\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %u ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
+                    (int)pk, /*s_stats.wlan_data_sent,*/ (int)pk2, /*s_stats.wlan_data_received,*/ s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
-                    s_actual_capture_fps, s_actual_capture_fps_expected, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
-                    s_stats.in_telemetry_data, s_stats.out_telemetry_data,
-                    (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg,
+                    s_actual_capture_fps, s_actual_capture_fps_expected, (unsigned int)s_stats.video_data, (unsigned int)s_stats.sd_data, (unsigned int)s_stats.sd_drops,
+                    (unsigned int)s_stats.in_telemetry_data, (unsigned int)s_stats.out_telemetry_data,
+                    (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100),
+                    s_quality, (unsigned int)((s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2), cam_ovf_count, (int)s_dbg,
                     s_air_device_id, s_connected_gs_device_id); 
                 print_cpu_usage();
             }
@@ -3351,7 +3353,8 @@ extern "C" void app_main()
             }
         }
 
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(10 / portTICK_PERIOD_MS);  //portTICK_PERIOD_MS = 10. Main task should call vTaskDelay(1) oherwise WDT will trigger in idle task.
+
         //esp_task_wdt_reset();
 
         checkButton();
@@ -3396,10 +3399,6 @@ extern "C" void app_main()
 #endif
 */
 
-#ifdef USE_MOCK_CAMERA
-        mock_camera_process();
-#endif
-
 #ifdef UART_MSP_OSD
         //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
@@ -3411,6 +3410,11 @@ extern "C" void app_main()
         {
             esp_restart();
         }
+
+#ifdef USE_MOCK_CAMERA
+        mock_camera_process();
+#endif
+
 
     }
 
@@ -3451,3 +3455,15 @@ Air send:
  - calls esp_wifi_80211_tx() 
 
 */
+
+
+IRAM_ATTR void startGPIO()
+{
+        gpio_set_level(GPIO_NUM_4, 1);
+}
+
+
+IRAM_ATTR void stopGPIO()
+{
+        gpio_set_level(GPIO_NUM_4, 0);
+}

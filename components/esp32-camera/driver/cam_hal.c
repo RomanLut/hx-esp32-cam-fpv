@@ -114,7 +114,7 @@ void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseTyp
     if (xQueueSendFromISR(cam->event_queue, (void *)cam_event, HPTaskAwoken) != pdTRUE) {
         ll_cam_stop(cam);
         cam->state = CAM_STATE_IDLE;
-        ESP_CAMERA_ETS_PRINTF(DRAM_STR("cam_hal: EV-%s-OVF\r\n"), cam_event->kind==CAM_IN_SUC_EOF_EVENT ? DRAM_STR("EOF") : DRAM_STR("VSYNC"));
+        ESP_CAMERA_ETS_PRINTF(DRAM_STR("cam_hal: EV-%s-OVF\r\n"), cam_event->kind==CAM_PARLIO_DATA ? DRAM_STR("PARLIO") : cam_event->kind==CAM_IN_SUC_EOF_EVENT ? DRAM_STR("EOF") : DRAM_STR("VSYNC"));
         s_ovf_flag = true;
     }
 }
@@ -125,70 +125,62 @@ volatile int pk2 = 0;
 //-------------------------------------------------------------------------------------
 static void cam_task(void *arg)
 {
-    int cnt = 0;
-    int frame_pos = 0;
     cam_obj->state = CAM_STATE_IDLE;
     cam_event_t cam_event = {};
 
-
-    const uint8_t *data;
+    uint8_t *data;
     uint32_t availBytes;
 
     xQueueReset(cam_obj->event_queue);
 
     while (1) {
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
+        //the only possible event type is cam_event.kind == CAM_PARLIO_DATA) 
+
         DBG_PIN_SET(1);
         gpio_set_level(4, 1);
 
-        //pk2++;
+        data = cam_event.data;
+        availBytes = cam_event.length;
 
-        if (cam_event.kind == CAM_PARLIO_DATA) 
+        int index = 0;
+
+        if ( cam_obj->state == CAM_STATE_IDLE ) 
         {
-            data = cam_event.data;
-            availBytes = cam_event.length;
-
-            int index = 0;
-
-            if ( cam_obj->state == CAM_STATE_IDLE ) 
+            while ( availBytes > 1 )
             {
-                while ( availBytes > 1 )
+                if ( (data[index] == 0xff) && (data[index+1] == 0xd8 ) )
                 {
-                    if ( (data[index] == 0xff) && (data[index+1] == 0xd8 ) )
-                    {
-                        pk2++;
-                        cam_obj->state = CAM_STATE_READ_BUF;
-                        data_available_callback((void *)cam_obj,0,0,0); //start frame
-                        break;
-                    }
-                    index++;
-                    availBytes--;
+                    pk2++;
+                    cam_obj->state = CAM_STATE_READ_BUF;
+                    data_available_callback((void *)cam_obj,0,0,0); //start frame
+                    break;
                 }
+                index++;
+                availBytes--;
             }
+        }
 
-            if (cam_obj->state == CAM_STATE_READ_BUF)
+        if ((cam_obj->state == CAM_STATE_READ_BUF) && (availBytes > 1))
+        {
+            //look for end of frame in the buffer
+            int index2 = index+1;
+            int availBytes2 = availBytes-1;
+            while ( availBytes2 > 1)
             {
-                //look for end of frame in the buffer
-
-                int index2 = index;
-                int availBytes2 = availBytes;
-                while ( availBytes2 > 1)
+                if ( (data[index2] == 0xff) && (data[index2+1] == 0xd9 ) )
                 {
-                    if ( (data[index2] == 0xff) && (data[index2+1] == 0xd9 ) )
-                    {
-                        cam_obj->state = CAM_STATE_IDLE;
-                        availBytes = index2-index+2;
-                    }
-                    index2++;
-                    availBytes2--;
+                    cam_obj->state = CAM_STATE_IDLE;
+                    availBytes = index2-index+2;
+                    break;
                 }
-
-                data_available_callback((void *)cam_obj,
-                    data + index,
-                    availBytes,
-                    cam_obj->state == CAM_STATE_IDLE);
-
+                index2++;
+                availBytes2--;
             }
+            data_available_callback((void *)cam_obj,
+                data + index,
+                availBytes,
+                cam_obj->state == CAM_STATE_IDLE);
         }
 
         gpio_set_level(4, 0);
@@ -529,10 +521,6 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ESP_LOGI(TAG, "cam config ok");
     data_available_callback=config->data_available_callback;
 
-#if CONFIG_IDF_TARGET_ESP32C5
-    ll_cam_start_continuous(cam_obj);
-#endif
-
     return ESP_OK;
 
 err:
@@ -589,6 +577,11 @@ void cam_stop(void)
 void cam_start(void)
 {
     ll_cam_vsync_intr_enable(cam_obj, true);
+}
+
+void cam_start_continuous( const camera_config_t *config)
+{
+    ll_cam_start_continuous(cam_obj, config);
 }
 
 camera_fb_t *cam_take(TickType_t timeout)

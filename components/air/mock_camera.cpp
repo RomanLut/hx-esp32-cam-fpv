@@ -42,13 +42,24 @@ void get_mock_camera_frame(const uint8_t** out_buf, size_t* out_len)
 
 void mock_camera_process()
 {
-    
+    //JPEG size is ~12kb
+    //to achieve 30 FPS, we have to send 12*30=360 1kb blocks per second
+    //or 180 2kb blocks per second
+    //1000/180 = ~5.5ms delay between blocks
     int64_t current_time = esp_timer_get_time();
     int64_t time_diff = current_time - last_sent_time;
 
-    if (time_diff >= 1000)  //1ms
+    int PERIOD_US = 5500;
+
+    time_diff = time_diff / PERIOD_US;
+    uint32_t block_count = time_diff;
+    last_sent_time += time_diff * PERIOD_US;
+
+    if (block_count > 4) block_count = 4;
+
+    for ( int i = 0; i < block_count; i++ )
     {
-        last_sent_time = current_time;
+        const int BLOCK_SIZE = 2048;
 
         const uint8_t* jpg_data = nullptr;
         size_t jpg_size = 0;
@@ -66,7 +77,7 @@ void mock_camera_process()
 
         // Send next 1024 bytes or remaining data
         size_t remaining = jpg_size - current_offset;
-        size_t data_to_send = (remaining < 1024) ? remaining : 1024;
+        size_t data_to_send = (remaining < BLOCK_SIZE) ? remaining : BLOCK_SIZE;
         bool is_last = (current_offset + data_to_send >= jpg_size);
 
         camera_data_available(&mock_cam_obj, jpg_data + current_offset, data_to_send, is_last);
@@ -80,7 +91,6 @@ void mock_camera_process()
             frame_started = false;
         }
     }
-    
 }
 
 sensor_t* mock_camera_sensor_get()

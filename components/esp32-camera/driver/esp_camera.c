@@ -333,7 +333,13 @@ esp_err_t esp_camera_init(const camera_config_t *config)
     }
     s_state->sensor.init_status(&s_state->sensor);
 
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    cam_start_continuous(config);
+#endif
+
     cam_start();
+
     return ESP_OK;
 
 fail:

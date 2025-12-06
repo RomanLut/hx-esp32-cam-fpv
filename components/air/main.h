@@ -125,33 +125,39 @@
 //  REC BUTTON: GPIO0  (existing flash button)
 //  STATUS LED: GPIO1
 
-//define to use DisplayPort OSD on UART1
-#define UART_MSP_OSD UART_NUM_1
-#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
-#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+//define to use DisplayPort OSD on UART0
+//#define UART_MSP_OSD UART_NUM_0
+//#define INIT_UART_0
+#define TXD0_PIN    11
+#define RXD0_PIN    12
+#define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
-//define to use mavlink telemetry on UART2 
-/*
-#define UART_MAVLINK LP_UART_NUM_0
-#define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
-#define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
-*/
+//define to use mavlink telemetry on UART1 
+//#define UART_MAVLINK UART_NUM_1
+//#define INIT_UART_1
+#define TXD1_PIN    GPIO_NUM_24 //D24
+#define RXD1_PIN    GPIO_NUM_23 //D23
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
+#define UART1_BAUDRATE 115200
+
 #define CAMERA_MODEL_ESP32C5
+
 //RGB LED GPIO27
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
-#define INIT_UART_1
-#define TXD1_PIN    GPIO_NUM_24 //D24
-#define RXD1_PIN    GPIO_NUM_23 //D23
-#define UART1_BAUDRATE 115200
+//----------------------
 
 /*
+//#define UART_MAVLINK LP_UART_NUM_0
 #define INIT_LP_UART_NUM_0
 #define LTXD0_PIN    GPIO_NUM_5 //non-remapable
 #define LRXD0_PIN    GPIO_NUM_4 //non-remapable
 #define LUART0_BAUDRATE 115200
+#define LP_UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define LP_UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 */
-//----------------------
 
 #endif
 //===============================================================
@@ -308,17 +314,17 @@
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM     27
-#define SIOD_GPIO_NUM     26
-#define SIOC_GPIO_NUM     25
+#define SIOD_GPIO_NUM     26  //SDA
+#define SIOC_GPIO_NUM     25  //SLC
 
-#define Y9_GPIO_NUM       3
-#define Y8_GPIO_NUM       0
-#define Y7_GPIO_NUM       1
-#define Y6_GPIO_NUM       6
-#define Y5_GPIO_NUM       7
-#define Y4_GPIO_NUM       8
-#define Y3_GPIO_NUM       9
-#define Y2_GPIO_NUM       10
+#define Y9_GPIO_NUM       3   //D7
+#define Y8_GPIO_NUM       0   //D6
+#define Y7_GPIO_NUM       1   //D5
+#define Y6_GPIO_NUM       6   //D4
+#define Y5_GPIO_NUM       7   //D3
+#define Y4_GPIO_NUM       8   //D2
+#define Y3_GPIO_NUM       9   //D1
+#define Y2_GPIO_NUM       10  //D0
 #define VSYNC_GPIO_NUM    -1
 #define HREF_GPIO_NUM     -1
 #define PCLK_GPIO_NUM     2
@@ -327,10 +333,10 @@
 //RXD0_PIN     GPIO_NUM_12
 //TXD1_PIN     GPIO_NUM_24
 //RXD1_PIN     GPIO_NUM_23
-//RAM cs       GPIO_NUM_15
+//RAM CS       GPIO_NUM_15
 //RGBLED XCLK  GPIO_NUM_27 
-//LRXD0_PIN    GPIO_NUM_4 
-//LTXD0_PIN    GPIO_NUM_5 
+//LRXD0_PIN    GPIO_NUM_4 free
+//LTXD0_PIN    GPIO_NUM_5  free
 //boot button  GPIO_NUM_28 
 //USB D+       GPIO_NUM_14
 //USB D-       GPIO_NUM_13
