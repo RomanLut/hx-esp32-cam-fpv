@@ -98,7 +98,7 @@
 #define STATUS_LED_PIN GPIO_NUM_1
 #define STATUS_LED_ON 1
 #define STATUS_LED_OFF 0
-#define REC_BUTTON_PIN  GPIO_NUM_0 //dedicated REC button pin
+#define REC_BUTTON_PIN  GPIO_NUM_0 //BOOT button or dedicated button
 
 #define INIT_UART_1
 #define TXD1_PIN    GPIO_NUM_2 //D1
@@ -142,6 +142,8 @@
 #define UART1_BAUDRATE 115200
 
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
+
+#define HAS_REC_BUTTON_LED   //LED is connected to REC button
 
 #define CAMERA_MODEL_ESP32C5
 
