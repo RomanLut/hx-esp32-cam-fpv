@@ -339,3 +339,5 @@ extern int s_uart_verbose;
 #define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
 
 void updateSDInfo();
+
+bool isUSBDiskMounted();

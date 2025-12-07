@@ -14,5 +14,5 @@ set(
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS "../../components/esp32-camera/target/private_include/"  
                     EMBED_FILES "../../components/air/favicon.ico" "../../components/air/index.html" "../../components/air/nosignal.jpg"
-                    REQUIRES esp_timer)
+                    REQUIRES esp_timer esp_tinyusb)
 

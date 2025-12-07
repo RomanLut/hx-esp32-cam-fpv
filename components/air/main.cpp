@@ -41,6 +41,12 @@
 #include "queue.h"
 #include "circular_buffer.h"
 
+#ifdef USB_DISK_SUPPORT
+#define CFG_TUSB_MCU OPT_MCU_ESP32S3
+#include "tinyusb.h"
+#include "tusb_msc_storage.h"
+#endif
+
 #include "ll_cam.h" // cam_obj_t defination, used in camera_data_available
 
 #include "wifi.h"
@@ -3011,15 +3017,86 @@ void readConfig()
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 }
 
+#ifdef USB_DISK_SUPPORT
+
 //=============================================================================================
 //=============================================================================================
-#ifdef DVR_SUPPORT
-#if defined(BOARD_XIAOS3SENSE)
-void mountUSBDisk()
+bool isUSBDiskMounted()
 {
+    return tud_mounted();
+}
+
+//=============================================================================================
+//=============================================================================================
+void mountUSBDisk() 
+{ 
+    const esp_vfs_fat_mount_config_t mount_config =
+    {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false,
+        .use_one_fat = false
+    };
+
+    tinyusb_msc_sdmmc_config_t storage_cfg =
+    {
+        .card = card,
+        .callback_mount_changed = nullptr,
+        .callback_premount_changed = nullptr,
+        .mount_config = mount_config
+    };
+
+    esp_err_t err = tinyusb_msc_storage_init_sdmmc(&storage_cfg);
+    if (err != ESP_OK)
+    {
+        LOG("tinyusb_msc_storage_init_sdmmc failed: %s\n", esp_err_to_name(err));
+        return;
+    }
+
+    // keep FAT accessible for the file server; ignore "already mounted" state
+    err = tinyusb_msc_storage_mount("/sdcard");
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
+    {
+        LOG("tinyusb_msc_storage_mount failed: %s\n", esp_err_to_name(err));
+    }
+
+    const tinyusb_config_t tusb_cfg =
+    {
+        .device_descriptor = nullptr,
+        .string_descriptor = nullptr,
+        .string_descriptor_count = 0,
+        .external_phy = false,
+#if (TUD_OPT_HIGH_SPEED)
+        .fs_configuration_descriptor = nullptr,
+        .hs_configuration_descriptor = nullptr,
+        .qualifier_descriptor = nullptr,
+#else
+        .configuration_descriptor = nullptr,
+#endif
+        .self_powered = false,
+        .vbus_monitor_io = -1
+    };
+
+    err = tinyusb_driver_install(&tusb_cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
+    {
+        LOG("tinyusb_driver_install failed: %s\n", esp_err_to_name(err));
+        return;
+    }
+
+    LOG("USB MSC exposed for SD card\n");
+}
+#else
+//=============================================================================================
+//=============================================================================================
+bool isUSBDiskMounted()
+{
+    return false;
 }
 #endif
-#endif
+
+
 
 extern volatile int pk;
 extern volatile int pk2;
@@ -3148,7 +3225,7 @@ extern "C" void app_main()
 
         setup_wifi_file_server();
 
-#if defined(BOARD_XIAOS3SENSE)
+#if defined(USB_DISK_SUPPORT)
         mountUSBDisk();
 #endif
 

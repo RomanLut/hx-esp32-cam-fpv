@@ -544,7 +544,13 @@
                 },
                 body: JSON.stringify(data),
             }).then(response => {
-                if(response.ok) {
+                if (response.status === 403) { // HTTP 403 Forbidden
+                    response.text().then(text => {
+                        alert(text || "Error: Cannot delete files after the USB disk has been mounted once.\nConnect the camera to a power bank or battery to enable file deletion from the web interface.");
+                        button.innerHTML = "Delete";
+                        button.disabled = false;
+                    });
+                } else if(response.ok) {
                     button.innerHTML = "Deleted";
                     var row = button.parentNode.parentNode;
                     var playButton = row.querySelector('.play-btn');

@@ -44,3 +44,4 @@ air_firmware/build
 gs/gs.ini
 release
 components/build
+managed_components

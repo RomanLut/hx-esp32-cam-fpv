@@ -547,6 +547,12 @@ static esp_err_t stream_get_handler(httpd_req_t *req)
 
 static esp_err_t delete_post_handler(httpd_req_t *req)
 {
+    if ( isUSBDiskMounted() ) 
+    {
+        ESP_LOGE(TAG, "Can not delete while usb is mounted");
+        httpd_resp_send_err(req, HTTPD_403_FORBIDDEN, "Cannot delete files while USB disk is mounted.");
+        return ESP_FAIL;
+    }
     char filepath[FILE_PATH_MAX];
     struct stat file_stat;
 
