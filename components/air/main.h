@@ -94,10 +94,19 @@
 #define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
 #define CAMERA_MODEL_XIAO_ESP32S3
+
 #define DVR_SUPPORT
-#define STATUS_LED_PIN GPIO_NUM_1
-#define STATUS_LED_ON 1
-#define STATUS_LED_OFF 0
+
+//internal led(GPIO21) is connected to SD card SD_CS. SD_CS is used in SPI mode. We use card in SDMMC mode - CS is free.
+#define STATUS_LED_PIN GPIO_NUM_21
+#define STATUS_LED_ON 0
+#define STATUS_LED_OFF 1
+
+//additional LED  connected to GND and GPIO1
+#define STATUS_LED2_PIN GPIO_NUM_1
+#define STATUS_LED2_ON 1
+#define STATUS_LED2_OFF 0
+
 #define REC_BUTTON_PIN  GPIO_NUM_0 //BOOT button or dedicated button
 
 #define INIT_UART_1
@@ -292,8 +301,6 @@
 #define VSYNC_GPIO_NUM    38
 #define HREF_GPIO_NUM     47
 #define PCLK_GPIO_NUM     13
-
-#define LED_GPIO_NUM      21  //also used as SDCard CS
 
 #elif defined(CAMERA_MODEL_ESP32C5)
 #define PWDN_GPIO_NUM     -1

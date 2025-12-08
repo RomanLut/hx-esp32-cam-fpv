@@ -150,6 +150,7 @@ HXMavlinkParser mavlinkParserIn(true);
 void initialize_status_led()
 {
 #ifdef STATUS_LED_PIN
+{
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
@@ -158,7 +159,21 @@ void initialize_status_led()
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     gpio_config(&io_conf);
     gpio_set_level(STATUS_LED_PIN, STATUS_LED_OFF);
+}    
 #endif    
+
+#ifdef STATUS_LED2_PIN
+{
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = 1ULL << STATUS_LED2_PIN;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&io_conf);
+    gpio_set_level(STATUS_LED2_PIN, STATUS_LED2_OFF);
+}    
+#endif
 }
 
 #ifdef ESP32CAM_FLASH_LED_PIN
@@ -270,6 +285,10 @@ void set_status_led(bool enabled)
 {
 #ifdef STATUS_LED_PIN
     gpio_set_level(STATUS_LED_PIN, enabled ? STATUS_LED_ON : STATUS_LED_OFF);
+#endif    
+
+#ifdef STATUS_LED2_PIN
+    gpio_set_level(STATUS_LED2_PIN, enabled ? STATUS_LED2_ON : STATUS_LED2_OFF);
 #endif    
 
 #ifdef ESP32CAM_FLASH_LED_PIN
@@ -538,54 +557,12 @@ static bool init_sd()
     if (ret != ESP_OK)
     {
         LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
-        //to turn the LED off
+        //to turn the flash LED off
         gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);
         return false;
     }
 #endif
 #ifdef BOARD_XIAOS3SENSE
-/*
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-    mount_config.format_if_mount_failed = false;
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
-
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    //host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-    //host.max_freq_khz = SDMMC_FREQ_PROBING;
-    //host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-    //host.max_freq_khz = 26000;
-
-    spi_bus_config_t bus_cfg = {
-        .mosi_io_num = 9,
-        .miso_io_num = 8,
-        .sclk_io_num = 7,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4092
-    };
-    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
-    if (ret != ESP_OK) 
-    {
-        LOG("Failed to initialize SD SPI bus.");
-        return false;
-    }
-    //host.set_card_clk(host.slot, 10000);
-
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = GPIO_NUM_21;  //shared with USER LED pin
-    slot_config.host_id = (spi_host_device_t)host.slot;
-
-    LOG("Mounting SD card...\n");
-    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    if (ret != ESP_OK)
-    {
-        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
-        return false;
-    }
-*/ 
     esp_vfs_fat_sdmmc_mount_config_t mount_config;
     mount_config.format_if_mount_failed = false;
     mount_config.max_files = 2;
