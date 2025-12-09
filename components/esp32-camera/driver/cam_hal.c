@@ -666,6 +666,7 @@ camera_fb_t *cam_take(TickType_t timeout)
 }
 #endif
 
+#if !defined(CONFIG_IDF_TARGET_ESP32C5)
 void cam_give(camera_fb_t *dma_buffer)
 {
     for (int x = 0; x < cam_obj->frame_cnt; x++) {
@@ -675,6 +676,7 @@ void cam_give(camera_fb_t *dma_buffer)
         }
     }
 }
+#endif
 
 bool getOVFFlagAndReset()
 {
