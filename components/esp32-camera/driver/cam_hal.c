@@ -47,23 +47,12 @@ static cam_obj_t *cam_obj = NULL;
 static bool s_ovf_flag = false;
 
 //static const uint32_t JPEG_SOI_MARKER = 0xFFD8FF;  // written in little-endian for esp32
-static const uint16_t JPEG_EOI_MARKER = 0xD9FF;  // written in little-endian for esp32
+//static const uint16_t JPEG_EOI_MARKER = 0xD9FF;  // written in little-endian for esp32
 size_t (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last);
 
-/*
-static int cam_verify_jpeg_soi(const uint8_t *inbuf, uint32_t length)
-{
-    for (uint32_t i = 0; i < length; i++) {
-        if (memcmp(&inbuf[i], &JPEG_SOI_MARKER, 3) == 0) {
-            //ESP_LOGW(TAG, "SOI: %d", (int) i);
-            return i;
-        }
-    }
-    ESP_LOGW(TAG, "NO-SOI");
-    return -1;
-}
-*/
+#if !defined(CONFIG_IDF_TARGET_ESP32C5)
 
+/*
 static int cam_verify_jpeg_eoi(const uint8_t *inbuf, uint32_t length)
 {
     int offset = -1;
@@ -78,6 +67,7 @@ static int cam_verify_jpeg_eoi(const uint8_t *inbuf, uint32_t length)
     }
     return -1;
 }
+*/
 
 static bool cam_get_next_frame(int * frame_pos)
 {
@@ -108,6 +98,8 @@ static bool cam_start_frame(int * frame_pos)
     }
     return false;
 }
+
+#endif  //!defined(CONFIG_IDF_TARGET_ESP32C5)
 
 void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseType_t * HPTaskAwoken)
 {
@@ -144,8 +136,6 @@ static void cam_task(void *arg)
 //#ifdef PROFILE_CAMERA_DATA    
 //        s_profiler.set(PF_PARLIO_DATA, 1);
 //#endif
-
-        gpio_set_level(4, 1);
 
         const uint8_t* pData = cam_event.data;
         uint32_t availBytes = cam_event.length;
@@ -217,10 +207,7 @@ static void cam_task(void *arg)
                     cam_obj->state = CAM_STATE_IDLE;
                 }
 
-                data_available_callback((void *)cam_obj,
-                    pData,
-                    frameBytes,
-                    cam_obj->state == CAM_STATE_IDLE);
+                data_available_callback((void *)cam_obj, pData, frameBytes, cam_obj->state == CAM_STATE_IDLE);
                 
                 pData += frameBytes;
                 availBytes -= frameBytes;
@@ -228,8 +215,6 @@ static void cam_task(void *arg)
 
             }
         }
-
-        gpio_set_level(4, 0);
 
 //#ifdef PROFILE_CAMERA_DATA    
 //        s_profiler.set(PF_PARLIO_DATA, 0);
@@ -397,6 +382,7 @@ static esp_err_t cam_dma_config(const camera_config_t *config)
         return ESP_FAIL;
     }
 
+#if !defined(CONFIG_IDF_TARGET_ESP32C5)
     cam_obj->dma_node_cnt = (cam_obj->dma_buffer_size) / cam_obj->dma_node_buffer_size; // Number of DMA nodes
     cam_obj->frame_copy_cnt = cam_obj->recv_size / cam_obj->dma_half_buffer_size; // Number of interrupted copies, ping-pong copy
 
@@ -454,27 +440,18 @@ static esp_err_t cam_dma_config(const camera_config_t *config)
     }
 
     if (!cam_obj->psram_mode) {
-
-#if CONFIG_IDF_TARGET_ESP32C5        
-        cam_obj->dma_buffer = (uint8_t *)heap_caps_malloc(cam_obj->dma_buffer_size * sizeof(uint8_t), MALLOC_CAP_INTERNAL);
-        if(NULL == cam_obj->dma_buffer) {
-            ESP_LOGE(TAG,"%s(%d): DMA buffer %d Byte malloc failed, the current largest free block:%d Byte", __FUNCTION__, __LINE__,
-                     (int) cam_obj->dma_buffer_size, (int) heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-            return ESP_FAIL;
-        }
-#else
         cam_obj->dma_buffer = (uint8_t *)heap_caps_malloc(cam_obj->dma_buffer_size * sizeof(uint8_t), MALLOC_CAP_DMA);
         if(NULL == cam_obj->dma_buffer) {
             ESP_LOGE(TAG,"%s(%d): DMA buffer %d Byte malloc failed, the current largest free block:%d Byte", __FUNCTION__, __LINE__,
                      (int) cam_obj->dma_buffer_size, (int) heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
             return ESP_FAIL;
         }
-#endif        
 
         cam_obj->dma = allocate_dma_descriptors(cam_obj->dma_node_cnt, cam_obj->dma_node_buffer_size, cam_obj->dma_buffer);
         CAM_CHECK(cam_obj->dma != NULL, "dma malloc failed", ESP_FAIL);
     }
 
+#endif //!defined(CONFIG_IDF_TARGET_ESP32C5)
     return ESP_OK;
 }
 
@@ -542,6 +519,10 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ret = cam_dma_config(config);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam_dma_config failed", err);
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+    cam_obj->event_queue = xQueueCreate(8, sizeof(cam_event_t));
+    CAM_CHECK_GOTO(cam_obj->event_queue != NULL, "event_queue create failed", err);
+#else
     size_t queue_size = cam_obj->dma_half_buffer_cnt - 1;
     if (queue_size == 0) {
         queue_size = 1;
@@ -559,6 +540,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ret = ll_cam_init_isr(cam_obj);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam intr alloc failed", err);
 
+#endif //esp32c5
 
 #if CONFIG_CAMERA_CORE0
     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle, 0);
@@ -597,6 +579,8 @@ esp_err_t cam_deinit(void)
 
     ll_cam_deinit(cam_obj);
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+#else
     if (cam_obj->dma) {
         free(cam_obj->dma);
     }
@@ -612,7 +596,7 @@ esp_err_t cam_deinit(void)
         }
         free(cam_obj->frames);
     }
-
+#endif
     free(cam_obj);
     cam_obj = NULL;
     return ESP_OK;
@@ -634,6 +618,7 @@ void cam_start_continuous( const camera_config_t *config)
     ll_cam_start_continuous(cam_obj, config);
 }
 
+#if 0
 camera_fb_t *cam_take(TickType_t timeout)
 {
     camera_fb_t *dma_buffer = NULL;
@@ -679,6 +664,7 @@ camera_fb_t *cam_take(TickType_t timeout)
     }
     return NULL;
 }
+#endif
 
 void cam_give(camera_fb_t *dma_buffer)
 {

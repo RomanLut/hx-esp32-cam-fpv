@@ -3,6 +3,7 @@
 
 #include "esp_camera.h"
 //#include "EEPROM.h"
+#include <hal/i2c_types.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -151,28 +152,28 @@ void initialize_status_led()
 {
 #ifdef STATUS_LED_PIN
 {
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << STATUS_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << STATUS_LED_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
     gpio_set_level(STATUS_LED_PIN, STATUS_LED_OFF);
-}    
-#endif    
+}
+#endif
 
 #ifdef STATUS_LED2_PIN
 {
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << STATUS_LED2_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << STATUS_LED2_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
     gpio_set_level(STATUS_LED2_PIN, STATUS_LED2_OFF);
-}    
+}
 #endif
 }
 
@@ -191,12 +192,12 @@ void enable_esp32cam_flash_led_pin( bool enabled )
 //=============================================================================================
 void initialize_esp32cam_flash_led_pin( bool enabled )
 {
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
 
     gpio_set_level(ESP32CAM_FLASH_LED_PIN, enabled ? 0: 1 );
@@ -228,12 +229,12 @@ void initialize_rec_button()
 {
     printf("Init REC button...\n");
 
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = 1ULL << REC_BUTTON_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << REC_BUTTON_PIN,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
 }
 
@@ -244,12 +245,12 @@ static bool s_rec_button_led_state = true;
 bool read_rec_button_pin()
 {
     gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, GPIO_PULLUP_ONLY); 
-    esp_rom_delay_us(10); //charge pin
+    esp_rom_delay_us(20); //charge pin
 
     bool state = gpio_get_level((gpio_num_t)REC_BUTTON_PIN) == 0;
 
-    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLUP_ONLY : GPIO_PULLDOWN_ONLY); 
-    
+    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLDOWN_ONLY : GPIO_PULLUP_ONLY); 
+
     return state;
 }
 
@@ -258,8 +259,8 @@ bool read_rec_button_pin()
 //=============================================================================================
 void enable_rec_button_led( bool enabled )
 {
-    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLUP_ONLY : GPIO_PULLDOWN_ONLY); 
     s_rec_button_led_state = enabled;
+    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLDOWN_ONLY : GPIO_PULLUP_ONLY); 
 }
 #endif //rec button led
 #endif //rec button
@@ -351,11 +352,11 @@ void update_status_led_file_server()
 bool getButtonState()
 {
 #ifdef REC_BUTTON_PIN
-    return read_rec_button_pin();
+    if ( read_rec_button_pin() ) return true;
 #endif
 
 #ifdef ESP32CAM_FLASH_LED_PIN
-    return read_esp32cam_flash_led_pin();
+    if ( read_esp32cam_flash_led_pin() ) return true;
 #endif
 
     return false;
@@ -433,6 +434,7 @@ void init_failure()
         set_status_led(b);
     }
 }
+
 
 #ifdef DVR_SUPPORT
 
@@ -518,55 +520,18 @@ void updateSDInfo()
 
 static bool init_sd()
 {
-    if (s_sd_initialized)
-        return true;
+    if (s_sd_initialized) return true;
 
     SDTotalSpaceGB16 = 0;
     SDFreeSpaceGB16 = 0;
 
-#ifdef BOARD_ESP32CAM
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-#ifdef CAMERA_MODEL_ESP_VTX
-    mount_config.format_if_mount_failed = true;
-#else
-    mount_config.format_if_mount_failed = false;
-#endif
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
-    // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 20MHz for SDSPI)
-    // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;    
-    //host.max_freq_khz = SDMMC_FREQ_PROBING;
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-    host.flags = SDMMC_HOST_FLAG_1BIT;
-
-    gpio_set_pull_mode((gpio_num_t)14, GPIO_PULLUP_ONLY);   // CLK, needed in 4-line mode only
-    gpio_set_pull_mode((gpio_num_t)15, GPIO_PULLUP_ONLY);   // CMD
-    gpio_set_pull_mode((gpio_num_t)2, GPIO_PULLUP_ONLY);    // D0
-    //gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);  // D1, needed in 4-line mode only
-    //gpio_set_pull_mode((gpio_num_t)12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
-    //gpio_set_pull_mode((gpio_num_t)13, GPIO_PULLUP_ONLY);   // D3, needed in 4-line mode only
-
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot_config.width = 1;
-
-    LOG("Mounting SD card...\n");
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    if (ret != ESP_OK)
-    {
-        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
-        //to turn the flash LED off
-        gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);
-        return false;
-    }
-#endif
-#ifdef BOARD_XIAOS3SENSE
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-    mount_config.format_if_mount_failed = false;
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
+#ifdef SD_CARD_MMC
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 2,
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false,
+        .use_one_fat = false };
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
@@ -578,9 +543,11 @@ static bool init_sd()
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;
-    slot_config.clk = GPIO_NUM_7;
-    slot_config.cmd = GPIO_NUM_9;
-    slot_config.d0 = GPIO_NUM_8;
+#ifdef SD_CLK_PIN    
+    slot_config.clk = SD_CLK_PIN;
+    slot_config.cmd = SD_CMD_PIN;
+    slot_config.d0 = SD_D0_PIN;
+#endif    
 
     // Enable internal pullups on enabled pins. The internal pullups
     // are insufficient however, please make sure 10k external pullups are
@@ -592,13 +559,63 @@ static bool init_sd()
     if (ret != ESP_OK)
     {
         LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
+#ifdef BOARD_ESP32CAM
+        //to turn the flash LED off
+        gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);
+#endif        
         return false;
     }
-#endif
+#endif //SD_CARD_MMC
+
+#ifdef SD_CARD_SPI
+
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 2,
+        .allocation_unit_size = 0 };
+
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
+    //host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    //host.max_freq_khz = SDMMC_FREQ_PROBING;
+    //host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    //host.max_freq_khz = 26000;
+
+
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = SD_DI_PIN,
+        .miso_io_num = SD_DO_PIN,
+        .sclk_io_num = SD_CLK_PIN,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4096
+    };
+
+    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
+    if (ret != ESP_OK) 
+    {
+        LOG("Failed to initialize SD SPI bus.");
+        return false;
+    }
+    
+    //host.set_card_clk(host.slot, 10000);
+    // This initializes the slot without card detect (CD) and write protect (WP) signals.
+    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = SD_CS_PIN;
+    slot_config.host_id = (spi_host_device_t)host.slot;
+
+    LOG("Mounting SD card...\n");
+    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+    if (ret != ESP_OK)
+    {
+        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
+        return false;
+    }
+#endif //SD_CARD_SPI
 
     LOG("sd card inited!\n");
     s_sd_initialized = true;
-
 #ifdef DVR_SUPPORT
     s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 #endif
@@ -2770,37 +2787,38 @@ static void init_camera()
 {
     printf("Init camera...\n");
 
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = Y2_GPIO_NUM;
-    config.pin_d1 = Y3_GPIO_NUM;
-    config.pin_d2 = Y4_GPIO_NUM;
-    config.pin_d3 = Y5_GPIO_NUM;
-    config.pin_d4 = Y6_GPIO_NUM;
-    config.pin_d5 = Y7_GPIO_NUM;
-    config.pin_d6 = Y8_GPIO_NUM;
-    config.pin_d7 = Y9_GPIO_NUM;
-    config.pin_xclk = XCLK_GPIO_NUM;
-    config.pin_pclk = PCLK_GPIO_NUM;
-    config.pin_vsync = VSYNC_GPIO_NUM;
-    config.pin_href = HREF_GPIO_NUM;
-    config.pin_sccb_sda = SIOD_GPIO_NUM;
-    config.pin_sccb_scl = SIOC_GPIO_NUM;
-    config.pin_pwdn = PWDN_GPIO_NUM;
-    config.pin_reset = RESET_GPIO_NUM;
-#ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 20000000;
+    camera_config_t config = {
+        .pin_pwdn = PWDN_GPIO_NUM,
+        .pin_reset = RESET_GPIO_NUM,
+        .pin_xclk = XCLK_GPIO_NUM,
+        .pin_sccb_sda = SIOD_GPIO_NUM,
+        .pin_sccb_scl = SIOC_GPIO_NUM,
+        .pin_d7 = Y9_GPIO_NUM,
+        .pin_d6 = Y8_GPIO_NUM,
+        .pin_d5 = Y7_GPIO_NUM,
+        .pin_d4 = Y6_GPIO_NUM,
+        .pin_d3 = Y5_GPIO_NUM,
+        .pin_d2 = Y4_GPIO_NUM,
+        .pin_d1 = Y3_GPIO_NUM,
+        .pin_d0 = Y2_GPIO_NUM,
+        .pin_vsync = VSYNC_GPIO_NUM,
+        .pin_href = HREF_GPIO_NUM,
+        .pin_pclk = PCLK_GPIO_NUM,
+#ifdef SENSOR_OV5640
+        .xclk_freq_hz = 20000000,
 #else
-    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
-#endif    
-    config.pixel_format = PIXFORMAT_JPEG;
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
-    config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST;
-    config.fb_location = CAMERA_FB_IN_DRAM;
-    config.data_available_callback = camera_data_available;
+        .xclk_freq_hz = 12000000,  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
+#endif
+        .ledc_timer = LEDC_TIMER_0,
+        .ledc_channel = LEDC_CHANNEL_0,
+        .pixel_format = PIXFORMAT_JPEG,
+        .frame_size = FRAMESIZE_SVGA,
+        .jpeg_quality = 63,  //start from lowest quality to decrease pressure at startup
+        .fb_count = 2,
+        .fb_location = CAMERA_FB_IN_DRAM,
+        .grab_mode = CAMERA_GRAB_LATEST,
+        .sccb_i2c_port = I2C_NUM_0,
+        .data_available_callback = camera_data_available };
 
     // camera init
     esp_err_t err = esp_camera_init(&config);
@@ -3105,6 +3123,7 @@ extern "C" void app_main()
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     initialize_status_led();
 #ifdef ESP32CAM_FLASH_LED_PIN
@@ -3166,19 +3185,27 @@ extern "C" void app_main()
     setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
-    if ( 
+    bool runFileServer = false;
+
 #ifdef DVR_SUPPORT
-        !getButtonState() 
-#else
-        true        
+    runFileServer = getButtonState();
 #endif
-        )
+
+    if ( !runFileServer )
     {
         //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
 #ifdef USE_MOCK_CAMERA
         init_mock_camera();
 #else
+        printf("MEMORY Before init_camera: \n");
+        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+
         init_camera();
+
+        printf("MEMORY After init_camera: \n");
+        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
 #endif
     }
 
@@ -3192,12 +3219,22 @@ extern "C" void app_main()
     xSemaphoreGive(s_sd_fast_buffer_mux);
     xSemaphoreGive(s_sd_slow_buffer_mux);
 
+    printf("MEMORY Before Init_SD: \n");
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+
     init_sd();
+
+    printf("MEMORY After Init_SD: \n");
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     //run file server if rec button is pressed on startup
-    if ( getButtonState() )
+    if ( runFileServer )
     {
         LOG("Starting file server...");
 
@@ -3212,8 +3249,8 @@ extern "C" void app_main()
         printf("MEMORY Before setup_wifi_file_server(): \n");
         //heap_caps_print_heap_info(MALLOC_CAP_8BIT);
         //heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-        heap_caps_print_heap_info(MALLOC_CAP_DMA);
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
         setup_wifi_file_server();
 
@@ -3224,7 +3261,6 @@ extern "C" void app_main()
         while (true)
         {
             vTaskDelay(1);
-            //esp_task_wdt_reset();
 
             update_status_led_file_server();
         }
@@ -3318,22 +3354,10 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(uart_driver_install(LP_UART_NUM_0, LP_UART0_RX_BUFFER_SIZE, LP_UART0_TX_BUFFER_SIZE, 0, NULL, 0));
 #endif
 
-#if defined(BOARD_ESP32C5)
-//-------------------------
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << 4;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
-    
-//-------------------------
-#endif
-
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     handle_ground2air_config_packetEx1( s_ground2air_config_packet);
     handle_ground2air_config_packetEx2( true);
@@ -3544,15 +3568,3 @@ Air send:
  - calls esp_wifi_80211_tx() 
 
 */
-
-
-IRAM_ATTR void startGPIO()
-{
-        gpio_set_level(GPIO_NUM_4, 1);
-}
-
-
-IRAM_ATTR void stopGPIO()
-{
-        gpio_set_level(GPIO_NUM_4, 0);
-}

@@ -36,10 +36,12 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 
 //use as much memory as available
 //leave ~5k for SD library to initialize correctly
-#ifdef BOARD_XIAOS3SENSE
+#if defined(BOARD_XIAOS3SENSE)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 90000;
-#else
+#elif defined(BOARD_ESP32CAM)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 85000;
+#elif defined(BOARD_ESP32C5)
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));

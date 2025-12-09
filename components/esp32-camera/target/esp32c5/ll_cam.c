@@ -303,23 +303,6 @@ uint8_t ll_cam_get_dma_align(cam_obj_t *cam)
 bool ll_cam_dma_sizes(cam_obj_t *cam)
 {
     cam->dma_bytes_per_item = 1;
-
-    if (cam->jpeg_mode) {
-        if (cam->psram_mode) {
-            cam->dma_buffer_size = cam->recv_size;
-            cam->dma_half_buffer_size = 1024;
-            cam->dma_half_buffer_cnt = cam->dma_buffer_size / cam->dma_half_buffer_size;
-            cam->dma_node_buffer_size = cam->dma_half_buffer_size;
-        } else {
-            cam->dma_half_buffer_cnt = 16;
-            cam->dma_buffer_size = cam->dma_half_buffer_cnt * 1024;
-            cam->dma_half_buffer_size = cam->dma_buffer_size / cam->dma_half_buffer_cnt;
-            cam->dma_node_buffer_size = cam->dma_half_buffer_size;
-        }
-    } else {
-        // RGB/YUV modes calculation (similar to ESP32S3)
-        return ll_cam_calc_rgb_dma_sizes(cam);
-    }
     return 1;
 }
 
@@ -366,74 +349,9 @@ esp_err_t ll_cam_set_sample_mode(cam_obj_t *cam, pixformat_t pix_format, uint32_
 
 // Helper function for DMA calculation (similar to ESP32S3)
 static bool ll_cam_calc_rgb_dma_sizes(cam_obj_t *cam) {
-    size_t node_max = LCD_CAM_DMA_NODE_BUFFER_MAX_SIZE / cam->dma_bytes_per_item;
-    size_t line_width = cam->width * cam->in_bytes_per_pixel;
-    size_t node_size = node_max;
-    size_t nodes_per_line = 1;
-    size_t lines_per_node = 1;
-
-    // Calculate DMA Node Size
-    if(line_width >= node_max){
-        // One or more nodes per line
-        for(size_t i = node_max; i > 0; i=i-1){
-            if ((line_width % i) == 0) {
-                node_size = i;
-                nodes_per_line = line_width / node_size;
-                break;
-            }
-        }
-    } else {
-        // One or more lines per node
-        for(size_t i = node_max; i > 0; i=i-1){
-            if ((i % line_width) == 0) {
-                node_size = i;
-                lines_per_node = node_size / line_width;
-                while((cam->height % lines_per_node) != 0){
-                    lines_per_node = lines_per_node - 1;
-                    node_size = lines_per_node * line_width;
-                }
-                break;
-            }
-        }
-    }
-
-    cam->dma_node_buffer_size = node_size * cam->dma_bytes_per_item;
-
-    size_t dma_half_buffer_max = CONFIG_CAMERA_DMA_BUFFER_SIZE_MAX / 2 / cam->dma_bytes_per_item;
-    if (line_width > dma_half_buffer_max) {
-        ESP_LOGE(TAG, "Resolution too high");
-        return 0;
-    }
-
-    // Calculate minimum and maximum EOF sizes
-    size_t dma_half_buffer_min = node_size * nodes_per_line;
-    size_t dma_half_buffer = (dma_half_buffer_max / dma_half_buffer_min) * dma_half_buffer_min;
-
-    // Adjust for height constraints
-    size_t lines_per_half_buffer = dma_half_buffer / line_width;
-    while((cam->height % lines_per_half_buffer) != 0){
-        dma_half_buffer = dma_half_buffer - dma_half_buffer_min;
-        lines_per_half_buffer = dma_half_buffer / line_width;
-    }
-
-    // Calculate DMA buffer size
-    size_t dma_buffer_max = 2 * dma_half_buffer_max;
-    if (cam->psram_mode) {
-        dma_buffer_max = cam->recv_size / cam->dma_bytes_per_item;
-    }
-    size_t dma_buffer_size = dma_buffer_max;
-    if (!cam->psram_mode) {
-        dma_buffer_size =(dma_buffer_max / dma_half_buffer) * dma_half_buffer;
-    }
-
-    cam->dma_buffer_size = dma_buffer_size * cam->dma_bytes_per_item;
-    cam->dma_half_buffer_size = dma_half_buffer * cam->dma_bytes_per_item;
-    cam->dma_half_buffer_cnt = cam->dma_buffer_size / cam->dma_half_buffer_size;
-
     return 1;
 }
 
 static void ll_cam_dma_reset(cam_obj_t *cam)
 {
-    // PARLIO handles DMA internally, no separate reset needed
 }

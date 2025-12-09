@@ -363,6 +363,7 @@ esp_err_t esp_camera_deinit()
 
 #define FB_GET_TIMEOUT (4000 / portTICK_PERIOD_MS)
 
+/*
 camera_fb_t *esp_camera_fb_get()
 {
     if (s_state == NULL) {
@@ -385,6 +386,7 @@ void esp_camera_fb_return(camera_fb_t *fb)
     }
     cam_give(fb);
 }
+*/
 
 sensor_t *esp_camera_sensor_get()
 {

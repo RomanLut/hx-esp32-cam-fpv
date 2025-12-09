@@ -610,20 +610,35 @@ void setup_wifi_file_server(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-    wifi_config_t wifi_config;
+    wifi_config_t wifi_config = {
+        .ap = {
+            .ssid = {0},
+            .password = {0},
+            .ssid_len = 0,
+            .channel = 5,
+            .authmode = WIFI_AUTH_OPEN,
+            .ssid_hidden = 0,
+            .max_connection = 5,
+            .beacon_interval = 100,
+            .csa_count = 0,
+            .dtim_period = 1,
+            .pairwise_cipher = WIFI_CIPHER_TYPE_NONE,
+            .ftm_responder = false,
+            .pmf_cfg = {
+                .capable = false,
+                .required = false
+            },
+            .sae_pwe_h2e = WPA3_SAE_PWE_UNSPECIFIED
+            }
+        };
     strcpy((char *)wifi_config.ap.ssid,"espvtx"); 
     wifi_config.ap.ssid_len = strlen("espvtx"); 
-    wifi_config.ap.channel = 5;
-    wifi_config.ap.max_connection = 5;
-    wifi_config.ap.authmode = WIFI_AUTH_OPEN;
-    
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     start_file_server("/sdcard");
-
 }
 
 uint8_t getMaxWlanOutgoingQueueUsage()

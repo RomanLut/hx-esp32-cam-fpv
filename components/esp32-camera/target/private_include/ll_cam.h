@@ -109,7 +109,9 @@ typedef struct {
 
 typedef struct {
     uint32_t dma_bytes_per_item;
+#if !defined( CONFIG_IDF_TARGET_ESP32C5 )
     uint32_t dma_buffer_size;
+
     uint32_t dma_half_buffer_size;
     uint32_t dma_half_buffer_cnt;
     uint32_t dma_node_buffer_size;
@@ -121,9 +123,11 @@ typedef struct {
     uint8_t  *dma_buffer;
 
     cam_frame_t *frames;
+#endif
 
     QueueHandle_t event_queue;
     QueueHandle_t frame_buffer_queue;
+    
     TaskHandle_t task_handle;
     intr_handle_t cam_intr_handle;
 
