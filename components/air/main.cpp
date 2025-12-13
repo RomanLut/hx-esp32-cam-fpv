@@ -137,12 +137,12 @@ int s_uart_verbose = 1;
 
 sdmmc_card_t* card = nullptr;
 
-static bool s_air_record = false;
+volatile bool s_air_record = false;
 
 static bool s_camera_stopped = false;
 static bool s_camera_stopped_requested = false;
 
-static uint64_t s_shouldRestartRecording;
+volatile uint64_t s_shouldRestartRecording = 0;
 
 HXMavlinkParser mavlinkParserIn(true);
 
@@ -477,29 +477,103 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 //ESP32 4096: 1.6 MB/s 
 //ESP32 12*512:1.5 MB/s  ???
 //ESP32 8192: 1.9 MB/s
+
+//ESP32 8192 SPI mode file test: 1.1MB/sec
 static constexpr size_t SD_WRITE_BLOCK_SIZE = 8192;
 
 //for fast SD writes, buffer has to be in DMA enabled memory
 static uint8_t* sd_write_block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
 
-/*
-static void shutdown_sd()
+//=============================================================================================
+//=============================================================================================
+void run_file_benchmark()
 {
-    if (!s_sd_initialized)
+    LOG("Starting file benchmark\n");
+
+    const char* filename = "/sdcard/bench.bin";
+    FILE* file = fopen(filename, "wb");
+    if (!file) 
+    {
+        LOG("Error: Cannot open file %s\n", filename);
         return;
-    LOG("close sd card!\n");
-    
-    esp_vfs_fat_sdcard_unmount("/sdcard",card);
+    }
 
-    s_sd_initialized = false;
+    const size_t CHUNK_SIZE = 8 * 1024; // 8 KB
+    const size_t TOTAL_SIZE = 100 * 1024 * 1024; // 100 MB
+    size_t written = 0;
+    uint8_t* buffer = (uint8_t*)heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_DMA);
+    //uint8_t* buffer2 = (uint8_t*)heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_SPIRAM);
+    if (!buffer) 
+    {
+        LOG("Error: Cannot allocate buffer\n");
+        fclose(file);
+        return;
+    }
 
-    //to turn the LED off
-#ifdef BOARD_ESP32CAM    
-    gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);    // D1, needed in 4-line mode only
-#endif    
+    // Fill buffer with a pattern for identification
+    memset(buffer, 0xAA, CHUNK_SIZE);
+
+    int64_t start_time = esp_timer_get_time();
+    int64_t last_yield_time = start_time;
+
+    while (written < TOTAL_SIZE) {
+        size_t to_write = CHUNK_SIZE;
+        if (written + to_write > TOTAL_SIZE) {
+            to_write = TOTAL_SIZE - written;
+        }
+
+        //memcpy(buffer, buffer2, to_write);
+
+        size_t result = fwrite(buffer, 1, to_write, file);
+        if (result != to_write) {
+            LOG("Error: fwrite failed, wrote %lu instead of %lu\n", result, to_write);
+            break;
+        }
+
+        written += result;
+
+        // Flush to ensure data is written
+        fflush(file);
+
+        // Calculate progress (using integer arithmetic for compatibility)
+        int64_t current_time = esp_timer_get_time();
+        int64_t elapsed_micros = current_time - start_time;
+        size_t mb = written / (1024ULL * 1024ULL);
+        size_t percent = (written * 100ULL) / TOTAL_SIZE;
+        size_t seconds = elapsed_micros / 1000000ULL;
+        size_t tenth_second = (elapsed_micros / 100000ULL) % 10ULL;
+
+        double speed_bps = written / (elapsed_micros / 1000000.0);
+        size_t speed_kb = (size_t)(speed_bps / 1024.0);
+
+        // Check if 100ms have passed since last yield
+        int64_t now = esp_timer_get_time();
+        if (now - last_yield_time > 100000) 
+        { // 100ms in microseconds
+            vTaskDelay(1); // minimal yield
+            last_yield_time = now;
+
+            char logbuf[256];
+            sprintf(logbuf, "Progress: %lu MB (%lu%%) written in %lu.%lu seconds. Speed: %lu KB/s\n",
+                    (unsigned long)mb, (unsigned long)percent, (unsigned long)seconds, (unsigned long)tenth_second, (unsigned long)speed_kb);
+            LOG("%s", logbuf);
+        }
+
+    }
+
+    fclose(file);
+    free(buffer);
+
+    if (written >= TOTAL_SIZE) {
+        LOG("File benchmark completed: %lu bytes written successfully\n", written);
+    } else {
+        LOG("File benchmark stopped early: %lu bytes written\n", written);
+    }
 }
-*/
+
+//=============================================================================================
+//=============================================================================================
 void updateSDInfo()
 {
     if ( !s_sd_initialized) return;
@@ -568,18 +642,19 @@ static bool init_sd()
 #endif //SD_CARD_MMC
 
 #ifdef SD_CARD_SPI
-
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = false,
         .max_files = 2,
-        .allocation_unit_size = 0 };
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false, 
+        .use_one_fat = false,
+        };
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-
     //host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
     //host.max_freq_khz = SDMMC_FREQ_PROBING;
     //host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-    //host.max_freq_khz = 26000;
+    //host.max_freq_khz = 10000;
 
 
     spi_bus_config_t bus_cfg = {
@@ -588,7 +663,13 @@ static bool init_sd()
         .sclk_io_num = SD_CLK_PIN,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = 4096
+        .data4_io_num = -1,
+        .data5_io_num = -1,
+        .data6_io_num = -1,
+        .data7_io_num = -1,
+        .max_transfer_sz = 4000,
+        .flags = 0,
+        .intr_flags = 0        
     };
 
     esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
@@ -598,12 +679,15 @@ static bool init_sd()
         return false;
     }
     
-    //host.set_card_clk(host.slot, 10000);
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = SD_CS_PIN;
     slot_config.host_id = (spi_host_device_t)host.slot;
+    //slot_config.wait_for_miso = -1; 
+
+    gpio_set_pull_mode(SD_DO_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(SD_DI_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(SD_CS_PIN, GPIO_PULLUP_ONLY);
+    //slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP; - no .flag
 
     LOG("Mounting SD card...\n");
     ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
@@ -616,9 +700,6 @@ static bool init_sd()
 
     LOG("sd card inited!\n");
     s_sd_initialized = true;
-#ifdef DVR_SUPPORT
-    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
-#endif
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
@@ -644,6 +725,15 @@ static bool init_sd()
         s_sd_next_segment_id = 0;
         break;
     }
+
+/*
+    // Run file benchmark after SD initialization
+    if (s_sd_initialized) 
+    {
+        run_file_benchmark();
+    }
+*/
+
     return true;
 }
 
@@ -1215,7 +1305,15 @@ static void sd_enqueue_proc(void*)
 __attribute__((optimize("Os")))
 IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
-    xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
+    if (xSemaphoreTake(s_sd_fast_buffer_mux, 10 / portTICK_PERIOD_MS) != pdPASS)
+    {
+        s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.toggle(PF_CAMERA_SD_OVF);
+#endif
+        return;
+    }
+
     bool ok = s_sd_fast_buffer.write(data, size);
 
 #ifdef WRITE_RAW_MJPEG_STREAM 
@@ -1765,6 +1863,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     s_stats.RCPeriodMaxMS = d;
                 }
 
+#ifdef UART_MSP_OSD
                 if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
@@ -1776,6 +1875,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     }
                     g_msp.setRCChannels(ch);
                 }
+#endif                
 
                 if ( s_ground2air_config_packet2.misc.cameraStopChannel != 0 )
                 {
@@ -2262,8 +2362,10 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( s_air_record )
     {
-#ifdef BOARD_XIAOS3SENSE        
+#if defined(BOARD_XIAOS3SENSE)
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32S3;
+#elif defined(BOARD_ESP32C5)
+        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32C5;
 #else
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32;
 #endif
@@ -3028,8 +3130,8 @@ bool isUSBDiskMounted()
 
 //=============================================================================================
 //=============================================================================================
-void mountUSBDisk() 
-{ 
+void mountUSBDisk()
+{
     const esp_vfs_fat_mount_config_t mount_config =
     {
         .format_if_mount_failed = false,
@@ -3181,6 +3283,8 @@ extern "C" void app_main()
 
     readConfig();
 
+    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
+
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
@@ -3236,6 +3340,7 @@ extern "C" void app_main()
     //run file server if rec button is pressed on startup
     if ( runFileServer )
     {
+        //============================================================================
         LOG("Starting file server...");
 
         vTaskSuspend(s_wifi_rx_task);
@@ -3264,10 +3369,12 @@ extern "C" void app_main()
 
             update_status_led_file_server();
         }
+        //============================================================================
     }
 
     s_shouldRestartRecording =  esp_timer_get_time() + 2000000;
     {
+        //task will open AVI/MJPEF file for writing immediatelly if s_air_record=true
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_write_proc, "SD Write", 4096, nullptr, 1, &s_sd_write_task, core);
         if (res != pdPASS)
@@ -3283,6 +3390,7 @@ extern "C" void app_main()
             LOG("Failed sd enqueue task: %d\n", res);
         }
     }
+
 #endif
 
 #ifdef INIT_UART_1
@@ -3369,6 +3477,9 @@ extern "C" void app_main()
 
     temperature_sensor_init();
 
+    //run_file_benchmark();
+
+    //here camera_data_available callback will start receiving data, adding to SD buffer etc.
     s_initialized = true;
 
     while (true)

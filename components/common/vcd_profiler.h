@@ -2,7 +2,7 @@
 
 //===========================================================
 //Uncomment to enable profiler
-#define PROFILE_CAMERA_DATA
+//#define PROFILE_CAMERA_DATA
 
 
 //uncomment to start profiling with button

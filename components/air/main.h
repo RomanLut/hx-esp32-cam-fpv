@@ -25,18 +25,32 @@
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
+/*
 #define UART_MSP_OSD UART_NUM_2
 #define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+*/
 
 #define CAMERA_MODEL_AI_THINKER
 
-#define DVR_SUPPORT
-#define SD_CARD_MMC
-//pins are hardwired
-//#define SD_CLK_PIN     PIO_NUM_14
+//With MMC mode we have 2x beter speed and free pin for UART2
+//#define DVR_SUPPORT
+//#define SD_CARD_MMC
+//pins are default unless CONFIG_SDMMC_USE_GPIO_MATRIX=y is specified
+//#define SD_CLK_PIN     GPIO_NUM_14
 //#define SD_CMD_PIN     GPIO_NUM_15
 //#define SD_D0_PIN      GPIO_NUM_2
+
+//Conflicts with UART2 (pin 13)
+//Conflicts with BOOT pin (pin 2)
+//requires 10k pullups on MOSI, MISO, CS
+//2x slower compared to MMC mode
+#define DVR_SUPPORT
+#define SD_CARD_SPI
+#define SD_CS_PIN      GPIO_NUM_13
+#define SD_CLK_PIN     GPIO_NUM_14
+#define SD_DI_PIN      GPIO_NUM_15
+#define SD_DO_PIN      GPIO_NUM_2
 
 #define INIT_UART_0
 #ifdef USBUART_DEBUG_OUTPUT
@@ -62,10 +76,12 @@
 
 #define UART1_BAUDRATE 115200
 
+/*
 #define INIT_UART_2
 #define TXD2_PIN    12   //should be low at boot!!!
 #define RXD2_PIN    13 
 #define UART2_BAUDRATE 115200
+*/
 
 #define STATUS_LED_PIN GPIO_NUM_33
 #define STATUS_LED_ON 0
@@ -172,7 +188,7 @@
 
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
-#define HAS_REC_BUTTON_LED   //LED is connected to REC button
+#define HAS_REC_BUTTON_LED   //LED is connected to REC button, 1k to 3.3V
 
 #endif
 //===============================================================
@@ -187,6 +203,7 @@
 
 #define MAX_SD_WRITE_SPEED_ESP32   (800*1024) //esp32 can hadle 1.9mb writes, but in this project it's 0.8mb max due to overal system load (otherwise we miss camera data callback)
 #define MAX_SD_WRITE_SPEED_ESP32S3 (1800*1024) //can  write 1900 but we set to 1800 due to overal system load
+#define MAX_SD_WRITE_SPEED_ESP32C5 (800*1024) //can  write 1900 but we set to 1800 due to overal system load
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
