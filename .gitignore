@@ -45,3 +45,7 @@ gs/gs.ini
 release
 components/build
 managed_components
+/tools/extact_frames_nodejs/V036_015_frames
+/tools/receive_vcd_nodejs/package-lock.json
+/tools/receive_vcd_nodejs/node_modules
+/tools/parse_jpeg_nodejs/V036_015.AVI
