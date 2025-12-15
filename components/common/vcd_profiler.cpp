@@ -169,7 +169,26 @@ IRAM_ATTR void VCDProfiler::toggle(int var)
 
 //===========================================================
 //===========================================================
-void VCDProfiler::start(int32_t duration_ms)
+//===========================================================
+void VCDProfiler::outputToConsole()
+{
+    this->stop();
+
+    xSemaphoreTake(this->profiler_mux,portMAX_DELAY);
+
+    printf("<<<VCDSTART>>>");
+    int lineCount = 0;
+    auto writeLine = [&lineCount](const char* str){ printf("%s", str); lineCount++; if (lineCount % 100 == 0) vTaskDelay(1); };
+    this->printVCD(writeLine);
+    printf("<<<VCDSTOP>>>");
+    fflush(stdout);
+
+    xSemaphoreGive(this->profiler_mux);
+}
+
+//===========================================================
+//===========================================================
+void VCDProfiler::start(long duration_ms)
 {
     //this->stop();
     this->clear();
@@ -202,7 +221,7 @@ void VCDProfiler::stop()
 
 //===========================================================
 //===========================================================
-void VCDProfiler::save()
+void VCDProfiler::saveToSD()
 {
     this->stop();
 
@@ -226,65 +245,8 @@ void VCDProfiler::save()
             break;
         }
 
-        const char* line = "$date Mon Jan 22 22:32:32 2024 $end\n$timescale 1us $end\n$scope module pf $end\n";
-        fwrite(line, strlen(line), 1, f);
-
-        const char* refChars = "!#$%&*()@~^=|{}?";
-        const char* names[] = { PF0_NAME, PF1_NAME, PF2_NAME, PF3_NAME, PF4_NAME, PF5_NAME, PF6_NAME, PF7_NAME,
-                                PF8_NAME, PF9_NAME, PF10_NAME, PF11_NAME, PF12_NAME, PF13_NAME, PF14_NAME, PF15_NAME,};
-
-        for ( int i = 0; i < VCDProfiler::CHANNELS_COUNT; i++)
-        {
-            if ( *names[i] == 0 ) continue;
-            if (this->regFlags & (1<<i))
-            {
-                sprintf(buffer, "$var reg 8 %c %s $end\n", refChars[i], names[i]);
-            }
-            else
-            {
-                sprintf(buffer, "$var wire 1 %c %s $end\n", refChars[i], names[i]);
-            }
-            fwrite(buffer, strlen(buffer), 1, f);
-        }
-
-        line = "$upscope $end\n$enddefinitions $end\n";
-        fwrite(line, strlen(line), 1, f);
-
-        Descriptor d;
-        //events
-        int64_t lastTime = -1;
-        for ( int i=-VCDProfiler::CHANNELS_COUNT-1; i < this->count; i++)
-        {
-            if ( i < 0 )
-            {
-                d.var = -i-1;
-                d.value = 0;
-                d.timestamp = 0;
-                //d.core = 0;
-            }
-            else
-            {
-                d = this->buffer[i];
-            }
-
-
-            int64_t t = ((int64_t)d.timestamp) << 4;
-            if ( lastTime != t )
-            {
-                sprintf(buffer, "#%llu\n", t);
-                fwrite(buffer, strlen(buffer), 1, f);
-                lastTime = t;
-            }
-            if (this->regFlags & (1<<d.var))
-            {
-                sprintf(buffer, "b" BYTE_TO_BINARY_PATTERN " %c\n", BYTE_TO_BINARY(d.value), refChars[d.var]);
-            }
-            else
-            {
-                sprintf(buffer, "%c%c\n", d.value == 0 ? '0' : '1', refChars[d.var]);
-            }
-            fwrite(buffer, strlen(buffer), 1, f);
-        }
+        auto writeLine = [f](const char* str){ fwrite(str, strlen(str), 1, f); };
+        this->printVCD(writeLine);
 
         fflush(f);
         fsync(fileno(f));
@@ -295,6 +257,89 @@ void VCDProfiler::save()
 
     xSemaphoreGive(this->profiler_mux);
 }
+
+//===========================================================
+//===========================================================
+void VCDProfiler::printVCD(std::function<void(const char*)> writeLine)
+{
+    const char* line = "$date Mon Jan 22 22:32:32 2024 $end\n$timescale 1us $end\n$scope module pf $end\n";
+    writeLine(line);
+
+    const char* refChars = "!#$%&*()@~^=|{}?";
+    const char* names[] = { PF0_NAME, PF1_NAME, PF2_NAME, PF3_NAME, PF4_NAME, PF5_NAME, PF6_NAME, PF7_NAME,
+                            PF8_NAME, PF9_NAME, PF10_NAME, PF11_NAME, PF12_NAME, PF13_NAME, PF14_NAME, PF15_NAME,};
+    char buffer[64];
+
+    for ( int i = 0; i < VCDProfiler::CHANNELS_COUNT; i++)
+    {
+        if ( *names[i] == 0 ) continue;
+        if (this->regFlags & (1<<i))
+        {
+            sprintf(buffer, "$var reg 8 %c %s $end\n", refChars[i], names[i]);
+        }
+        else
+        {
+            sprintf(buffer, "$var wire 1 %c %s $end\n", refChars[i], names[i]);
+        }
+        writeLine(buffer);
+    }
+
+    line = "$upscope $end\n$enddefinitions $end\n";
+    writeLine(line);
+
+    Descriptor d;
+    //events
+    int64_t lastTime = -1;
+    for ( int i=-VCDProfiler::CHANNELS_COUNT-1; i < this->count; i++)
+    {
+        if ( i < 0 )
+        {
+            d.var = -i-1;
+            d.value = 0;
+            d.timestamp = 0;
+            //d.core = 0;
+        }
+        else
+        {
+            d = this->buffer[i];
+        }
+
+
+        int64_t t = ((int64_t)d.timestamp) << 4;
+        if ( lastTime != t )
+        {
+            sprintf(buffer, "#%llu\n", t);
+            writeLine(buffer);
+            lastTime = t;
+        }
+        if (this->regFlags & (1<<d.var))
+        {
+            sprintf(buffer, "b" BYTE_TO_BINARY_PATTERN " %c\n", BYTE_TO_BINARY(d.value), refChars[d.var]);
+        }
+        else
+        {
+            sprintf(buffer, "%c%c\n", d.value == 0 ? '0' : '1', refChars[d.var]);
+        }
+        writeLine(buffer);
+    }
+}
+
+
+//===========================================================
+//===========================================================
+void VCDProfiler::save()
+{
+    this->stop();
+
+#ifdef DVR_SUPPORT
+    this->saveToSD();
+#endif
+
+#ifdef PROFILER_OUTPUT_TO_CONSOLE
+    this->outputToConsole();
+#endif
+}
+
 
 //===========================================================
 //===========================================================

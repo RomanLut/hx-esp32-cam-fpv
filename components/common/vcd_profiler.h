@@ -4,9 +4,11 @@
 //Uncomment to enable profiler
 //#define PROFILE_CAMERA_DATA
 
-
 //uncomment to start profiling with button
-//#define START_PROFILER_WITH_BUTTON
+#define START_PROFILER_WITH_BUTTON
+
+//uncommentto output VCD to console
+#define PROFILER_OUTPUT_TO_CONSOLE
 //===========================================================
 
 //------------------------
@@ -54,6 +56,7 @@
 //===========================================================
 #ifdef ENABLE_PROFILER
 
+#include <functional>
 #include <cassert>
 #include <cstring>
 #include <cstdint>
@@ -88,7 +91,7 @@ public:
 
     bool init();
 
-    void start(int32_t duration_ms = (MAX_TIMESTAMP_VALUE << 4 / 1000) );
+    void start(long duration_ms = (MAX_TIMESTAMP_VALUE << 4 / 1000) );
     void set(int var, int val);
     void toggle(int var);
 
@@ -112,6 +115,10 @@ private:
 
     SemaphoreHandle_t profiler_mux;
     Descriptor* buffer;
+
+    void saveToSD();
+    void outputToConsole();
+    void printVCD(std::function<void(const char*)> writeLine);
 };
 
 
