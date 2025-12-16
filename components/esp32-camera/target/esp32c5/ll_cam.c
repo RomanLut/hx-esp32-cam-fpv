@@ -17,6 +17,7 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
+#include "esp_timer.h"
 #include "ll_cam.h"
 #include "cam_hal.h"
 #include "esp_private/periph_ctrl.h"
@@ -55,7 +56,7 @@ static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_uni
     pk++;
 
     //send event to cam_task
-    cam_event_t event = { .kind = CAM_PARLIO_DATA, .data = data, .length = (uint16_t)received_bytes };
+    cam_event_t event = { .kind = CAM_PARLIO_DATA, .data = data, .length = (uint16_t)received_bytes, .timestamp = esp_timer_get_time() };
     ll_cam_send_event(cam_obj, &event, &HPTaskAwoken);
 
     return (HPTaskAwoken == pdTRUE);

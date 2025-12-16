@@ -105,7 +105,7 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_vsync_isr(void *arg)
     LCD_CAM.lc_dma_int_clr.val = status.val;
 
     if (status.cam_vsync_int_st) {
-        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0 };
+        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
         ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 
@@ -128,7 +128,7 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_dma_isr(void *arg)
     GDMA.channel[cam->dma_num].in.int_clr.val = status.val;
 
     if (status.in_suc_eof) {
-        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0 };
+        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
         ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 

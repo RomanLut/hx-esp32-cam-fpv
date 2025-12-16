@@ -2885,6 +2885,24 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
 //=============================================================================================
 //=============================================================================================
+IRAM_ATTR static void parlio_data_callback(bool active)
+{
+#ifdef PROFILE_CAMERA_DATA
+    s_profiler.set(PF_PARLIO_DATA, active ? 1 : 0);
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
+IRAM_ATTR static void camera_event_callback(int eventType, int64_t timestamp)
+{
+#ifdef PROFILE_CAMERA_DATA
+    s_profiler.toggle(PF_CAM_EVENT_DMA_EOF + eventType, timestamp);
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
 static void init_camera()
 {
     printf("Init camera...\n");
@@ -2929,6 +2947,12 @@ static void init_camera()
         LOG("Camera init failed with error 0x%x", err);
         return;
     }
+
+    // Set camera event callback for profiling
+    cam_set_camera_event_callback(camera_event_callback);
+
+    // Set parlio data callback for profiling
+    cam_set_parlio_data_callback(parlio_data_callback);
 }
 
 //#define SHOW_CPU_USAGE

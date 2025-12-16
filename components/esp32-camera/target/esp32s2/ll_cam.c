@@ -45,7 +45,7 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_vsync_isr(void *arg)
     // filter
     ets_delay_us(1);
     if (gpio_ll_get_level(&GPIO, cam->vsync_pin) == !cam->vsync_invert) {
-        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0 }
+        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() }
         ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 
@@ -68,7 +68,7 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_dma_isr(void *arg)
     I2S0.int_clr.val = status.val;
 
     if (status.in_suc_eof) {
-        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0 }
+        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() }
         ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 

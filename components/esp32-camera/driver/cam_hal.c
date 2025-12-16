@@ -50,6 +50,22 @@ static bool s_ovf_flag = false;
 //static const uint16_t JPEG_EOI_MARKER = 0xD9FF;  // written in little-endian for esp32
 size_t (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last);
 
+// Camera event callback - set from main app to handle profiling
+void (*camera_event_callback)(int eventType, int64_t timestamp) = NULL;
+
+void cam_set_camera_event_callback(void (*callback)(int eventType, int64_t timestamp))
+{
+    camera_event_callback = callback;
+}
+
+// Parlio data callback - set from main app to handle profiling
+void (*parlio_data_callback)(bool active) = NULL;
+
+void cam_set_parlio_data_callback(void (*callback)(bool active))
+{
+    parlio_data_callback = callback;
+}
+
 #if !defined(CONFIG_IDF_TARGET_ESP32C5)
 
 /*
@@ -131,11 +147,11 @@ static void cam_task(void *arg)
     {
         cam_event_t cam_event;
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
-        //the only possible event type is cam_event.kind == CAM_PARLIO_DATA) 
+        //the only possible event type is cam_event.kind == CAM_PARLIO_DATA)
 
-//#ifdef PROFILE_CAMERA_DATA    
-//        s_profiler.set(PF_PARLIO_DATA, 1);
-//#endif
+        if ( camera_event_callback ) camera_event_callback( (int)cam_event.kind, cam_event.timestamp );
+
+        if (parlio_data_callback) parlio_data_callback(true);
 
         const uint8_t* pData = cam_event.data;
         uint32_t availBytes = cam_event.length;
@@ -216,10 +232,7 @@ static void cam_task(void *arg)
             }
         }
 
-//#ifdef PROFILE_CAMERA_DATA    
-//        s_profiler.set(PF_PARLIO_DATA, 0);
-//#endif
-
+        if (parlio_data_callback) parlio_data_callback(false);
     }
 }
 #else
@@ -236,6 +249,9 @@ static void cam_task(void *arg)
 
     while (1) {
         xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
+
+        if ( camera_event_callback ) camera_event_callback( (int)cam_event.kind, cam_event.timestamp );
+
         DBG_PIN_SET(1);
         switch (cam_obj->state) {
 
@@ -551,7 +567,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
 #endif
 
     ESP_LOGI(TAG, "cam config ok");
-    data_available_callback=config->data_available_callback;
+    data_available_callback = config->data_available_callback;
 
     return ESP_OK;
 

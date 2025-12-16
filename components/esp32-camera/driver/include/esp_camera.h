@@ -245,6 +245,9 @@ void esp_camera_return_all(void);
 
 extern bool getOVFFlagAndReset();
 
+void cam_set_camera_event_callback(void (*callback)(int eventType, int64_t timestamp));
+void cam_set_parlio_data_callback(void (*callback)(bool active));
+
 #ifdef __cplusplus
 }
 #endif

@@ -92,6 +92,7 @@ typedef struct {
     cam_event_kind_t kind;
     const uint8_t *data;
     uint16_t length;
+    int64_t timestamp;
 } cam_event_t;
 
 typedef enum {
