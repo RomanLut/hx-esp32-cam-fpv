@@ -41,7 +41,7 @@ constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 90000;
 #elif defined(BOARD_ESP32CAM)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 45000;
 #elif defined(BOARD_ESP32C5)
-constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;
+constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 75000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));

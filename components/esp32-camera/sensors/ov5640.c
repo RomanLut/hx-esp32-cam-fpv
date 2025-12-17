@@ -176,8 +176,9 @@ static int write_addr_reg(uint8_t slv_addr, const uint16_t reg, uint16_t x_value
 
 static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sys_div, int pre_div, bool root_2x, int pclk_root_div, bool pclk_manual, int pclk_div)
 {
+    //why this map is needed at all?
+    //valid values are 1,2,3,4,6,8      0  1  2  3  4   5   6   7   8
     const float pll_pre_div2x_map[] = { 1, 1, 2, 3, 4, 1.5, 6, 2.5, 8};
-    //const int pll_pclk_root_div_map[] = { 1, 2, 4, 8 };
 
     if(!pll_sys_div) {
         pll_sys_div = 1;
@@ -428,8 +429,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-//#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
-#ifdef CONFIG_IDF_TARGET_ESP32S3 
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
+//#ifdef CONFIG_IDF_TARGET_ESP32S3 
         /*
         //10MHz PCLK
         uint8_t sys_mul = 200;
@@ -515,8 +516,10 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             sys_mul = 180;
         }
 
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        sys_mul=160;
+#endif 
 
-        //sys_mul = 70;
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
         //Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
 #endif        
