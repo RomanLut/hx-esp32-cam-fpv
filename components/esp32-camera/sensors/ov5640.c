@@ -429,8 +429,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
-//#ifdef CONFIG_IDF_TARGET_ESP32S3 
+//#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C5)
+#ifdef CONFIG_IDF_TARGET_ESP32S3 
         /*
         //10MHz PCLK
         uint8_t sys_mul = 200;
