@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <esp_timer.h>
 #include "soc/i2s_struct.h"
 #include "esp_idf_version.h"
 #if (ESP_IDF_VERSION_MAJOR >= 4) && (ESP_IDF_VERSION_MINOR > 1)
