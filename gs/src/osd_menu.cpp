@@ -184,8 +184,13 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
 void OSDMenu::searchNextWifiChannel(Ground2Air_Config_Packet& config)
 {
     this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
-    s_groundstation_config.wifi_channel++;
-    if ( s_groundstation_config.wifi_channel > 13 ) s_groundstation_config.wifi_channel = 1;
+    
+    s_groundstation_config.wifi_channel = getValidWifiChannel(s_groundstation_config.wifi_channel);
+    int channel_index = getWifiChannelIndex(s_groundstation_config.wifi_channel);
+    channel_index++;
+    if ( channel_index >= WIFI_CHANNELS_COUNT ) channel_index = 0;
+    s_groundstation_config.wifi_channel = WIFI_CHANNELS_BY_INDEX[channel_index];
+    
     applyWifiChannelInstant(config);
 }
 
@@ -228,10 +233,12 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     
     {
         char buf[256];
+        int channel = getValidWifiChannel(s_groundstation_config.wifi_channel);
         sprintf(buf, "Wifi Channel: %d##1", s_groundstation_config.wifi_channel);
         if ( this->drawMenuItem( buf, 2) )
         {
-            this->goForward( OSDMenuId::WifiChannel, s_groundstation_config.wifi_channel-1);
+            int channelIndex = getWifiChannelIndex(channel);
+            this->goForward( OSDMenuId::WifiChannel, channelIndex);
         }
     }
 
@@ -943,15 +950,15 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 
     bool bExit = false;
 
-    for ( int i = 0; i < 13; i++ )
+    for ( int i = 0; i < WIFI_CHANNELS_COUNT; i++ )
     {
         char buf[12];
-        sprintf(buf, "%d", i+1);
+        sprintf(buf, "%d", WIFI_CHANNELS_BY_INDEX[i]);
         if ( this->drawMenuItem( buf, i, true) )
         {
-            if ( s_groundstation_config.wifi_channel != (i+1)) 
+            if ( s_groundstation_config.wifi_channel != WIFI_CHANNELS_BY_INDEX[i]) 
             {
-                s_groundstation_config.wifi_channel = i+1;
+                s_groundstation_config.wifi_channel = WIFI_CHANNELS_BY_INDEX[i];
                 saveGroundStationConfig();
                 applyWifiChannel(config);
             }

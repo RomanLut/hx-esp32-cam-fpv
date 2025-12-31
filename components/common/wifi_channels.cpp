@@ -1,5 +1,9 @@
 #include "wifi_channels.h"
+#ifdef ESP_PLATFORM
 #include "esp_system.h"
+#else
+#define IRAM_ATTR
+#endif
 
 
 const uint8_t WIFI_CHANNELS_BY_INDEX[] = 
@@ -44,7 +48,11 @@ IRAM_ATTR int getValidWifiChannel(int channel)
     }
 
 #if CONFIG_IDF_TARGET_ESP32C5
+    //all channels are valid on esp32c5
+#elif !defined(ESP_PLATFORM)
+    //all channels are valid on GS
 #else
+    //2.4GHZ only on esp32, esp32s3
     if ( channel > MAX_WIFI_2D4GHZ_CHANNEL )
     {
         channel = DEFAULT_WIFI_CHANNEL;
@@ -64,4 +72,17 @@ IRAM_ATTR int getValidWifiChannel(int channel)
     }
 
     return channel;
+}
+
+//returns index of channel in WIFI_CHANNELS_BY_INDEX
+int getWifiChannelIndex(int channel)
+{
+    for(int i = 0; i < WIFI_CHANNELS_COUNT; i++) 
+    {
+        if(WIFI_CHANNELS_BY_INDEX[i] == channel) 
+        {
+            return i;
+        }
+    }
+    return DEFAULT_WIFI_CHANNEL_INDEX;
 }
