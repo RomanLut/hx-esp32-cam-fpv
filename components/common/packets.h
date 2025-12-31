@@ -2,8 +2,7 @@
 
 #include "structures.h"
 #include "fec.h"
-
-#define DEFAULT_WIFI_CHANNEL 7
+#include "wifi_channels.h"
 
 #define FW_VERSION "0.4"
 

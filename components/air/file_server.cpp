@@ -702,7 +702,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         cJSON *root = cJSON_Parse(buf);
         
         uint16_t channel = atoi(cJSON_GetStringValue(cJSON_GetObjectItem(root,"channel")));
-        if ( channel >= 1 && channel <= 13 )
+        if ( channel <= WIFI_CHANNELS_COUNT )
         {
             nvs_args_set("channel",channel);
             s_ground2air_config_packet.dataChannel.wifi_channel = channel;

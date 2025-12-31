@@ -1374,9 +1374,10 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     wifi_promiscuous_pkt_t *pkt = reinterpret_cast<wifi_promiscuous_pkt_t*>(buf);
 
-    if (pkt->rx_ctrl.channel != s_ground2air_config_packet.dataChannel.wifi_channel)
+    int channel = getValidWifiChannel(s_ground2air_config_packet.dataChannel.wifi_channel);
+    if (pkt->rx_ctrl.channel != channel )
     {
-        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, s_ground2air_config_packet.dataChannel.wifi_channel);
+        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, channel);
         s_stats.inRejectedPacketCounter++;
         return;
     }    
@@ -1490,7 +1491,9 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     
     if ( processSetting( "Wifi channel", dst.dataChannel.wifi_channel, src.dataChannel.wifi_channel, "channel" ) )
     {
-        ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.dataChannel.wifi_channel, WIFI_SECOND_CHAN_NONE));
+        int channel = getValidWifiChannel(src.dataChannel.wifi_channel);
+        LOG("Validated Wifi channel: %d\n", channel );
+        ESP_ERROR_CHECK(esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE));
     }
 
     if ( processSetting( "Target FPS", dst.camera.fps_limit, src.camera.fps_limit, NULL) )
@@ -3043,7 +3046,7 @@ void readConfig()
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
     s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL );
-    if((s_ground2air_config_packet.dataChannel.wifi_channel < 1)  || (s_ground2air_config_packet.dataChannel.wifi_channel > 13))
+    if  ( (s_ground2air_config_packet.dataChannel.wifi_channel < MIN_WIFI_CHANNEL) || (s_ground2air_config_packet.dataChannel.wifi_channel >= MAX_WIFI_CHANNEL))
     {
         s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
@@ -3310,7 +3313,8 @@ extern "C" void app_main()
     s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
-    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
+    int channel = getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel );
+    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
     bool runFileServer = false;
@@ -3497,7 +3501,7 @@ extern "C" void app_main()
     set_ground2air_connect_packet_handler(handle_ground2air_connect_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
-    LOG("WIFI channel: %d\n", s_ground2air_config_packet.dataChannel.wifi_channel );
+    LOG("WIFI channel: %d (raw=%d)\n", getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel), s_ground2air_config_packet.dataChannel.wifi_channel );
 
     temperature_sensor_init();
 
