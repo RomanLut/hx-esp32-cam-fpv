@@ -11,8 +11,6 @@
 #ifdef DVR_SUPPORT
 #define PROFILER_OUTPUT_TO_SD
 #endif
-
-#define PROFILE_CAMERA_DATA
 //===========================================================
 
 //------------------------
