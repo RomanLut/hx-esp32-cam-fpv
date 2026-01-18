@@ -766,7 +766,7 @@ static int open_sd_file()
 //=============================================================================================
 //=============================================================================================
 //this will write data from the slow queue to raw MJPEG file
-static void sd_write_proc(void*)
+static void sd_write_proc(void*) //s_sd_write_task MJPEG
 {
     while (true)
     {
@@ -980,6 +980,7 @@ void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle
                 SDError = true;
                 break;
             }
+            
             fileSize += SD_WRITE_BLOCK_SIZE;
             blockSize = 0;
             s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
@@ -990,7 +991,7 @@ void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle
 //=============================================================================================
 //=============================================================================================
 //this will write data from the slow queue to AVI file
-static void sd_write_proc(void*)
+static void sd_write_proc(void*) //s_sd_write_task AVI
 {
     //frames are separated by MJPEG_PATTERN_SIZE zeros
     //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
@@ -3412,7 +3413,7 @@ extern "C" void app_main()
     }
     {
         int core = tskNO_AFFINITY;
-        BaseType_t res = xTaskCreatePinnedToCore(&sd_enqueue_proc, "SD Enq", 1536, nullptr, 1, &s_sd_enqueue_task, core);
+        BaseType_t res = xTaskCreatePinnedToCore(&sd_enqueue_proc, "SD Enq", 1536, nullptr, 2, &s_sd_enqueue_task, core);
         if (res != pdPASS)
         {
             LOG("Failed sd enqueue task: %d\n", res);
@@ -3542,7 +3543,7 @@ extern "C" void app_main()
             }
 
             s_max_frame_size = 0;
-            s_dbg = 0;
+            //s_dbg = 0;
 
             if ( s_stats.fec_spin_count > 0 )
             {
@@ -3706,4 +3707,33 @@ Air send:
  - reads s_wlan_outgoing_queue
  - calls esp_wifi_80211_tx() 
 
+
+//Here is a list of all tasks with their priorities:
+// - Main task (app_main): Priority 1
+// - SD Write task: Priority 1
+// - SD Enqueue task: Priority 2
+// - Wifi TX task: Priority 1
+// - Wifi RX task: Priority 1
+// - FEC Encoder task: Priority 1
+// - FEC Decoder task: Priority 1
+
+http://webgraphviz.com/
+
+digraph G {
+"camera_data_available" -> "s_fec_encoder"
+"s_fec_encoder" -> "FEC Encoder task"
+"FEC Encoder task" -> "Wifi TX task"
+"camera_data_available" -> "add_to_sd_fast_buffer"
+"add_to_sd_fast_buffer" -> "xTaskNotifyGive(s_sd_enqueue_task)"
+"xTaskNotifyGive(s_sd_enqueue_task)" -> "ulTaskNotifyTake (SD Enqueue task)"
+"ulTaskNotifyTake (SD Enqueue task)" -> "SD Enqueue task"
+"SD Enqueue task" -> "xTaskNotifyGive(s_sd_write_task)"
+"xTaskNotifyGive(s_sd_write_task)" -> "ulTaskNotifyTake (SD Write task)"
+"ulTaskNotifyTake (SD Write task)" -> "SD Write task"
+"SD Enqueue task" -> "s_sd_slow_buffer_mux"
+"s_sd_slow_buffer_mux" -> "SD Write task"
+"packet_received_cb" -> "s_fec_decoder"
+"s_fec_decoder" -> "FEC Decoder task"
+"FEC Decoder task" -> "Wifi RX task"
+}
 */
