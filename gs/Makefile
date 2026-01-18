@@ -16,6 +16,7 @@ SRCS := src/main.cpp \
 	../components/common/fec.cpp \
 	../components/common/avi.cpp \
 	../components/common/packets.cpp \
+	../components/common/wifi_channels.cpp \
 	../components/common/packet_filter.cpp \
 	../components/common/jpeg_parser.cpp \
 	../components/common/hx_mavlink_parser.cpp \

@@ -1196,6 +1196,13 @@ void loadOSDFontByCRC32( uint32_t fontCRC32 )
 
 //===================================================================================
 //===================================================================================
+int formatGSRSSI(int8_t rssi)
+{
+    return (rssi > 0) ? (-128 - rssi) : rssi;
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -1255,7 +1262,7 @@ int run(char* argv[])
             {
                 //RSSI1
                 char buf[32];
-                sprintf(buf, "GS:%d", (int)s_last_gs_stats.rssiDbm[0] );
+                sprintf(buf, "GS:%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]) );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
@@ -1270,7 +1277,7 @@ int run(char* argv[])
             {
                 //RSSI1:RSSI2
                 char buf[32];
-                sprintf(buf, "GS:%d/%d", (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1] );
+                sprintf(buf, "GS:%d/%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]), formatGSRSSI(s_last_gs_stats.rssiDbm[1]) );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
@@ -2679,7 +2686,7 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["wifi_channel"];
         int channel = atoi(temp.c_str());
-        if ((channel >= 1) && (channel <= 13) )
+        if ((channel >= MIN_WIFI_CHANNEL) && (channel <= MAX_WIFI_CHANNEL) )
         {
             s_groundstation_config.wifi_channel = channel;
             config.dataChannel.wifi_channel = channel;
