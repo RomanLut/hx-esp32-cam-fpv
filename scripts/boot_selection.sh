@@ -12,7 +12,7 @@ if [ -f "$COMPATIBLE_FILE" ]; then
     COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
 
     # Check if the content contains "radxa,zero3"
-    if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3w"; then
+    if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3"; then
         IS_RADXA=true
     fi
 fi
@@ -21,6 +21,7 @@ fi
 if [ "$IS_RADXA" = true ]; then
     QABUTTON1=114
     QABUTTON2=102
+    QABUTTON2=97
     HOME_DIRECTORY="/home/radxa"
 
     # Automatically run resize2fs once if not already done
@@ -33,15 +34,18 @@ if [ "$IS_RADXA" = true ]; then
 else
     QABUTTON1=17
     QABUTTON2=4
+    QABUTTON2=23
     HOME_DIRECTORY="/home/pi"
     sudo raspi-gpio set 17 ip pd
     sudo raspi-gpio set 4 ip pd
+    sudo raspi-gpio set 23 ip pd
 fi
 
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
 echo "QABUTTON1=$QABUTTON1"
 echo "QABUTTON2=$QABUTTON2"
+echo "QABUTTON3=$QABUTTON3"
 
 
 #Launch Ruby on first boot to install drivers
@@ -63,6 +67,8 @@ sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/export"
 sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON1/direction"
 sudo sh -c "echo $QABUTTON2 > /sys/class/gpio/export"
 sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON2/direction"
+sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/export"
+sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON3/direction"
 
 # Check GPIO values and write to bootSelection.txt
 if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON1/value) -eq 1 ]; then
@@ -73,9 +79,14 @@ if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON2/value) -eq 1 ]; then
     echo "ruby" | sudo tee bootSelection.txt > /dev/null
 fi
 
+if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON3/value) -eq 1 ]; then
+    echo "ruby" | sudo tee bootSelection.txt > /dev/null
+fi
+
 # Restore GPIOs 
 sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
 sudo sh -c "echo $QABUTTON2 > /sys/class/gpio/unexport"
+sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/unexport"
 
 # Check bootSelection.txt and execute appropriate script
 if [ -f "bootSelection.txt" ] && grep -q "ruby" bootSelection.txt; then
