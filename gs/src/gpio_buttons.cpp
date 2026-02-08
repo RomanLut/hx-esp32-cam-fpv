@@ -5,7 +5,7 @@
   main.c
 
   Kevin Boone, CPL v3.0
-
+ 
 ======================================================================*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +63,7 @@
 //   trial-and-error might be required, to find an optimal value for a
 //   particular type of switch.
 #define BOUNCE_MSEC 100
+
 // LONG_PRESS_MSEC is the minimum hold duration for mappings that have
 //   a secondary (long-press) action.
 #define LONG_PRESS_MSEC 1000
@@ -71,7 +72,9 @@
 //   value makes the memory management less messy.
 #define MAX_PINS 16
 
-// Default press polarity. Change this if the button wiring is active-low.
+// Default edge detection. If the switch is active low, then we need the
+//   falling edge if we trigger on press. Or the rising edge if we trigger
+//   on release
 #define EDGE EDGE_RISING
 
 // Set whether to write debug output
