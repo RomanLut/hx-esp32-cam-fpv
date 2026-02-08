@@ -88,6 +88,7 @@ struct TGroundstationConfig
     bool vsync = true;
     std::string txInterface = "";
     uint16_t deviceId;
+    uint8_t GPIOKeysLayout = 0;
 };
 
 extern TGroundstationConfig s_groundstation_config;

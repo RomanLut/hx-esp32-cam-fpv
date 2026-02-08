@@ -36,6 +36,7 @@
 #include <sys/time.h>
 
 #include "utils.h"
+#include "main.h"
 
 // Constants to use when we specify whether to detect the rising edge
 //   or falling edge of the GPIO state change
@@ -144,6 +145,17 @@ Mapping mappings_radxa[] =
         // Add more here if required...
         {0, NULL, NULL}};
 
+Mapping mappings_runcam[] =
+    {
+        {98, key_left, NULL},   //Header pin 13
+        {102, key_right, NULL}, //Header pin 40   //in runcam VRX, Right is connected to 102(g on DIY VRX) insstead of 101 
+        {105, key_up, NULL},    //Header pin 16
+        {106, key_down, NULL},  //Header pin 18
+        {97, key_enter, NULL},  //Header pin 11
+        {114, key_r, key_g},    //Header pin 32
+        // Add more here if required...
+        {0, NULL, NULL}};
+
 const Mapping* mappings = mappings_pi;
 
 static BOOL debug = DEBUG;
@@ -152,7 +164,7 @@ static BOOL debug = DEBUG;
 //   main loop
 static BOOL quit = FALSE;
 
-static int uinput_fd;
+static int uinput_fd = -1;
 
 static std::thread poll_thread;  
 
@@ -514,9 +526,17 @@ void gpio_buttons_start()
 {
   int pin = 0;
 
-  if ( isRadxaZero3() )
+  quit = FALSE;
+  npins = 0;
+
+  mappings = mappings_pi;
+  else if ( isRadxaZero3() )
   {
     mappings = mappings_radxa;
+    if ( s_groundstation_config.GPIOKeysLayout == 1 )
+    {
+      mappings = mappings_runcam;
+    }
   }
 
   const Mapping *m = &mappings[pin];
@@ -552,18 +572,32 @@ void gpio_buttons_start()
 
   dbglog("Creating GPIO polling thread\n");
   polling_thread = std::thread(polling_thread_func);
-
-  polling_thread.detach();
 }
 
 //======================================================================
 //======================================================================
 void gpio_buttons_stop()
 {
-  polling_thread.join();
+  quit = TRUE;
+  if (polling_thread.joinable())
+  {
+    polling_thread.join();
+  }
   dbglog("GPIO Cleaning up\n");
+  for (int i = 0; i < npins; i++)
+  {
+    if (fdset_base[i].fd >= 0)
+    {
+      close(fdset_base[i].fd);
+      fdset_base[i].fd = -1;
+    }
+  }
   unexport_pins(pins, npins);
-  close_uinput(uinput_fd);
+  if (uinput_fd >= 0)
+  {
+    close_uinput(uinput_fd);
+    uinput_fd = -1;
+  }
 }
 
 /*======================================================================

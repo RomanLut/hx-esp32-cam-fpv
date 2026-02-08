@@ -2457,6 +2457,7 @@ void saveGroundStationConfig()
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
+    ini["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     ini["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
     s_iniFile.write(ini);
 }
@@ -2720,6 +2721,19 @@ int main(int argc, const char* argv[])
         else
         {
             s_groundstation_config.txPower = DEFAULT_TX_POWER;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["gpio_keys_layout"];
+        int layout = atoi(temp.c_str());
+        if ((layout == 0) || (layout == 1))
+        {
+            s_groundstation_config.GPIOKeysLayout = (uint8_t)layout;
+        }
+        else
+        {
+            s_groundstation_config.GPIOKeysLayout = 0;
         }
     }
 

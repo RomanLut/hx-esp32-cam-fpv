@@ -6,6 +6,7 @@
 #include "Comms.h"
 #include "lodepng.h"
 #include "frame_packets_debug.h"
+#include "gpio_buttons.h"
 
 #include <cstring>
 #include <ifaddrs.h>
@@ -1222,7 +1223,20 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         this->goForward( OSDMenuId::Debug, 0 );
     }
 
-    if ( this->drawMenuItem( "Exit To Shell##7", 3) )
+    {
+        char buf[256];
+        const char* layout = s_groundstation_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
+        sprintf(buf, "GPIO Keys Layout: %s##4", layout);
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            s_groundstation_config.GPIOKeysLayout = s_groundstation_config.GPIOKeysLayout == 0 ? 1 : 0;
+            saveGroundStationConfig();
+            gpio_buttons_stop();
+            gpio_buttons_start();
+        }
+    }
+
+    if ( this->drawMenuItem( "Exit To Shell##7", 4) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
