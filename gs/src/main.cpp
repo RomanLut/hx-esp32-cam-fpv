@@ -241,7 +241,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
-std::string serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
+std::string serialPortName = isRadxaZero3() ? "/dev/ttyUSB0" : "/dev/serial0";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -2395,8 +2395,8 @@ bool init_uart()
     fdUART = open(serialPortName.c_str(), O_RDWR);
     if (fdUART == -1)
     {
-      printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
-      return false;
+        printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
+        return false;
     }
 
     struct termios tty;
@@ -2892,7 +2892,7 @@ int main(int argc, const char* argv[])
             printf("-vsync <1/0>, default: 1\n");
             printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
 #ifdef USE_MAVLINK
-            printf("-serial <serial_port>, serial port for telemetry, default: ");
+            printf("-serial <serial_port>, serial port for telemetry, default:");
             printf(serialPortName.c_str());
             printf("\n");
 #endif            
