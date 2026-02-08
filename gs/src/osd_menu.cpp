@@ -208,6 +208,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
+        case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawSearchMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
@@ -1200,6 +1201,60 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
+        sprintf(buf, "Screen Settings...##1");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->goForward( OSDMenuId::GSScreen, 0 );
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Wifi Settings...##2");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            this->goForward( OSDMenuId::GSWifiSettings, 0 );
+        }
+    }
+
+    if ( this->drawMenuItem( "Debuging...", 2) )
+    {
+        this->goForward( OSDMenuId::Debug, 0 );
+    }
+
+    if ( this->drawMenuItem( "Exit To Shell##7", 3) )
+    {
+        this->goForward( OSDMenuId::ExitToShell, 0 );
+    }
+
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
+
+    {
+        char ip_addr[64];
+        getSystemIPv4(ip_addr, sizeof(ip_addr));
+        char buf[256];
+        sprintf(buf, "IP: %s##status_ip", ip_addr);
+        this->drawStatus( buf );
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawGSScreenMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> GS Screen" );
+    ImGui::Spacing();
+
+    {
+        char buf[256];
         const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
         sprintf(buf, "Letterbox: %s##1", modes[clamp((int)s_groundstation_config.screenAspectRatio,0,5)]);
         if ( this->drawMenuItem( buf, 0) )
@@ -1217,38 +1272,6 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
             s_hal->set_vsync(s_groundstation_config.vsync, true);
             saveGroundStationConfig();
         }
-    }
-
-    {
-        char buf[256];
-        sprintf(buf, "GS Wifi Settings...##3");
-        if ( this->drawMenuItem( buf, 2) )
-        {
-            this->goForward( OSDMenuId::GSWifiSettings, 0 );
-        }
-    }
-
-    if ( this->drawMenuItem( "Debuging...", 3) )
-    {
-        this->goForward( OSDMenuId::Debug, 0 );
-    }
-
-    if ( this->drawMenuItem( "Exit To Shell##7", 4) )
-    {
-        this->goForward( OSDMenuId::ExitToShell, 0 );
-    }
-
-    if ( ImGui::GetIO().DisplaySize.y > 480 )
-    {
-        ImGui::Dummy(ImVec2(0.0f, 20.0f));
-    }
-
-    {
-        char ip_addr[64];
-        getSystemIPv4(ip_addr, sizeof(ip_addr));
-        char buf[256];
-        sprintf(buf, "IP: %s##status_ip", ip_addr);
-        this->drawStatus( buf );
     }
 
     if ( this->exitKeyPressed())
