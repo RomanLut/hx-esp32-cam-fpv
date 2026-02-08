@@ -1006,20 +1006,24 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
         int channel = WIFI_CHANNELS_BY_INDEX[i];
         if (channel >= 36 && channel <= 48) 
         {
-            sprintf(buf, "%d (ETSI,FCC)", channel);
+            sprintf(buf, "%d  (5.8G,ETSI,FCC)", channel);
         } 
         else 
         if (channel >= 52 && channel <= 144) 
         {
-            sprintf(buf, "%d (ETSI,FCC,DFS)", channel);
+            sprintf(buf, "%d  (5.8G,ETSI,FCC,DFS)", channel);
         } 
         else if (channel >= 149 && channel <= 165) 
         {
-            sprintf(buf, "%d (FCC)", channel);
+            sprintf(buf, "%d  (5.8G,FCC)", channel);
         } 
+        else if (channel == 12 || channel == 13)  
+        {
+            sprintf(buf, "%d  (2.4G,ETSI)", channel);
+        }
         else 
         {
-            sprintf(buf, "%d", channel);
+            sprintf(buf, "%d  (2.4G,ETSI,FCC)", channel);
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
