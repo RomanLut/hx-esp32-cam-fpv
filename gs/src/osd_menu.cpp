@@ -207,6 +207,7 @@ void OSDMenu::draw(Ground2Air_Config_Packet& config)
         case OSDMenuId::Restart: this->drawRestartMenu(config); break;
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
+        case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawSearchMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
@@ -1220,8 +1221,53 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Interface: %s##3", s_groundstation_config.txInterface.c_str());
+        sprintf(buf, "GS Wifi Settings...##3");
         if ( this->drawMenuItem( buf, 2) )
+        {
+            this->goForward( OSDMenuId::GSWifiSettings, 0 );
+        }
+    }
+
+    if ( this->drawMenuItem( "Debuging...", 3) )
+    {
+        this->goForward( OSDMenuId::Debug, 0 );
+    }
+
+    if ( this->drawMenuItem( "Exit To Shell##7", 4) )
+    {
+        this->goForward( OSDMenuId::ExitToShell, 0 );
+    }
+
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
+
+    {
+        char ip_addr[64];
+        getSystemIPv4(ip_addr, sizeof(ip_addr));
+        char buf[256];
+        sprintf(buf, "IP: %s##status_ip", ip_addr);
+        this->drawStatus( buf );
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//=======================================================
+//=======================================================
+void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> GS Wifi Settings" );
+    ImGui::Spacing();
+
+    {
+        char buf[256];
+        sprintf(buf, "TX Interface: %s##1", s_groundstation_config.txInterface.c_str());
+        if ( this->drawMenuItem( buf, 0) )
         {
             auto rx_descriptor = s_comms.getRXDescriptor();
 
@@ -1239,34 +1285,11 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Power: %d##4", s_groundstation_config.txPower);
-        if ( this->drawMenuItem( buf, 3) )
+        sprintf(buf, "TX Power: %d##2", s_groundstation_config.txPower);
+        if ( this->drawMenuItem( buf, 1) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
         }
-    }
-
-    if ( this->drawMenuItem( "Debuging...", 4) )
-    {
-        this->goForward( OSDMenuId::Debug, 0 );
-    }
-
-    if ( this->drawMenuItem( "Exit To Shell##7", 5) )
-    {
-        this->goForward( OSDMenuId::ExitToShell, 0 );
-    }
-
-    if ( ImGui::GetIO().DisplaySize.y > 480 )
-    {
-        ImGui::Dummy(ImVec2(0.0f, 20.0f));
-    }
-
-    {
-        char ip_addr[64];
-        getSystemIPv4(ip_addr, sizeof(ip_addr));
-        char buf[256];
-        sprintf(buf, "IP: %s##status_ip", ip_addr);
-        this->drawStatus( buf );
     }
 
     if ( this->exitKeyPressed())

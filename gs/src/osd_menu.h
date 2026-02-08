@@ -23,6 +23,7 @@ enum class OSDMenuId
     Restart,
     FEC,
     GSSettings,
+    GSWifiSettings,
     OSDFont,
     Search,
     GSTxPower,
@@ -85,6 +86,7 @@ private:
     void drawRestartMenu(Ground2Air_Config_Packet& config);
     void drawFECMenu(Ground2Air_Config_Packet& config);
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawOSDFontMenu(Ground2Air_Config_Packet& config);
     void drawSearchMenu(Ground2Air_Config_Packet& config);
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);
