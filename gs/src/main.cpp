@@ -241,7 +241,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
-std::string serialPortName = isRadxaZero3() ? "/dev/ttyUSB0" : "/dev/serial0";
+std::string serialPortName = "";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -2392,6 +2392,18 @@ int run(char* argv[])
 //===================================================================================
 bool init_uart()
 {
+    if (serialPortName.empty())
+    {
+        if (access("/dev/ttyUSB0", F_OK) == 0)
+        {
+            serialPortName = "/dev/ttyUSB0";
+        }
+        else
+        {
+            serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
+        }
+    }
+    
     fdUART = open(serialPortName.c_str(), O_RDWR);
     if (fdUART == -1)
     {
@@ -2893,7 +2905,7 @@ int main(int argc, const char* argv[])
             printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
 #ifdef USE_MAVLINK
             printf("-serial <serial_port>, serial port for telemetry, default:");
-            printf(serialPortName.c_str());
+            printf(isRadxaZero3() ? "/dev/ttyUSB0(if exists), /dev/ttyS3" : "/dev/ttyUSB0(if exists), /dev/serial0");
             printf("\n");
 #endif            
             printf("-help\n");
