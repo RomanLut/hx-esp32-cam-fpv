@@ -73,6 +73,7 @@
 //   trial-and-error might be required, to find an optimal value for a
 //   particular type of switch.
 #define BOUNCE_MSEC 100
+#define DOUBLE_CLICK_MSEC 400
 
 // MAX_PINS is the largest number of GPIO pins we will monitor. Using a fixed
 //   value makes the memory management less messy.
@@ -101,7 +102,8 @@
 typedef struct _Mapping
 {
   int pin;
-  unsigned int *keys;
+  unsigned int *keys_single;
+  unsigned int *keys_double;
 } Mapping;
 
 // Here are the mappings for specific keys...
@@ -119,28 +121,28 @@ unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENTER | UP, 0};
 // ...and here is the mapping from pins to keystrokes.
 Mapping mappings_pi[] =
     {
-        {24, key_left},
-        {18, key_right},
-        {22, key_up},
-        {27, key_down},
-        {23, key_enter},
-        {17, key_r},
-        {4, key_g},
+        {24, key_left, NULL},
+        {18, key_right, NULL},
+        {22, key_up, NULL},
+        {27, key_down, NULL},
+        {23, key_enter, NULL},
+        {17, key_r, key_g},
+        {4, key_g, NULL},
         // Add more here if required...
-        {0, NULL}};
+        {0, NULL, NULL}};
 
 //https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface
 Mapping mappings_radxa[] =
     {
-        {98, key_left},   //Header pin 13
-        {101, key_right}, //Header pin 40
-        {105, key_up},    //Header pin 16
-        {106, key_down},  //Header pin 18
-        {97, key_enter},  //Header pin 11
-        {114, key_r},     //Header pin 32
-        {102, key_g},     //Header pin 38
+        {98, key_left, NULL},   //Header pin 13
+        {101, key_right, NULL}, //Header pin 40
+        {105, key_up, NULL},    //Header pin 16
+        {106, key_down, NULL},  //Header pin 18
+        {97, key_enter, NULL},  //Header pin 11
+        {114, key_r, key_g},    //Header pin 32
+        {102, key_g, NULL},     //Header pin 38
         // Add more here if required...
-        {0, NULL}};
+        {0, NULL, NULL}};
 
 const Mapping* mappings = mappings_pi;
 
@@ -281,20 +283,30 @@ static int open_uinput(void)
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     // We need to export all the key codes in the mapping table.
     // It doesn't hurt to export some more than once
-    int p = 0;
-    const Mapping *m = &mappings[p];
-    while (m->pin != 0)
+    auto export_mapping = [fd](const Mapping *map)
     {
-      unsigned int *keystrokes = m->keys;
-      while (*keystrokes)
+      int p = 0;
+      const Mapping *m = &map[p];
+      while (m->pin != 0)
       {
-        unsigned char raw_keystroke = *keystrokes & 0xFF;
-        ioctl(fd, UI_SET_KEYBIT, raw_keystroke);
-        keystrokes++;
-      }
-      p++;
-      m = &mappings[p];
+        auto export_sequence = [fd](unsigned int *keystrokes)
+        {
+          if (keystrokes == NULL) return;
+          while (*keystrokes)
+          {
+            unsigned char raw_keystroke = *keystrokes & 0xFF;
+            ioctl(fd, UI_SET_KEYBIT, raw_keystroke);
+            keystrokes++;
+          }
+        };
+        export_sequence(m->keys_single);
+        export_sequence(m->keys_double);
+        p++;
+        m = &map[p];
+      };
     };
+
+    export_mapping(mappings);
 
     // Create the dummy input device
     // This will create a new /dev/input/eventXX device, that will
@@ -387,23 +399,31 @@ static void emit_keystroke(int uinput_fd, unsigned int key)
   }
 }
 
+static void emit_sequence(int uinput_fd, unsigned int *keys)
+{
+  while (*keys)
+  {
+    dbglog("Emit keystroke %04X\n", *keys);
+    emit_keystroke(uinput_fd, *keys);
+    keys++;
+  }
+}
+
 /*======================================================================
   button_pressed
   Called by the main loop whenever a GPIO state change is detected.
   We find the keyboard mapping that corresponds to the detected
     pin, and output the keystrokes from that mapping.
 ======================================================================*/
-static void button_pressed(int uinput_fd, int pin, int state)
+static void button_pressed(int uinput_fd, int pin, int state, bool double_click)
 {
   const Mapping *m = get_mapping(pin);
   if (m)
   {
-    unsigned int *keystrokes = m->keys;
-    while (*keystrokes)
+    unsigned int *keys = double_click ? m->keys_double : m->keys_single;
+    if (keys != NULL)
     {
-      dbglog("Emit keystroke %04X\n", *keystrokes);
-      emit_keystroke(uinput_fd, *keystrokes);
-      keystrokes++;
+      emit_sequence(uinput_fd, keys);
     }
   }
   else
@@ -419,12 +439,34 @@ void polling_thread_func()
   time_t start = time(NULL);
   int bounce_time = BOUNCE_MSEC;
   int ticks[MAX_PINS] = {0};
+  int pending_click_msec[MAX_PINS] = {0};
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
   {
     memcpy(&fdset, &fdset_base, sizeof(fdset));
     poll(fdset, npins, 3000);
+
+    if (std::abs(time(NULL) - start) > CLOCK_ERROR_SECONDS)
+    {
+      dbglog("System time has changed: correcting\n");
+      start = time(NULL);
+      memset(ticks, 0, sizeof(ticks));
+      memset(pending_click_msec, 0, sizeof(pending_click_msec));
+    }
+
+    struct timeval tv_now;
+    gettimeofday(&tv_now, NULL);
+    int now_msec = (tv_now.tv_sec - start) * 1000 + (tv_now.tv_usec / 1000);
+
+    for (int i = 0; i < npins; i++)
+    {
+      if (pending_click_msec[i] > 0 && now_msec - pending_click_msec[i] > DOUBLE_CLICK_MSEC)
+      {
+        button_pressed(uinput_fd, pins[i], 0, false);
+        pending_click_msec[i] = 0;
+      }
+    }
 
     for (int i = 0; i < npins; i++)
     {
@@ -434,29 +476,32 @@ void polling_thread_func()
         char buff[50];
         read(fdset[i].fd, buff, sizeof(buff));
 
-        if (std::abs(time(NULL) - start) > CLOCK_ERROR_SECONDS)
+        if (now_msec - ticks[i] > bounce_time && now_msec > 1000)
         {
-          dbglog("System time has changed: correcting\n");
-          start = time(NULL);
-        }
-        else
-        {
-          struct timeval tv;
-          gettimeofday(&tv, NULL);
-          int msec = tv.tv_usec / 1000;
-          int total_msec = (tv.tv_sec - start) * 1000 + msec;
-
-          if (total_msec - ticks[i] > bounce_time && total_msec > 1000)
+          usleep(2000);
+          int state = get_pin_state(pin);
+          if ((state == 0 && (EDGE & EDGE_FALLING)) || (state == 1 && (EDGE & EDGE_RISING)))
           {
-            usleep(2000);
-            int state = get_pin_state(pin);
-            if ((state == 0 && (EDGE & EDGE_FALLING)) || (state == 1 && (EDGE & EDGE_RISING)))
+            dbglog("GPIO state change: pin %d, state %d\n", pin, state);
+            const Mapping *m = get_mapping(pin);
+            if (m != NULL && m->keys_double != NULL)
             {
-              dbglog("GPIO state change: pin %d, state %d\n", pin, state);
-              button_pressed(uinput_fd, pin, state);
+              if (pending_click_msec[i] > 0 && now_msec - pending_click_msec[i] <= DOUBLE_CLICK_MSEC)
+              {
+                button_pressed(uinput_fd, pin, state, true);
+                pending_click_msec[i] = 0;
+              }
+              else
+              {
+                pending_click_msec[i] = now_msec;
+              }
             }
-            ticks[i] = total_msec;
+            else
+            {
+              button_pressed(uinput_fd, pin, state, false);
+            }
           }
+          ticks[i] = now_msec;
         }
       }
     }

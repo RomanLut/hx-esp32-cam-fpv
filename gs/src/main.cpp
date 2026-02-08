@@ -369,7 +369,7 @@ void updateGSSdFreeSpace()
 
 //===================================================================================
 //===================================================================================
-void toggleGSRecording( int width, int height)
+void toggleGSRecording(int width, int height, const char* reason)
 {
     std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
 
@@ -419,8 +419,8 @@ void toggleGSRecording( int width, int height)
             s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         }
 
-        s_avi_frameWidth = v->width;
-        s_avi_frameHeight = v->height;
+        s_avi_frameWidth = width;
+        s_avi_frameHeight = height;
         s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
         s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
 
@@ -430,7 +430,7 @@ void toggleGSRecording( int width, int height)
         fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file); 
 
 #endif        
-        LOGI("start record:{}",std::string(filename));
+        LOGI("start record:{} reason:{}", std::string(filename), reason ? reason : "unknown");
     }
     else
     {
@@ -851,8 +851,8 @@ static void comms_thread_proc()
                                     ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
                                 )
                                 {
-                                    toggleGSRecording(0,0); //stop
-                                    toggleGSRecording(width,height); //start
+                                    toggleGSRecording(0, 0, "auto_restart_resolution_change_stop"); //stop
+                                    toggleGSRecording(width, height, "auto_restart_resolution_change_start"); //start
                                 }
 
                                 {
@@ -876,8 +876,8 @@ static void comms_thread_proc()
 
                                 if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
                                 {
-                                    toggleGSRecording(0,0); //stop
-                                    toggleGSRecording(width,height); //start
+                                    toggleGSRecording(0, 0, "auto_split_stop"); //stop
+                                    toggleGSRecording(width, height, "auto_split_start"); //start
                                 }
                             }
                             else
@@ -1112,7 +1112,7 @@ void exitApp()
 {
     if (s_groundstation_config.record)
     {
-        toggleGSRecording(0,0);
+        toggleGSRecording(0, 0, "exit_app");
         /*
         std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
         fflush(s_groundstation_config.record_file);
@@ -2200,7 +2200,7 @@ int run(char* argv[])
                 ImGui::SameLine();
                 if (ImGui::Button("GS Record"))
                 {
-                    toggleGSRecording(0,0);
+                    toggleGSRecording(0, 0, "debug_ui_button");
                 }
 
                 ImGui::SameLine();
@@ -2282,12 +2282,12 @@ int run(char* argv[])
             saveGround2AirConfig(config);
         }
 
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R, false))
         {
             config.misc.air_record_btn++;
         }
 
-        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
+        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G, false))
         {
             /*
             if ( g_framePacketsDebug.isOn() ) 
@@ -2298,7 +2298,7 @@ int run(char* argv[])
             {
                 g_framePacketsDebug.captureFrame(true);
             }*/
-            toggleGSRecording(0,0);
+            toggleGSRecording(0, 0, "keyboard_g");
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
