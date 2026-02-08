@@ -17,7 +17,7 @@
 
 OSDMenu g_osdMenu;
 
-namespace./launch.sh
+namespace
 {
 void getSystemIPv4(char* out, size_t out_size)
 {
