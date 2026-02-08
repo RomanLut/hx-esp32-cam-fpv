@@ -7,10 +7,60 @@
 #include "lodepng.h"
 #include "frame_packets_debug.h"
 
+#include <cstring>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+
 
 #define SEARCH_TIME_STEP_MS 1000
 
 OSDMenu g_osdMenu;
+
+namespace./launch.sh
+{
+void getSystemIPv4(char* out, size_t out_size)
+{
+    if (out_size == 0)
+    {
+        return;
+    }
+    strncpy(out, "0.0.0.0", out_size);
+    out[out_size - 1] = 0;
+
+    struct ifaddrs* ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) != 0 || ifaddr == nullptr)
+    {
+        return;
+    }
+
+    for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
+    {
+        if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET)
+        {
+            continue;
+        }
+        if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0)
+        {
+            continue;
+        }
+
+        char addr[INET_ADDRSTRLEN] = {0};
+        const void* src = &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr;
+        if (inet_ntop(AF_INET, src, addr, sizeof(addr)) != nullptr)
+        {
+            if (strcmp(addr, "0.0.0.0") != 0)
+            {
+                strncpy(out, addr, out_size);
+                out[out_size - 1] = 0;
+                break;
+            }
+        }
+    }
+
+    freeifaddrs(ifaddr);
+}
+} // namespace
 
 //=======================================================
 //=======================================================
@@ -1200,6 +1250,19 @@ void OSDMenu::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     if ( this->drawMenuItem( "Exit To Shell##7", 5) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
+    }
+
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
+
+    {
+        char ip_addr[64];
+        getSystemIPv4(ip_addr, sizeof(ip_addr));
+        char buf[256];
+        sprintf(buf, "IP: %s##status_ip", ip_addr);
+        this->drawStatus( buf );
     }
 
     if ( this->exitKeyPressed())
