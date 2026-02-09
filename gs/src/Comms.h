@@ -47,6 +47,7 @@ public:
     bool init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_descriptor);
 
     void process();
+    void reset_rx_state();
 
     void send(void const* data, size_t size, bool flush);
     //std::function<void(void const* data, size_t size)> on_data_received;

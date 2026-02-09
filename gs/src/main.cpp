@@ -2652,9 +2652,13 @@ void airUnpair()
 {
     s_connected_air_device_id = 0;
     s_got_config_packet = false;
+    s_accept_config_packet = false;
+    s_last_packet_tp = Clock::now();
+    s_last_stats_packet_tp = Clock::now();
 
     s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, 0 );
     s_comms.packetFilter.set_packet_filtering( 0, s_groundstation_config.deviceId );
+    s_comms.reset_rx_state();
 }
 
 //===================================================================================
