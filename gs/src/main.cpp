@@ -1159,7 +1159,7 @@ void applyGSTxPower(Ground2Air_Config_Packet& config)
 //===================================================================================
 bool isHQDVRMode()
 {
-    return s_ground2air_config_packet.camera.resolution == Resolution::HD;
+    return s_last_airStats.hq_dvr_mode != 0;
 }
 
 //===================================================================================
