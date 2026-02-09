@@ -61,6 +61,7 @@ void getSystemIPv4(char* out, size_t out_size)
 
     freeifaddrs(ifaddr);
 }
+
 } // namespace
 
 //=======================================================
@@ -238,11 +239,20 @@ void OSDMenu::searchNextWifiChannel(Ground2Air_Config_Packet& config)
 {
     this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
     
-    s_groundstation_config.wifi_channel = getValidWifiChannel(s_groundstation_config.wifi_channel);
+    s_groundstation_config.wifi_channel = getBandAwareWifiChannel(s_groundstation_config.wifi_channel, s_groundstation_config.wifiBand);
     int channel_index = getWifiChannelIndex(s_groundstation_config.wifi_channel);
-    channel_index++;
-    if ( channel_index >= WIFI_CHANNELS_COUNT ) channel_index = 0;
-    s_groundstation_config.wifi_channel = WIFI_CHANNELS_BY_INDEX[channel_index];
+
+    for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
+    {
+        channel_index++;
+        if (channel_index >= WIFI_CHANNELS_COUNT) channel_index = 0;
+        int nextChannel = WIFI_CHANNELS_BY_INDEX[channel_index];
+        if (isWifiChannelAllowedByBand(nextChannel, s_groundstation_config.wifiBand))
+        {
+            s_groundstation_config.wifi_channel = nextChannel;
+            break;
+        }
+    }
     
     applyWifiChannelInstant(config);
 }
@@ -286,11 +296,11 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
     
     {
         char buf[256];
-        int channel = getValidWifiChannel(s_groundstation_config.wifi_channel);
-        sprintf(buf, "Wifi Channel: %d##1", s_groundstation_config.wifi_channel);
+        int channel = getBandAwareWifiChannel(s_groundstation_config.wifi_channel, s_groundstation_config.wifiBand);
+        sprintf(buf, "Wifi Channel: %d##1", channel);
         if ( this->drawMenuItem( buf, 2) )
         {
-            int channelIndex = getWifiChannelIndex(channel);
+            int channelIndex = getBandAwareWifiChannelMenuIndex(channel, s_groundstation_config.wifiBand);
             this->goForward( OSDMenuId::WifiChannel, channelIndex);
         }
     }
@@ -1002,42 +1012,50 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     ImGui::Spacing();
 
     bool bExit = false;
+    int itemIndex = 0;
 
     for ( int i = 0; i < WIFI_CHANNELS_COUNT; i++ )
     {
-        char buf[32];
         int channel = WIFI_CHANNELS_BY_INDEX[i];
+        if ( !isWifiChannelAllowedByBand(channel, s_groundstation_config.wifiBand) )
+        {
+            continue;
+        }
+
+        char buf[32];
         if (channel >= 36 && channel <= 48) 
         {
-            sprintf(buf, "%d  (5.8G,ETSI,FCC)", channel);
+            sprintf(buf, "%d  (5.8GHz,ETSI,FCC)", channel);
         } 
         else 
         if (channel >= 52 && channel <= 144) 
         {
-            sprintf(buf, "%d  (5.8G,ETSI,FCC,DFS)", channel);
+            sprintf(buf, "%d  (5.8GHz,ETSI,FCC,DFS)", channel);
         } 
         else if (channel >= 149 && channel <= 165) 
         {
-            sprintf(buf, "%d  (5.8G,FCC)", channel);
+            sprintf(buf, "%d  (5.8GHz,FCC)", channel);
         } 
         else if (channel == 12 || channel == 13)  
         {
-            sprintf(buf, "%d  (2.4G,ETSI)", channel);
+            sprintf(buf, "%d  (2.4GHz,ETSI)", channel);
         }
         else 
         {
-            sprintf(buf, "%d  (2.4G,ETSI,FCC)", channel);
+            sprintf(buf, "%d  (2.4GHz,ETSI,FCC)", channel);
         }
-        if ( this->drawMenuItem( buf, i, true) )
+        if ( this->drawMenuItem( buf, itemIndex, true) )
         {
-            if ( s_groundstation_config.wifi_channel != WIFI_CHANNELS_BY_INDEX[i]) 
+            if ( s_groundstation_config.wifi_channel != channel )
             {
-                s_groundstation_config.wifi_channel = WIFI_CHANNELS_BY_INDEX[i];
+                s_groundstation_config.wifi_channel = channel;
                 saveGroundStationConfig();
                 applyWifiChannel(config);
             }
             bExit = true;
         }
+
+        itemIndex++;
     }
 
     if ( bExit || this->exitKeyPressed() )
@@ -1303,8 +1321,35 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "TX Interface: %s##1", s_groundstation_config.txInterface.c_str());
+        const char* bands[] = {"2.4GHz", "5.8GHz", "2.4GHz & 5.8GHz"};
+        int band_index = clamp((int)s_groundstation_config.wifiBand, 0, 2);
+        sprintf(buf, "Band: %s##0", bands[band_index]);
         if ( this->drawMenuItem( buf, 0) )
+        {
+            s_groundstation_config.wifiBand = (uint8_t)((band_index + 1) % 3);
+
+            int channel = getValidWifiChannel(s_groundstation_config.wifi_channel);
+            if ( !isWifiChannelAllowedByBand(channel, s_groundstation_config.wifiBand) )
+            {
+                channel = s_groundstation_config.wifiBand == GS_WIFI_BAND_5_8_GHZ
+                    ? DEFAULT_WIFI_CHANNEL_5_8_GHZ
+                    : DEFAULT_WIFI_CHANNEL_2_4GHZ;
+            }
+
+            bool channelChanged = s_groundstation_config.wifi_channel != channel;
+            s_groundstation_config.wifi_channel = channel;
+            saveGroundStationConfig();
+            if ( channelChanged )
+            {
+                applyWifiChannel(config);
+            }
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "TX Interface: %s##1", s_groundstation_config.txInterface.c_str());
+        if ( this->drawMenuItem( buf, 1) )
         {
             auto rx_descriptor = s_comms.getRXDescriptor();
 
@@ -1323,7 +1368,7 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "TX Power: %d##2", s_groundstation_config.txPower);
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
         }
@@ -1335,8 +1380,6 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
 void OSDMenu::drawRestartMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Restarting..." );
@@ -1386,7 +1429,12 @@ void OSDMenu::drawOSDFontMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenu::drawSearchMenu(Ground2Air_Config_Packet& config)
 {
-    this->drawMenuTitle( "Menu -> Search..." );
+    char title[128];
+    const char* band = s_groundstation_config.wifiBand == GS_WIFI_BAND_2_4_GHZ ? "2.4GHz" :
+                       s_groundstation_config.wifiBand == GS_WIFI_BAND_5_8_GHZ ? "5.8GHz" :
+                       "2.4 & 5.8 GHz";
+    sprintf(title, "Menu -> Search (%s)...", band);
+    this->drawMenuTitle( title );
     ImGui::Spacing();
 
     bool bExit = false;

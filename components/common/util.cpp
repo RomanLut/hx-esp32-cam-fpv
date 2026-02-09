@@ -22,4 +22,3 @@ int smallestPowerOfTwo(int value, int minValue)
 
   return powerOfTwo;
 }
-
