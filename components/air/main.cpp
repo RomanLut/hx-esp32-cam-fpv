@@ -3046,10 +3046,10 @@ void readConfig()
     }
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL );
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL_2_4GHZ );
     if  ( (s_ground2air_config_packet.dataChannel.wifi_channel < MIN_WIFI_CHANNEL) || (s_ground2air_config_packet.dataChannel.wifi_channel >= MAX_WIFI_CHANNEL))
     {
-        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
