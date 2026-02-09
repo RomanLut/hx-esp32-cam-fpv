@@ -241,7 +241,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
-std::string serialPortName = isRadxaZero3() ? "/dev/ttyUSB0" : "/dev/serial0";
+std::string serialPortName = "";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -2392,6 +2392,18 @@ int run(char* argv[])
 //===================================================================================
 bool init_uart()
 {
+    if (serialPortName.empty())
+    {
+        if (access("/dev/ttyUSB0", F_OK) == 0)
+        {
+            serialPortName = "/dev/ttyUSB0";
+        }
+        else
+        {
+            serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
+        }
+    }
+    
     fdUART = open(serialPortName.c_str(), O_RDWR);
     if (fdUART == -1)
     {
@@ -2442,9 +2454,11 @@ bool init_uart()
 void saveGroundStationConfig()
 {
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
+    ini["gs"]["wifi_band"] = std::to_string((int)s_groundstation_config.wifiBand);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
+    ini["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     ini["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
     s_iniFile.write(ini);
 }
@@ -2693,8 +2707,33 @@ int main(int argc, const char* argv[])
         }
         else
         {
-            s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
-            config.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
+            s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+            config.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["wifi_band"];
+        int band = atoi(temp.c_str());
+        if ((band >= GS_WIFI_BAND_2_4_GHZ) && (band <= GS_WIFI_BAND_DUAL))
+        {
+            s_groundstation_config.wifiBand = (uint8_t)band;
+        }
+        else
+        {
+            s_groundstation_config.wifiBand = DEFAULT_GS_WIFI_BAND;
+        }
+    }
+
+    {
+        uint8_t defaultChannel = s_groundstation_config.wifiBand == GS_WIFI_BAND_5_8_GHZ
+            ? DEFAULT_WIFI_CHANNEL_5_8_GHZ
+            : DEFAULT_WIFI_CHANNEL_2_4GHZ;
+
+        if ( !isWifiChannelAllowedByBand(config.dataChannel.wifi_channel, s_groundstation_config.wifiBand) )
+        {
+            s_groundstation_config.wifi_channel = defaultChannel;
+            config.dataChannel.wifi_channel = defaultChannel;
         }
     }
 
@@ -2708,6 +2747,19 @@ int main(int argc, const char* argv[])
         else
         {
             s_groundstation_config.txPower = DEFAULT_TX_POWER;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["gpio_keys_layout"];
+        int layout = atoi(temp.c_str());
+        if ((layout == 0) || (layout == 1))
+        {
+            s_groundstation_config.GPIOKeysLayout = (uint8_t)layout;
+        }
+        else
+        {
+            s_groundstation_config.GPIOKeysLayout = 0;
         }
     }
 
@@ -2893,7 +2945,7 @@ int main(int argc, const char* argv[])
             printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
 #ifdef USE_MAVLINK
             printf("-serial <serial_port>, serial port for telemetry, default:");
-            printf(serialPortName.c_str());
+            printf(isRadxaZero3() ? "/dev/ttyUSB0(if exists), /dev/ttyS3" : "/dev/ttyUSB0(if exists), /dev/serial0");
             printf("\n");
 #endif            
             printf("-help\n");

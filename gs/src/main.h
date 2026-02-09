@@ -82,12 +82,14 @@ struct TGroundstationConfig
     FILE * record_file=nullptr;
     std::mutex record_mutex;
     int wifi_channel;  // 1...13
+    uint8_t wifiBand = DEFAULT_GS_WIFI_BAND; // GS_WIFI_BAND_*
     ScreenAspectRatio screenAspectRatio;
     int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
     bool vsync = true;
     std::string txInterface = "";
     uint16_t deviceId;
+    uint8_t GPIOKeysLayout = 0;
 };
 
 extern TGroundstationConfig s_groundstation_config;

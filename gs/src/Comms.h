@@ -35,7 +35,7 @@ public:
 
     struct RX_Descriptor
     {
-        std::vector<std::string> interfaces;  //this list may not contain TX interface
+        std::vector<std::string> interfaces;  // caller list may omit TX interface; init() adds TX if missing
         Clock::duration max_latency = std::chrono::milliseconds(500);
         Clock::duration reset_duration = std::chrono::milliseconds(1000);
         uint32_t coding_k = 12;

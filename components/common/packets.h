@@ -4,7 +4,7 @@
 #include "fec.h"
 #include "wifi_channels.h"
 
-#define FW_VERSION "0.4"
+#define FW_VERSION "0.5"
 
 #define FEC_K 6
 #define FEC_N 12
@@ -133,7 +133,7 @@ struct DataChannelConfig
 {
     int8_t wifi_power = 20;//dBm
     WIFI_Rate wifi_rate = DEFAULT_WIFI_RATE;
-    uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
+    uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
     uint8_t fec_codec_k = FEC_K;
     uint8_t fec_codec_n = FEC_N;
     uint16_t fec_codec_mtu = AIR2GROUND_MAX_MTU;
