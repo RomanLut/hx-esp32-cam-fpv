@@ -4,7 +4,7 @@
 #include "fec.h"
 #include "wifi_channels.h"
 
-#define FW_VERSION "0.4"
+#define FW_VERSION "0.5"
 
 #define FEC_K 6
 #define FEC_N 12
