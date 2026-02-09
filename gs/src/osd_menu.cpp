@@ -1318,6 +1318,7 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> GS Wifi Settings" );
     ImGui::Spacing();
+    auto rx_descriptor = s_comms.getRXDescriptor();
 
     {
         char buf[256];
@@ -1351,8 +1352,6 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "TX Interface: %s##1", s_groundstation_config.txInterface.c_str());
         if ( this->drawMenuItem( buf, 1) )
         {
-            auto rx_descriptor = s_comms.getRXDescriptor();
-
             size_t index = 0;
             for( size_t i = 0; i < rx_descriptor.interfaces.size(); i++ )
             {
@@ -1371,6 +1370,26 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::GSTxPower, s_groundstation_config.txPower - MIN_TX_POWER);
+        }
+    }
+
+    if ( ImGui::GetIO().DisplaySize.y > 480 )
+    {
+        ImGui::Dummy(ImVec2(0.0f, 20.0f));
+    }
+
+    if ( rx_descriptor.interfaces.empty() )
+    {
+        this->drawStatus("No network interfaces detected##if_status_empty");
+    }
+    else
+    {
+        for (size_t i = 0; i < rx_descriptor.interfaces.size(); i++)
+        {
+            std::string summary = getInterfaceSummary(rx_descriptor.interfaces[i]);
+            char buf[512];
+            snprintf(buf, sizeof(buf), "%s##if_status_%zu", summary.c_str(), i);
+            this->drawStatus(buf);
         }
     }
 
