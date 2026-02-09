@@ -119,6 +119,11 @@ static bool s_initialized = false;
 
 static uint32_t s_last_rc_packet_tp = 0;
 
+#if defined(DVR_SUPPORT) && defined(BOARD_ESP32C5)
+static uint8_t s_sd_record_frame_selector = 0;
+static bool s_sd_record_current_frame = false;
+#endif
+
 static uint16_t s_air_device_id;
 static uint16_t s_connected_gs_device_id = 0;
 
@@ -2225,6 +2230,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.suspended = s_camera_stopped != 0;
 
+    packet.stats.hq_dvr_mode = isHQDVRMode() ? 1 : 0;
+
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -2366,6 +2373,9 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 #ifdef BOARD_XIAOS3SENSE        
     //2.9MB/sec is practical maximum limit which works
     if ( rateBandwidth > 2900*1024 ) rateBandwidth = 2900*1024;
+#elif defined(BOARD_ESP32C5)
+    //limit by 10.0MB/sec otherwise whole system is overloaded
+    if ( rateBandwidth > 10000*1024 ) rateBandwidth = 10000*1024;
 #else
     //2.3MB/sec is practical maximum limit which works
     if ( rateBandwidth > 2300*1024 ) rateBandwidth = 2300*1024;
@@ -2387,10 +2397,10 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( isHQDVRMode() )
     {
-#ifdef BOARD_ESP32C5
-        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32C5;
-#elif BOARD_XIAOS3SENSE        
+#ifdef BOARD_XIAOS3SENSE
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32S3;
+#elif defined(BOARD_ESP32C5)
+        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32C5;
 #else
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32;
 #endif
@@ -2615,8 +2625,18 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef DVR_SUPPORT
                 if (s_air_record)
                 {
+#if defined(BOARD_ESP32C5)
+                    s_sd_record_current_frame = ((s_sd_record_frame_selector++ & 0x3U) == 0U);
+                    if (s_sd_record_current_frame)
+#endif
                     add_to_sd_fast_buffer(clrSrc, 0, true);
                 }
+#if defined(BOARD_ESP32C5)
+                else
+                {
+                    s_sd_record_current_frame = false;
+                }
+#endif
 #endif
             }
         }
@@ -2796,7 +2816,14 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                         start_ptr[15] = s_framesCounter >> 8;
                     }
 #endif            
+#if defined(BOARD_ESP32C5)
+                    if (s_sd_record_current_frame)
+                    {
+                        add_to_sd_fast_buffer(start_ptr, c, false);
+                    }
+#else
                     add_to_sd_fast_buffer(start_ptr, c, false);
+#endif
                 }
 #endif
             }  //while count>0

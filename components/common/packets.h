@@ -330,7 +330,7 @@ struct AirStats
     int16_t saturation : 3;  //-2 - 2
     int16_t sharpness : 3;   //-2 - 3
     int16_t ae_level: 3;     //-2 - 2, for aec=true
-    int16_t reserved1: 1; 
+    int16_t hq_dvr_mode: 1; 
 //32
 
 };

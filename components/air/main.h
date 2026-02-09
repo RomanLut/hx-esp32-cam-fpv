@@ -201,7 +201,7 @@
 
 #define MAX_SD_WRITE_SPEED_ESP32   (800*1024) //esp32 can hadle 1.9mb writes, but in this project it's 0.8mb max due to overal system load (otherwise we miss camera data callback)
 #define MAX_SD_WRITE_SPEED_ESP32S3 (1800*1024) //can  write 1900 but we set to 1800 due to overal system load
-#define MAX_SD_WRITE_SPEED_ESP32C5 (350*1024) //slow SD SPI mode... Max is 475 but fluctuates a lot.
+#define MAX_SD_WRITE_SPEED_ESP32C5 (275*1024*4) //slow SD SPI mode... Max is 475 but fluctuates a lot. x4 as we write 1/4 frames on c5 currently
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
