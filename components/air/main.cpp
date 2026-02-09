@@ -479,6 +479,12 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 //ESP32 8192: 1.9 MB/s
 
 //ESP32 8192 SPI mode file test: 1.1MB/sec
+
+//esp32c5 2048: ~400 kb/sec
+//esp32c5 4096: ~440 kb/sec
+//esp32c5 8192: ~475 kb/sec
+//esp32c5 16384: ~520 kb/sec
+//esp32c5 SPI RAM: ~260 kb/sec
 static constexpr size_t SD_WRITE_BLOCK_SIZE = 8192;
 
 //for fast SD writes, buffer has to be in DMA enabled memory
@@ -2330,7 +2336,11 @@ IRAM_ATTR int calculateAdaptiveQualityValue()
 //=============================================================================================
 IRAM_ATTR bool isHQDVRMode()
 {
+#ifdef BOARD_ESP32C5
+    return false;
+#else        
     return s_ground2air_config_packet2.camera.resolution == Resolution::HD;
+#endif    
 }
 
 //=============================================================================================
@@ -2369,7 +2379,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 #if defined(BOARD_XIAOS3SENSE)
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32S3;
 #elif defined(BOARD_ESP32C5)
-        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32C5;
+        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32C5 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32C5;
 #else
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32;
 #endif
@@ -2377,7 +2387,9 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( isHQDVRMode() )
     {
-#ifdef BOARD_XIAOS3SENSE        
+#ifdef BOARD_ESP32C5
+        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32C5;
+#elif BOARD_XIAOS3SENSE        
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32S3;
 #else
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32;
