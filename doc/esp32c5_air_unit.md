@@ -32,5 +32,13 @@ PCB is not designed yet. Module, linear regulator, resistors and capacitors are 
 
 [Project EasyEDA](/doc/EasyEDA/hx_esp32c5_cam_proto.eprj)
 
+[3d Printed case on Thingiverse](https://www.thingiverse.com/thing:7292453)
+
+![alt text](/doc/images/esp32-c5-prototype-case.jpg "esp32c5_air_unit")
+
+Size conparison with esp32s3sense:
+
+![alt text](/doc/images/esp32c5-prototype-comp.jpg "esp32c5_air_unit")
+
 
 
