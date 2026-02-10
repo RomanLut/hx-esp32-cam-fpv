@@ -223,7 +223,7 @@ Unfortunately, there are currently no **esp32c5** boards on the market with a go
 
 ![alt text](doc/images/esp32c5_air_unit.jpg "esp32c5_air_unit") 
 
-See [Building anesp32c5 air unit](/doc/esp32c5_air_unit.md)
+See [Building esp32c5 air unit](/doc/esp32c5_air_unit.md)
 
 ## Current consumption
 
