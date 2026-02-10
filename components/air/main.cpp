@@ -3428,7 +3428,14 @@ extern "C" void app_main()
         setup_wifi_file_server();
 
 #if defined(USB_DISK_SUPPORT)
-        mountUSBDisk();
+        if (s_sd_initialized)
+        {
+            mountUSBDisk();
+        }
+        else
+        {
+            LOG("Skipping USB disk mount: SD init failed\n");
+        }
 #endif
 
         while (true)
