@@ -70,9 +70,9 @@ Open source digital FPV system based on esp32cam.
 - **esp32c5** with **ov5640** camera **(experimental)**
 
 **Ground station variants (VRX):**
-- **Radxa Zero 3W** with **rtl8812au** wifi card(s) **(recommended)**
+- **Radxa Zero 3W/3E** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
-- **Runcam VRX** - 5.8GHz only (experimental)
+- **Runcam WiFiLink VRX** - 5.8GHz only (experimental)
 - GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
 # Recommended hardware
@@ -217,9 +217,13 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-
 
 ## Air Unit Variant 4: **esp32c5** + OV5640 (experimental)
 
-The ESP32-C5 supports both 2.4 GHz and 5.8 GHz bands. Thanks to lower interference on 5.8 GHz, the air unit can transmit a 14 Mb/s stream with a lower FEC ratio, resulting in better image quality. It is capable of broadcasting a 1280×720 stream at 25 FPS.
+The **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Thanks to lower interference on **5.8GHz**, the air unit can transmit a 14 Mb/s stream with a lower FEC ratio, resulting in better image quality. It is capable of broadcasting a 1280×720 stream at 25 FPS. It allows using the **RunCam WiFiLink VRX** as a ground station and allows using small **5.8GHz** lollipop antennas with circular polarization.
 
-See [esp32c5 air unit](/doc/esp32c5_air_unit)
+Unfortunately, there are currently no **esp32c5** boards on the market with a good form factor and a proper camera connector. Using an **esp32c5** as an air unit requires advanced hardware skills and custom assembly. For this reason, the **esp32s3sense** remains the best choice for an air unit for now.
+
+![alt text](doc/images/esp32c5_air_unit.jpg "esp32c5_air_unit") 
+
+See [Building anesp32c5 air unit](/doc/images/esp32c5_air_unit.md)
 
 ## Current consumption
 
@@ -229,7 +233,7 @@ Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **e
 
 ## Ground Station
 
-## Ground Station Variant 1: Radxa Zero 3W with dual rtl8812au (recommended)
+## Ground Station Variant 1: Radxa Zero 3W/3E with dual rtl8812au (recommended)
 
 Preparing SD Card for **Radxa Zero 3W** GS: [/doc/software_for_radxa.md](/doc/software_for_radxa.md) 
 
@@ -324,10 +328,28 @@ Note that red/black antenas are not recommented unless all you want is to look c
 
 ***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
 
-## Ground Station Variant 4: Runcam VRX (5.8Ghz only)(experimental)
+## Ground Station Variant 4: Runcam WiFiLink VRX (5.8Ghz only)(experimental)
 
-Runcam OpenIPC VRX containes rtl8255ue2 cards whch support 5.8Ghz band only. It can be used with esp32c5 air unit only.
+Runcam WiFiLink VRX is built on **rtl8255eu** cards which support **5.8Ghz** band only. It can be used with **esp32c5** air unit only.
 
+**espvrx_dualboot_radxa** image should be used on **Runcam VRX**. Note, that Runcam firmware does not allow booting from 
+CD card. **Runcam VRX** has to be flashed with OpenIPC firmware to unlock SD card boot (follow **OpenIPC** or **RubyFPV** documentain for flashing).
+
+**Runcam VRX** is using slightly different GPIO buttons wiring, and **Action 2** button is missing. Please select **"GPIO Keys layout: Runcam VRX"** in osd menu. Long press **Action 1 (Air Rec)** button to toggle GS recording.
+
+GS Firmware allows to select any channel from any band, but support depends on hadware. **2.4Ghz** band is enabled. To enabled **5.8Ghz** band, configure bands in **Ground Station Settings...** OSD menu.
+
+Default chnnel is set to 7 on **esp32c5** after flashing. **Runcan VRX** will not b able to find it. Boot air unot in **File Server** and set channel to 44 in Web interface.
+
+**USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
+
+![runcam vrx](doc/images/runcam_vrx.jpg "runcam_vrx")
+
+## Ground Station Variant 4: Emax Wyvern Link VRX 
+
+No tested, but should work. However, this VRX contains single **RTL8812AU** card. Using single Wifi card is not recommented on GS.
+
+![emax vrx](doc/images/emax_vrx.jpg "emax_vrx")
 
 ## Ground station Variant: Ubuntu
 
@@ -357,7 +379,7 @@ There is bidirectional stream sent with FEC encoding (Ground2Air: ```k=2 n=3```,
 It can be used for downlink telemetry (Mavlink 1, Mavlnk2, LTE) and RC (See below). 
 
 Setup baudrate 115200 for the UARTs. 
- 
+
  
 ## Mavlink 2 RC
 
@@ -367,6 +389,8 @@ Although **Mavlink 1** and even **MSP RC** are also compatible, the system is sp
 
 Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 ![alt text](doc/images/mavlink2_rc.png "mavlink2_rc")
+
+By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** (if present), otherwise **UART3**.
 
 
 ## MSP RC translation ( Mavlink2MspRC )
@@ -487,7 +511,7 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-
 
 ## HQ DVR Mode
 
-While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. There is no sense to use this mode for FPV.
+While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. There is no sense to use this mode for FPV on 2.4Ghz band.
 
 Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode: video is saved with best possible quality limited by SD card performance only on Air unit, while frames are sent as fast as link allows (usually 5-10 FPS).
 
@@ -496,6 +520,9 @@ Mode is usefull for recording video which can be watched on big screen.
 An example of DVR recording:
 
 https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
+
+**esp32c5** is capable sending 1280x720 25 fps on **5.8Ghz** band. HG DVR mode is not present on this board.
+
 
 ## Lens 
 
@@ -514,6 +541,7 @@ Also note: so called "night version" sensor lacks an IR filter and will display 
 # Wifi channel
 
 Default wifi channel is set to 7. 3…7 seems to be the best setting, because antennas are tuned for the middle range. F.e. in my experiments, channel 11 barely works with **AR9271** and **esp32s3sense** stock antenna. In the crowded wifi environment, best channel is the one not used by other devices. System may not be able to push frames on busy channel at all (high wifi queue usage will be shown on OSD).
+**esp32c5** supports 5.8Ghz band (channes 44..165). Please use channnnes allow in your region (ETSI/FCC, avoid DFS channels).
 
 ## Wifi rate
 
@@ -531,11 +559,23 @@ Wifi channel is shared between multiple clients. In crowded area, bandwith can b
 
 Note than UAV in the air will sense carrier of all Wifi routers around and share wifi channel bandwidth with them (See [Carrier-sense multiple access with collision avoidance (CSMA/CA)](https://www.geeksforgeeks.org/carrier-sense-multiple-access-csma/) )
 
+# Wifi Band
+
+**esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Other air units support **2.4Ghz** only.
+
+**5.8Ghz** band has much less interferrence and allows using lower FEC ratio(6/8). Higher tranfer speed and lower FEC ratios allows sending beter image quality.
+
+**2.4Ghz** band is usefull with highest FEC ratio only (6/12).
+
+**5.8Ghz** band has slightly smaller range (about 30% smaller) compared to **2.4Ghz**.
+
 ## DVR
 
 Class 10 SD Card is required for the air unit. Maximum supported size is 32MB. Should be formatted to FAT32. The quality of recording is the same on air and ground; no recompression is done (obviously, GS recording does not contain lost frames).
 
 **ESP32** can work with SD card in 4bit and 1bit mode. 1bit mode is chosen to free few pins. 4bit mode seems to provide little benefit (write speed is only 30% faster in 4 bit mode).
+
+**esp32c5** does not have sdmmc hardware. SD Card is mounted in SPI mode which is slow. Currently , every 4 frame is saved on **esp32c5** air unit only.
 
 ## Adaptive compression
 
@@ -569,7 +609,7 @@ If single packet is lost and can not be recovered by FEC, the whole frame is los
 
 **AR9271** should also work but not tested. **RTL8812AU** has antena diversity and thus is recommended over **AR9271**.
 
-Popular **RTL8812EU** can not be used because it does not support 2.4Ghz.
+**RTL8812EU** and **RTL8812EU2** support **5.8Ghz** band only and thus can be used with **esp32c5** air unit only.
 
 ### Noname RTL8812AU
 
@@ -593,11 +633,11 @@ Recommended. You will have to solder IPX antena connectors. Adding metal cover i
 
 ## Antenas
 
-This 2.4Ghz antena seems to be the best choice for the UAV because it is flexible and can be mouted on the wing using part of cable tie or toothpick:
+This **2.4Ghz** antena seems to be the best choice for the UAV because it is flexible and can be mouted on the wing using part of cable tie or toothpick:
 
 ![alt text](doc/images/2dbi_dipole.jpg "2dbi dipole")
 
-Various PCB antenas for 2.4Ghz can be considered (not tested):
+Various PCB antenas for **2.4Ghz** can be considered (not tested):
 
 ![alt text](doc/images/pcb_antena.jpg "pcb antena")
 
@@ -610,6 +650,8 @@ It is important that all antenas should be mounded **VERTICALLY**.
 Note: **esp32cam** board requires soldering resistor to use external antena: https://www.youtube.com/watch?v=aBTZuvg5sM8
 
 Do not power wifi card or **ESP32** without antena attached; it can damage output amplifier.
+
+Do not use **5.8Ghz** channels with **2.4Ghz** antennas attached and vise versa; it can damage output amplifier.
 
 # Dual Wifi Adapters (recommended)
 
@@ -703,9 +745,6 @@ The goal of this fork is to develop fpv system for small inav-based plane, start
 
 
 # FAQ
-
-* Can  use Runcam VRX with tis project?
-  No, Runcam VRX contains two **RLT8812EU** cards which support 5.8Ghz only.
 
 * Can original **Raspberry Pi Zero W** be used as GS?
   
