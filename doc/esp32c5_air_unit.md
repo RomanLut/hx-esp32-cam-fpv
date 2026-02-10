@@ -18,15 +18,17 @@ Camera and SD card wires should be as short as possible (2-3cm).
 ## esp32c5 DIY air unit
 
 A better air unit can be made using **esp32-c5-wroom-n16-r8** module,  **BY-OV5640** camera adapter and microSD card adapter.
-PCB is not designed yet. Module, linear regulator, resistors and capacitors are soldered to piece oа copper-clad laminate.
+PCB is not designed yet. Module, linear regulator, resistors and capacitors are soldered to piece of copper-clad laminate.
 
 ![alt text](/doc/images/esp32c5_air_unit.jpg "esp32c5_air_unit")
 
 ![alt text](/doc/images/esp32c5-prototype-3p.jpg "esp32c5_air_unit")
 
-![alt text](/doc/images/esp32c5-sch.jpg "esp32c5_air_unit")
+![alt text](/doc/images/esp32c5-sch.png "esp32c5_air_unit")
 
 [Schematics PDF](/doc/datasheets/esp32c5-prototype-eda.pdf)
 
 [Project EasyEDA](/doc/EasyEDA/hx_esp32c5_cam_proto.eprj)
+
+
 
