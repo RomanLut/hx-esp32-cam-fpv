@@ -35,6 +35,9 @@ Open source digital FPV system based on esp32cam.
 - [x] ESP32 C5 support
 - [x] ESP32 C5 5GHz wifi support
 - [x] **Release v0.5.3**
+- [ ] adjust esp32c5 video modes
+- [ ] adjust esp32c5 air unit recording
+- [ ] design esp32c5 air unit PCB
 - [ ] dualboot image for RPI
 - [ ] retransmissions ?
 - [ ] measure latency properly
