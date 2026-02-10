@@ -22,10 +22,9 @@ PCB is not designed yet. Module, linear regulator, resistors and capacitors are 
 
 ![alt text](/doc/images/esp32c5_air_unit.jpg "esp32c5_air_unit")
 
-(on the photo above pcb is marked BY-OV2640 but part (oscillator, linear regulator) are soldered for BY-OV5640)
-
-![alt text](doc/images/esp32c5-prototype-3p.jpg "esp32c5_air_unit")
 ![alt text](/doc/images/esp32c5-prototype-3p.jpg "esp32c5_air_unit")
+
+(on the photo above pcb is marked BY-OV2640 but parts (oscillator, linear regulator) are soldered for BY-OV5640)
 
 ![alt text](/doc/images/esp32c5-sch.png "esp32c5_air_unit")
 
