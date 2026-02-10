@@ -36,6 +36,8 @@ PCB is not designed yet. Module, linear regulator, resistors and capacitors are 
 
 ![alt text](/doc/images/esp32-c5-prototype-case.jpg "esp32c5_air_unit")
 
+![alt text](/doc/images/esp32c5-prototype-case-back.jpg "esp32c5_air_unit")
+
 Size conparison with esp32s3sense:
 
 ![alt text](/doc/images/esp32c5-prototype-comp.jpg "esp32c5_air_unit")
