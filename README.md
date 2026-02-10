@@ -32,8 +32,9 @@ Open source digital FPV system based on esp32cam.
 - [x] ESP32 S3 OTA mode
 - [x] camera web interface
 - [x] **Release v0.4.3**
-- [ ] ESP32 C5 support
-- [ ] ESP32 C5 5GHz wifi support
+- [x] ESP32 C5 support
+- [x] ESP32 C5 5GHz wifi support
+- [x] **Release v0.5.3**
 - [ ] dualboot image for RPI
 - [ ] retransmissions ?
 - [ ] measure latency properly
@@ -53,8 +54,8 @@ Open source digital FPV system based on esp32cam.
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
-- **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
-- **esp32s3 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
+- **esp32/esp32s3/esp32c5 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
+- **esp32s3/esp32c5 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
 - HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
 - up to 1km at 24Mbps (actual transfer rate is ~8-10Mbps total with FEC 6/12), 600m at 36Mbps (actual transfer rate is ~10-12Mbps total with FEC 6/12) (line of sight)
 - latency 90-110ms
@@ -66,10 +67,12 @@ Open source digital FPV system based on esp32cam.
 - **esp32s3sense** with **ov5640** camera **(recommended)**
 - **esp32s3sense** with **ov2640** camera
 - **esp32cam** with **ov2640** camera
+- **esp32c5** with **ov5640** camera **(experimental)**
 
 **Ground station variants (VRX):**
 - **Radxa Zero 3W** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
+- **Runcam VRX** - 5.8GHz only (experimental)
 - GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
 # Recommended hardware
@@ -212,12 +215,15 @@ Connection diagram is similar to **Variant 2**.
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
 
 
+## Air Unit Variant 4: **esp32c5** + OV5640 (experimental)
 
-STL files for 3D Printing 12mm lens shell on Thingiverse: https://www.thingiverse.com/thing:6646566
+The ESP32-C5 supports both 2.4 GHz and 5.8 GHz bands. Thanks to lower interference on 5.8 GHz, the air unit can transmit a 14 Mb/s stream with a lower FEC ratio, resulting in better image quality. It is capable of broadcasting a 1280×720 stream at 25 FPS.
+
+See [esp32c5 air unit](/doc/esp32c5_air_unit)
 
 ## Current consumption
 
-Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself.
+Both **esp32cam** and **esp32s3sense** consume less then 300mA. Flash LED on **esp32cam** board consumes 30mA itself. **esp32c5** consumes 540mA.
 
 ---------------------------------------------------------------------------------------------------------------------
 
@@ -317,6 +323,10 @@ Note that red/black antenas are not recommented unless all you want is to look c
 ![alt text](doc/images/moxon.jpg "moxon")
 
 ***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
+
+## Ground Station Variant 4: Runcam VRX (5.8Ghz only)(experimental)
+
+Runcam OpenIPC VRX containes rtl8255ue2 cards whch support 5.8Ghz band only. It can be used with esp32c5 air unit only.
 
 
 ## Ground station Variant: Ubuntu
