@@ -337,15 +337,15 @@ CD card. **Runcam VRX** has to be flashed with OpenIPC firmware to unlock SD car
 
 **Runcam VRX** is using slightly different GPIO buttons wiring, and **Action 2** button is missing. Please select **"GPIO Keys layout: Runcam VRX"** in osd menu. Long press **Action 1 (Air Rec)** button to toggle GS recording.
 
-GS Firmware allows to select any channel from any band, but support depends on hadware. **2.4Ghz** band is enabled. To enabled **5.8Ghz** band, configure bands in **Ground Station Settings...** OSD menu.
+GS Firmware allows to select any channel from any band, but support depends on hadware. **2.4 GHz** band is enabled by default. To enable **5.8 GHz** band, configure bands in **Ground Station Settings...** OSD menu.
 
-Default chnnel is set to 7 on **esp32c5** after flashing. **Runcan VRX** will not b able to find it. Boot air unot in **File Server** and set channel to 44 in Web interface.
+Default channel is set to 7 on **esp32c5** after flashing. **Runcan VRX** will not be able to find it. Boot air unit in [Web interface](doc/web_interface.md) mode and set channel to 44 in Web interface.
 
 **USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
 
 ![runcam vrx](doc/images/runcam_vrx.jpg "runcam_vrx")
 
-## Ground Station Variant 4: Emax Wyvern Link VRX 
+## Ground Station Variant 5: Emax Wyvern Link VRX 
 
 No tested, but should work. However, this VRX contains single **RTL8812AU** card. Using single Wifi card is not recommented on GS.
 
@@ -563,7 +563,7 @@ Note than UAV in the air will sense carrier of all Wifi routers around and share
 
 **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Other air units support **2.4Ghz** only.
 
-**5.8Ghz** band has much less interferrence and allows using lower FEC ratio(6/8). Higher tranfer speed and lower FEC ratios allows sending beter image quality.
+**5.8Ghz** band has much less interferrence and allows using lower FEC ratio(6/8). Higher transfer speed and lower FEC ratios allows sending beter image quality.
 
 **2.4Ghz** band is usefull with highest FEC ratio only (6/12).
 
