@@ -681,6 +681,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
 
         snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
         cJSON_AddStringToObject(root,"channel",channel_str);
+        cJSON_AddBoolToObject(root, "wifi_5ghz_supported", getValidWifiChannel(DEFAULT_WIFI_CHANNEL_5_8_GHZ) == DEFAULT_WIFI_CHANNEL_5_8_GHZ);
         cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.misc.autostartRecord ? "true" : "false");
         cJSON_AddStringToObject(root, "fw_version", FW_VERSION);
         snprintf(packet_version_str, sizeof(packet_version_str), "%d", PACKET_VERSION);
@@ -702,7 +703,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         cJSON *root = cJSON_Parse(buf);
         
         uint16_t channel = atoi(cJSON_GetStringValue(cJSON_GetObjectItem(root,"channel")));
-        if ( channel <= WIFI_CHANNELS_COUNT )
+        if (channel == getValidWifiChannel(channel))
         {
             nvs_args_set("channel",channel);
             s_ground2air_config_packet.dataChannel.wifi_channel = channel;
