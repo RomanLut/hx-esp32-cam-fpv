@@ -19,7 +19,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
@@ -27,14 +27,19 @@ jobs:
       run: |
         python -m pip install --upgrade pip setuptools
 
-    - name: Install PlatformIO lastest
+    - name: Install PlatformIO latest
       run: |
         python -m pip install --upgrade pip
-        pip install platformio
+        python -m pip install platformio
+
+    - name: Verify toolchain versions
+      run: |
+        python --version
+        python -m platformio --version
 
     - name: Build firmware
       run: |
-        platformio run -d ${{ matrix.project }}
+        python -m platformio run -d ${{ matrix.project }}
 
     - name: Upload firmware binaries
       uses: actions/upload-artifact@v4
