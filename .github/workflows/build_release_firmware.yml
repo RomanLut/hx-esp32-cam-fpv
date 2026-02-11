@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        project: [air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
+        project: [air_firmware_esp32c5, air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
 
     steps:
     - name: Checkout repository
