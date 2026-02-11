@@ -42,5 +42,11 @@ Size conparison with esp32s3sense:
 
 ![alt text](/doc/images/esp32c5-prototype-comp.jpg "esp32c5_air_unit")
 
+**esp32c5** 1280x720 25fps streaming, recorded on GS:
+
+https://github.com/user-attachments/assets/3dfc3725-5c03-43d9-bf62-a5a76a4a5fef
+
+
+
 
 
