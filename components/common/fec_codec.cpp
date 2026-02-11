@@ -69,6 +69,7 @@ void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const voi
 
     ESP_LOGI(TAG,"MEMORY after fec:");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     s_fec_encoder.switch_mtu( mtu );
 }

@@ -241,7 +241,7 @@ Video_Decoder s_decoder;
 
 #ifdef USE_MAVLINK
 int fdUART = -1;
-std::string serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
+std::string serialPortName = "";
 #endif
 
 /* This prints an "Assertion failed" message and aborts.  */
@@ -369,7 +369,7 @@ void updateGSSdFreeSpace()
 
 //===================================================================================
 //===================================================================================
-void toggleGSRecording( int width, int height)
+void toggleGSRecording(int width, int height, const char* reason)
 {
     std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
 
@@ -419,8 +419,8 @@ void toggleGSRecording( int width, int height)
             s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         }
 
-        s_avi_frameWidth = v->width;
-        s_avi_frameHeight = v->height;
+        s_avi_frameWidth = width;
+        s_avi_frameHeight = height;
         s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
         s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
 
@@ -430,7 +430,7 @@ void toggleGSRecording( int width, int height)
         fwrite(aviHeader, AVI_HEADER_LEN, 1, s_groundstation_config.record_file); 
 
 #endif        
-        LOGI("start record:{}",std::string(filename));
+        LOGI("start record:{} reason:{}", std::string(filename), reason ? reason : "unknown");
     }
     else
     {
@@ -851,8 +851,8 @@ static void comms_thread_proc()
                                     ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
                                 )
                                 {
-                                    toggleGSRecording(0,0); //stop
-                                    toggleGSRecording(width,height); //start
+                                    toggleGSRecording(0, 0, "auto_restart_resolution_change_stop"); //stop
+                                    toggleGSRecording(width, height, "auto_restart_resolution_change_start"); //start
                                 }
 
                                 {
@@ -876,8 +876,8 @@ static void comms_thread_proc()
 
                                 if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
                                 {
-                                    toggleGSRecording(0,0); //stop
-                                    toggleGSRecording(width,height); //start
+                                    toggleGSRecording(0, 0, "auto_split_stop"); //stop
+                                    toggleGSRecording(width, height, "auto_split_start"); //start
                                 }
                             }
                             else
@@ -1112,7 +1112,7 @@ void exitApp()
 {
     if (s_groundstation_config.record)
     {
-        toggleGSRecording(0,0);
+        toggleGSRecording(0, 0, "exit_app");
         /*
         std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
         fflush(s_groundstation_config.record_file);
@@ -1159,7 +1159,7 @@ void applyGSTxPower(Ground2Air_Config_Packet& config)
 //===================================================================================
 bool isHQDVRMode()
 {
-    return s_ground2air_config_packet.camera.resolution == Resolution::HD;
+    return s_last_airStats.hq_dvr_mode != 0;
 }
 
 //===================================================================================
@@ -1192,6 +1192,13 @@ void loadOSDFontByCRC32( uint32_t fontCRC32 )
     }
 
     g_osd.loadFont( "INAV_default_24.png" );
+}
+
+//===================================================================================
+//===================================================================================
+int formatGSRSSI(int8_t rssi)
+{
+    return (rssi >= 0) ? (-128 - (int)rssi) : rssi; 
 }
 
 //===================================================================================
@@ -1255,7 +1262,7 @@ int run(char* argv[])
             {
                 //RSSI1
                 char buf[32];
-                sprintf(buf, "GS:%d", (int)s_last_gs_stats.rssiDbm[0] );
+                sprintf(buf, "GS:%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]) );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
@@ -1270,7 +1277,7 @@ int run(char* argv[])
             {
                 //RSSI1:RSSI2
                 char buf[32];
-                sprintf(buf, "GS:%d/%d", (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1] );
+                sprintf(buf, "GS:%d/%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]), formatGSRSSI(s_last_gs_stats.rssiDbm[1]) );
 
                 ImGui::SameLine();
                 ImGui::PushID(0);
@@ -2193,7 +2200,7 @@ int run(char* argv[])
                 ImGui::SameLine();
                 if (ImGui::Button("GS Record"))
                 {
-                    toggleGSRecording(0,0);
+                    toggleGSRecording(0, 0, "debug_ui_button");
                 }
 
                 ImGui::SameLine();
@@ -2275,12 +2282,12 @@ int run(char* argv[])
             saveGround2AirConfig(config);
         }
 
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R))
+        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R, false))
         {
             config.misc.air_record_btn++;
         }
 
-        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G))
+        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G, false))
         {
             /*
             if ( g_framePacketsDebug.isOn() ) 
@@ -2291,7 +2298,7 @@ int run(char* argv[])
             {
                 g_framePacketsDebug.captureFrame(true);
             }*/
-            toggleGSRecording(0,0);
+            toggleGSRecording(0, 0, "keyboard_g");
         }
 
         if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
@@ -2385,11 +2392,23 @@ int run(char* argv[])
 //===================================================================================
 bool init_uart()
 {
+    if (serialPortName.empty())
+    {
+        if (access("/dev/ttyUSB0", F_OK) == 0)
+        {
+            serialPortName = "/dev/ttyUSB0";
+        }
+        else
+        {
+            serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
+        }
+    }
+    
     fdUART = open(serialPortName.c_str(), O_RDWR);
     if (fdUART == -1)
     {
-      printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
-      return false;
+        printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
+        return false;
     }
 
     struct termios tty;
@@ -2435,9 +2454,11 @@ bool init_uart()
 void saveGroundStationConfig()
 {
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
+    ini["gs"]["wifi_band"] = std::to_string((int)s_groundstation_config.wifiBand);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
+    ini["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     ini["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
     s_iniFile.write(ini);
 }
@@ -2631,9 +2652,13 @@ void airUnpair()
 {
     s_connected_air_device_id = 0;
     s_got_config_packet = false;
+    s_accept_config_packet = false;
+    s_last_packet_tp = Clock::now();
+    s_last_stats_packet_tp = Clock::now();
 
     s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, 0 );
     s_comms.packetFilter.set_packet_filtering( 0, s_groundstation_config.deviceId );
+    s_comms.reset_rx_state();
 }
 
 //===================================================================================
@@ -2679,15 +2704,40 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["wifi_channel"];
         int channel = atoi(temp.c_str());
-        if ((channel >= 1) && (channel <= 13) )
+        if ((channel >= MIN_WIFI_CHANNEL) && (channel <= MAX_WIFI_CHANNEL) )
         {
             s_groundstation_config.wifi_channel = channel;
             config.dataChannel.wifi_channel = channel;
         }
         else
         {
-            s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL;
-            config.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
+            s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+            config.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["wifi_band"];
+        int band = atoi(temp.c_str());
+        if ((band >= GS_WIFI_BAND_2_4_GHZ) && (band <= GS_WIFI_BAND_DUAL))
+        {
+            s_groundstation_config.wifiBand = (uint8_t)band;
+        }
+        else
+        {
+            s_groundstation_config.wifiBand = DEFAULT_GS_WIFI_BAND;
+        }
+    }
+
+    {
+        uint8_t defaultChannel = s_groundstation_config.wifiBand == GS_WIFI_BAND_5_8_GHZ
+            ? DEFAULT_WIFI_CHANNEL_5_8_GHZ
+            : DEFAULT_WIFI_CHANNEL_2_4GHZ;
+
+        if ( !isWifiChannelAllowedByBand(config.dataChannel.wifi_channel, s_groundstation_config.wifiBand) )
+        {
+            s_groundstation_config.wifi_channel = defaultChannel;
+            config.dataChannel.wifi_channel = defaultChannel;
         }
     }
 
@@ -2701,6 +2751,19 @@ int main(int argc, const char* argv[])
         else
         {
             s_groundstation_config.txPower = DEFAULT_TX_POWER;
+        }
+    }
+
+    {
+        std::string& temp = ini["gs"]["gpio_keys_layout"];
+        int layout = atoi(temp.c_str());
+        if ((layout == 0) || (layout == 1))
+        {
+            s_groundstation_config.GPIOKeysLayout = (uint8_t)layout;
+        }
+        else
+        {
+            s_groundstation_config.GPIOKeysLayout = 0;
         }
     }
 
@@ -2885,8 +2948,8 @@ int main(int argc, const char* argv[])
             printf("-vsync <1/0>, default: 1\n");
             printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
 #ifdef USE_MAVLINK
-            printf("-serial <serial_port>, serial port for telemetry, default: ");
-            printf(serialPortName.c_str());
+            printf("-serial <serial_port>, serial port for telemetry, default:");
+            printf(isRadxaZero3() ? "/dev/ttyUSB0(if exists), /dev/ttyS3" : "/dev/ttyUSB0(if exists), /dev/serial0");
             printf("\n");
 #endif            
             printf("-help\n");

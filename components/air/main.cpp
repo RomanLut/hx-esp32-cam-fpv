@@ -3,6 +3,7 @@
 
 #include "esp_camera.h"
 //#include "EEPROM.h"
+#include <hal/i2c_types.h>
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -41,6 +42,12 @@
 #include "queue.h"
 #include "circular_buffer.h"
 
+#ifdef USB_DISK_SUPPORT
+#define CFG_TUSB_MCU OPT_MCU_ESP32S3
+#include "tinyusb.h"
+#include "tusb_msc_storage.h"
+#endif
+
 #include "ll_cam.h" // cam_obj_t defination, used in camera_data_available
 
 #include "wifi.h"
@@ -58,6 +65,8 @@
 #include "hx_mavlink_parser.h"
 
 #include "temperature_sensor.h"
+
+#include "mock_camera.h"
 
 static int s_stats_last_tp = -10000;
 static int s_last_osd_packet_tp = -10000;
@@ -110,6 +119,11 @@ static bool s_initialized = false;
 
 static uint32_t s_last_rc_packet_tp = 0;
 
+#if defined(DVR_SUPPORT) && defined(BOARD_ESP32C5)
+static uint8_t s_sd_record_frame_selector = 0;
+static bool s_sd_record_current_frame = false;
+#endif
+
 static uint16_t s_air_device_id;
 static uint16_t s_connected_gs_device_id = 0;
 
@@ -122,20 +136,18 @@ static int s_mavlinkOutBufferCount = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
-static int s_uart_verbose = 1;
-
-#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
+int s_uart_verbose = 1;
 
 /////////////////////////////////////////////////////////////////////////
 
 sdmmc_card_t* card = nullptr;
 
-static bool s_air_record = false;
+volatile bool s_air_record = false;
 
 static bool s_camera_stopped = false;
 static bool s_camera_stopped_requested = false;
 
-static uint64_t s_shouldRestartRecording;
+volatile uint64_t s_shouldRestartRecording = 0;
 
 HXMavlinkParser mavlinkParserIn(true);
 
@@ -144,54 +156,63 @@ HXMavlinkParser mavlinkParserIn(true);
 void initialize_status_led()
 {
 #ifdef STATUS_LED_PIN
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << STATUS_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << STATUS_LED_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
     gpio_set_level(STATUS_LED_PIN, STATUS_LED_OFF);
-#endif    
+}
+#endif
+
+#ifdef STATUS_LED2_PIN
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << STATUS_LED2_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
+    gpio_config(&io_conf);
+    gpio_set_level(STATUS_LED2_PIN, STATUS_LED2_OFF);
+}
+#endif
 }
 
 #ifdef ESP32CAM_FLASH_LED_PIN
 static bool s_last_flash_led_state = true;
-#endif
 
 //=============================================================================================
 //=============================================================================================
 void enable_esp32cam_flash_led_pin( bool enabled )
 {
-#ifdef ESP32CAM_FLASH_LED_PIN
     gpio_set_level(ESP32CAM_FLASH_LED_PIN, enabled ? 0: 1 );
     s_last_flash_led_state = enabled;
-#endif
 }
 
 //=============================================================================================
 //=============================================================================================
 void initialize_esp32cam_flash_led_pin( bool enabled )
 {
-#ifdef ESP32CAM_FLASH_LED_PIN
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
 
     gpio_set_level(ESP32CAM_FLASH_LED_PIN, enabled ? 0: 1 );
     s_last_flash_led_state = enabled;
-#endif
 }
 
 //=============================================================================================
 //=============================================================================================
 bool read_esp32cam_flash_led_pin()
 {
-#ifdef ESP32CAM_FLASH_LED_PIN
     gpio_set_direction((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_MODE_INPUT );
     gpio_set_pull_mode((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_PULLDOWN_ONLY); 
     gpio_set_level((gpio_num_t)ESP32CAM_FLASH_LED_PIN,0);
@@ -203,44 +224,52 @@ bool read_esp32cam_flash_led_pin()
     gpio_set_direction((gpio_num_t)ESP32CAM_FLASH_LED_PIN, GPIO_MODE_OUTPUT );
     
     return state;
-#else    
-    return false;
-#endif
 }
-
-//=============================================================================================
-//=============================================================================================
-void initialize_flash_led_pin_button()
-{
-#ifdef ESP32CAM_FLASH_LED_PIN
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = 1ULL << ESP32CAM_FLASH_LED_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
-    gpio_config(&io_conf);
-
-    gpio_set_level(ESP32CAM_FLASH_LED_PIN, 0 );
 #endif
-}
 
+#ifdef REC_BUTTON_PIN
 //=============================================================================================
 //=============================================================================================
 void initialize_rec_button()
 {
-#ifdef REC_BUTTON_PIN
     printf("Init REC button...\n");
 
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = 1ULL << REC_BUTTON_PIN;
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << REC_BUTTON_PIN,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE };
     gpio_config(&io_conf);
-#endif
 }
+
+static bool s_rec_button_led_state = true;
+
+//=============================================================================================
+//=============================================================================================
+bool read_rec_button_pin()
+{
+    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, GPIO_PULLUP_ONLY); 
+    esp_rom_delay_us(20); //charge pin
+
+    bool state = gpio_get_level((gpio_num_t)REC_BUTTON_PIN) == 0;
+
+    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLDOWN_ONLY : GPIO_PULLUP_ONLY); 
+
+    return state;
+}
+
+#ifdef HAS_REC_BUTTON_LED
+//=============================================================================================
+//=============================================================================================
+void enable_rec_button_led( bool enabled )
+{
+    s_rec_button_led_state = enabled;
+    gpio_set_pull_mode((gpio_num_t)REC_BUTTON_PIN, s_rec_button_led_state ? GPIO_PULLDOWN_ONLY : GPIO_PULLUP_ONLY); 
+}
+#endif //rec button led
+#endif //rec button
+
 
 //=============================================================================================
 //=============================================================================================
@@ -264,9 +293,17 @@ void set_status_led(bool enabled)
     gpio_set_level(STATUS_LED_PIN, enabled ? STATUS_LED_ON : STATUS_LED_OFF);
 #endif    
 
+#ifdef STATUS_LED2_PIN
+    gpio_set_level(STATUS_LED2_PIN, enabled ? STATUS_LED2_ON : STATUS_LED2_OFF);
+#endif    
+
 #ifdef ESP32CAM_FLASH_LED_PIN
     enable_esp32cam_flash_led_pin(enabled);
 #endif    
+
+#ifdef HAS_REC_BUTTON_LED
+    enable_rec_button_led(enabled);
+#endif
 }
 
 //=============================================================================================
@@ -320,12 +357,11 @@ void update_status_led_file_server()
 bool getButtonState()
 {
 #ifdef REC_BUTTON_PIN
-    return gpio_get_level((gpio_num_t)REC_BUTTON_PIN) == 0;
+    if ( read_rec_button_pin() ) return true;
 #endif
 
-
 #ifdef ESP32CAM_FLASH_LED_PIN
-    return read_esp32cam_flash_led_pin();
+    if ( read_esp32cam_flash_led_pin() ) return true;
 #endif
 
     return false;
@@ -340,10 +376,10 @@ void checkButton()
 
   if ( debounceTime > millis() ) return;
   bool buttonState = getButtonState();
-  debounceTime = millis() + 10;
+  debounceTime = millis() + 200;
   if ( buttonState != lastButtonState )
   {
-    debounceTime = millis() + 100;
+    debounceTime = millis() + 300;
     lastButtonState = buttonState;
 
     if ( buttonState )
@@ -404,6 +440,7 @@ void init_failure()
     }
 }
 
+
 #ifdef DVR_SUPPORT
 
 SemaphoreHandle_t s_sd_fast_buffer_mux = xSemaphoreCreateBinary();
@@ -445,29 +482,109 @@ Circular_Buffer* s_sd_slow_buffer = NULL;
 //ESP32 4096: 1.6 MB/s 
 //ESP32 12*512:1.5 MB/s  ???
 //ESP32 8192: 1.9 MB/s
+
+//ESP32 8192 SPI mode file test: 1.1MB/sec
+
+//esp32c5 2048: ~400 kb/sec
+//esp32c5 4096: ~440 kb/sec
+//esp32c5 8192: ~475 kb/sec
+//esp32c5 16384: ~520 kb/sec
+//esp32c5 SPI RAM: ~260 kb/sec
 static constexpr size_t SD_WRITE_BLOCK_SIZE = 8192;
 
 //for fast SD writes, buffer has to be in DMA enabled memory
 static uint8_t* sd_write_block = (uint8_t*)heap_caps_malloc(SD_WRITE_BLOCK_SIZE, MALLOC_CAP_DMA);
 
 
-/*
-static void shutdown_sd()
+//=============================================================================================
+//=============================================================================================
+void run_file_benchmark()
 {
-    if (!s_sd_initialized)
+    LOG("Starting file benchmark\n");
+
+    const char* filename = "/sdcard/bench.bin";
+    FILE* file = fopen(filename, "wb");
+    if (!file) 
+    {
+        LOG("Error: Cannot open file %s\n", filename);
         return;
-    LOG("close sd card!\n");
-    
-    esp_vfs_fat_sdcard_unmount("/sdcard",card);
+    }
 
-    s_sd_initialized = false;
+    const size_t CHUNK_SIZE = 8 * 1024; // 8 KB
+    const size_t TOTAL_SIZE = 100 * 1024 * 1024; // 100 MB
+    size_t written = 0;
+    uint8_t* buffer = (uint8_t*)heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_DMA);
+    //uint8_t* buffer2 = (uint8_t*)heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_SPIRAM);
+    if (!buffer) 
+    {
+        LOG("Error: Cannot allocate buffer\n");
+        fclose(file);
+        return;
+    }
 
-    //to turn the LED off
-#ifdef BOARD_ESP32CAM    
-    gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);    // D1, needed in 4-line mode only
-#endif    
+    // Fill buffer with a pattern for identification
+    memset(buffer, 0xAA, CHUNK_SIZE);
+
+    int64_t start_time = esp_timer_get_time();
+    int64_t last_yield_time = start_time;
+
+    while (written < TOTAL_SIZE) {
+        size_t to_write = CHUNK_SIZE;
+        if (written + to_write > TOTAL_SIZE) {
+            to_write = TOTAL_SIZE - written;
+        }
+
+        //memcpy(buffer, buffer2, to_write);
+
+        size_t result = fwrite(buffer, 1, to_write, file);
+        if (result != to_write) {
+            LOG("Error: fwrite failed, wrote %lu instead of %lu\n", result, to_write);
+            break;
+        }
+
+        written += result;
+
+        // Flush to ensure data is written
+        fflush(file);
+
+        // Calculate progress (using integer arithmetic for compatibility)
+        int64_t current_time = esp_timer_get_time();
+        int64_t elapsed_micros = current_time - start_time;
+        size_t mb = written / (1024ULL * 1024ULL);
+        size_t percent = (written * 100ULL) / TOTAL_SIZE;
+        size_t seconds = elapsed_micros / 1000000ULL;
+        size_t tenth_second = (elapsed_micros / 100000ULL) % 10ULL;
+
+        double speed_bps = written / (elapsed_micros / 1000000.0);
+        size_t speed_kb = (size_t)(speed_bps / 1024.0);
+
+        // Check if 100ms have passed since last yield
+        int64_t now = esp_timer_get_time();
+        if (now - last_yield_time > 100000) 
+        { // 100ms in microseconds
+            vTaskDelay(1); // minimal yield
+            last_yield_time = now;
+
+            char logbuf[256];
+            sprintf(logbuf, "Progress: %lu MB (%lu%%) written in %lu.%lu seconds. Speed: %lu KB/s\n",
+                    (unsigned long)mb, (unsigned long)percent, (unsigned long)seconds, (unsigned long)tenth_second, (unsigned long)speed_kb);
+            LOG("%s", logbuf);
+        }
+
+    }
+
+    fclose(file);
+    free(buffer);
+
+    if (written >= TOTAL_SIZE) {
+        LOG("File benchmark completed: %lu bytes written successfully\n", written);
+    } else {
+        LOG("File benchmark stopped early: %lu bytes written\n", written);
+    }
 }
-*/
+
+//=============================================================================================
+//=============================================================================================
 void updateSDInfo()
 {
     if ( !s_sd_initialized) return;
@@ -488,97 +605,18 @@ void updateSDInfo()
 
 static bool init_sd()
 {
-    if (s_sd_initialized)
-        return true;
+    if (s_sd_initialized) return true;
 
     SDTotalSpaceGB16 = 0;
     SDFreeSpaceGB16 = 0;
 
-#ifdef BOARD_ESP32CAM
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-#ifdef CAMERA_MODEL_ESP_VTX
-    mount_config.format_if_mount_failed = true;
-#else
-    mount_config.format_if_mount_failed = false;
-#endif
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
-    // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 20MHz for SDSPI)
-    // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;    
-    //host.max_freq_khz = SDMMC_FREQ_PROBING;
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-    host.flags = SDMMC_HOST_FLAG_1BIT;
-
-    gpio_set_pull_mode((gpio_num_t)14, GPIO_PULLUP_ONLY);   // CLK, needed in 4-line mode only
-    gpio_set_pull_mode((gpio_num_t)15, GPIO_PULLUP_ONLY);   // CMD
-    gpio_set_pull_mode((gpio_num_t)2, GPIO_PULLUP_ONLY);    // D0
-    //gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);  // D1, needed in 4-line mode only
-    //gpio_set_pull_mode((gpio_num_t)12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
-    //gpio_set_pull_mode((gpio_num_t)13, GPIO_PULLUP_ONLY);   // D3, needed in 4-line mode only
-
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-    slot_config.width = 1;
-
-    LOG("Mounting SD card...\n");
-    esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    if (ret != ESP_OK)
-    {
-        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
-        //to turn the LED off
-        gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);
-        return false;
-    }
-#endif
-#ifdef BOARD_XIAOS3SENSE
-/*
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-    mount_config.format_if_mount_failed = false;
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
-
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    //host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-    //host.max_freq_khz = SDMMC_FREQ_PROBING;
-    //host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-    //host.max_freq_khz = 26000;
-
-    spi_bus_config_t bus_cfg = {
-        .mosi_io_num = 9,
-        .miso_io_num = 8,
-        .sclk_io_num = 7,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4092
-    };
-    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
-    if (ret != ESP_OK) 
-    {
-        LOG("Failed to initialize SD SPI bus.");
-        return false;
-    }
-    //host.set_card_clk(host.slot, 10000);
-
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = GPIO_NUM_21;  //shared with USER LED pin
-    slot_config.host_id = (spi_host_device_t)host.slot;
-
-    LOG("Mounting SD card...\n");
-    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
-    if (ret != ESP_OK)
-    {
-        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
-        return false;
-    }
-*/ 
-    esp_vfs_fat_sdmmc_mount_config_t mount_config;
-    mount_config.format_if_mount_failed = false;
-    mount_config.max_files = 2;
-    mount_config.allocation_unit_size = 0;
+#ifdef SD_CARD_MMC
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 2,
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false,
+        .use_one_fat = false };
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
     // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
@@ -590,9 +628,11 @@ static bool init_sd()
 
     sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
     slot_config.width = 1;
-    slot_config.clk = GPIO_NUM_7;
-    slot_config.cmd = GPIO_NUM_9;
-    slot_config.d0 = GPIO_NUM_8;
+#ifdef SD_CLK_PIN    
+    slot_config.clk = SD_CLK_PIN;
+    slot_config.cmd = SD_CMD_PIN;
+    slot_config.d0 = SD_D0_PIN;
+#endif    
 
     // Enable internal pullups on enabled pins. The internal pullups
     // are insufficient however, please make sure 10k external pullups are
@@ -604,16 +644,73 @@ static bool init_sd()
     if (ret != ESP_OK)
     {
         LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
+#ifdef BOARD_ESP32CAM
+        //to turn the flash LED off
+        gpio_set_pull_mode((gpio_num_t)4, GPIO_PULLDOWN_ONLY);
+#endif        
         return false;
     }
-#endif
+#endif //SD_CARD_MMC
+
+#ifdef SD_CARD_SPI
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 2,
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false, 
+        .use_one_fat = false,
+        };
+
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    //host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    //host.max_freq_khz = SDMMC_FREQ_PROBING;
+    //host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+    //host.max_freq_khz = 10000;
+
+
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = SD_DI_PIN,
+        .miso_io_num = SD_DO_PIN,
+        .sclk_io_num = SD_CLK_PIN,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .data4_io_num = -1,
+        .data5_io_num = -1,
+        .data6_io_num = -1,
+        .data7_io_num = -1,
+        .max_transfer_sz = 4000,
+        .flags = 0,
+        .intr_flags = 0        
+    };
+
+    esp_err_t ret = spi_bus_initialize((spi_host_device_t)host.slot, &bus_cfg, SDSPI_DEFAULT_DMA);
+    if (ret != ESP_OK) 
+    {
+        LOG("Failed to initialize SD SPI bus.");
+        return false;
+    }
+    
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = SD_CS_PIN;
+    slot_config.host_id = (spi_host_device_t)host.slot;
+    //slot_config.wait_for_miso = -1; 
+
+    gpio_set_pull_mode(SD_DO_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(SD_DI_PIN, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(SD_CS_PIN, GPIO_PULLUP_ONLY);
+    //slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP; - no .flag
+
+    LOG("Mounting SD card...\n");
+    ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+    if (ret != ESP_OK)
+    {
+        LOG("Failed to mount SD card VFAT filesystem. Error: %s\n", esp_err_to_name(ret));
+        return false;
+    }
+#endif //SD_CARD_SPI
 
     LOG("sd card inited!\n");
     s_sd_initialized = true;
-
-#ifdef DVR_SUPPORT
-    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
-#endif
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
@@ -639,6 +736,15 @@ static bool init_sd()
         s_sd_next_segment_id = 0;
         break;
     }
+
+/*
+    // Run file benchmark after SD initialization
+    if (s_sd_initialized) 
+    {
+        run_file_benchmark();
+    }
+*/
+
     return true;
 }
 
@@ -671,7 +777,7 @@ static int open_sd_file()
 //=============================================================================================
 //=============================================================================================
 //this will write data from the slow queue to raw MJPEG file
-static void sd_write_proc(void*)
+static void sd_write_proc(void*) //s_sd_write_task MJPEG
 {
     while (true)
     {
@@ -885,6 +991,7 @@ void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle
                 SDError = true;
                 break;
             }
+            
             fileSize += SD_WRITE_BLOCK_SIZE;
             blockSize = 0;
             s_stats.sd_data += SD_WRITE_BLOCK_SIZE;
@@ -895,7 +1002,7 @@ void storeBuffer( int fd, size_t count, Circular_Buffer* buffer, SemaphoreHandle
 //=============================================================================================
 //=============================================================================================
 //this will write data from the slow queue to AVI file
-static void sd_write_proc(void*)
+static void sd_write_proc(void*) //s_sd_write_task AVI
 {
     //frames are separated by MJPEG_PATTERN_SIZE zeros
     //frame start search: at least MJPEG_PATTERN_SIZE/2 zero bytes, then FF D8 FF
@@ -1210,7 +1317,15 @@ static void sd_enqueue_proc(void*)
 __attribute__((optimize("Os")))
 IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool addFrameStartPattern)
 {
-    xSemaphoreTake(s_sd_fast_buffer_mux, portMAX_DELAY);
+    if (xSemaphoreTake(s_sd_fast_buffer_mux, 10 / portTICK_PERIOD_MS) != pdPASS)
+    {
+        s_stats.sd_drops += size;
+#ifdef PROFILE_CAMERA_DATA
+        s_profiler.toggle(PF_CAMERA_SD_OVF);
+#endif
+        return;
+    }
+
     bool ok = s_sd_fast_buffer.write(data, size);
 
 #ifdef WRITE_RAW_MJPEG_STREAM 
@@ -1271,9 +1386,10 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
 
     wifi_promiscuous_pkt_t *pkt = reinterpret_cast<wifi_promiscuous_pkt_t*>(buf);
 
-    if (pkt->rx_ctrl.channel != s_ground2air_config_packet.dataChannel.wifi_channel)
+    int channel = getValidWifiChannel(s_ground2air_config_packet.dataChannel.wifi_channel);
+    if (pkt->rx_ctrl.channel != channel )
     {
-        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, s_ground2air_config_packet.dataChannel.wifi_channel);
+        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, channel);
         s_stats.inRejectedPacketCounter++;
         return;
     }    
@@ -1387,7 +1503,9 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     
     if ( processSetting( "Wifi channel", dst.dataChannel.wifi_channel, src.dataChannel.wifi_channel, "channel" ) )
     {
-        ESP_ERROR_CHECK(esp_wifi_set_channel((int)src.dataChannel.wifi_channel, WIFI_SECOND_CHAN_NONE));
+        int channel = getValidWifiChannel(src.dataChannel.wifi_channel);
+        LOG("Validated Wifi channel: %d\n", channel );
+        ESP_ERROR_CHECK(esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE));
     }
 
     if ( processSetting( "Target FPS", dst.camera.fps_limit, src.camera.fps_limit, NULL) )
@@ -1467,9 +1585,13 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     Ground2Air_Config_Packet& src = s_ground2air_config_packet;
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet2;
 
+#ifdef USE_MOCK_CAMERA
+    sensor_t* s = mock_camera_sensor_get();
+#else
     sensor_t* s = esp_camera_sensor_get();
+#endif
 
-#ifdef SENSOR_OV5640
+    #ifdef SENSOR_OV5640
     //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
     src.camera.aec2 = false;
 #endif
@@ -1662,7 +1784,6 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     APPLY(lenc, lenc, int);
 #undef APPLY
 #undef SAVE
-
     dst = src;
 }
 
@@ -1757,6 +1878,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     s_stats.RCPeriodMaxMS = d;
                 }
 
+#ifdef UART_MSP_OSD
                 if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
@@ -1768,6 +1890,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
                     }
                     g_msp.setRCChannels(ch);
                 }
+#endif                
 
                 if ( s_ground2air_config_packet2.misc.cameraStopChannel != 0 )
                 {
@@ -2107,6 +2230,8 @@ IRAM_ATTR void send_air2ground_osd_packet()
 
     packet.stats.suspended = s_camera_stopped != 0;
 
+    packet.stats.hq_dvr_mode = isHQDVRMode() ? 1 : 0;
+
     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
 
     if (!s_fec_encoder.flush_encode_packet(true))
@@ -2218,7 +2343,11 @@ IRAM_ATTR int calculateAdaptiveQualityValue()
 //=============================================================================================
 IRAM_ATTR bool isHQDVRMode()
 {
+#ifdef BOARD_ESP32C5
+    return false;
+#else        
     return s_ground2air_config_packet2.camera.resolution == Resolution::HD;
+#endif    
 }
 
 //=============================================================================================
@@ -2244,6 +2373,9 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 #ifdef BOARD_XIAOS3SENSE        
     //2.9MB/sec is practical maximum limit which works
     if ( rateBandwidth > 2900*1024 ) rateBandwidth = 2900*1024;
+#elif defined(BOARD_ESP32C5)
+    //limit by 10.0MB/sec otherwise whole system is overloaded
+    if ( rateBandwidth > 10000*1024 ) rateBandwidth = 10000*1024;
 #else
     //2.3MB/sec is practical maximum limit which works
     if ( rateBandwidth > 2300*1024 ) rateBandwidth = 2300*1024;
@@ -2254,8 +2386,10 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( s_air_record )
     {
-#ifdef BOARD_XIAOS3SENSE        
+#if defined(BOARD_XIAOS3SENSE)
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32S3 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32S3;
+#elif defined(BOARD_ESP32C5)
+        if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32C5 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32C5;
 #else
         if ( FECbandwidth > MAX_SD_WRITE_SPEED_ESP32 ) FECbandwidth = MAX_SD_WRITE_SPEED_ESP32;
 #endif
@@ -2263,8 +2397,10 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     if ( isHQDVRMode() )
     {
-#ifdef BOARD_XIAOS3SENSE        
+#ifdef BOARD_XIAOS3SENSE
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32S3;
+#elif defined(BOARD_ESP32C5)
+        FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32C5;
 #else
         FECbandwidth  = MAX_SD_WRITE_SPEED_ESP32;
 #endif
@@ -2360,8 +2496,12 @@ IRAM_ATTR void applyAdaptiveQuality()
     if (s_quality != quality1)
     {
         s_quality = quality1;
-        sensor_t* s = esp_camera_sensor_get(); 
-        s->set_quality(s, s_quality); 
+#ifdef USE_MOCK_CAMERA
+        sensor_t* s = mock_camera_sensor_get();
+#else
+        sensor_t* s = esp_camera_sensor_get();
+#endif
+        s->set_quality(s, s_quality);
 
         int sharpness1 = s_ground2air_config_packet.camera.sharpness;
 
@@ -2461,13 +2601,12 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
     {
         s_fec_encoder.lock();
 
-#ifdef BOARD_ESP32CAM
+#if defined(USE_MOCK_CAMERA) || defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
+        //sample offset: 0, stride: 1
+        const uint8_t* src = (const uint8_t*)data;
+#elif defined(BOARD_ESP32CAM)
         //ESP32 - sample offset: 2, stride: 4
         const uint8_t* src = (const uint8_t*)data + 2;  // jump to the sample1 of DMA element
-#endif            
-#ifdef BOARD_XIAOS3SENSE
-        //ESP32S3 - sample offset: 0, stride: 1
-        const uint8_t* src = (const uint8_t*)data;  
 #endif
         uint8_t* clrSrc = (uint8_t*)src;
 
@@ -2486,8 +2625,18 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef DVR_SUPPORT
                 if (s_air_record)
                 {
+#if defined(BOARD_ESP32C5)
+                    s_sd_record_current_frame = ((s_sd_record_frame_selector++ & 0x3U) == 0U);
+                    if (s_sd_record_current_frame)
+#endif
                     add_to_sd_fast_buffer(clrSrc, 0, true);
                 }
+#if defined(BOARD_ESP32C5)
+                else
+                {
+                    s_sd_record_current_frame = false;
+                }
+#endif
 #endif
             }
         }
@@ -2495,6 +2644,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
         if (s_video_frame_started)
         {
             count /= stride;
+
+//do not perform additional frame end check on C5. Frame boundary is precise on C5.
+#if !defined(BOARD_ESP32C5)
 
             //check if we missed last block due to VSYNK near the end of prev (last) block
             // if block starts with 16 zero bytes - it is either not filled at all (ov2640)
@@ -2516,7 +2668,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
             else 
             {
-#ifdef BOARD_XIAOS3SENSE
+#if defined(BOARD_XIAOS3SENSE)
                 //ov5640: check if 16 bytes at the end of the block are zero
                 const uint32_t* pTail = (const uint32_t*)(&(src[count - 16]));
                 if ( (pTail[0] == 0 ) && ( pTail[1] == 0 ) && ( pTail[2] == 0 ) && ( pTail[3] == 0 ) )
@@ -2525,6 +2677,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     last = true;
                 }
 #endif
+
                 if (last) //find the end marker for JPEG. Data after that can be discarded
                 {
                     //edge case - 0xFF at the end of prev block, 0xD9 on the start of this
@@ -2554,6 +2707,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                     }
                 }
             }
+#endif //BOARD_ESP32C5
 
             s_lastByte_ff = count > 0 ? src[count-1] == 0xFF : false;
             while (count > 0)
@@ -2573,7 +2727,11 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 s_profiler.set(PF_CAMERA_DATA_SIZE, s_video_full_frame_size / 1024);
 #endif
 
-#ifdef BOARD_ESP32CAM
+#if defined(USE_MOCK_CAMERA) || defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
+                //ESP32S3 - sample offset: 0, stride: 1
+                memcpy( ptr, src, c);
+                src += c;
+#elif defined(BOARD_ESP32CAM)
                 //ESP32 - sample offset: 2, stride: 4
                 size_t c8 = c >> 3;
                 
@@ -2631,12 +2789,6 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                 }
 #endif
 
-#ifdef BOARD_XIAOS3SENSE
-                //ESP32S3 - sample offset: 0, stride: 1
-                memcpy( ptr, src, c);
-                src += c;
-#endif
-
                 if (s_video_frame_data_size == ( current_packet_size - sizeof(Air2Ground_Video_Packet)) ) 
                 {
                     //LOG("Flush: %d %d\n", s_video_frame_index, s_video_frame_data_size);
@@ -2664,7 +2816,14 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
                         start_ptr[15] = s_framesCounter >> 8;
                     }
 #endif            
+#if defined(BOARD_ESP32C5)
+                    if (s_sd_record_current_frame)
+                    {
+                        add_to_sd_fast_buffer(start_ptr, c, false);
+                    }
+#else
                     add_to_sd_fast_buffer(start_ptr, c, false);
+#endif
                 }
 #endif
             }  //while count>0
@@ -2672,7 +2831,7 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
         //////////////////
 
-        if (last)  //note: can occur multiple times during frame
+        if (last)  //note: can occur multiple times during frame on esp32 snd esp32s3
         {
             //end of frame - send leftover
             if ( s_video_frame_started )
@@ -2747,13 +2906,16 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
             }
         }
 
+//do no clear mock camera data
+//do not clear buffer on C5. Frame detection is different onf C5.
+#if !defined(USE_MOCK_CAMERA) && !defined(BOARD_ESP32C5)
         //zero start of the DMA block
         for ( int i = 0; i < 16; i++ )
         {
             *clrSrc = 0;
             clrSrc += stride;
         }
-
+#endif
         s_fec_encoder.unlock();
     }
 
@@ -2766,41 +2928,60 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 
 //=============================================================================================
 //=============================================================================================
+IRAM_ATTR static void parlio_data_callback(bool active)
+{
+#ifdef PROFILE_CAMERA_DATA
+    s_profiler.set(PF_PARLIO_DATA, active ? 1 : 0);
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
+IRAM_ATTR static void camera_event_callback(int eventType, int64_t timestamp)
+{
+#ifdef PROFILE_CAMERA_DATA
+    s_profiler.toggle(PF_CAM_EVENT_DMA_EOF + eventType, timestamp);
+#endif
+}
+
+//=============================================================================================
+//=============================================================================================
 static void init_camera()
 {
     printf("Init camera...\n");
 
-    camera_config_t config;
-    config.ledc_channel = LEDC_CHANNEL_0;
-    config.ledc_timer = LEDC_TIMER_0;
-    config.pin_d0 = Y2_GPIO_NUM;
-    config.pin_d1 = Y3_GPIO_NUM;
-    config.pin_d2 = Y4_GPIO_NUM;
-    config.pin_d3 = Y5_GPIO_NUM;
-    config.pin_d4 = Y6_GPIO_NUM;
-    config.pin_d5 = Y7_GPIO_NUM;
-    config.pin_d6 = Y8_GPIO_NUM;
-    config.pin_d7 = Y9_GPIO_NUM;
-    config.pin_xclk = XCLK_GPIO_NUM;
-    config.pin_pclk = PCLK_GPIO_NUM;
-    config.pin_vsync = VSYNC_GPIO_NUM;
-    config.pin_href = HREF_GPIO_NUM;
-    config.pin_sccb_sda = SIOD_GPIO_NUM;
-    config.pin_sccb_scl = SIOC_GPIO_NUM;
-    config.pin_pwdn = PWDN_GPIO_NUM;
-    config.pin_reset = RESET_GPIO_NUM;
-#ifdef SENSOR_OV5640    
-    config.xclk_freq_hz = 20000000;
+    camera_config_t config = {
+        .pin_pwdn = PWDN_GPIO_NUM,
+        .pin_reset = RESET_GPIO_NUM,
+        .pin_xclk = XCLK_GPIO_NUM,
+        .pin_sccb_sda = SIOD_GPIO_NUM,
+        .pin_sccb_scl = SIOC_GPIO_NUM,
+        .pin_d7 = Y9_GPIO_NUM,
+        .pin_d6 = Y8_GPIO_NUM,
+        .pin_d5 = Y7_GPIO_NUM,
+        .pin_d4 = Y6_GPIO_NUM,
+        .pin_d3 = Y5_GPIO_NUM,
+        .pin_d2 = Y4_GPIO_NUM,
+        .pin_d1 = Y3_GPIO_NUM,
+        .pin_d0 = Y2_GPIO_NUM,
+        .pin_vsync = VSYNC_GPIO_NUM,
+        .pin_href = HREF_GPIO_NUM,
+        .pin_pclk = PCLK_GPIO_NUM,
+#ifdef SENSOR_OV5640
+        .xclk_freq_hz = 20000000,
 #else
-    config.xclk_freq_hz = 12000000;  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
-#endif    
-    config.pixel_format = PIXFORMAT_JPEG;
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
-    config.fb_count = 2;
-    config.grab_mode = CAMERA_GRAB_LATEST;
-    config.fb_location = CAMERA_FB_IN_DRAM;
-    config.data_available_callback = camera_data_available;
+        .xclk_freq_hz = 12000000,  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
+#endif
+        .ledc_timer = LEDC_TIMER_0,
+        .ledc_channel = LEDC_CHANNEL_0,
+        .pixel_format = PIXFORMAT_JPEG,
+        .frame_size = FRAMESIZE_SVGA,
+        .jpeg_quality = 63,  //start from lowest quality to decrease pressure at startup
+        .fb_count = 2,
+        .fb_location = CAMERA_FB_IN_DRAM,
+        .grab_mode = CAMERA_GRAB_LATEST,
+        .sccb_i2c_port = I2C_NUM_0,
+        .data_available_callback = camera_data_available };
 
     // camera init
     esp_err_t err = esp_camera_init(&config);
@@ -2809,6 +2990,12 @@ static void init_camera()
         LOG("Camera init failed with error 0x%x", err);
         return;
     }
+
+    // Set camera event callback for profiling
+    cam_set_camera_event_callback(camera_event_callback);
+
+    // Set parlio data callback for profiling
+    cam_set_parlio_data_callback(parlio_data_callback);
 }
 
 //#define SHOW_CPU_USAGE
@@ -2898,10 +3085,10 @@ void readConfig()
     }
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL );
-    if((s_ground2air_config_packet.dataChannel.wifi_channel < 1)  || (s_ground2air_config_packet.dataChannel.wifi_channel > 13))
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL_2_4GHZ );
+    if  ( (s_ground2air_config_packet.dataChannel.wifi_channel < MIN_WIFI_CHANNEL) || (s_ground2air_config_packet.dataChannel.wifi_channel >= MAX_WIFI_CHANNEL))
     {
-        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL;
+        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
@@ -2999,13 +3186,97 @@ void readConfig()
     s_ground2air_config_packet2 = s_ground2air_config_packet;
 }
 
+#ifdef USB_DISK_SUPPORT
+
+//=============================================================================================
+//=============================================================================================
+bool isUSBDiskMounted()
+{
+    return tud_mounted();
+}
+
+//=============================================================================================
+//=============================================================================================
+void mountUSBDisk()
+{
+    const esp_vfs_fat_mount_config_t mount_config =
+    {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 0,
+        .disk_status_check_enable = false,
+        .use_one_fat = false
+    };
+
+    tinyusb_msc_sdmmc_config_t storage_cfg =
+    {
+        .card = card,
+        .callback_mount_changed = nullptr,
+        .callback_premount_changed = nullptr,
+        .mount_config = mount_config
+    };
+
+    esp_err_t err = tinyusb_msc_storage_init_sdmmc(&storage_cfg);
+    if (err != ESP_OK)
+    {
+        LOG("tinyusb_msc_storage_init_sdmmc failed: %s\n", esp_err_to_name(err));
+        return;
+    }
+
+    // keep FAT accessible for the file server; ignore "already mounted" state
+    err = tinyusb_msc_storage_mount("/sdcard");
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
+    {
+        LOG("tinyusb_msc_storage_mount failed: %s\n", esp_err_to_name(err));
+    }
+
+    const tinyusb_config_t tusb_cfg =
+    {
+        .device_descriptor = nullptr,
+        .string_descriptor = nullptr,
+        .string_descriptor_count = 0,
+        .external_phy = false,
+#if (TUD_OPT_HIGH_SPEED)
+        .fs_configuration_descriptor = nullptr,
+        .hs_configuration_descriptor = nullptr,
+        .qualifier_descriptor = nullptr,
+#else
+        .configuration_descriptor = nullptr,
+#endif
+        .self_powered = false,
+        .vbus_monitor_io = -1
+    };
+
+    err = tinyusb_driver_install(&tusb_cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
+    {
+        LOG("tinyusb_driver_install failed: %s\n", esp_err_to_name(err));
+        return;
+    }
+
+    LOG("USB MSC exposed for SD card\n");
+}
+#else
+//=============================================================================================
+//=============================================================================================
+bool isUSBDiskMounted()
+{
+    return false;
+}
+#endif
+
+
+
+extern volatile int pk;
+extern volatile int pk2;
+
 //=============================================================================================
 //=============================================================================================
 extern "C" void app_main()
 {
     //esp_task_wdt_init();
 
-#ifdef BOARD_XIAOS3SENSE
+#if defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
@@ -3021,10 +3292,15 @@ extern "C" void app_main()
     printf("MEMORY at start: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     initialize_status_led();
+#ifdef ESP32CAM_FLASH_LED_PIN
     initialize_esp32cam_flash_led_pin(true);
+#endif    
+#ifdef REC_BUTTON_PIN
     initialize_rec_button();
+#endif    
 
 #ifdef ENABLE_PROFILER
     s_profiler.init();
@@ -3046,7 +3322,7 @@ extern "C" void app_main()
 
 #ifdef INIT_UART_0
     printf("Init UART0...\n");
-    uart_config_t uart_config0 = 
+    uart_config_t uart_config0 =
     {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -3054,31 +3330,56 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_0, &uart_config0) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, 512, 256, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_0, TXD0_PIN, RXD0_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 #endif
 
     //reinitialize rec button after configuring uarts
+#ifdef REC_BUTTON_PIN    
     initialize_rec_button();
-
+#endif
     nvs_args_init();
 
     readConfig();
 
+    s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
+
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
-    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, s_ground2air_config_packet.dataChannel.wifi_channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
+    int channel = getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel );
+    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
-    if ( !getButtonState() )
+    bool runFileServer = false;
+
+#ifdef DVR_SUPPORT
+    runFileServer = getButtonState();
+#endif
+
+    if ( !runFileServer )
     {
         //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
-        init_camera();
-    }
+#ifdef USE_MOCK_CAMERA
+        init_mock_camera();
+#else
+        printf("MEMORY Before init_camera: \n");
+        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
+        init_camera();
+
+        printf("MEMORY After init_camera: \n");
+        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+#endif
+    }
 
 #ifdef DVR_SUPPORT
 
@@ -3090,13 +3391,24 @@ extern "C" void app_main()
     xSemaphoreGive(s_sd_fast_buffer_mux);
     xSemaphoreGive(s_sd_slow_buffer_mux);
 
+    printf("MEMORY Before Init_SD: \n");
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+
     init_sd();
+
+    printf("MEMORY After Init_SD: \n");
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
     //run file server if rec button is pressed on startup
-    if ( getButtonState() )
+    if ( runFileServer )
     {
+        //============================================================================
         LOG("Starting file server...");
 
         vTaskSuspend(s_wifi_rx_task);
@@ -3110,22 +3422,34 @@ extern "C" void app_main()
         printf("MEMORY Before setup_wifi_file_server(): \n");
         //heap_caps_print_heap_info(MALLOC_CAP_8BIT);
         //heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-        heap_caps_print_heap_info(MALLOC_CAP_DMA);
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
+        heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
         setup_wifi_file_server();
+
+#if defined(USB_DISK_SUPPORT)
+        if (s_sd_initialized)
+        {
+            mountUSBDisk();
+        }
+        else
+        {
+            LOG("Skipping USB disk mount: SD init failed\n");
+        }
+#endif
 
         while (true)
         {
             vTaskDelay(1);
-            //esp_task_wdt_reset();
 
             update_status_led_file_server();
         }
+        //============================================================================
     }
 
     s_shouldRestartRecording =  esp_timer_get_time() + 2000000;
     {
+        //task will open AVI/MJPEF file for writing immediatelly if s_air_record=true
         int core = tskNO_AFFINITY;
         BaseType_t res = xTaskCreatePinnedToCore(&sd_write_proc, "SD Write", 4096, nullptr, 1, &s_sd_write_task, core);
         if (res != pdPASS)
@@ -3135,18 +3459,19 @@ extern "C" void app_main()
     }
     {
         int core = tskNO_AFFINITY;
-        BaseType_t res = xTaskCreatePinnedToCore(&sd_enqueue_proc, "SD Enq", 1536, nullptr, 1, &s_sd_enqueue_task, core);
+        BaseType_t res = xTaskCreatePinnedToCore(&sd_enqueue_proc, "SD Enq", 1536, nullptr, 2, &s_sd_enqueue_task, core);
         if (res != pdPASS)
         {
             LOG("Failed sd enqueue task: %d\n", res);
         }
     }
+
 #endif
 
 #ifdef INIT_UART_1
     printf("Init UART1...\n");
 
-    uart_config_t uart_config1 = 
+    uart_config_t uart_config1 =
     {
         .baud_rate = UART1_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
@@ -3154,9 +3479,13 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config1) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, UART1_RX_BUFFER_SIZE, UART1_TX_BUFFER_SIZE, 0, NULL, 0));
@@ -3168,7 +3497,7 @@ extern "C" void app_main()
 #ifdef INIT_UART_2
     printf("Init UART2...\n");
 
-    uart_config_t uart_config2 = 
+    uart_config_t uart_config2 =
     {
         .baud_rate = UART2_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
@@ -3176,18 +3505,42 @@ extern "C" void app_main()
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .rx_flow_ctrl_thresh = 122,
+#ifdef BOARD_ESP32C5
+        .source_clk = UART_SCLK_RTC,
+#else
         .source_clk = UART_SCLK_APB,
+#endif
         .flags = 0
-    };  
+    };
 
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_2, &uart_config2) );
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_2, UART2_RX_BUFFER_SIZE, UART2_TX_BUFFER_SIZE, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_2, TXD2_PIN, RXD2_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 #endif
 
+#ifdef INIT_LP_UART_NUM_0
+    printf("Init LP_UART_NUM_0...\n");
+
+    uart_config_t uart_config_lp0 =
+    {
+        .baud_rate = LUART0_BAUDRATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE, //This must be disabled for LP UART
+        .rx_flow_ctrl_thresh = 0,              //This must be 0 when flow control is disabled
+        .lp_source_clk = LP_UART_SCLK_DEFAULT,
+        .flags = 0
+    };
+
+    ESP_ERROR_CHECK(uart_param_config(LP_UART_NUM_0, &uart_config_lp0));
+    ESP_ERROR_CHECK(uart_driver_install(LP_UART_NUM_0, LP_UART0_RX_BUFFER_SIZE, LP_UART0_TX_BUFFER_SIZE, 0, NULL, 0));
+#endif
+
     printf("MEMORY Before Loop: \n");
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_EXEC);
+    heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
     handle_ground2air_config_packetEx1( s_ground2air_config_packet);
     handle_ground2air_config_packetEx2( true);
@@ -3195,10 +3548,13 @@ extern "C" void app_main()
     set_ground2air_connect_packet_handler(handle_ground2air_connect_packet);
     set_ground2air_data_packet_handler(handle_ground2air_data_packet);
 
-    LOG("WIFI channel: %d\n", s_ground2air_config_packet.dataChannel.wifi_channel );
+    LOG("WIFI channel: %d (raw=%d)\n", getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel), s_ground2air_config_packet.dataChannel.wifi_channel );
 
     temperature_sensor_init();
 
+    //run_file_benchmark();
+
+    //here camera_data_available callback will start receiving data, adding to SD buffer etc.
     s_initialized = true;
 
     while (true)
@@ -3218,19 +3574,22 @@ extern "C" void app_main()
 
             if (s_uart_verbose > 0 )
             {
-                LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
-                    s_stats.wlan_data_sent, s_stats.wlan_data_received, s_stats.wlan_error_count, s_stats.fec_spin_count,
+                //LOG is busy wait for ~11ms
+                //ESP_LOGI is task yeld for ~13ms
+                //LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
+                ESP_LOGI( "Main", "WLAN S: %d, R: %d, E: %u, F: %u, D: %u, %%: %d...%d || FPS: %d(%d), D: %u || SD D: %u, E: %u || TLM IN: %u OUT: %u\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %u ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
+                    (int)pk, /*s_stats.wlan_data_sent,*/ (int)pk2, /*s_stats.wlan_data_received,*/ s_stats.wlan_error_count, s_stats.fec_spin_count,
                     s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
-                    s_actual_capture_fps, s_actual_capture_fps_expected, s_stats.video_data, s_stats.sd_data, s_stats.sd_drops, 
-                    s_stats.in_telemetry_data, s_stats.out_telemetry_data,
-                    (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100), 
-                    s_quality, (s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2, cam_ovf_count, s_dbg,
+                    s_actual_capture_fps, s_actual_capture_fps_expected, (unsigned int)s_stats.video_data, (unsigned int)s_stats.sd_data, (unsigned int)s_stats.sd_drops,
+                    (unsigned int)s_stats.in_telemetry_data, (unsigned int)s_stats.out_telemetry_data,
+                    (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100),
+                    s_quality, (unsigned int)((s_stats.camera_frame_size_min + s_stats.camera_frame_size_max)/2), cam_ovf_count, (int)s_dbg,
                     s_air_device_id, s_connected_gs_device_id); 
                 print_cpu_usage();
             }
 
             s_max_frame_size = 0;
-            s_dbg = 0;
+            //s_dbg = 0;
 
             if ( s_stats.fec_spin_count > 0 )
             {
@@ -3248,12 +3607,16 @@ extern "C" void app_main()
                 if ( s_camera_stopped )
                 {
                     LOG("Camera stopped\n");
+#if !defined(USE_MOCK_CAMERA)
                     esp_camera_deinit();
+#endif                    
                 }
                 else
                 {
                     LOG("Camera started\n");
+#if !defined(USE_MOCK_CAMERA)
                     init_camera();
+#endif                    
                 }
             }
         }
@@ -3289,7 +3652,8 @@ extern "C" void app_main()
             }
         }
 
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(10 / portTICK_PERIOD_MS);  //portTICK_PERIOD_MS = 10. Main task should call vTaskDelay(1) oherwise WDT will trigger in the idle task.
+
         //esp_task_wdt_reset();
 
         checkButton();
@@ -3346,6 +3710,11 @@ extern "C" void app_main()
             esp_restart();
         }
 
+#ifdef USE_MOCK_CAMERA
+        mock_camera_process();
+#endif
+
+
     }
 
 }
@@ -3384,4 +3753,33 @@ Air send:
  - reads s_wlan_outgoing_queue
  - calls esp_wifi_80211_tx() 
 
+
+//Here is a list of all tasks with their priorities:
+// - Main task (app_main): Priority 1
+// - SD Write task: Priority 1
+// - SD Enqueue task: Priority 2
+// - Wifi TX task: Priority 1
+// - Wifi RX task: Priority 1
+// - FEC Encoder task: Priority 1
+// - FEC Decoder task: Priority 1
+
+http://webgraphviz.com/
+
+digraph G {
+"camera_data_available" -> "s_fec_encoder"
+"s_fec_encoder" -> "FEC Encoder task"
+"FEC Encoder task" -> "Wifi TX task"
+"camera_data_available" -> "add_to_sd_fast_buffer"
+"add_to_sd_fast_buffer" -> "xTaskNotifyGive(s_sd_enqueue_task)"
+"xTaskNotifyGive(s_sd_enqueue_task)" -> "ulTaskNotifyTake (SD Enqueue task)"
+"ulTaskNotifyTake (SD Enqueue task)" -> "SD Enqueue task"
+"SD Enqueue task" -> "xTaskNotifyGive(s_sd_write_task)"
+"xTaskNotifyGive(s_sd_write_task)" -> "ulTaskNotifyTake (SD Write task)"
+"ulTaskNotifyTake (SD Write task)" -> "SD Write task"
+"SD Enqueue task" -> "s_sd_slow_buffer_mux"
+"s_sd_slow_buffer_mux" -> "SD Write task"
+"packet_received_cb" -> "s_fec_decoder"
+"s_fec_decoder" -> "FEC Decoder task"
+"FEC Decoder task" -> "Wifi RX task"
+}
 */

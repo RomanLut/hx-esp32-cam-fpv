@@ -25,7 +25,7 @@ bool isRadxaZero3()
     {
         std::ostringstream content;
         content << compatibleFile.rdbuf();
-        if (content.str().find("radxa,zero3w") != std::string::npos)
+        if (content.str().find("radxa,zero3") != std::string::npos)
         {
             compatibleFile.close();
             _isRadxaZero = true;

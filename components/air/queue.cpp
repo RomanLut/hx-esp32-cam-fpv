@@ -11,7 +11,7 @@ size_t s_min_wlan_outgoing_queue_size_frame = -1; //for adjusting frame quality 
 
 //===========================================================================================
 //===========================================================================================
-IRAM_ATTR bool start_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet, size_t size)
+bool start_writing_wlan_outgoing_packet(Wlan_Outgoing_Packet& packet, size_t size)
 {
   size_t real_size = WLAN_IEEE_HEADER_SIZE + size;
   uint8_t* buffer = s_wlan_outgoing_queue.start_writing(real_size);

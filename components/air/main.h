@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstring>
 
+#include "safe_printf.h"
+
 #define UART_RX_BUFFER_SIZE_MSP_OSD      512
 #define UART_TX_BUFFER_SIZE_MSP_OSD      256
 
@@ -11,9 +13,6 @@
 
 //===============================================================
 //For esp32cam
-
-//for development - enabled debug output on normal UART pins (1,3)
-//#define USBUART_DEBUG_OUTPUT
 
 #ifdef BOARD_ESP32CAM
 
@@ -26,12 +25,32 @@
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
+/*
 #define UART_MSP_OSD UART_NUM_2
 #define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+*/
 
 #define CAMERA_MODEL_AI_THINKER
+
+//With MMC mode we have 2x beter speed and free pin for UART2
+//#define DVR_SUPPORT
+//#define SD_CARD_MMC
+//pins are default unless CONFIG_SDMMC_USE_GPIO_MATRIX=y is specified
+//#define SD_CLK_PIN     GPIO_NUM_14
+//#define SD_CMD_PIN     GPIO_NUM_15
+//#define SD_D0_PIN      GPIO_NUM_2
+
+//Conflicts with UART2 (pin 13)
+//Conflicts with BOOT pin (pin 2)
+//requires 10k pullups on MOSI, MISO, CS
+//2x slower compared to MMC mode
 #define DVR_SUPPORT
+#define SD_CARD_SPI
+#define SD_CS_PIN      GPIO_NUM_13
+#define SD_CLK_PIN     GPIO_NUM_14
+#define SD_DI_PIN      GPIO_NUM_15
+#define SD_DO_PIN      GPIO_NUM_2
 
 #define INIT_UART_0
 #ifdef USBUART_DEBUG_OUTPUT
@@ -57,10 +76,12 @@
 
 #define UART1_BAUDRATE 115200
 
+/*
 #define INIT_UART_2
 #define TXD2_PIN    12   //should be low at boot!!!
 #define RXD2_PIN    13 
 #define UART2_BAUDRATE 115200
+*/
 
 #define STATUS_LED_PIN GPIO_NUM_33
 #define STATUS_LED_ON 0
@@ -80,7 +101,7 @@
 
 //  Debug is on USB UART
 //  UART1:  MSP-OSD  RX=D3 TX=D1
-//  UART2:  MAVLINK  RX=D6 TX=D&
+//  UART2:  MAVLINK  RX=D6 TX=D7
 //  REC BUTTON: GPIO0  (existing flash button)
 //  STATUS LED: GPIO1
 
@@ -95,11 +116,24 @@
 #define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
 #define CAMERA_MODEL_XIAO_ESP32S3
+
 #define DVR_SUPPORT
-#define STATUS_LED_PIN GPIO_NUM_1
-#define STATUS_LED_ON 1
-#define STATUS_LED_OFF 0
-#define REC_BUTTON_PIN  GPIO_NUM_0 //dedicated REC button pin
+#define SD_CARD_MMC
+#define SD_CLK_PIN     GPIO_NUM_7
+#define SD_CMD_PIN     GPIO_NUM_9
+#define SD_D0_PIN      GPIO_NUM_8
+
+//internal led(GPIO21) is connected to SD card SD_CS. SD_CS is used in SPI mode. We use card in SDMMC mode - CS is free.
+#define STATUS_LED_PIN GPIO_NUM_21
+#define STATUS_LED_ON 0
+#define STATUS_LED_OFF 1
+
+//additional LED  connected to GND and GPIO1
+#define STATUS_LED2_PIN GPIO_NUM_1
+#define STATUS_LED2_ON 1
+#define STATUS_LED2_OFF 0
+
+#define REC_BUTTON_PIN  GPIO_NUM_0 //BOOT button or dedicated button
 
 #define INIT_UART_1
 #define TXD1_PIN    GPIO_NUM_2 //D1
@@ -110,12 +144,55 @@
 #define TXD2_PIN    GPIO_NUM_43 //D6
 #define RXD2_PIN    GPIO_NUM_44 //D7
 #define UART2_BAUDRATE 115200
-//----------------------
 
 #endif
 //===============================================================
 
-//write raw MJPEG stream instead of avi
+//===============================================================
+//===============================================================
+
+#ifdef BOARD_ESP32C5
+
+//  Debug is on USB UART
+//  UART0:  MSP-OSD  RX=12 TX=11
+//  UART1:  MAVLINK  RX=27 (no TX)
+//  REC BUTTON: GPIO_NUM_28 (existing boot button) + LED
+
+#define CAMERA_MODEL_ESP32C5
+
+#define DVR_SUPPORT
+#define SD_CARD_SPI
+#define SD_CS_PIN      GPIO_NUM_4
+#define SD_CLK_PIN     GPIO_NUM_5
+#define SD_DI_PIN      GPIO_NUM_23
+#define SD_DO_PIN      GPIO_NUM_24
+
+//define to use DisplayPort OSD on UART0
+#define UART_MSP_OSD UART_NUM_0
+#define INIT_UART_0
+#define TXD0_PIN    GPIO_NUM_11
+#define RXD0_PIN    GPIO_NUM_12
+#define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+
+//define to use mavlink telemetry on UART1 
+#define UART_MAVLINK UART_NUM_1
+#define INIT_UART_1
+#define RXD1_PIN    GPIO_NUM_27
+#define TXD1_PIN    UART_PIN_NO_CHANGE   //23
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
+#define UART1_BAUDRATE 115200
+
+#define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
+
+#define HAS_REC_BUTTON_LED   //LED is connected to REC button, 1k to 3.3V
+
+#endif
+//===============================================================
+
+
+//uncomment to write raw MJPEG stream instead of avi
 //#define WRITE_RAW_MJPEG_STREAM
 
 //#define TEST_AVI_FRAMES
@@ -124,6 +201,7 @@
 
 #define MAX_SD_WRITE_SPEED_ESP32   (800*1024) //esp32 can hadle 1.9mb writes, but in this project it's 0.8mb max due to overal system load (otherwise we miss camera data callback)
 #define MAX_SD_WRITE_SPEED_ESP32S3 (1800*1024) //can  write 1900 but we set to 1800 due to overal system load
+#define MAX_SD_WRITE_SPEED_ESP32C5 (275*1024*4) //slow SD SPI mode... Max is 475 but fluctuates a lot. x4 as we write 1/4 frames on c5 currently
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1
@@ -219,24 +297,6 @@
 #define VSYNC_GPIO_NUM    22
 #define HREF_GPIO_NUM     26
 #define PCLK_GPIO_NUM     21
-#elif defined(CAMERA_MODEL_ESP_VTX)
-#define PWDN_GPIO_NUM     32
-#define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM     23
-#define SIOD_GPIO_NUM     27
-#define SIOC_GPIO_NUM     26
-
-#define Y9_GPIO_NUM       18
-#define Y8_GPIO_NUM       19
-#define Y7_GPIO_NUM       22
-#define Y6_GPIO_NUM       35
-#define Y5_GPIO_NUM       39
-#define Y4_GPIO_NUM       36
-#define Y3_GPIO_NUM       38
-#define Y2_GPIO_NUM       34
-#define VSYNC_GPIO_NUM    25
-#define HREF_GPIO_NUM     5
-#define PCLK_GPIO_NUM     21
 
 #elif defined(CAMERA_MODEL_XIAO_ESP32S3)
 #define PWDN_GPIO_NUM     -1
@@ -257,7 +317,37 @@
 #define HREF_GPIO_NUM     47
 #define PCLK_GPIO_NUM     13
 
-#define LED_GPIO_NUM      21  //also used as SDCard CS
+#elif defined(CAMERA_MODEL_ESP32C5)
+#define PWDN_GPIO_NUM     -1
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM     -1
+#define SIOD_GPIO_NUM     26  //SDA
+#define SIOC_GPIO_NUM     25  //SLC
+
+#define Y9_GPIO_NUM       3   //D7
+#define Y8_GPIO_NUM       0   //D6
+#define Y7_GPIO_NUM       1   //D5
+#define Y6_GPIO_NUM       6   //D4
+#define Y5_GPIO_NUM       7   //D3
+#define Y4_GPIO_NUM       8   //D2
+#define Y3_GPIO_NUM       9   //D1
+#define Y2_GPIO_NUM       10  //D0
+#define VSYNC_GPIO_NUM    -1
+#define HREF_GPIO_NUM     -1
+#define PCLK_GPIO_NUM     2
+
+//TXD0_PIN     GPIO_NUM_11
+//RXD0_PIN     GPIO_NUM_12
+//SD_DO        GPIO_NUM_24 
+//SD_DI/CMD    GPIO_NUM_23 
+//RAM CS       GPIO_NUM_15
+//RGBLED       GPIO_NUM_27 TXD1
+//SD_CS/D3     GPIO_NUM_4  LRXD0_PIN
+//SD_CLK       GPIO_NUM_5  LTXD0_PIN
+//boot button  GPIO_NUM_28 
+//USB D+       GPIO_NUM_14
+//USB D-       GPIO_NUM_13
+
 #else
 #error "Camera model not selected"
 #endif
@@ -269,4 +359,9 @@ extern uint16_t SDTotalSpaceGB16;
 extern uint16_t SDFreeSpaceGB16;
 extern bool s_sd_initialized;
 
+extern int s_uart_verbose;
+#define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
+
 void updateSDInfo();
+
+bool isUSBDiskMounted();

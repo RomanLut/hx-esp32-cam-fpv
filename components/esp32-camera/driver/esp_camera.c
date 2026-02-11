@@ -333,6 +333,11 @@ esp_err_t esp_camera_init(const camera_config_t *config)
     }
     s_state->sensor.init_status(&s_state->sensor);
 
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    cam_start_continuous(config);
+#endif
+
     cam_start();
 
     return ESP_OK;
@@ -358,6 +363,7 @@ esp_err_t esp_camera_deinit()
 
 #define FB_GET_TIMEOUT (4000 / portTICK_PERIOD_MS)
 
+/*
 camera_fb_t *esp_camera_fb_get()
 {
     if (s_state == NULL) {
@@ -380,6 +386,7 @@ void esp_camera_fb_return(camera_fb_t *fb)
     }
     cam_give(fb);
 }
+*/
 
 sensor_t *esp_camera_sensor_get()
 {

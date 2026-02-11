@@ -5,7 +5,7 @@
   main.c
 
   Kevin Boone, CPL v3.0
-
+ 
 ======================================================================*/
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,6 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <unistd.h>
-#include <getopt.h>
 #include <stdarg.h>
 #include <time.h>
 #include <sys/time.h>
@@ -21,24 +20,15 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <linux/uinput.h>
-#include <signal.h>
 #include <errno.h>
 #include <iostream>
 #include <thread>
-#include <vector>
-#include <atomic>
-#include <cstring>
 #include <csignal>
-#include <poll.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <ctime>
-#include <sys/time.h>
 
 #include "utils.h"
+#include "main.h"
 
-// Constants to use when we specify whether to detect the rising edge
-//   or falling edge of the GPIO state change
+// Constant to define which GPIO level is considered "pressed".
 #define EDGE_RISING 0x01
 #define EDGE_FALLING 0x02
 
@@ -74,6 +64,10 @@
 //   particular type of switch.
 #define BOUNCE_MSEC 100
 
+// LONG_PRESS_MSEC is the minimum hold duration for mappings that have
+//   a secondary (long-press) action.
+#define LONG_PRESS_MSEC 1000
+
 // MAX_PINS is the largest number of GPIO pins we will monitor. Using a fixed
 //   value makes the memory management less messy.
 #define MAX_PINS 16
@@ -101,7 +95,10 @@
 typedef struct _Mapping
 {
   int pin;
-  unsigned int *keys;
+  unsigned int *keys_single;
+  // Kept as "keys_double" for compatibility with existing mapping definitions.
+  // In current behavior this is used for long-press actions.
+  unsigned int *keys_double;
 } Mapping;
 
 // Here are the mappings for specific keys...
@@ -113,34 +110,42 @@ unsigned int key_up[] = {KEY_UP | DOWN, KEY_UP | UP, 0};
 unsigned int key_down[] = {KEY_DOWN | DOWN, KEY_DOWN | UP, 0};
 unsigned int key_enter[] = {KEY_ENTER | DOWN, KEY_ENTER | UP, 0};
 
-// Ctrl+R
-// unsigned int key_ctrl_r[] = {KEY_LEFTCTRL | DOWN, KEY_R | DOWN, KEY_R | UP, KEY_LEFTCTRL | UP, 0};
-
 // ...and here is the mapping from pins to keystrokes.
 Mapping mappings_pi[] =
     {
-        {24, key_left},
-        {18, key_right},
-        {22, key_up},
-        {27, key_down},
-        {23, key_enter},
-        {17, key_r},
-        {4, key_g},
+        {24, key_left, NULL},
+        {18, key_right, NULL},
+        {22, key_up, NULL},
+        {27, key_down, NULL},
+        {23, key_enter, NULL},
+        {17, key_r, key_g},
+        {4, key_g, NULL},
         // Add more here if required...
-        {0, NULL}};
+        {0, NULL, NULL}};
 
 //https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface
 Mapping mappings_radxa[] =
     {
-        {98, key_left},   //Header pin 13
-        {101, key_right}, //Header pin 40
-        {105, key_up},    //Header pin 16
-        {106, key_down},  //Header pin 18
-        {97, key_enter},  //Header pin 11
-        {114, key_r},     //Header pin 32
-        {102, key_g},     //Header pin 38
+        {98, key_left, NULL},   //Header pin 13
+        {101, key_right, NULL}, //Header pin 40
+        {105, key_up, NULL},    //Header pin 16
+        {106, key_down, NULL},  //Header pin 18
+        {97, key_enter, NULL},  //Header pin 11
+        {114, key_r, key_g},    //Header pin 32
+        {102, key_g, NULL},     //Header pin 38
         // Add more here if required...
-        {0, NULL}};
+        {0, NULL, NULL}};
+
+Mapping mappings_runcam[] =
+    {
+        {98, key_left, NULL},   //Header pin 13
+        {102, key_right, NULL}, //Header pin 40   //in runcam VRX, Right is connected to 102(g on DIY VRX) insstead of 101 
+        {105, key_up, NULL},    //Header pin 16
+        {106, key_down, NULL},  //Header pin 18
+        {97, key_enter, NULL},  //Header pin 11
+        {114, key_r, key_g},    //Header pin 32
+        // Add more here if required...
+        {0, NULL, NULL}};
 
 const Mapping* mappings = mappings_pi;
 
@@ -150,9 +155,7 @@ static BOOL debug = DEBUG;
 //   main loop
 static BOOL quit = FALSE;
 
-static int uinput_fd;
-
-static std::thread poll_thread;  
+static int uinput_fd = -1;
 
 static struct pollfd fdset[MAX_PINS];
 static struct pollfd fdset_base[MAX_PINS];
@@ -180,6 +183,7 @@ static void dbglog(const char *fmt, ...)
 ======================================================================*/
 void quit_signal(int dummy)
 {
+  (void)dummy;
   quit = TRUE;
 }
 
@@ -224,11 +228,8 @@ static void unexport_pins(int *pins, int npins)
 
 /*======================================================================
   export_pins
-  Prepare the GPIO pins. Set the relevant pins as inputs, and make
-    them generate interrupts on both rising and falling transitions.
-  With most switches it's hardly worth setting a specific edge, because
-    they are so bouncy. Instead, we'll respond to both edges, and
-    check the GPIO pin state after it has settled.
+  Prepare GPIO pins as inputs and generate interrupts on both transitions.
+  Debounce and press/release interpretation are handled in the polling loop.
 ======================================================================*/
 static void export_pins(int *pins, int npins)
 {
@@ -281,20 +282,30 @@ static int open_uinput(void)
     ioctl(fd, UI_SET_EVBIT, EV_KEY);
     // We need to export all the key codes in the mapping table.
     // It doesn't hurt to export some more than once
-    int p = 0;
-    const Mapping *m = &mappings[p];
-    while (m->pin != 0)
+    auto export_mapping = [fd](const Mapping *map)
     {
-      unsigned int *keystrokes = m->keys;
-      while (*keystrokes)
+      int p = 0;
+      const Mapping *m = &map[p];
+      while (m->pin != 0)
       {
-        unsigned char raw_keystroke = *keystrokes & 0xFF;
-        ioctl(fd, UI_SET_KEYBIT, raw_keystroke);
-        keystrokes++;
-      }
-      p++;
-      m = &mappings[p];
+        auto export_sequence = [fd](unsigned int *keystrokes)
+        {
+          if (keystrokes == NULL) return;
+          while (*keystrokes)
+          {
+            unsigned char raw_keystroke = *keystrokes & 0xFF;
+            ioctl(fd, UI_SET_KEYBIT, raw_keystroke);
+            keystrokes++;
+          }
+        };
+        export_sequence(m->keys_single);
+        export_sequence(m->keys_double);
+        p++;
+        m = &map[p];
+      };
     };
+
+    export_mapping(mappings);
 
     // Create the dummy input device
     // This will create a new /dev/input/eventXX device, that will
@@ -387,23 +398,30 @@ static void emit_keystroke(int uinput_fd, unsigned int key)
   }
 }
 
+static void emit_sequence(int uinput_fd, unsigned int *keys)
+{
+  while (*keys)
+  {
+    dbglog("Emit keystroke %04X\n", *keys);
+    emit_keystroke(uinput_fd, *keys);
+    keys++;
+  }
+}
+
 /*======================================================================
   button_pressed
-  Called by the main loop whenever a GPIO state change is detected.
-  We find the keyboard mapping that corresponds to the detected
-    pin, and output the keystrokes from that mapping.
+  Emit the key sequence for this pin.
+  long_press=false emits keys_single, long_press=true emits keys_double.
 ======================================================================*/
-static void button_pressed(int uinput_fd, int pin, int state)
+static void button_pressed(int uinput_fd, int pin, bool long_press)
 {
   const Mapping *m = get_mapping(pin);
   if (m)
   {
-    unsigned int *keystrokes = m->keys;
-    while (*keystrokes)
+    unsigned int *keys = long_press ? m->keys_double : m->keys_single;
+    if (keys != NULL)
     {
-      dbglog("Emit keystroke %04X\n", *keystrokes);
-      emit_keystroke(uinput_fd, *keystrokes);
-      keystrokes++;
+      emit_sequence(uinput_fd, keys);
     }
   }
   else
@@ -418,13 +436,31 @@ void polling_thread_func()
 {
   time_t start = time(NULL);
   int bounce_time = BOUNCE_MSEC;
+  // EDGE_RISING => pressed is logical 1, EDGE_FALLING => pressed is logical 0.
+  const int pressed_state = ((EDGE & EDGE_FALLING) && !(EDGE & EDGE_RISING)) ? 0 : 1;
+  const int released_state = pressed_state ? 0 : 1;
   int ticks[MAX_PINS] = {0};
+  int press_start_msec[MAX_PINS] = {0};
+  bool pressed[MAX_PINS] = {false};
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
   {
     memcpy(&fdset, &fdset_base, sizeof(fdset));
     poll(fdset, npins, 3000);
+
+    if (std::abs(time(NULL) - start) > CLOCK_ERROR_SECONDS)
+    {
+      dbglog("System time has changed: correcting\n");
+      start = time(NULL);
+      memset(ticks, 0, sizeof(ticks));
+      memset(press_start_msec, 0, sizeof(press_start_msec));
+      memset(pressed, 0, sizeof(pressed));
+    }
+
+    struct timeval tv_now;
+    gettimeofday(&tv_now, NULL);
+    int now_msec = (tv_now.tv_sec - start) * 1000 + (tv_now.tv_usec / 1000);
 
     for (int i = 0; i < npins; i++)
     {
@@ -434,29 +470,46 @@ void polling_thread_func()
         char buff[50];
         read(fdset[i].fd, buff, sizeof(buff));
 
-        if (std::abs(time(NULL) - start) > CLOCK_ERROR_SECONDS)
+        // Debounce each GPIO transition and ignore startup noise.
+        if (now_msec - ticks[i] > bounce_time && now_msec > 1000)
         {
-          dbglog("System time has changed: correcting\n");
-          start = time(NULL);
-        }
-        else
-        {
-          struct timeval tv;
-          gettimeofday(&tv, NULL);
-          int msec = tv.tv_usec / 1000;
-          int total_msec = (tv.tv_sec - start) * 1000 + msec;
-
-          if (total_msec - ticks[i] > bounce_time && total_msec > 1000)
+          usleep(2000);
+          int state = get_pin_state(pin);
+          if (state == 0 || state == 1)
           {
-            usleep(2000);
-            int state = get_pin_state(pin);
-            if ((state == 0 && (EDGE & EDGE_FALLING)) || (state == 1 && (EDGE & EDGE_RISING)))
+            dbglog("GPIO state change: pin %d, state %d\n", pin, state);
+            const Mapping *m = get_mapping(pin);
+            if (m != NULL && m->keys_double != NULL)
             {
-              dbglog("GPIO state change: pin %d, state %d\n", pin, state);
-              button_pressed(uinput_fd, pin, state);
+              // Mappings with a secondary action emit on release:
+              // short press -> keys_single, long press -> keys_double.
+              if (state == pressed_state)
+              {
+                pressed[i] = true;
+                press_start_msec[i] = now_msec;
+              }
+              else if (state == released_state)
+              {
+                if (pressed[i])
+                {
+                  int held_msec = now_msec - press_start_msec[i];
+                  bool long_press = held_msec >= LONG_PRESS_MSEC;
+                  button_pressed(uinput_fd, pin, long_press);
+                }
+                pressed[i] = false;
+                press_start_msec[i] = 0;
+              }
             }
-            ticks[i] = total_msec;
+            else
+            {
+              // Mappings without a secondary action emit on press.
+              if (state == pressed_state)
+              {
+                button_pressed(uinput_fd, pin, false);
+              }
+            }
           }
+          ticks[i] = now_msec;
         }
       }
     }
@@ -469,9 +522,20 @@ void gpio_buttons_start()
 {
   int pin = 0;
 
+  quit = FALSE;
+  npins = 0;
+
   if ( isRadxaZero3() )
   {
     mappings = mappings_radxa;
+    if ( s_groundstation_config.GPIOKeysLayout == 1 )
+    {
+      mappings = mappings_runcam;
+    }
+  }
+  else
+  {
+    mappings = mappings_pi;
   }
 
   const Mapping *m = &mappings[pin];
@@ -507,141 +571,30 @@ void gpio_buttons_start()
 
   dbglog("Creating GPIO polling thread\n");
   polling_thread = std::thread(polling_thread_func);
-
-  polling_thread.detach();
 }
 
 //======================================================================
 //======================================================================
 void gpio_buttons_stop()
 {
-  polling_thread.join();
-  dbglog("GPIO Cleaning up\n");
-  unexport_pins(pins, npins);
-  close_uinput(uinput_fd);
-}
-
-/*======================================================================
-  main
-======================================================================*/
-/*
-int main (int argc, char **argv)
+  quit = TRUE;
+  if (polling_thread.joinable())
   {
-  dbglog ("%s version " VERSION "starting\n", argv[0]);
-  int pins[MAX_PINS];
-  int npins = 0;
-  int edge = EDGE;
-
-  int pin = 0;
-  Mapping *m = &mappings[pin];
-  while (m->pin != 0)
-    {
-    pins[npins++] = m->pin;
-    pin++;
-    m = &mappings[pin];
-    };
-
-  dbglog ("Exporting pins\n");
-  export_pins (pins, npins);
-
-  // Enable the quit signal handler as soon as anything has been done on
-  //   the GPIO: we don't want to leave the GPIO in an odd state
-  signal (SIGQUIT, quit_signal);
-  signal (SIGTERM, quit_signal);
-  signal (SIGHUP, quit_signal);
-  signal (SIGINT, quit_signal);
-
-  dbglog ("Opening uinput device\n");
-  int uinput_fd = open_uinput(); // Don't need to check return
-
-  struct pollfd fdset[MAX_PINS];
-  struct pollfd fdset_base[MAX_PINS];
-
-  // Set up poll FD array for each pin's 'value' pseudo-file
-  for (int i = 0; i < npins; i++)
-    {
-    int pin = pins[i];
-    char s[50]; // should be large enough
-    snprintf (s, sizeof(s), "/sys/class/gpio/gpio%d/value", pin);
-    int gpio_fd = open (s, O_RDONLY|O_NONBLOCK);
-    if (gpio_fd < 0)
-      {
-      fprintf (stderr, "Can't open GPIO device %s\n", s);
-      exit(-1);
-      }
-    fdset_base[i].fd = gpio_fd;
-    fdset_base[i].events = POLLPRI;
-    }
-
-  time_t start = time(NULL);
-  // The type of edge we will detect. Since all switches are rather bouncy,
-  //   'both' is probably safest. The debounce mechanism will prevent
-  int bounce_time = BOUNCE_MSEC;
-  int ticks[MAX_PINS]; // Time of last button press
-  memset (ticks, 0, sizeof (int) * MAX_PINS);
-
-  dbglog ("Starting poll\n");
-  while (!quit)
-    {
-    memcpy (&fdset, &fdset_base, sizeof (fdset));
-    poll (fdset, npins, 3000);
-
-    for (int i = 0; i < npins; i++)
-      {
-      if (fdset[i].revents & POLLPRI)
-        {
-        // For each pin, check for interrupt events
-        int pin = pins[i];
-        char buff[50];
-        // In practice, I've never seen more than two bytes
-        //   delivered per interrupt, however many
-        //   switch bounces there are
-        read (fdset[i].fd, buff, sizeof(buff));
-
-        // If the discrepancy between start and now is too
-        //   great, assume that the clock has been fiddled
-        //   with
-        // If you have a real-time-clock, this test can probably
-        //   be removed
-        if (abs (time (NULL) - start) > CLOCK_ERROR_SECONDS)
-          {
-          dbglog ("System time has changed: correcting\n");
-          start = time (NULL);
-          }
-        else
-          {
-          struct timeval tv;
-          gettimeofday (&tv, NULL);
-          int msec = tv.tv_usec / 1000;
-          int total_msec = (tv.tv_sec  - start) * 1000.0 + msec;
-          //printf ("tick %d %d %d\n", pins[i], total_msec, state);
-          // The test for total > 1000 is to prevent spurious events
-          //   when the program first starts up
-          if (total_msec - ticks[i] > bounce_time && total_msec > 1000)
-            {
-            // We need a small delay here. Even though the last interrupt
-            //   received should have been for the desired edge, in practice
-            //   it seems that we need to wait a little while for the
-            //   sysfs state to settle. I am not sure whether the figure
-            //   I have chosen is universally applicable, or whether it
-            //   needs to be tweaked.
-            usleep (2000);
-            int state = get_pin_state (pin);
-            if ((state == 0 && (edge & EDGE_FALLING))
-                 || (state == 1 && (edge & EDGE_RISING)))
-              {
-              dbglog ("GPIO state change: pin %d, state %d\n", pin, state);
-              button_pressed (uinput_fd, pin, state);
-              }
-            ticks[i] = total_msec;
-            }
-          }
-        }
-      }
-    }
-  // We only get here if a quit signal has been caught
-  dbglog ("Cleaning up\n");
-  unexport_pins (pins, npins);
-  close_uinput (uinput_fd);
+    polling_thread.join();
   }
-*/
+  dbglog("GPIO Cleaning up\n");
+  for (int i = 0; i < npins; i++)
+  {
+    if (fdset_base[i].fd >= 0)
+    {
+      close(fdset_base[i].fd);
+      fdset_base[i].fd = -1;
+    }
+  }
+  unexport_pins(pins, npins);
+  if (uinput_fd >= 0)
+  {
+    close_uinput(uinput_fd);
+    uinput_fd = -1;
+  }
+}

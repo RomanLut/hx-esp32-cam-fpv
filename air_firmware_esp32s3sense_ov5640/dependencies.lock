@@ -1,9 +1,15 @@
 dependencies:
+  espressif/tinyusb:
+    component_hash: 5ea9d3b6d6b0734a0a0b3491967aa0e1bece2974132294dbda5dd2839b247bfa
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 0.19.0~2
   idf:
     component_hash: null
     source:
       type: idf
     version: 5.3.1
-manifest_hash: 8c9ed1ee79e168fc798d5db5ef9ac5ba263464baa9235d488074bbda72ce922b
+manifest_hash: 34356d48df156ff76457188f45638bedfe3e1f8821946329f8d7ab773eb2730f
 target: esp32s3
 version: 1.0.0

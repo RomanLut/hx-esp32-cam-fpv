@@ -22,7 +22,7 @@ set(COMPONENT_ADD_INCLUDEDIRS
 set(COMPONENT_REQUIRES driver)
 
 # set driver sources only for supported platforms
-if(IDF_TARGET STREQUAL "esp32" OR IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET STREQUAL "esp32s3")
+if(IDF_TARGET STREQUAL "esp32" OR IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET STREQUAL "esp32s3" OR IDF_TARGET STREQUAL "esp32c5")
   list(APPEND COMPONENT_SRCS
     driver/esp_camera.c
     driver/cam_hal.c
@@ -72,6 +72,13 @@ if(IDF_TARGET STREQUAL "esp32" OR IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET ST
   if(IDF_TARGET STREQUAL "esp32s3")
     list(APPEND COMPONENT_SRCS
       target/esp32s3/ll_cam.c
+      )
+  endif()
+
+  if(IDF_TARGET STREQUAL "esp32c5")
+    list(APPEND COMPONENT_SRCS
+      target/xclk.c
+      target/esp32c5/ll_cam.c
       )
   endif()
 

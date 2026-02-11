@@ -27,6 +27,8 @@
 #include "esp32s2/rom/lldesc.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/rom/lldesc.h"
+#elif CONFIG_IDF_TARGET_ESP32C5
+#include "esp32c5/rom/lldesc.h"
 #endif
 #include "esp_log.h"
 #include "esp_camera.h"
@@ -40,6 +42,11 @@
 #endif
 #if __has_include("esp_private/gdma.h")
 # include "esp_private/gdma.h"
+#endif
+
+// PARLIO includes for ESP32C5
+#if CONFIG_IDF_TARGET_ESP32C5
+# include "driver/parlio_rx.h"
 #endif
 
 #if CONFIG_LCD_CAM_ISR_IRAM_SAFE
@@ -77,7 +84,15 @@
 
 typedef enum {
     CAM_IN_SUC_EOF_EVENT = 0,
-    CAM_VSYNC_EVENT
+    CAM_VSYNC_EVENT,
+    CAM_PARLIO_DATA
+} cam_event_kind_t;
+
+typedef struct {
+    cam_event_kind_t kind;
+    const uint8_t *data;
+    uint16_t length;
+    int64_t timestamp;
 } cam_event_t;
 
 typedef enum {
@@ -95,7 +110,9 @@ typedef struct {
 
 typedef struct {
     uint32_t dma_bytes_per_item;
+#if !defined( CONFIG_IDF_TARGET_ESP32C5 )
     uint32_t dma_buffer_size;
+
     uint32_t dma_half_buffer_size;
     uint32_t dma_half_buffer_cnt;
     uint32_t dma_node_buffer_size;
@@ -107,9 +124,11 @@ typedef struct {
     uint8_t  *dma_buffer;
 
     cam_frame_t *frames;
+#endif
 
     QueueHandle_t event_queue;
     QueueHandle_t frame_buffer_queue;
+    
     TaskHandle_t task_handle;
     intr_handle_t cam_intr_handle;
 
@@ -117,6 +136,23 @@ typedef struct {
     intr_handle_t dma_intr_handle;//ESP32-S3
 #if SOC_GDMA_SUPPORTED
     gdma_channel_handle_t dma_channel_handle;//ESP32-S3
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    // ESP32C5 PARLIO specific fields
+    parlio_rx_unit_handle_t rx_unit;           /*!< PARLIO RX unit handle */
+    parlio_rx_delimiter_handle_t delimiter;    /*!< Software delimiter */
+    uint8_t *payload_buffer;                   /*!< PARLIO payload buffer */
+    size_t payload_size;                       /*!< Payload buffer size */
+
+    // JPEG frame capture state
+    struct {
+        uint16_t dma_buffer_index;             /*!< Current target DMA halfbuffer index */
+        uint16_t index;                        /*!< Current write index */
+        uint32_t frame_length;                 /*!< Allocated frame length */
+        uint8_t  last_byte;                     /*!< Last received byte (for marker detection) */
+        uint8_t  capture : 1;                 /*!< Frame capture in progress */
+    } jpeg_state;
 #endif
 
     uint8_t jpeg_mode;
@@ -146,6 +182,7 @@ typedef struct {
 
 bool ll_cam_stop(cam_obj_t *cam);
 bool ll_cam_start(cam_obj_t *cam, int frame_pos);
+bool ll_cam_start_continuous(cam_obj_t *cam, const camera_config_t *config );
 esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config);
 esp_err_t ll_cam_deinit(cam_obj_t *cam);
 void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en);
@@ -162,4 +199,4 @@ void ll_cam_dma_reset(cam_obj_t *cam);
 #endif
 
 // implemented in cam_hal
-void ll_cam_send_event(cam_obj_t *cam, cam_event_t cam_event, BaseType_t * HPTaskAwoken);
+void ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseType_t * HPTaskAwoken);

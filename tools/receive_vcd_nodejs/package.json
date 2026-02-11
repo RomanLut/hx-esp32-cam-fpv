@@ -1,0 +1,15 @@
+{
+  "name": "receive_vcd",
+  "version": "1.0.0",
+  "main": "receive_vcd.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "serialport": "^13.0.0"
+  },
+  "description": ""
+}

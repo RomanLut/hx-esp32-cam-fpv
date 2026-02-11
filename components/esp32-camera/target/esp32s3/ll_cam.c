@@ -25,6 +25,7 @@
 #include "ll_cam.h"
 #include "cam_hal.h"
 #include "esp_rom_gpio.h"
+#include <esp_timer.h>
 
 #if (ESP_IDF_VERSION_MAJOR >= 5)
 #include "soc/gpio_sig_map.h"
@@ -40,6 +41,8 @@
 #endif
 
 static const char *TAG = "s3 ll_cam";
+
+volatile int pk;
 
 void ll_cam_dma_print_state(cam_obj_t *cam)
 {
@@ -103,7 +106,8 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_vsync_isr(void *arg)
     LCD_CAM.lc_dma_int_clr.val = status.val;
 
     if (status.cam_vsync_int_st) {
-        ll_cam_send_event(cam, CAM_VSYNC_EVENT, &HPTaskAwoken);
+        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
+        ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 
     if (HPTaskAwoken == pdTRUE) {
@@ -125,7 +129,8 @@ static void CAMERA_ISR_IRAM_ATTR ll_cam_dma_isr(void *arg)
     GDMA.channel[cam->dma_num].in.int_clr.val = status.val;
 
     if (status.in_suc_eof) {
-        ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
+        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
+        ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
 
     if (HPTaskAwoken == pdTRUE) {

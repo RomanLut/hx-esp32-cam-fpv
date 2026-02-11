@@ -13,6 +13,8 @@
 #include "esp32s2/rom/ets_sys.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/rom/ets_sys.h"
+#elif CONFIG_IDF_TARGET_ESP32C5
+#include "esp32c5/rom/ets_sys.h"
 #endif
 
 extern SemaphoreHandle_t s_safe_printf_mux;
@@ -22,4 +24,3 @@ extern SemaphoreHandle_t s_safe_printf_mux;
         ets_printf(__VA_ARGS__); \
         xSemaphoreGive(s_safe_printf_mux); \
     } while (false)
-

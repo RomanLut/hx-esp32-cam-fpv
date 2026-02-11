@@ -35,9 +35,26 @@ static const DRAM_ATTR uint16_t sensor_default_regs[][2] = {
     {0x3018, 0xff},
 
     {DRIVE_CAPABILITY, 0xc3},
-    {CLOCK_POL_CONTROL, 0x21},
 
-    {0x4713, 0x02},//jpg mode select
+/*
+ CLOCK_POL_CONTROL:
+  bit0 (1) - VSYNC polarity. 1 = vsync pulse is low
+  bit1 (2) - HREF polarity. 1 = href is low when jpeg data is transmitted
+  bit2 (4) - Gate PCLK under HREF (independent from polarity)
+  bit3 (8) - Gate PCLK under VSYNC (independent from polarity)
+  ....
+  bit4 (0x20) - PCLK polarity. 1 - active rising edge
+ //note: PCLK gating is independent from HREF/VREF output polarity
+*/    
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    {CLOCK_POL_CONTROL, 0x2d},  //for PARLIO, gate PCLK under HREF and VSYNC
+    {0x4713, 0x02},//jpg mode timing 2 select
+    {0x4404, 0x34},  //enable gated clock - it is not clear what it does
+#else
+    {CLOCK_POL_CONTROL, 0x21}, //VSYNC active High, HREF Active Low, PCLK Active High
+    {0x4713, 0x02},//jpg mode timing 2 select
+#endif    
 
     {ISP_CONTROL_01, 0x83}, // turn color matrix, awb and SDE
 
@@ -95,7 +112,7 @@ static const DRAM_ATTR uint16_t sensor_default_regs[][2] = {
     {0x3c0a, 0x9c},
     {0x3c0b, 0x40},
 
-    {0x460c, 0x22},//disable jpeg footer
+    {0x460c, 0x22}, /*PCLK Divider Manual */
 
     //BLC
     {0x4001, 0x02},

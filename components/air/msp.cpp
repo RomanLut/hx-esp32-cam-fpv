@@ -18,9 +18,6 @@
 #define SYM_TO_MWC      '<'
 #define SYM_UNSUPPORTED '!'
 
-#include "safe_printf.h"
-#define LOG(...) do { if (true) SAFE_PRINTF(__VA_ARGS__); } while (false) 
-
 MSP g_msp;
 
 //======================================================
@@ -419,7 +416,7 @@ void MSP::loop()
 #ifdef MSP_PROTOCOL_LOG_ERRORS
   if ( this->lastLoop && (delta > 30000) )
   {
-    LOG("MSP:Loop() delta=%d", delta);
+    LOG("MSP:Loop() delta=%lld\n", delta);
   }
 #endif
   this->lastLoop = now;

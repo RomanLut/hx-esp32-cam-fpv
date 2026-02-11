@@ -26,6 +26,7 @@ static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
 
 static constexpr size_t DEFAULT_RATE_HZ = 26000000;
+static constexpr uint32_t RX_RESTART_BACKJUMP_BLOCKS = 64;
 
 static std::vector<uint8_t> RADIOTAP_HEADER;
 
@@ -576,6 +577,7 @@ bool Comms::process_rx_packet(PCap& pcap)
             rx.received_packet_ids.erase(rx.received_packet_ids.begin(), it);
         }
 
+        bool clear_received_packet_ids = false;
         {
             if (packet_index >= m_rx_descriptor.coding_n)
             {
@@ -593,8 +595,30 @@ bool Comms::process_rx_packet(PCap& pcap)
 
             if (block_index < rx.next_block_index)
             {
-                //LOGW("Old packet: {} < {}", block_index, rx.next_block_index);
-                return true;
+                uint32_t backjump = rx.next_block_index - block_index;
+                if (backjump >= RX_RESTART_BACKJUMP_BLOCKS)
+                {
+                    LOGW("Detected TX stream restart: block jump back {} -> {} (delta {})", rx.next_block_index, block_index, backjump);
+
+                    //Keep current pairing, but drop stale transport state so new stream can flow immediately.
+                    rx.block_queue.clear();
+                    std::fill(rx.pcal_last_block_index.begin(), rx.pcal_last_block_index.end(), block_index);
+                    rx.next_block_index = block_index;
+                    rx.last_block_tp = Clock::now();
+                    rx.last_packet_tp = Clock::now();
+
+                    {
+                        std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);
+                        rx.ready_packet_queue.clear();
+                    }
+
+                    clear_received_packet_ids = true;
+                }
+                else
+                {
+                    //normal reordering/late duplicate from previous block window
+                    return true;
+                }
             }
 
             RX::Block_ptr block;
@@ -642,6 +666,14 @@ bool Comms::process_rx_packet(PCap& pcap)
                     block->packets.insert(iter, packet);
             }
 
+        }
+
+        if (clear_received_packet_ids)
+        {
+            std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
+            rx.received_packet_ids.clear();
+            std::fill(std::begin(rx.lastPacketIdByInterface), std::end(rx.lastPacketIdByInterface), 0u);
+            rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
         }
 
         //m_impl->rx_queue.enqueue(payload, bytes);
@@ -1199,6 +1231,40 @@ size_t Comms::get_data_rate() const
 int Comms::get_input_dBm() const
 {
     return m_latched_input_dBm;
+}
+
+//===================================================================================
+//===================================================================================
+void Comms::reset_rx_state()
+{
+    if (!m_impl)
+        return;
+
+    RX& rx = m_impl->rx;
+    Clock::time_point now = Clock::now();
+
+    {
+        std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
+        rx.received_packet_ids.clear();
+        std::fill(std::begin(rx.lastPacketIdByInterface), std::end(rx.lastPacketIdByInterface), 0u);
+    }
+
+    {
+        std::lock_guard<std::mutex> lg(rx.block_queue_mutex);
+        rx.block_queue.clear();
+        std::fill(rx.pcal_last_block_index.begin(), rx.pcal_last_block_index.end(), 0u);
+        rx.next_block_index = 0;
+        rx.last_block_tp = now;
+        rx.last_packet_tp = now;
+    }
+
+    {
+        std::lock_guard<std::mutex> lg(rx.ready_packet_queue_mutex);
+        rx.ready_packet_queue.clear();
+    }
+
+    m_data_stats_data_accumulated = 0;
+    m_data_stats_last_tp = now;
 }
 
 //===================================================================================

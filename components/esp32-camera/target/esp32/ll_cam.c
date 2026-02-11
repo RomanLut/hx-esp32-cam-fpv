@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <esp_timer.h>
 #include "soc/i2s_struct.h"
 #include "esp_idf_version.h"
 #if (ESP_IDF_VERSION_MAJOR >= 4) && (ESP_IDF_VERSION_MINOR > 1)
@@ -211,7 +212,8 @@ static void IRAM_ATTR ll_cam_vsync_isr(void *arg)
     // filter
     ets_delay_us(1);
     if (gpio_ll_get_level(&GPIO, cam->vsync_pin) == !cam->vsync_invert) {
-        ll_cam_send_event(cam, CAM_VSYNC_EVENT, &HPTaskAwoken);
+        cam_event_t event = { .kind = CAM_VSYNC_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
+        ll_cam_send_event(cam, &event, &HPTaskAwoken);
         if (HPTaskAwoken == pdTRUE) {
             portYIELD_FROM_ISR();
         }
@@ -233,7 +235,8 @@ static void IRAM_ATTR ll_cam_dma_isr(void *arg)
     I2S0.int_clr.val = status.val;
 
     if (status.in_suc_eof) {
-        ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
+        cam_event_t event = { .kind = CAM_IN_SUC_EOF_EVENT, .data = NULL, .length = 0, .timestamp = esp_timer_get_time() };
+        ll_cam_send_event(cam, &event, &HPTaskAwoken);
     }
     if (HPTaskAwoken == pdTRUE) {
         portYIELD_FROM_ISR();
@@ -463,6 +466,8 @@ static bool ll_cam_calc_rgb_dma(cam_obj_t *cam){
     cam->dma_half_buffer_cnt = cam->dma_buffer_size / cam->dma_half_buffer_size;
     return 1;
 }
+
+volatile int pk;
 
 bool ll_cam_dma_sizes(cam_obj_t *cam)
 {
