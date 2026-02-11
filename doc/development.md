@@ -34,8 +34,7 @@ Wifi load           | Air unit wifi queue usage in %
 
  Air unit code contains profiler which can write frame timing in VCD format to SD card.
 
- VCD file can than be viewed in tools like [Wavetrace](https://www.wavetrace.io/) (available as VSCode extension),  [VCDrom](https://vc.drom.io/), https://github.com/raczben/fliplot, https://app.surfer-project.org/, https://marketplace.visualstudio.com/items?itemName=lramseyer.vaporview 
-https://surfer-project.org/
+ VCD file can than be viewed in [hxVCDViewer app](https://github.com/RomanLut/hxVCDViewer) or any other VCD viewer. **hxVCDViewer** can also receive VCD file directly from device via UART.
 
  See corresponding [defines.](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/components/common/vcd_profiler.h#L5)
 
