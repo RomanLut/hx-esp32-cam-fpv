@@ -591,6 +591,7 @@
 
     var data = {};
     data["channel"] = document.getElementById('wifi-channel').value.toString();
+    data["apfpv"] = document.getElementById("apfpv").checked ? "true" : "false";
     data["default_dvr"] = document.getElementById("default_dvr").checked ? "true" : "false";
     var jsonData = JSON.stringify(data);
     console.log(jsonData);
@@ -697,6 +698,10 @@
             document.getElementById('update-header').innerText = `Update (Current firmware version: ${data.fw_version}.${data.packet_version})`;
             document.getElementById('settings-body').innerHTML = `
             <div class="form-group">
+                <input id="apfpv" type="checkbox" name="apfpv" value="enable">
+                <label for="apfpv">APFPV mode</label>
+            </div>
+            <div class="form-group">
                 <label for="wifi-channel">Wifi Channel:</label>
                 <select id="wifi-channel">
                 </select>
@@ -708,6 +713,10 @@
             <button id="save-button" onclick="submitForm()">Save</button><span id="save-status" style="margin-left: 1rem;"></span>
             `;
             add_select_elements(parseInt(data.channel), !!data.wifi_5ghz_supported);
+            var apfpvCheckbox = document.getElementById("apfpv");
+            if(data.apfpv == "true"){
+                apfpvCheckbox.checked = true;
+            }
             var checkbox = document.getElementById("default_dvr");
             if(data.default_dvr == "true"){
                 checkbox.checked = true;

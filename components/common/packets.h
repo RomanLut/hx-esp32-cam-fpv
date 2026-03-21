@@ -151,7 +151,7 @@ struct MiscConfig
     uint8_t cameraStopChannel : 5;// = 0;  //0 - none
     uint8_t autostartRecord : 1;// = 1;
     uint8_t mavlink2mspRC : 1;// = 0;
-    uint8_t reserved1 : 1;// = 0;
+    uint8_t apfpv : 1;// = 0;
 
     uint32_t osdFontCRC32;
 };

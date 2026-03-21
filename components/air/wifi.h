@@ -32,6 +32,14 @@ extern Ground2Air_Config_Packet s_ground2air_config_packet2;
 extern TaskHandle_t s_wifi_tx_task;
 extern TaskHandle_t s_wifi_rx_task;
 
+enum class WifiTransportMode : uint8_t
+{
+    Raw80211 = 0,
+    ApUdp = 1,
+};
+
+using Transport_Payload_Received_CB = void (*)(const uint8_t* data, size_t size, int8_t rssi_dbm, int8_t noise_floor_dbm);
+
 constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 
 //use as much memory as available
@@ -44,7 +52,12 @@ constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 45000;
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;
 #endif
 
-void setup_wifi(WIFI_Rate wifi_rate,uint8_t chn,float power_dbm,void (*packet_received_cb)(void* buf, wifi_promiscuous_pkt_type_t type));
+void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t device_id, bool apfpv, Transport_Payload_Received_CB packet_received_cb);
+esp_err_t switch_wifi_transport(bool apfpv, WIFI_Rate wifi_rate, uint8_t channel, float power_dbm);
+esp_err_t stop_wifi_transport();
+esp_err_t set_wifi_channel(uint8_t channel);
+WifiTransportMode get_wifi_transport_mode();
+bool is_apfpv_mode();
 
 void set_ground2air_config_packet_handler(void (*handler)(Ground2Air_Config_Packet& src));
 void set_ground2air_connect_packet_handler(void (*handler)(Ground2Air_Config_Packet& src));
