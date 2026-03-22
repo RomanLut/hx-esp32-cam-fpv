@@ -3,6 +3,7 @@ BIN := gs
 IMGUI_DIR = src/imgui/
 SRCS := src/main.cpp \
 	src/core/gs_protocol.cpp \
+	src/core/osd_base.cpp \
 	src/core/video_frame_assembler.cpp \
 	src/droid_sans_font.cpp \
 	src/osd.cpp \
