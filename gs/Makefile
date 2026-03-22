@@ -2,6 +2,7 @@
 BIN := gs
 IMGUI_DIR = src/imgui/
 SRCS := src/main.cpp \
+	src/core/gs_protocol.cpp \
 	src/droid_sans_font.cpp \
 	src/osd.cpp \
 	src/utils/lodepng.cpp \

@@ -36,6 +36,7 @@
 #include "utils.h"
 
 #include "lodepng.h"
+#include "core/gs_protocol.h"
 
 #ifdef TEST_LATENCY
 extern "C"
@@ -549,25 +550,17 @@ static void comms_thread_proc()
             {
                 std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
                 auto& config = s_ground2air_config_packet;
-                config.ping = last_sent_ping; 
-                config.type = Ground2Air_Header::Type::Config;
-                config.size = sizeof(config);
-                config.airDeviceId = s_connected_air_device_id;
-                config.gsDeviceId = s_groundstation_config.deviceId;
-                config.crc = 0;  //do calculate crc with crc field = 0
-                config.crc = crc8(0, &config, sizeof(config)); 
+                gs::protocol::prepareConfigPacket(config,
+                                                 last_sent_ping,
+                                                 s_connected_air_device_id,
+                                                 s_groundstation_config.deviceId);
                 s_comms.send(&config, sizeof(config), true);
                 //LOGD("send config packet");
             }
             else
             {
-                Ground2Air_Connect_Packet ground2air_connect_packet;
-                ground2air_connect_packet.type = Ground2Air_Header::Type::Connect;
-                ground2air_connect_packet.size = sizeof(ground2air_connect_packet);
-                ground2air_connect_packet.airDeviceId = 0;
-                ground2air_connect_packet.gsDeviceId = s_groundstation_config.deviceId;
-                ground2air_connect_packet.crc = 0;  //do calculate crc with crc field = 0
-                ground2air_connect_packet.crc = crc8(0, &ground2air_connect_packet, sizeof(ground2air_connect_packet)); 
+                Ground2Air_Connect_Packet ground2air_connect_packet =
+                    gs::protocol::makeConnectPacket(s_groundstation_config.deviceId);
                 s_comms.send(&ground2air_connect_packet, sizeof(ground2air_connect_packet), true);
             }
 
@@ -622,12 +615,10 @@ static void comms_thread_proc()
                 )
             )
             {
-                data.type = Ground2Air_Header::Type::Telemetry;
-                data.size = sizeof(Ground2Air_Header) + s_tlm_size;
-                data.airDeviceId = s_connected_air_device_id;
-                data.gsDeviceId = s_groundstation_config.deviceId;
-                data.crc = 0;  //calculate cc with crc filed = 0
-                data.crc = crc8(0, &data, data.size); 
+                gs::protocol::prepareTelemetryPacket(data,
+                                                     s_tlm_size,
+                                                     s_connected_air_device_id,
+                                                     s_groundstation_config.deviceId);
                 if ( s_got_config_packet ) 
                 {
                     s_comms.send(&data, data.size, true);
@@ -680,8 +671,14 @@ static void comms_thread_proc()
                 break;
             }
 
-            Air2Ground_Header& air2ground_header = *(Air2Ground_Header*)rx_data.data.data();
-            uint32_t packet_size = air2ground_header.size;
+            gs::protocol::AirPacketInfo packetInfo;
+            if (!gs::protocol::tryParseAirPacket(rx_data.data.data(), rx_data.size, packetInfo))
+            {
+                break;
+            }
+
+            const Air2Ground_Header& air2ground_header = *packetInfo.header;
+            uint32_t packet_size = packetInfo.packetSize;
 
 /*
             if ( air2ground_header.version != PACKET_VERSION )
@@ -702,8 +699,9 @@ static void comms_thread_proc()
             {
                 if ( 
                     ( s_accept_config_packet == false ) &&
-                    ( air2ground_header.type == Air2Ground_Header::Type::Config ) && 
-                    ( air2ground_header.gsDeviceId == s_groundstation_config.deviceId ) //AirDevice just accepted connection with this GS
+                    gs::protocol::isConnectConfigPacket(packetInfo,
+                                                        Air2Ground_Header::Type::Config,
+                                                        s_groundstation_config.deviceId) //AirDevice just accepted connection with this GS
                 )
                 {
                     s_connected_air_device_id = air2ground_header.airDeviceId;
@@ -725,12 +723,9 @@ static void comms_thread_proc()
                 break;
             }
 
-            if ( air2ground_header.gsDeviceId != s_groundstation_config.deviceId ) 
-            {
-                break;
-            }
-
-            if ( ( s_connected_air_device_id != 0 ) && ( air2ground_header.airDeviceId != s_connected_air_device_id ) )
+            if (!gs::protocol::isPacketForSession(packetInfo,
+                                                  s_groundstation_config.deviceId,
+                                                  s_connected_air_device_id))
             {
                 break;
             }
@@ -756,13 +751,11 @@ static void comms_thread_proc()
                 }
 
                 size_t payload_size = packet_size - sizeof(Air2Ground_Video_Packet);
-                Air2Ground_Video_Packet& air2ground_video_packet = *(Air2Ground_Video_Packet*)rx_data.data.data();
-                uint8_t crc = air2ground_video_packet.crc;
-                air2ground_video_packet.crc = 0;
-                uint8_t computed_crc = crc8(0, rx_data.data.data(), sizeof(Air2Ground_Video_Packet));
-                if (crc != computed_crc)
+                const Air2Ground_Video_Packet& air2ground_video_packet =
+                    *(const Air2Ground_Video_Packet*)rx_data.data.data();
+                if (!gs::protocol::validateFixedHeaderCrc(air2ground_video_packet))
                 {
-                    LOGE("Video frame {}, {} {}: crc mismatch: {} != {}", air2ground_video_packet.frame_index, (int)air2ground_video_packet.part_index, payload_size, crc, computed_crc);
+                    LOGE("Video frame {}, {} {}: crc mismatch", air2ground_video_packet.frame_index, (int)air2ground_video_packet.part_index, payload_size);
                     break;
                 }
 
@@ -928,13 +921,11 @@ static void comms_thread_proc()
                 }
 
                 size_t payload_size = packet_size - sizeof(Air2Ground_Data_Packet);
-                Air2Ground_Data_Packet& air2ground_data_packet = *(Air2Ground_Data_Packet*)rx_data.data.data();
-                uint8_t crc = air2ground_data_packet.crc;
-                air2ground_data_packet.crc = 0;
-                uint8_t computed_crc = crc8(0, rx_data.data.data(), sizeof(Air2Ground_Data_Packet));
-                if (crc != computed_crc)
+                const Air2Ground_Data_Packet& air2ground_data_packet =
+                    *(const Air2Ground_Data_Packet*)rx_data.data.data();
+                if (!gs::protocol::validateFixedHeaderCrc(air2ground_data_packet))
                 {
-                    LOGE("Telemetry frame: crc mismatch {}: {} != {}", payload_size, crc, computed_crc);
+                    LOGE("Telemetry frame: crc mismatch {}", payload_size);
                     break;
                 }
 
@@ -959,13 +950,11 @@ static void comms_thread_proc()
                     break;
                 }
 
-                Air2Ground_OSD_Packet& air2ground_osd_packet = *(Air2Ground_OSD_Packet*)rx_data.data.data();
-                uint8_t crc = air2ground_osd_packet.crc;
-                air2ground_osd_packet.crc = 0;
-                uint8_t computed_crc = crc8(0, rx_data.data.data(), sizeof(Air2Ground_OSD_Packet));
-                if (crc != computed_crc)
+                const Air2Ground_OSD_Packet& air2ground_osd_packet =
+                    *(const Air2Ground_OSD_Packet*)rx_data.data.data();
+                if (!gs::protocol::validateFixedHeaderCrc(air2ground_osd_packet))
                 {
-                    LOGE("OSD frame: crc mismatch: {} != {}", crc, computed_crc);
+                    LOGE("OSD frame: crc mismatch");
                     break;
                 }
 
