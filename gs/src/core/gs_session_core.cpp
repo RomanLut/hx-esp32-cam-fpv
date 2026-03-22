@@ -319,6 +319,82 @@ TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
     return decision;
 }
 
+ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
+                                                          size_t transport_packet_size,
+                                                          uint16_t gs_device_id,
+                                                          Clock::time_point now,
+                                                          ITransport& transport)
+{
+    ReceivedPacketResult result;
+
+    const SessionPacketDecision decision =
+        classifyPacket(packet_data, transport_packet_size, gs_device_id, transport);
+    result.packet_info = decision.packet_info;
+    result.type = decision.type;
+
+    if (decision.accepted_connect_config)
+    {
+        result.status = ReceivedPacketStatus::AcceptedConnectConfig;
+        return result;
+    }
+
+    if (decision.type == SessionPacketType::Ignore)
+    {
+        return result;
+    }
+
+    switch (decision.type)
+    {
+    case SessionPacketType::Config:
+        result.status = ReceivedPacketStatus::Parsed;
+        return result;
+
+    case SessionPacketType::Video:
+        if (!tryParseVideoPacket(packet_data,
+                                 transport_packet_size,
+                                 decision.packet_info.packetSize,
+                                 result.video))
+        {
+            result.status = ReceivedPacketStatus::Invalid;
+            return result;
+        }
+        onVideoPong(result.video.packet->pong, now);
+        addReceivedBytes(transport_packet_size);
+        result.status = ReceivedPacketStatus::Parsed;
+        return result;
+
+    case SessionPacketType::Telemetry:
+        if (!tryParseTelemetryPacket(packet_data,
+                                     transport_packet_size,
+                                     decision.packet_info.packetSize,
+                                     result.telemetry))
+        {
+            result.status = ReceivedPacketStatus::Invalid;
+            return result;
+        }
+        addReceivedBytes(transport_packet_size);
+        result.status = ReceivedPacketStatus::Parsed;
+        return result;
+
+    case SessionPacketType::OSD:
+        if (!tryParseOsdPacket(packet_data,
+                               transport_packet_size,
+                               decision.packet_info.packetSize,
+                               result.osd))
+        {
+            result.status = ReceivedPacketStatus::Invalid;
+            return result;
+        }
+        addReceivedBytes(transport_packet_size);
+        result.status = ReceivedPacketStatus::Parsed;
+        return result;
+
+    case SessionPacketType::Ignore:
+    default:
+        return result;
+    }
+}
+
 std::mutex& GsSessionCore::configPacketMutex()
 {
     return m_config_packet_mutex;

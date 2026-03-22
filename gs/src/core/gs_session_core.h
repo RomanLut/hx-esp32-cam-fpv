@@ -22,6 +22,14 @@ enum class SessionPacketType
     OSD
 };
 
+enum class ReceivedPacketStatus
+{
+    Ignore,
+    AcceptedConnectConfig,
+    Parsed,
+    Invalid
+};
+
 struct SessionPacketDecision
 {
     SessionPacketType type = SessionPacketType::Ignore;
@@ -120,6 +128,16 @@ struct FrameStatsState
     Stats queue_usage_stats;
 };
 
+struct ReceivedPacketResult
+{
+    ReceivedPacketStatus status = ReceivedPacketStatus::Ignore;
+    SessionPacketType type = SessionPacketType::Ignore;
+    protocol::AirPacketInfo packet_info = {};
+    VideoPacketView video = {};
+    TelemetryPacketView telemetry = {};
+    OsdPacketView osd = {};
+};
+
 class GsSessionCore
 {
 public:
@@ -157,6 +175,11 @@ public:
     TelemetryTxDecision buildTelemetryTxDecision(bool got_rc_packet,
                                                  Clock::time_point now,
                                                  uint16_t gs_device_id);
+    ReceivedPacketResult processReceivedPacket(const uint8_t* packet_data,
+                                               size_t transport_packet_size,
+                                               uint16_t gs_device_id,
+                                               Clock::time_point now,
+                                               ITransport& transport);
 
     std::mutex& configPacketMutex();
     Ground2Air_Config_Packet& configPacket();
