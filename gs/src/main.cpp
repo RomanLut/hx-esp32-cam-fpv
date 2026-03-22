@@ -962,11 +962,6 @@ void applyWifiChannel()
     s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
 }
 
-void applyWifiChannel(Ground2Air_Config_Packet&)
-{
-    applyWifiChannel();
-}
-
 //===================================================================================
 //===================================================================================
 void applyWifiChannelInstant()
@@ -977,21 +972,11 @@ void applyWifiChannelInstant()
     s_transport.setChannel(s_groundstation_config.wifi_channel);
 }
 
-void applyWifiChannelInstant(Ground2Air_Config_Packet&)
-{
-    applyWifiChannelInstant();
-}
-
 //===================================================================================
 //===================================================================================
 void applyGSTxPower()
 {
     s_transport.setTxPower(s_groundstation_config.txPower);
-}
-
-void applyGSTxPower(Ground2Air_Config_Packet&)
-{
-    applyGSTxPower();
 }
 
 //===================================================================================
@@ -2311,11 +2296,6 @@ void saveGround2AirConfig()
     ini["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
     ini["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     s_iniFile.write(ini);
-}
-
-void saveGround2AirConfig(const Ground2Air_Config_Packet&)
-{
-    saveGround2AirConfig();
 }
 
 //===================================================================================
