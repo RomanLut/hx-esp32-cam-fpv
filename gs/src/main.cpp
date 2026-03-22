@@ -2149,14 +2149,9 @@ int run(char* argv[])
             }
         }
 
-        if (s_session_core.promoteAcceptedConfig(config))
+        if (s_session_core.syncConfigPacket(config))
         {
             s_reload_osd_font = true;
-        }
-        else
-        {
-            std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
-            s_ground2air_config_packet = config;
         }
 
         if ( s_reload_osd_font == true )

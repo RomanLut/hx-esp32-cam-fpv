@@ -167,6 +167,7 @@ public:
                            OsdPacketView& out_view);
 
     bool promoteAcceptedConfig(Ground2Air_Config_Packet& config_out);
+    bool syncConfigPacket(Ground2Air_Config_Packet& config);
     ControlPacketView buildControlPacket(uint16_t gs_device_id) const;
     size_t telemetryBufferedSize() const;
     size_t telemetryFreeBytes() const;

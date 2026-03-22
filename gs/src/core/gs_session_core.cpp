@@ -227,6 +227,18 @@ bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
     return true;
 }
 
+bool GsSessionCore::syncConfigPacket(Ground2Air_Config_Packet& config)
+{
+    if (promoteAcceptedConfig(config))
+    {
+        return true;
+    }
+
+    std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
+    m_config_packet = config;
+    return false;
+}
+
 ControlPacketView GsSessionCore::buildControlPacket(uint16_t gs_device_id) const
 {
     ControlPacketView view;
