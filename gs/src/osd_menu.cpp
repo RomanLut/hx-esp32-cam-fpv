@@ -255,7 +255,7 @@ void OSDMenu::searchNextWifiChannel(Ground2Air_Config_Packet& config)
         }
     }
     
-    applyWifiChannelInstant();
+    applyWifiChannelInstant(config);
 }
 
 //=======================================================
@@ -340,7 +340,7 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
         if ( s_isOV5640 && config.camera.vflip )
         {
             config.camera.vflip = false;
-            saveGround2AirConfig();
+            saveGround2AirConfig(config);
         }
     }
 
@@ -437,13 +437,13 @@ void OSDMenu::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
         {
             config.camera.vflip = !config.camera.vflip;
             config.camera.hmirror = config.camera.vflip;
-            saveGround2AirConfig();
+            saveGround2AirConfig(config);
         }
 
         if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
         {
             config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
-            saveGround2AirConfig();
+            saveGround2AirConfig(config);
         }
     }
     else
@@ -451,7 +451,7 @@ void OSDMenu::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
         {
             config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
-            saveGround2AirConfig();
+            saveGround2AirConfig(config);
         }
     }
 
@@ -600,7 +600,7 @@ void OSDMenu::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -658,7 +658,7 @@ void OSDMenu::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -709,7 +709,7 @@ void OSDMenu::drawContrastMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -759,7 +759,7 @@ void OSDMenu::drawExposureMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -809,7 +809,7 @@ void OSDMenu::drawSaturationMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -859,7 +859,7 @@ void OSDMenu::drawSharpnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -996,7 +996,7 @@ void OSDMenu::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1051,7 +1051,7 @@ void OSDMenu::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
             {
                 s_groundstation_config.wifi_channel = channel;
                 saveGroundStationConfig();
-                applyWifiChannel();
+                applyWifiChannel(config);
             }
             bExit = true;
         }
@@ -1117,7 +1117,7 @@ void OSDMenu::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
             {
                 s_groundstation_config.txPower = ( i + MIN_TX_POWER );
                 saveGroundStationConfig();
-                applyGSTxPower();
+                applyGSTxPower(config);
             }
             bExit = true;
         }
@@ -1203,7 +1203,7 @@ void OSDMenu::drawFECMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        saveGround2AirConfig();
+        saveGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1343,7 +1343,7 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
             saveGroundStationConfig();
             if ( channelChanged )
             {
-                applyWifiChannel();
+                applyWifiChannel(config);
             }
         }
     }
