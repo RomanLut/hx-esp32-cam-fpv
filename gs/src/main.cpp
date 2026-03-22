@@ -2487,7 +2487,7 @@ int main(int argc, const char* argv[])
 
     memset( &s_last_airStats, 0, sizeof(AirStats) );
 
-    Ground2Air_Config_Packet& config = s_ground2air_config_packet;
+    Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
     //config.wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
     //config.camera.resolution = Resolution::SVGA;
     //config.camera.fps_limit = 30;
@@ -2585,57 +2585,57 @@ int main(int argc, const char* argv[])
 
     {
         std::string& temp = ini["gs"]["brightness"];
-        if (temp != "") s_ground2air_config_packet.camera.brightness = clamp( atoi(temp.c_str()), -2, 2 );
+        if (temp != "") config.camera.brightness = clamp( atoi(temp.c_str()), -2, 2 );
     }
 
     {
         std::string& temp = ini["gs"]["contrast"];
-        if (temp != "") s_ground2air_config_packet.camera.contrast = clamp( atoi(temp.c_str()), -2, 2 );
+        if (temp != "") config.camera.contrast = clamp( atoi(temp.c_str()), -2, 2 );
     }
 
     {
         std::string& temp = ini["gs"]["saturation"];
-        if (temp != "") s_ground2air_config_packet.camera.saturation = clamp( atoi(temp.c_str()), -2, 2 ); 
+        if (temp != "") config.camera.saturation = clamp( atoi(temp.c_str()), -2, 2 ); 
     }
 
     {
         std::string& temp = ini["gs"]["ae_level"] ;
-        if (temp != "") s_ground2air_config_packet.camera.ae_level = clamp( atoi(temp.c_str()), -2, 2 );
+        if (temp != "") config.camera.ae_level = clamp( atoi(temp.c_str()), -2, 2 );
     }
 
     {
         std::string& temp = ini["gs"]["sharpness"] ;
-        if (temp != "") s_ground2air_config_packet.camera.sharpness = clamp( atoi(temp.c_str()), -3, 3 );
+        if (temp != "") config.camera.sharpness = clamp( atoi(temp.c_str()), -3, 3 );
     }
 
     {
         std::string& temp = ini["gs"]["vflip"];
-        if (temp != "") s_ground2air_config_packet.camera.vflip = atoi(temp.c_str()) != 0;
+        if (temp != "") config.camera.vflip = atoi(temp.c_str()) != 0;
     }
 
     {
         std::string& temp = ini["gs"]["resolution"];
-        if (temp != "") s_ground2air_config_packet.camera.resolution = (Resolution) clamp( atoi(temp.c_str()), (int)Resolution::VGA, (int)Resolution::HD );
+        if (temp != "") config.camera.resolution = (Resolution) clamp( atoi(temp.c_str()), (int)Resolution::VGA, (int)Resolution::HD );
     }
 
     {
         std::string& temp = ini["gs"]["wifi_rate"];
-        if (temp != "") s_ground2air_config_packet.dataChannel.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
+        if (temp != "") config.dataChannel.wifi_rate = (WIFI_Rate)clamp( atoi(temp.c_str()), (int) WIFI_Rate::RATE_G_12M_ODFM, (int)WIFI_Rate::RATE_N_72M_MCS7_S );
     }
 
     {
         std::string& temp = ini["gs"]["fec_n"];
-        if (temp != "") s_ground2air_config_packet.dataChannel.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
+        if (temp != "") config.dataChannel.fec_codec_n = (uint8_t)clamp( atoi(temp.c_str()), FEC_K+1, FEC_N );
     }
 
     {
         std::string& temp = ini["gs"]["ov2640_high_fps"];
-        if (temp != "") s_ground2air_config_packet.camera.ov2640HighFPS = atoi(temp.c_str()) != 0;
+        if (temp != "") config.camera.ov2640HighFPS = atoi(temp.c_str()) != 0;
     }
 
     {
         std::string& temp = ini["gs"]["ov5640_high_fps"];
-        if (temp != "") s_ground2air_config_packet.camera.ov5640HighFPS = atoi(temp.c_str()) != 0;
+        if (temp != "") config.camera.ov5640HighFPS = atoi(temp.c_str()) != 0;
     }
 
     for(int i=1;i<argc;++i)
@@ -2798,7 +2798,9 @@ int main(int argc, const char* argv[])
         printf("Using TX interface %s\n", tx_descriptor.interface.c_str());
     }
 
-    rx_descriptor.coding_k = s_session_core.copyConfigPacket().dataChannel.fec_codec_k;
+    s_session_core.setConfigPacket(config);
+
+    rx_descriptor.coding_k = config.dataChannel.fec_codec_k;
     rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
     rx_descriptor.mtu = AIR2GROUND_MAX_MTU;
 

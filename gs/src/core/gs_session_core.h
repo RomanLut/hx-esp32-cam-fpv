@@ -168,6 +168,7 @@ public:
 
     bool promoteAcceptedConfig(Ground2Air_Config_Packet& config_out);
     bool syncConfigPacket(Ground2Air_Config_Packet& config);
+    void setConfigPacket(const Ground2Air_Config_Packet& config);
     ControlPacketView buildControlPacket(uint16_t gs_device_id) const;
     size_t telemetryBufferedSize() const;
     size_t telemetryFreeBytes() const;
