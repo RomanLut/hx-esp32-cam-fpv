@@ -508,21 +508,22 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
-            const gs::core::PingSnapshot ping_snapshot = s_session_core.consumePingSnapshot();
+            const Clock::time_point now = Clock::now();
+            const gs::core::LinkStatusSnapshot link_status = s_session_core.consumeLinkStatus(now);
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}", 
                 sent_count, total_data, in_tlm_size, out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.min).count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.max).count(),
-                ping_snapshot.count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.total).count() / ping_snapshot.count : 0,
+                link_status.ping_min_ms,
+                link_status.ping_max_ms,
+                link_status.ping_avg_ms,
                 video_fps,
                 s_session_core.connectedAirDeviceId(), s_groundstation_config.deviceId);
 
             s_total_data = total_data;
 
-            s_noPing = (Clock::now() - ping_snapshot.last_received_tp) >= std::chrono::milliseconds(2000);
-            s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.min).count();
-            s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.max).count();
+            s_noPing = link_status.no_ping;
+            s_gs_stats.pingMinMS = link_status.ping_min_ms;
+            s_gs_stats.pingMaxMS = link_status.ping_max_ms;
 
             sent_count = 0;
             in_tlm_size = 0;
@@ -534,7 +535,7 @@ static void comms_thread_proc()
             s_gs_stats = GSStats();
             s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;  //effectively: = s_gs_stats.lastPacketIndex 
 
-            last_stats_tp = Clock::now();
+            last_stats_tp = now;
         }
 
         if (Clock::now() - last_stats_tp10 >= std::chrono::milliseconds(100))

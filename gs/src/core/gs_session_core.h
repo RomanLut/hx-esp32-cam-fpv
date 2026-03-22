@@ -72,6 +72,14 @@ struct PingSnapshot
     Clock::time_point last_received_tp = Clock::now();
 };
 
+struct LinkStatusSnapshot
+{
+    int ping_min_ms = 0;
+    int ping_max_ms = 0;
+    int ping_avg_ms = 0;
+    bool no_ping = true;
+};
+
 class GsSessionCore
 {
 public:
@@ -116,6 +124,7 @@ public:
     void onPingSent(Clock::time_point now);
     void onVideoPong(uint8_t pong, Clock::time_point now);
     PingSnapshot consumePingSnapshot();
+    LinkStatusSnapshot consumeLinkStatus(Clock::time_point now);
 
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;

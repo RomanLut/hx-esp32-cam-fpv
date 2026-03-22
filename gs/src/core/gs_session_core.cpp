@@ -303,6 +303,20 @@ PingSnapshot GsSessionCore::consumePingSnapshot()
     return snapshot;
 }
 
+LinkStatusSnapshot GsSessionCore::consumeLinkStatus(Clock::time_point now)
+{
+    const PingSnapshot ping_snapshot = consumePingSnapshot();
+
+    LinkStatusSnapshot snapshot;
+    snapshot.ping_min_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.min).count();
+    snapshot.ping_max_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.max).count();
+    snapshot.ping_avg_ms = ping_snapshot.count > 0
+                               ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.total).count() / ping_snapshot.count
+                               : 0;
+    snapshot.no_ping = (now - ping_snapshot.last_received_tp) >= std::chrono::milliseconds(2000);
+    return snapshot;
+}
+
 uint16_t GsSessionCore::connectedAirDeviceId() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
