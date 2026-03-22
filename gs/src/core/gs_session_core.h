@@ -28,6 +28,18 @@ struct SessionPacketDecision
     bool accepted_connect_config = false;
 };
 
+struct TelemetryPacketView
+{
+    const Air2Ground_Data_Packet* packet = nullptr;
+    size_t payload_size = 0;
+};
+
+struct OsdPacketView
+{
+    const Air2Ground_OSD_Packet* packet = nullptr;
+    uint16_t osd_data_size = 0;
+};
+
 class GsSessionCore
 {
 public:
@@ -43,6 +55,14 @@ public:
                                          size_t packet_size,
                                          uint16_t gs_device_id,
                                          ITransport& transport);
+    bool tryParseTelemetryPacket(const uint8_t* packet_data,
+                                 size_t transport_packet_size,
+                                 size_t packet_size,
+                                 TelemetryPacketView& out_view) const;
+    bool tryParseOsdPacket(const uint8_t* packet_data,
+                           size_t transport_packet_size,
+                           size_t packet_size,
+                           OsdPacketView& out_view);
 
     bool promoteAcceptedConfig(Ground2Air_Config_Packet& config_out);
 

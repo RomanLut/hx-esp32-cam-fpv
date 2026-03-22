@@ -853,59 +853,40 @@ static void comms_thread_proc()
 #ifdef USE_MAVLINK
               if (fdUART != -1)
               {
-                if (packet_size > rx_data.size)
+                gs::core::TelemetryPacketView telemetry_view;
+                if (!s_session_core.tryParseTelemetryPacket(rx_data.data.data(),
+                                                            rx_data.size,
+                                                            packet_size,
+                                                            telemetry_view))
                 {
-                    LOGE("Telemetry frame: data too big: {} > {}", packet_size, rx_data.size);
-                    break;
-                }
-                if (packet_size < (sizeof(Air2Ground_Data_Packet) + 1))
-                {
-                    LOGE("Telemetry frame: data too small: {} < {}", packet_size, sizeof(Air2Ground_Data_Packet) + 1);
-                    break;
-                }
-
-                size_t payload_size = packet_size - sizeof(Air2Ground_Data_Packet);
-                const Air2Ground_Data_Packet& air2ground_data_packet =
-                    *(const Air2Ground_Data_Packet*)rx_data.data.data();
-                if (!gs::protocol::validateFixedHeaderCrc(air2ground_data_packet))
-                {
-                    LOGE("Telemetry frame: crc mismatch {}", payload_size);
+                    LOGE("Telemetry frame: invalid packet {}", packet_size);
                     break;
                 }
 
                 total_data10 += rx_data.size;
-                //LOGI("OK Telemetry frame {} - CRC OK {}. {}", payload_size, crc, rx_queue.size());
-
-                write(fdUART, ((uint8_t*)&air2ground_data_packet) + sizeof(Air2Ground_Data_Packet), payload_size);
-                out_tlm_size += payload_size;
+                const uint8_t* payload =
+                    reinterpret_cast<const uint8_t*>(telemetry_view.packet) + sizeof(Air2Ground_Data_Packet);
+                write(fdUART, payload, telemetry_view.payload_size);
+                out_tlm_size += telemetry_view.payload_size;
               }
 #endif
             }
             else if (packet_decision.type == gs::core::SessionPacketType::OSD)
             {
-                if (packet_size > rx_data.size)
+                gs::core::OsdPacketView osd_view;
+                if (!s_session_core.tryParseOsdPacket(rx_data.data.data(),
+                                                      rx_data.size,
+                                                      packet_size,
+                                                      osd_view))
                 {
-                    LOGE("OSD frame: data too big: {} > {}", packet_size, rx_data.size);
+                    LOGE("OSD frame: invalid packet");
                     break;
                 }
-                if (packet_size < (sizeof(Air2Ground_OSD_Packet)))
-                {
-                    LOGE("OSD frame: data too small: {} > {}", packet_size, sizeof(Air2Ground_OSD_Packet));
-                    break;
-                }
-
-                const Air2Ground_OSD_Packet& air2ground_osd_packet =
-                    *(const Air2Ground_OSD_Packet*)rx_data.data.data();
-                if (!gs::protocol::validateFixedHeaderCrc(air2ground_osd_packet))
-                {
-                    LOGE("OSD frame: crc mismatch");
-                    break;
-                }
-
-                s_last_airStats = air2ground_osd_packet.stats;
 
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
+
+                const Air2Ground_OSD_Packet& air2ground_osd_packet = *osd_view.packet;
 
                 //TODO: remove all these, use s_last_airStats
                 s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.stats.curr_wifi_rate;
@@ -921,17 +902,16 @@ static void comms_thread_proc()
                 s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
                 s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
-                uint16_t osd_data_size = air2ground_osd_packet.size - (sizeof(Air2Ground_OSD_Packet) - 1);
-                if ( ( osd_data_size >=2 ) && ( osd_data_size <= MAX_OSD_PAYLOAD_SIZE ) )
+                if ((osd_view.osd_data_size >= 2) && (osd_view.osd_data_size <= MAX_OSD_PAYLOAD_SIZE))
                 {
                     if (!g_framePacketsDebug.isOn())
                     {
-                        g_osd.update( &air2ground_osd_packet.osd_enc_start, osd_data_size );
+                        g_osd.update(&air2ground_osd_packet.osd_enc_start, osd_view.osd_data_size);
                     }
                 }
                 else
                 {
-                    LOGE("OSD Enc Data size incorrect{}", osd_data_size);
+                    LOGE("OSD Enc Data size incorrect{}", osd_view.osd_data_size);
                 }
 
                 s_last_stats_packet_tp = Clock::now();

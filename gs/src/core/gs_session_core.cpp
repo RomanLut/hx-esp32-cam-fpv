@@ -109,6 +109,62 @@ SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
     return decision;
 }
 
+bool GsSessionCore::tryParseTelemetryPacket(const uint8_t* packet_data,
+                                            size_t transport_packet_size,
+                                            size_t packet_size,
+                                            TelemetryPacketView& out_view) const
+{
+    out_view = {};
+
+    if (packet_size > transport_packet_size)
+    {
+        return false;
+    }
+    if (packet_size < (sizeof(Air2Ground_Data_Packet) + 1))
+    {
+        return false;
+    }
+
+    const auto* telemetry_packet = reinterpret_cast<const Air2Ground_Data_Packet*>(packet_data);
+    if (!protocol::validateFixedHeaderCrc(*telemetry_packet))
+    {
+        return false;
+    }
+
+    out_view.packet = telemetry_packet;
+    out_view.payload_size = packet_size - sizeof(Air2Ground_Data_Packet);
+    return true;
+}
+
+bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
+                                      size_t transport_packet_size,
+                                      size_t packet_size,
+                                      OsdPacketView& out_view)
+{
+    out_view = {};
+
+    if (packet_size > transport_packet_size)
+    {
+        return false;
+    }
+    if (packet_size < sizeof(Air2Ground_OSD_Packet))
+    {
+        return false;
+    }
+
+    const auto* osd_packet = reinterpret_cast<const Air2Ground_OSD_Packet*>(packet_data);
+    if (!protocol::validateFixedHeaderCrc(*osd_packet))
+    {
+        return false;
+    }
+
+    m_last_air_stats = osd_packet->stats;
+
+    out_view.packet = osd_packet;
+    out_view.osd_data_size = osd_packet->size - (sizeof(Air2Ground_OSD_Packet) - 1);
+    return true;
+}
+
 bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
 {
     std::lock_guard<std::mutex> state_lock(m_state_mutex);
