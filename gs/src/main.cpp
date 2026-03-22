@@ -38,6 +38,7 @@
 
 #include "lodepng.h"
 #include "core/gs_protocol.h"
+#include "core/gs_session_core.h"
 #include "core/video_frame_assembler.h"
 
 #ifdef TEST_LATENCY
@@ -257,29 +258,12 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 
 static std::thread s_comms_thread;
 
-struct GroundLinkState
-{
-    std::mutex config_packet_mutex;
-    Ground2Air_Config_Packet config_packet;
-
-    std::mutex data_packet_mutex;
-    Ground2Air_Data_Packet data_packet;
-
-    AirStats last_air_stats = {};
-    uint16_t connected_air_device_id = 0;
-    bool got_config_packet = false;
-    bool accept_config_packet = false;
-};
-
-static GroundLinkState s_ground_link;
-static std::mutex& s_ground2air_config_packet_mutex = s_ground_link.config_packet_mutex;
-static Ground2Air_Config_Packet& s_ground2air_config_packet = s_ground_link.config_packet;
-static std::mutex& s_ground2air_data_packet_mutex = s_ground_link.data_packet_mutex;
-static Ground2Air_Data_Packet& s_ground2air_data_packet = s_ground_link.data_packet;
-static AirStats& s_last_airStats = s_ground_link.last_air_stats;
-uint16_t& s_connected_air_device_id = s_ground_link.connected_air_device_id;
-bool& s_got_config_packet = s_ground_link.got_config_packet;
-bool& s_accept_config_packet = s_ground_link.accept_config_packet;
+static gs::core::GsSessionCore s_session_core;
+static std::mutex& s_ground2air_config_packet_mutex = s_session_core.configPacketMutex();
+static Ground2Air_Config_Packet& s_ground2air_config_packet = s_session_core.configPacket();
+static std::mutex& s_ground2air_data_packet_mutex = s_session_core.dataPacketMutex();
+static Ground2Air_Data_Packet& s_ground2air_data_packet = s_session_core.dataPacket();
+static AirStats& s_last_airStats = s_session_core.lastAirStats();
 int s_tlm_size = 0;
 
 #ifdef TEST_LATENCY
@@ -706,37 +690,19 @@ static void comms_thread_proc()
                 break;
             }
 */
-            if( !s_got_config_packet )
+            if (!s_session_core.gotConfigPacket())
             {
-                if ( 
-                    ( s_accept_config_packet == false ) &&
-                    gs::protocol::isConnectConfigPacket(packetInfo,
-                                                        Air2Ground_Header::Type::Config,
-                                                        s_groundstation_config.deviceId) //AirDevice just accepted connection with this GS
-                )
+                if (s_session_core.tryAcceptConnectConfig(packetInfo,
+                                                          rx_data.data.data(),
+                                                          s_groundstation_config.deviceId,
+                                                          s_transport))
                 {
-                    s_connected_air_device_id = air2ground_header.airDeviceId;
-
-                    //accept config from camera
-                    std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
-                    Air2Ground_Config_Packet* airConfig = (Air2Ground_Config_Packet*)rx_data.data.data();
-                    s_ground2air_config_packet.camera = airConfig->camera;
-                    s_ground2air_config_packet.dataChannel = airConfig->dataChannel;
-                    s_ground2air_config_packet.misc = airConfig->misc;
-
-                    s_accept_config_packet = true;
-
-                    s_transport.getPacketFilter().set_packet_header_data(s_groundstation_config.deviceId, s_connected_air_device_id);
-                    s_transport.getPacketFilter().set_packet_filtering(s_connected_air_device_id, s_groundstation_config.deviceId);
-
-                    printf("Connecting to Air Device Id 0x%04x\n", s_connected_air_device_id); 
+                    printf("Connecting to Air Device Id 0x%04x\n", s_session_core.connectedAirDeviceId());
                 }
                 break;
             }
 
-            if (!gs::protocol::isPacketForSession(packetInfo,
-                                                  s_groundstation_config.deviceId,
-                                                  s_connected_air_device_id))
+            if (!s_session_core.isPacketForSession(packetInfo, s_groundstation_config.deviceId))
             {
                 break;
             }
@@ -2303,16 +2269,13 @@ int run(char* argv[])
             }
         }
 
-        std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
-        if ( s_accept_config_packet )
+        if (s_session_core.promoteAcceptedConfig(config))
         {
-            s_accept_config_packet = false;
-            s_got_config_packet = true;
-            config = s_ground2air_config_packet;
             s_reload_osd_font = true;
         }
         else
         {
+            std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
             s_ground2air_config_packet = config;
         }
 
@@ -2624,15 +2587,9 @@ uint16_t generate_device_id()
 //===================================================================================
 void airUnpair()
 {
-    s_connected_air_device_id = 0;
-    s_got_config_packet = false;
-    s_accept_config_packet = false;
     s_last_packet_tp = Clock::now();
     s_last_stats_packet_tp = Clock::now();
-
-    s_transport.getPacketFilter().set_packet_header_data(s_groundstation_config.deviceId, 0);
-    s_transport.getPacketFilter().set_packet_filtering(0, s_groundstation_config.deviceId);
-    s_transport.reset_rx_state();
+    s_session_core.resetPairing(s_groundstation_config.deviceId, s_transport, Clock::now());
 }
 
 //===================================================================================
