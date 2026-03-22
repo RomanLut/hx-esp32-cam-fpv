@@ -259,7 +259,6 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 static std::thread s_comms_thread;
 
 static gs::core::GsSessionCore s_session_core;
-static std::mutex& s_ground2air_config_packet_mutex = s_session_core.configPacketMutex();
 static Ground2Air_Config_Packet& s_ground2air_config_packet = s_session_core.configPacket();
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
 static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
@@ -405,12 +404,13 @@ void toggleGSRecording(int width, int height, const char* reason)
 #else        
         char filename[]="yyyy-mm-dd-hh-mm-ss.avi";
         std::strftime(filename, sizeof(filename), "%Y-%m-%d-%H-%M-%S.avi", std::localtime(&time));
+        const Ground2Air_Config_Packet config_snapshot = s_session_core.copyConfigPacket();
 
         prepAviIndex();
 
         s_avi_frameCnt = 0;
 
-        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+        const TVMode* v = &vmodes[clamp((int)config_snapshot.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
 
         if ( width != 0 )
         {
@@ -426,17 +426,17 @@ void toggleGSRecording(int width, int height, const char* reason)
 
         if (s_isOV5640)
         {
-            s_avi_fps = s_ground2air_config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+            s_avi_fps = config_snapshot.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
         }
         else
         {
-            s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+            s_avi_fps = config_snapshot.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         }
 
         s_avi_frameWidth = width;
         s_avi_frameHeight = height;
-        s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
-        s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
+        s_avi_ov2640HighFPS = config_snapshot.camera.ov2640HighFPS;
+        s_avi_ov5640HighFPS = config_snapshot.camera.ov5640HighFPS;
 
         LOGI("{}x{} {}fps\n", s_avi_frameWidth, s_avi_frameHeight, s_avi_fps);
 
@@ -2798,7 +2798,7 @@ int main(int argc, const char* argv[])
         printf("Using TX interface %s\n", tx_descriptor.interface.c_str());
     }
 
-    rx_descriptor.coding_k = s_ground2air_config_packet.dataChannel.fec_codec_k;
+    rx_descriptor.coding_k = s_session_core.copyConfigPacket().dataChannel.fec_codec_k;
     rx_descriptor.coding_n = FEC_N;//s_ground2air_config_packet.fec_codec_n;
     rx_descriptor.mtu = AIR2GROUND_MAX_MTU;
 

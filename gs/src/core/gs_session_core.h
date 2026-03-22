@@ -182,7 +182,7 @@ public:
                                                Clock::time_point now,
                                                ITransport& transport);
 
-    std::mutex& configPacketMutex();
+    Ground2Air_Config_Packet copyConfigPacket() const;
     Ground2Air_Config_Packet& configPacket();
 
     std::mutex& dataPacketMutex();

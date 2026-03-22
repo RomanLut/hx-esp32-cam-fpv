@@ -407,9 +407,10 @@ ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_
     }
 }
 
-std::mutex& GsSessionCore::configPacketMutex()
+Ground2Air_Config_Packet GsSessionCore::copyConfigPacket() const
 {
-    return m_config_packet_mutex;
+    std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
+    return m_config_packet;
 }
 
 Ground2Air_Config_Packet& GsSessionCore::configPacket()
