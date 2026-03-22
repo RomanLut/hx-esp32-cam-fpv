@@ -140,6 +140,7 @@ extern GSStats s_last_gs_stats;
 
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
 extern void saveGroundStationConfig();
+extern void saveGround2AirConfig();
 extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);
 extern void exitApp();
 
@@ -158,8 +159,11 @@ extern uint64_t s_GSSDFreeSpaceBytes;
 extern Clock::time_point restart_tp;
 extern Clock::time_point s_last_packet_tp; //when any last valid packet is recevied (connection is estabilished)
 extern Clock::time_point s_last_stats_packet_tp;
+extern void applyWifiChannel();
 extern void applyWifiChannel(Ground2Air_Config_Packet& config);
+extern void applyWifiChannelInstant();
 extern void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
+extern void applyGSTxPower();
 extern void applyGSTxPower(Ground2Air_Config_Packet& config);
 extern void airUnpair();
 

@@ -954,25 +954,44 @@ float calcLossRatio( int outCount, int inCount)
 
 //===================================================================================
 //===================================================================================
-void applyWifiChannel(Ground2Air_Config_Packet& config)
+void applyWifiChannel()
 {
+    Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
     config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
+    s_session_core.setConfigPacket(config);
     s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
 }
 
-//===================================================================================
-//===================================================================================
-void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
+void applyWifiChannel(Ground2Air_Config_Packet&)
 {
-    config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
-    s_transport.setChannel(s_groundstation_config.wifi_channel);
+    applyWifiChannel();
 }
 
 //===================================================================================
 //===================================================================================
-void applyGSTxPower(Ground2Air_Config_Packet& config)
+void applyWifiChannelInstant()
+{
+    Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
+    config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
+    s_session_core.setConfigPacket(config);
+    s_transport.setChannel(s_groundstation_config.wifi_channel);
+}
+
+void applyWifiChannelInstant(Ground2Air_Config_Packet&)
+{
+    applyWifiChannelInstant();
+}
+
+//===================================================================================
+//===================================================================================
+void applyGSTxPower()
 {
     s_transport.setTxPower(s_groundstation_config.txPower);
+}
+
+void applyGSTxPower(Ground2Air_Config_Packet&)
+{
+    applyGSTxPower();
 }
 
 //===================================================================================
@@ -1788,7 +1807,7 @@ int run(char* argv[])
                     if (config.dataChannel.wifi_rate != (WIFI_Rate)value) 
                     {
                         config.dataChannel.wifi_rate = (WIFI_Rate)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 {
@@ -1797,7 +1816,7 @@ int run(char* argv[])
                     if (ImGui::Button("APPLY"))
                     {
                         //start sending new channel to air, restart after 2 seconds
-                        applyWifiChannel(config);
+                        applyWifiChannel();
                     }
                     ImGui::EndDisabled();
 
@@ -1817,7 +1836,7 @@ int run(char* argv[])
                     if (config.dataChannel.fec_codec_n != (int8_t)value)
                     {
                         config.dataChannel.fec_codec_n = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 
@@ -1826,14 +1845,14 @@ int run(char* argv[])
                 {
                     if ( ImGui::Checkbox("ov5640HiFPS", &config.camera.ov5640HighFPS) )
                     {
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 else
                 {
                     if ( ImGui::Checkbox("ov2640HiFPS", &config.camera.ov2640HighFPS) )
                     {
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 {
@@ -1844,7 +1863,7 @@ int run(char* argv[])
                     if ( config.camera.resolution != (Resolution)value )
                     {
                         config.camera.resolution = (Resolution)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 {
@@ -1874,7 +1893,7 @@ int run(char* argv[])
                     ImGui::Checkbox("VFLIP", &config.camera.vflip);
                     if ( prev != config.camera.vflip )
                     {
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 ImGui::SameLine();            
@@ -1903,7 +1922,7 @@ int run(char* argv[])
                     if ( config.camera.ae_level != (int8_t)value)
                     {
                         config.camera.ae_level = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
                 else 
@@ -1921,7 +1940,7 @@ int run(char* argv[])
                     if (config.camera.brightness != (int8_t)value)
                     {
                         config.camera.brightness = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
 
@@ -1932,7 +1951,7 @@ int run(char* argv[])
                     if (config.camera.contrast != (int8_t)value)
                     {
                         config.camera.contrast = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
 
@@ -1943,7 +1962,7 @@ int run(char* argv[])
                     if (config.camera.saturation != (int8_t)value)
                     {
                         config.camera.saturation = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
 
@@ -1954,7 +1973,7 @@ int run(char* argv[])
                     if (config.camera.sharpness != (int8_t)value)
                     {
                         config.camera.sharpness = (int8_t)value;
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                 }
 
@@ -2069,7 +2088,7 @@ int run(char* argv[])
                     if ( i!=0)
                     {
                         config.camera.resolution = resolutionsList[i-1];
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                     found = true;
                     break;
@@ -2087,7 +2106,7 @@ int run(char* argv[])
                     if ( i != RESOLUTOINS_LIST_SIZE-1 )
                     {
                         config.camera.resolution = resolutionsList[i+1];
-                        saveGround2AirConfig(config);
+                        saveGround2AirConfig();
                     }
                     found = true;
                     break;
@@ -2099,7 +2118,7 @@ int run(char* argv[])
         if ( resetRes )
         {
             config.camera.resolution = Resolution::SVGA16;
-            saveGround2AirConfig(config);
+            saveGround2AirConfig();
         }
 
         if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R, false))
@@ -2277,8 +2296,9 @@ void saveGroundStationConfig()
 
 //===================================================================================
 //===================================================================================
-void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
+void saveGround2AirConfig()
 {
+    const Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
     ini["gs"]["brightness"] = std::to_string(config.camera.brightness);
     ini["gs"]["contrast"] = std::to_string(config.camera.contrast);
     ini["gs"]["saturation"] = std::to_string(config.camera.saturation);
@@ -2291,6 +2311,11 @@ void saveGround2AirConfig(const Ground2Air_Config_Packet& config)
     ini["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
     ini["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     s_iniFile.write(ini);
+}
+
+void saveGround2AirConfig(const Ground2Air_Config_Packet&)
+{
+    saveGround2AirConfig();
 }
 
 //===================================================================================
