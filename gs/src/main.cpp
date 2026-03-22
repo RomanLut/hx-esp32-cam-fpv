@@ -259,7 +259,6 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 static std::thread s_comms_thread;
 
 static gs::core::GsSessionCore s_session_core;
-static Ground2Air_Config_Packet& s_ground2air_config_packet = s_session_core.configPacket();
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
 static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
 static gs::core::FrameStatsState& s_frame_state = s_session_core.frameStats();
@@ -737,8 +736,8 @@ static void comms_thread_proc()
                             if ( 
                                 (width != s_avi_frameWidth) || 
                                 (height != s_avi_frameHeight) ||
-                                ( s_avi_ov2640HighFPS != s_ground2air_config_packet.camera.ov2640HighFPS ) ||
-                                ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
+                                ( s_avi_ov2640HighFPS != s_session_core.copyConfigPacket().camera.ov2640HighFPS ) ||
+                                ( s_avi_ov5640HighFPS != s_session_core.copyConfigPacket().camera.ov5640HighFPS )
                             )
                             {
                                 toggleGSRecording(0, 0, "auto_restart_resolution_change_stop"); //stop
@@ -1061,7 +1060,7 @@ int run(char* argv[])
 
     s_comms_thread = std::thread(&comms_thread_proc);
 
-    Ground2Air_Config_Packet config = s_ground2air_config_packet;
+    Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
 
     size_t video_frame_count = 0;
 

@@ -184,7 +184,6 @@ public:
                                                ITransport& transport);
 
     Ground2Air_Config_Packet copyConfigPacket() const;
-    Ground2Air_Config_Packet& configPacket();
 
     std::mutex& dataPacketMutex();
     Ground2Air_Data_Packet& dataPacket();

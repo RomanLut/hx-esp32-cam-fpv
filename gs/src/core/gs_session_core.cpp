@@ -419,11 +419,6 @@ Ground2Air_Config_Packet GsSessionCore::copyConfigPacket() const
     return m_config_packet;
 }
 
-Ground2Air_Config_Packet& GsSessionCore::configPacket()
-{
-    return m_config_packet;
-}
-
 std::mutex& GsSessionCore::dataPacketMutex()
 {
     return m_data_packet_mutex;
