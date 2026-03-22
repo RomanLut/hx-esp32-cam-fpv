@@ -20,6 +20,7 @@
 //#define DEBUG_PCAP
 
 Comms s_comms;
+gs::core::ITransport& s_transport = s_comms;
 
 static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
@@ -210,7 +211,7 @@ static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
 
-    s_comms.packetFilter.apply_packet_header_data(&header);
+    s_comms.getPacketFilter().apply_packet_header_data(&header);
 
     header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
     header.block_index = block_index;
@@ -529,7 +530,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
         Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
 
-        auto res = s_comms.packetFilter.filter_packet( payload, bytes, m_rx_descriptor.mtu );
+        auto res = s_comms.getPacketFilter().filter_packet(payload, bytes, m_rx_descriptor.mtu);
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
             //s_stats.inRejectedPacketCounter++;
@@ -1523,7 +1524,14 @@ void Comms::setMonitorMode(const std::vector<std::string> interfaces)
 
 //===================================================================================
 //===================================================================================
-const Comms::RX_Descriptor& Comms::getRXDescriptor()
+PacketFilter& Comms::getPacketFilter()
+{
+    return m_packet_filter;
+}
+
+//===================================================================================
+//===================================================================================
+const Comms::RX_Descriptor& Comms::getRXDescriptor() const
 {
     return this->m_rx_descriptor;
 }

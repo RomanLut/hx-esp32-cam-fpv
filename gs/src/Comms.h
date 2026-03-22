@@ -5,10 +5,7 @@
 #include <atomic>
 #include <thread>
 #include <functional>
-#include "structures.h"
-#include "Clock.h"
-#include "packet_filter.h"
-#include "fec.h"
+#include "core/transport.h"
 
 #define MIN_TX_POWER 5
 #define DEFAULT_TX_POWER 45
@@ -19,58 +16,39 @@ struct fec_t;
 
 //===================================================================================
 //===================================================================================
-class Comms
+class Comms : public gs::core::ITransport
 {
 public:
     Comms();
     ~Comms();
 
-    struct TX_Descriptor
-    {
-        std::string interface;
-        uint32_t coding_k = 12;
-        uint32_t coding_n = 20;
-        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header);  //=GROUND2AIR_MAX_MTU
-    };
+    using TX_Descriptor = gs::core::TXDescriptor;
+    using RX_Descriptor = gs::core::RXDescriptor;
 
-    struct RX_Descriptor
-    {
-        std::vector<std::string> interfaces;  // caller list may omit TX interface; init() adds TX if missing
-        Clock::duration max_latency = std::chrono::milliseconds(500);
-        Clock::duration reset_duration = std::chrono::milliseconds(1000);
-        uint32_t coding_k = 12;
-        uint32_t coding_n = 20;
-        size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header); // =AIR2GROUND_MAX_MTU = data without Packet_Header
-        bool skip_mon_mode_cfg = true;
-    };
+    bool init(const RX_Descriptor& rx_descriptor, const TX_Descriptor& tx_descriptor) override;
 
-    bool init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_descriptor);
+    void process() override;
+    void reset_rx_state() override;
 
-    void process();
-    void reset_rx_state();
+    void send(const void* data, size_t size, bool flush) override;
+    bool receive(void* data, size_t& size, bool& restoredByFEC) override;
 
-    void send(void const* data, size_t size, bool flush);
-    //std::function<void(void const* data, size_t size)> on_data_received;
-    bool receive(void* data, size_t& size, bool& restoredByFEC);
+    void setChannel(int ch) override;
+    void setTxPower(int txPower) override; //MIN_TX_POWER...MAX_TX_POWER
+    void setMonitorMode(const std::vector<std::string> interfaces) override;
 
-    void setChannel(int ch);
-    void setTxPower(int txPower); //MIN_TX_POWER...MAX_TX_POWER
-    void setMonitorMode(const std::vector<std::string> interfaces);
+    void setTxInterface(const std::string& interface) override;
 
-    void setTxInterface(const std::string& interface);
+    const RX_Descriptor& getRXDescriptor() const override;
 
-    const RX_Descriptor& getRXDescriptor();
+    size_t get_data_rate() const override;
+    int get_input_dBm() const override;
 
-    size_t get_data_rate() const;
-    int get_input_dBm() const;
-
-    //static std::vector<std::string> enumerate_interfaces();
+    PacketFilter& getPacketFilter() override;
 
     struct PCap;
     struct RX;
     struct TX;
-
-    PacketFilter packetFilter;
 
 private:
     bool prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor);
@@ -100,6 +78,7 @@ private:
     size_t m_data_stats_rate = 0;
     size_t m_data_stats_data_accumulated = 0;
     Clock::time_point m_data_stats_last_tp = Clock::now();
+    PacketFilter m_packet_filter;
 };
 
 extern Comms s_comms;

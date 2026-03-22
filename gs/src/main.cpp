@@ -4,6 +4,7 @@
 #include <csignal>
 
 #include "Comms.h"
+#include "core/transport.h"
 #include "Clock.h"
 #include "IHAL.h"
 #include "PI_HAL.h"
@@ -552,14 +553,14 @@ static void comms_thread_proc()
                                                  last_sent_ping,
                                                  s_connected_air_device_id,
                                                  s_groundstation_config.deviceId);
-                s_comms.send(&config, sizeof(config), true);
+                s_transport.send(&config, sizeof(config), true);
                 //LOGD("send config packet");
             }
             else
             {
                 Ground2Air_Connect_Packet ground2air_connect_packet =
                     gs::protocol::makeConnectPacket(s_groundstation_config.deviceId);
-                s_comms.send(&ground2air_connect_packet, sizeof(ground2air_connect_packet), true);
+                s_transport.send(&ground2air_connect_packet, sizeof(ground2air_connect_packet), true);
             }
 
             last_comms_sent_tp = Clock::now();
@@ -619,7 +620,7 @@ static void comms_thread_proc()
                                                      s_groundstation_config.deviceId);
                 if ( s_got_config_packet ) 
                 {
-                    s_comms.send(&data, data.size, true);
+                    s_transport.send(&data, data.size, true);
                     sent_count++;
                 }
                 last_data_sent_tp = Clock::now();
@@ -653,17 +654,17 @@ static void comms_thread_proc()
         std::this_thread::yield();
 
         //pump the comms to avoid packages accumulating
-        s_comms.process();
+        s_transport.process();
 
         bool restoredByFEC;
-        s_comms.receive(rx_data.data.data(), rx_data.size, restoredByFEC);
+        s_transport.receive(rx_data.data.data(), rx_data.size, restoredByFEC);
 #else
         //receive new packets
         do
         {
-            s_comms.process();
+            s_transport.process();
             bool restoredByFEC;
-            if (!s_comms.receive(rx_data.data.data(), rx_data.size, restoredByFEC))
+            if (!s_transport.receive(rx_data.data.data(), rx_data.size, restoredByFEC))
             {
                 std::this_thread::yield();
                 break;
@@ -713,8 +714,8 @@ static void comms_thread_proc()
 
                     s_accept_config_packet = true;
 
-                    s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, s_connected_air_device_id );
-                    s_comms.packetFilter.set_packet_filtering( s_connected_air_device_id, s_groundstation_config.deviceId );
+                    s_transport.getPacketFilter().set_packet_header_data(s_groundstation_config.deviceId, s_connected_air_device_id);
+                    s_transport.getPacketFilter().set_packet_filtering(s_connected_air_device_id, s_groundstation_config.deviceId);
 
                     printf("Connecting to Air Device Id 0x%04x\n", s_connected_air_device_id); 
                 }
@@ -729,7 +730,7 @@ static void comms_thread_proc()
             }
 
             s_last_packet_tp = Clock::now();
-            rx_data.rssi = (int16_t)s_comms.get_input_dBm();
+            rx_data.rssi = (int16_t)s_transport.get_input_dBm();
 
             if ( air2ground_header.type == Air2Ground_Header::Type::Config )
             {
@@ -1106,14 +1107,14 @@ void applyWifiChannel(Ground2Air_Config_Packet& config)
 void applyWifiChannelInstant(Ground2Air_Config_Packet& config)
 {
     config.dataChannel.wifi_channel = s_groundstation_config.wifi_channel;
-    s_comms.setChannel(s_groundstation_config.wifi_channel);
+    s_transport.setChannel(s_groundstation_config.wifi_channel);
 }
 
 //===================================================================================
 //===================================================================================
 void applyGSTxPower(Ground2Air_Config_Packet& config)
 {
-    s_comms.setTxPower(s_groundstation_config.txPower );
+    s_transport.setTxPower(s_groundstation_config.txPower);
 }
 
 //===================================================================================
@@ -2286,7 +2287,7 @@ int run(char* argv[])
             else
             {
                 s_change_channel = Clock::now() + std::chrono::hours(10000);
-                s_comms.setChannel (s_groundstation_config.wifi_channel);
+                s_transport.setChannel(s_groundstation_config.wifi_channel);
             }
         }
 
@@ -2520,7 +2521,7 @@ std::vector<std::string> getInterfacesWithChipset(const std::string& output)
 
 //===================================================================================
 //===================================================================================
-void findRXInterfacesEx(Comms::RX_Descriptor& rx_descriptor)
+void findRXInterfacesEx(gs::core::RXDescriptor& rx_descriptor)
 {
 /*
         "PHY     Interface       Driver          Chipset\n"
@@ -2538,7 +2539,7 @@ void findRXInterfacesEx(Comms::RX_Descriptor& rx_descriptor)
 
 //===================================================================================
 //===================================================================================
-bool findRXInterfaces(Comms::RX_Descriptor& rx_descriptor)
+bool findRXInterfaces(gs::core::RXDescriptor& rx_descriptor)
 {
     rx_descriptor.interfaces.clear();
 
@@ -2617,9 +2618,9 @@ void airUnpair()
     s_last_packet_tp = Clock::now();
     s_last_stats_packet_tp = Clock::now();
 
-    s_comms.packetFilter.set_packet_header_data( s_groundstation_config.deviceId, 0 );
-    s_comms.packetFilter.set_packet_filtering( 0, s_groundstation_config.deviceId );
-    s_comms.reset_rx_state();
+    s_transport.getPacketFilter().set_packet_header_data(s_groundstation_config.deviceId, 0);
+    s_transport.getPacketFilter().set_packet_filtering(0, s_groundstation_config.deviceId);
+    s_transport.reset_rx_state();
 }
 
 //===================================================================================
@@ -2632,10 +2633,10 @@ int main(int argc, const char* argv[])
 
     s_iniFile.read(ini);
 
-    Comms::RX_Descriptor rx_descriptor;
+    gs::core::RXDescriptor rx_descriptor;
     rx_descriptor.interfaces = {"auto"};
 
-    Comms::TX_Descriptor tx_descriptor;
+    gs::core::TXDescriptor tx_descriptor;
     tx_descriptor.interface = "auto";
 
     s_hal.reset(new PI_HAL());
@@ -2990,7 +2991,7 @@ int main(int argc, const char* argv[])
     gpioSetMode(17, PI_OUTPUT);
 #endif
 
-    if (!s_comms.init(rx_descriptor, tx_descriptor))
+    if (!s_transport.init(rx_descriptor, tx_descriptor))
     {
         return -1;
     }
@@ -2999,8 +3000,8 @@ int main(int argc, const char* argv[])
 
     s_isDual = rx_descriptor.interfaces.size() > 1;
 
-    s_comms.setChannel( s_groundstation_config.wifi_channel );
-    s_comms.setTxPower( s_groundstation_config.txPower );
+    s_transport.setChannel(s_groundstation_config.wifi_channel);
+    s_transport.setTxPower(s_groundstation_config.txPower);
 
     gpio_buttons_start();
 

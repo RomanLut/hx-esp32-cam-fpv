@@ -4,6 +4,7 @@
 #include "osd.h"
 #include "main.h"
 #include "Comms.h"
+#include "core/transport.h"
 #include "lodepng.h"
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
@@ -1138,14 +1139,14 @@ void OSDMenu::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    auto rx_descriptor = s_comms.getRXDescriptor();
+    auto rx_descriptor = s_transport.getRXDescriptor();
 
     if ( this->drawMenuItem( "auto", 0) )
     {
         s_groundstation_config.txInterface = "auto";
 
-        s_comms.setTxInterface( rx_descriptor.interfaces[0] );
-        s_comms.setTxPower( s_groundstation_config.txPower );
+        s_transport.setTxInterface(rx_descriptor.interfaces[0]);
+        s_transport.setTxPower(s_groundstation_config.txPower);
 
         saveAndExit = true;
     }
@@ -1155,8 +1156,8 @@ void OSDMenu::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( rx_descriptor.interfaces[i].c_str(), i+1) )
         {
             s_groundstation_config.txInterface = rx_descriptor.interfaces[i];
-            s_comms.setTxInterface( s_groundstation_config.txInterface );
-            s_comms.setTxPower( s_groundstation_config.txPower );
+            s_transport.setTxInterface(s_groundstation_config.txInterface);
+            s_transport.setTxPower(s_groundstation_config.txPower);
             saveAndExit = true;
         }
     }
@@ -1318,7 +1319,7 @@ void OSDMenu::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> GS Wifi Settings" );
     ImGui::Spacing();
-    auto rx_descriptor = s_comms.getRXDescriptor();
+    auto rx_descriptor = s_transport.getRXDescriptor();
 
     {
         char buf[256];
