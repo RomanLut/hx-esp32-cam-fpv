@@ -80,6 +80,14 @@ struct LinkStatusSnapshot
     bool no_ping = true;
 };
 
+struct PeriodicStatsSnapshot
+{
+    size_t sent_count = 0;
+    size_t in_tlm_size = 0;
+    size_t out_tlm_size = 0;
+    size_t total_data = 0;
+};
+
 class GsSessionCore
 {
 public:
@@ -125,6 +133,12 @@ public:
     void onVideoPong(uint8_t pong, Clock::time_point now);
     PingSnapshot consumePingSnapshot();
     LinkStatusSnapshot consumeLinkStatus(Clock::time_point now);
+    void addSentPackets(size_t count);
+    void addInboundTelemetryBytes(size_t bytes);
+    void addOutboundTelemetryBytes(size_t bytes);
+    void addReceivedBytes(size_t bytes);
+    PeriodicStatsSnapshot consumePeriodicStats();
+    uint8_t consumeDataRateSample();
 
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
@@ -141,6 +155,8 @@ private:
     AirStats m_last_air_stats = {};
     AirStatusState m_air_status = {};
     PingSnapshot m_ping_snapshot = {};
+    PeriodicStatsSnapshot m_periodic_stats = {};
+    size_t m_total_data10 = 0;
     uint8_t m_last_sent_ping = 0;
     Clock::time_point m_last_ping_sent_tp = Clock::now();
     uint16_t m_connected_air_device_id = 0;

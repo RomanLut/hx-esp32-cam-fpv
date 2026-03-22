@@ -487,11 +487,6 @@ static void comms_thread_proc()
     Clock::time_point last_comms_sent_tp = Clock::now();
     Clock::time_point last_data_sent_tp = Clock::now();
     Clock::time_point last_frame_decoded = Clock::now();
-    size_t sent_count = 0;
-    size_t in_tlm_size = 0;
-    size_t out_tlm_size = 0;
-    size_t total_data = 0;
-    size_t total_data10 = 0;
 
     gs::core::VideoFrameAssembler videoFrameAssembler;
 
@@ -510,8 +505,9 @@ static void comms_thread_proc()
         {
             const Clock::time_point now = Clock::now();
             const gs::core::LinkStatusSnapshot link_status = s_session_core.consumeLinkStatus(now);
+            const gs::core::PeriodicStatsSnapshot periodic_stats = s_session_core.consumePeriodicStats();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}", 
-                sent_count, total_data, in_tlm_size, out_tlm_size,
+                periodic_stats.sent_count, periodic_stats.total_data, periodic_stats.in_tlm_size, periodic_stats.out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
                 link_status.ping_min_ms,
                 link_status.ping_max_ms,
@@ -519,16 +515,11 @@ static void comms_thread_proc()
                 video_fps,
                 s_session_core.connectedAirDeviceId(), s_groundstation_config.deviceId);
 
-            s_total_data = total_data;
+            s_total_data = periodic_stats.total_data;
 
             s_noPing = link_status.no_ping;
             s_gs_stats.pingMinMS = link_status.ping_min_ms;
             s_gs_stats.pingMaxMS = link_status.ping_max_ms;
-
-            sent_count = 0;
-            in_tlm_size = 0;
-            out_tlm_size = 0;
-            total_data = 0;
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
@@ -540,10 +531,7 @@ static void comms_thread_proc()
 
         if (Clock::now() - last_stats_tp10 >= std::chrono::milliseconds(100))
         {
-            total_data10 /= 1024;
-            if ( total_data10 > 255 ) total_data10 = 255;
-            s_dataSize_stats.add(total_data10);
-            total_data10 = 0;
+            s_dataSize_stats.add(s_session_core.consumeDataRateSample());
             last_stats_tp10 = Clock::now();
         }
 
@@ -569,7 +557,7 @@ static void comms_thread_proc()
 
             last_comms_sent_tp = Clock::now();
             s_session_core.onPingSent(last_comms_sent_tp);
-            sent_count++;
+            s_session_core.addSentPackets(1);
         }
 
         g_CPUTemp.process();
@@ -607,7 +595,7 @@ static void comms_thread_proc()
                 }
 
                 s_tlm_size += n;
-                in_tlm_size += n;
+                s_session_core.addInboundTelemetryBytes(n);
             }
 
             if ( 
@@ -625,7 +613,7 @@ static void comms_thread_proc()
                 if (s_session_core.gotConfigPacket())
                 {
                     s_transport.send(&data, data.size, true);
-                    sent_count++;
+                    s_session_core.addSentPackets(1);
                 }
                 last_data_sent_tp = Clock::now();
                 s_tlm_size = 0;
@@ -731,8 +719,7 @@ static void comms_thread_proc()
 
                 s_session_core.onVideoPong(air2ground_video_packet.pong, Clock::now());
 
-                total_data += rx_data.size;
-                total_data10 += rx_data.size;
+                s_session_core.addReceivedBytes(rx_data.size);
 
                 auto frameResult = videoFrameAssembler.pushPacket(
                     air2ground_video_packet,
@@ -854,11 +841,11 @@ static void comms_thread_proc()
                     break;
                 }
 
-                total_data10 += rx_data.size;
+                s_session_core.addReceivedBytes(rx_data.size);
                 const uint8_t* payload =
                     reinterpret_cast<const uint8_t*>(telemetry_view.packet) + sizeof(Air2Ground_Data_Packet);
                 write(fdUART, payload, telemetry_view.payload_size);
-                out_tlm_size += telemetry_view.payload_size;
+                s_session_core.addOutboundTelemetryBytes(telemetry_view.payload_size);
               }
 #endif
             }
@@ -874,8 +861,7 @@ static void comms_thread_proc()
                     break;
                 }
 
-                total_data += rx_data.size;
-                total_data10 += rx_data.size;
+                s_session_core.addReceivedBytes(rx_data.size);
 
                 const Air2Ground_OSD_Packet& air2ground_osd_packet = *osd_view.packet;
                 syncAirStatusGlobals();

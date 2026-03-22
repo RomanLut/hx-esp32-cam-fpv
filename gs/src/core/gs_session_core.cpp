@@ -317,6 +317,51 @@ LinkStatusSnapshot GsSessionCore::consumeLinkStatus(Clock::time_point now)
     return snapshot;
 }
 
+void GsSessionCore::addSentPackets(size_t count)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_periodic_stats.sent_count += count;
+}
+
+void GsSessionCore::addInboundTelemetryBytes(size_t bytes)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_periodic_stats.in_tlm_size += bytes;
+}
+
+void GsSessionCore::addOutboundTelemetryBytes(size_t bytes)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_periodic_stats.out_tlm_size += bytes;
+}
+
+void GsSessionCore::addReceivedBytes(size_t bytes)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_periodic_stats.total_data += bytes;
+    m_total_data10 += bytes;
+}
+
+PeriodicStatsSnapshot GsSessionCore::consumePeriodicStats()
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    PeriodicStatsSnapshot snapshot = m_periodic_stats;
+    m_periodic_stats = {};
+    return snapshot;
+}
+
+uint8_t GsSessionCore::consumeDataRateSample()
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    size_t sample = m_total_data10 / 1024;
+    if (sample > 255)
+    {
+        sample = 255;
+    }
+    m_total_data10 = 0;
+    return static_cast<uint8_t>(sample);
+}
+
 uint16_t GsSessionCore::connectedAirDeviceId() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
