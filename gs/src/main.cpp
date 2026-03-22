@@ -257,11 +257,29 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 
 static std::thread s_comms_thread;
 
-static std::mutex s_ground2air_config_packet_mutex;
-static Ground2Air_Config_Packet s_ground2air_config_packet;
+struct GroundLinkState
+{
+    std::mutex config_packet_mutex;
+    Ground2Air_Config_Packet config_packet;
 
-static std::mutex s_ground2air_data_packet_mutex;
-static Ground2Air_Data_Packet s_ground2air_data_packet;
+    std::mutex data_packet_mutex;
+    Ground2Air_Data_Packet data_packet;
+
+    AirStats last_air_stats = {};
+    uint16_t connected_air_device_id = 0;
+    bool got_config_packet = false;
+    bool accept_config_packet = false;
+};
+
+static GroundLinkState s_ground_link;
+static std::mutex& s_ground2air_config_packet_mutex = s_ground_link.config_packet_mutex;
+static Ground2Air_Config_Packet& s_ground2air_config_packet = s_ground_link.config_packet;
+static std::mutex& s_ground2air_data_packet_mutex = s_ground_link.data_packet_mutex;
+static Ground2Air_Data_Packet& s_ground2air_data_packet = s_ground_link.data_packet;
+static AirStats& s_last_airStats = s_ground_link.last_air_stats;
+uint16_t& s_connected_air_device_id = s_ground_link.connected_air_device_id;
+bool& s_got_config_packet = s_ground_link.got_config_packet;
+bool& s_accept_config_packet = s_ground_link.accept_config_packet;
 int s_tlm_size = 0;
 
 #ifdef TEST_LATENCY
@@ -315,8 +333,6 @@ Stats s_frameQuality_stats;
 Stats s_dataSize_stats;
 Stats s_queueUsage_stats;
 
-static AirStats s_last_airStats;
-
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
 
@@ -329,14 +345,10 @@ uint32_t s_avi_frameCnt;
 bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 
-uint16_t s_connected_air_device_id = 0;  //air unit this GS is connected to currently.
-
 //connection sequence:
-//1. Start: s_got_config_packet = false, s_accept_config_packet = false
-//2. Got Config packet from camera in comms thread: s_got_config_packet = false, s_accept_config_packet = true. deviceId filtering is estabilished.
-//3. Config packet is accepted by main thread. s_got_config_packet = true, s_accept_config_packet = false. Full communication is started.
-bool s_got_config_packet = false;
-bool s_accept_config_packet = false;
+//1. Start: got_config_packet = false, accept_config_packet = false
+//2. Got Config packet from camera in comms thread: got_config_packet = false, accept_config_packet = true. deviceId filtering is estabilished.
+//3. Config packet is accepted by main thread. got_config_packet = true, accept_config_packet = false. Full communication is started.
 
 bool s_reload_osd_font = false;
 
@@ -399,7 +411,7 @@ void toggleGSRecording(int width, int height, const char* reason)
 
         s_avi_frameCnt = 0;
 
-        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+        const TVMode* v = &vmodes[clamp((int)s_ground_link.config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
 
         if ( width != 0 )
         {
@@ -415,17 +427,17 @@ void toggleGSRecording(int width, int height, const char* reason)
 
         if (s_isOV5640)
         {
-            s_avi_fps = s_ground2air_config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+            s_avi_fps = s_ground_link.config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
         }
         else
         {
-            s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+            s_avi_fps = s_ground_link.config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         }
 
         s_avi_frameWidth = width;
         s_avi_frameHeight = height;
-        s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
-        s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
+        s_avi_ov2640HighFPS = s_ground_link.config_packet.camera.ov2640HighFPS;
+        s_avi_ov5640HighFPS = s_ground_link.config_packet.camera.ov5640HighFPS;
 
         LOGI("{}x{} {}fps\n", s_avi_frameWidth, s_avi_frameHeight, s_avi_fps);
 
@@ -509,7 +521,7 @@ static void comms_thread_proc()
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
                 ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
                 video_fps,
-                s_connected_air_device_id, s_groundstation_config.deviceId);
+                s_ground_link.connected_air_device_id, s_groundstation_config.deviceId);
 
             s_total_data = total_data;
 
@@ -545,13 +557,13 @@ static void comms_thread_proc()
 
         if (Clock::now() - last_comms_sent_tp >= std::chrono::milliseconds(500))
         {
-            if ( s_got_config_packet )
+            if (s_ground_link.got_config_packet)
             {
-                std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
-                auto& config = s_ground2air_config_packet;
+                std::lock_guard<std::mutex> lg(s_ground_link.config_packet_mutex);
+                auto& config = s_ground_link.config_packet;
                 gs::protocol::prepareConfigPacket(config,
                                                  last_sent_ping,
-                                                 s_connected_air_device_id,
+                                                 s_ground_link.connected_air_device_id,
                                                  s_groundstation_config.deviceId);
                 s_transport.send(&config, sizeof(config), true);
                 //LOGD("send config packet");
@@ -573,8 +585,8 @@ static void comms_thread_proc()
 #ifdef USE_MAVLINK
         if (fdUART != -1)
         {
-            std::lock_guard<std::mutex> lg(s_ground2air_data_packet_mutex);
-            auto& data = s_ground2air_data_packet;
+            std::lock_guard<std::mutex> lg(s_ground_link.data_packet_mutex);
+            auto& data = s_ground_link.data_packet;
 
             int frb = GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - s_tlm_size;
             int n = read(fdUART, &(data.payload[s_tlm_size]), frb);
@@ -616,9 +628,9 @@ static void comms_thread_proc()
             {
                 gs::protocol::prepareTelemetryPacket(data,
                                                      s_tlm_size,
-                                                     s_connected_air_device_id,
+                                                     s_ground_link.connected_air_device_id,
                                                      s_groundstation_config.deviceId);
-                if ( s_got_config_packet ) 
+                if (s_ground_link.got_config_packet)
                 {
                     s_transport.send(&data, data.size, true);
                     sent_count++;
