@@ -47,6 +47,22 @@ struct OsdPacketView
     uint16_t osd_data_size = 0;
 };
 
+struct AirStatusState
+{
+    WIFI_Rate curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
+    int wifi_queue_min = 0;
+    int wifi_queue_max = 0;
+    uint8_t curr_quality = 0;
+    uint16_t sd_total_space_gb16 = 0;
+    uint16_t sd_free_space_gb16 = 0;
+    bool air_record = false;
+    bool wifi_ovf = false;
+    bool sd_detected = false;
+    bool sd_slow = false;
+    bool sd_error = false;
+    bool is_ov5640 = false;
+};
+
 class GsSessionCore
 {
 public:
@@ -85,6 +101,8 @@ public:
 
     AirStats& lastAirStats();
     const AirStats& lastAirStats() const;
+    AirStatusState& airStatus();
+    const AirStatusState& airStatus() const;
 
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
@@ -99,6 +117,7 @@ private:
     Ground2Air_Data_Packet m_data_packet = {};
 
     AirStats m_last_air_stats = {};
+    AirStatusState m_air_status = {};
     uint16_t m_connected_air_device_id = 0;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;

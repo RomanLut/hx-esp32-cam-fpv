@@ -187,6 +187,18 @@ bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
     }
 
     m_last_air_stats = osd_packet->stats;
+    m_air_status.curr_wifi_rate = static_cast<WIFI_Rate>(osd_packet->stats.curr_wifi_rate);
+    m_air_status.curr_quality = osd_packet->stats.curr_quality;
+    m_air_status.wifi_queue_min = osd_packet->stats.wifi_queue_min;
+    m_air_status.wifi_queue_max = osd_packet->stats.wifi_queue_max;
+    m_air_status.sd_total_space_gb16 = osd_packet->stats.SDTotalSpaceGB16;
+    m_air_status.sd_free_space_gb16 = osd_packet->stats.SDFreeSpaceGB16;
+    m_air_status.air_record = osd_packet->stats.air_record_state != 0;
+    m_air_status.wifi_ovf = osd_packet->stats.wifi_ovf != 0;
+    m_air_status.sd_detected = osd_packet->stats.SDDetected != 0;
+    m_air_status.sd_error = osd_packet->stats.SDError != 0;
+    m_air_status.sd_slow = osd_packet->stats.SDSlow != 0;
+    m_air_status.is_ov5640 = osd_packet->stats.isOV5640 != 0;
 
     out_view.packet = osd_packet;
     out_view.osd_data_size = osd_packet->size - (sizeof(Air2Ground_OSD_Packet) - 1);
@@ -237,6 +249,16 @@ AirStats& GsSessionCore::lastAirStats()
 const AirStats& GsSessionCore::lastAirStats() const
 {
     return m_last_air_stats;
+}
+
+AirStatusState& GsSessionCore::airStatus()
+{
+    return m_air_status;
+}
+
+const AirStatusState& GsSessionCore::airStatus() const
+{
+    return m_air_status;
 }
 
 uint16_t GsSessionCore::connectedAirDeviceId() const

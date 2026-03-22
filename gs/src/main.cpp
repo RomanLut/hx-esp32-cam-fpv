@@ -264,6 +264,7 @@ static Ground2Air_Config_Packet& s_ground2air_config_packet = s_session_core.con
 static std::mutex& s_ground2air_data_packet_mutex = s_session_core.dataPacketMutex();
 static Ground2Air_Data_Packet& s_ground2air_data_packet = s_session_core.dataPacket();
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
+static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
 int s_tlm_size = 0;
 
 #ifdef TEST_LATENCY
@@ -280,21 +281,21 @@ float video_fps = 0;
 bool had_loss = false;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
-WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
-int s_wifi_queue_min = 0;
-int s_wifi_queue_max = 0;
-uint8_t s_curr_quality = 0;
+WIFI_Rate& s_curr_wifi_rate = s_air_status.curr_wifi_rate;
+int& s_wifi_queue_min = s_air_status.wifi_queue_min;
+int& s_wifi_queue_max = s_air_status.wifi_queue_max;
+uint8_t& s_curr_quality = s_air_status.curr_quality;
 bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
-uint16_t s_SDTotalSpaceGB16 = 0;
-uint16_t s_SDFreeSpaceGB16 = 0;
-bool s_air_record = false;
-bool s_wifi_ovf =false;
-bool s_SDDetected = false;
-bool s_SDSlow = false;
-bool s_SDError = false;
-bool s_isOV5640 = false;
+uint16_t& s_SDTotalSpaceGB16 = s_air_status.sd_total_space_gb16;
+uint16_t& s_SDFreeSpaceGB16 = s_air_status.sd_free_space_gb16;
+bool& s_air_record = s_air_status.air_record;
+bool& s_wifi_ovf = s_air_status.wifi_ovf;
+bool& s_SDDetected = s_air_status.sd_detected;
+bool& s_SDSlow = s_air_status.sd_slow;
+bool& s_SDError = s_air_status.sd_error;
+bool& s_isOV5640 = s_air_status.is_ov5640;
 bool s_isDual = false;
 
 uint64_t s_GSSDTotalSpaceBytes = 0;
@@ -879,20 +880,6 @@ static void comms_thread_proc()
                 total_data10 += rx_data.size;
 
                 const Air2Ground_OSD_Packet& air2ground_osd_packet = *osd_view.packet;
-
-                //TODO: remove all these, use s_last_airStats
-                s_curr_wifi_rate = (WIFI_Rate)air2ground_osd_packet.stats.curr_wifi_rate;
-                s_curr_quality = air2ground_osd_packet.stats.curr_quality;
-                s_wifi_queue_min = air2ground_osd_packet.stats.wifi_queue_min;
-                s_wifi_queue_max = air2ground_osd_packet.stats.wifi_queue_max;
-                s_SDTotalSpaceGB16 = air2ground_osd_packet.stats.SDTotalSpaceGB16;
-                s_SDFreeSpaceGB16 = air2ground_osd_packet.stats.SDFreeSpaceGB16;
-                s_air_record = air2ground_osd_packet.stats.air_record_state != 0;
-                s_wifi_ovf = air2ground_osd_packet.stats.wifi_ovf !=0;
-                s_SDDetected = air2ground_osd_packet.stats.SDDetected != 0;
-                s_SDError = air2ground_osd_packet.stats.SDError != 0;
-                s_SDSlow = air2ground_osd_packet.stats.SDSlow != 0;
-                s_isOV5640 = air2ground_osd_packet.stats.isOV5640 != 0;
 
                 if ((osd_view.osd_data_size >= 2) && (osd_view.osd_data_size <= MAX_OSD_PAYLOAD_SIZE))
                 {
