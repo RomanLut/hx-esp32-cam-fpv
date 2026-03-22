@@ -261,12 +261,9 @@ static std::thread s_comms_thread;
 static gs::core::GsSessionCore s_session_core;
 static std::mutex& s_ground2air_config_packet_mutex = s_session_core.configPacketMutex();
 static Ground2Air_Config_Packet& s_ground2air_config_packet = s_session_core.configPacket();
-static std::mutex& s_ground2air_data_packet_mutex = s_session_core.dataPacketMutex();
-static Ground2Air_Data_Packet& s_ground2air_data_packet = s_session_core.dataPacket();
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
 static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
 static gs::core::FrameStatsState& s_frame_state = s_session_core.frameStats();
-int s_tlm_size = 0;
 
 #ifdef TEST_LATENCY
 static uint32_t s_test_latency_gpio_value = 0;
@@ -486,7 +483,6 @@ static void comms_thread_proc()
     Clock::time_point last_stats_tp = Clock::now();
     Clock::time_point last_stats_tp10 = Clock::now();
     Clock::time_point last_comms_sent_tp = Clock::now();
-    Clock::time_point last_data_sent_tp = Clock::now();
 
     gs::core::VideoFrameAssembler videoFrameAssembler;
 
@@ -537,22 +533,14 @@ static void comms_thread_proc()
 
         if (Clock::now() - last_comms_sent_tp >= std::chrono::milliseconds(500))
         {
-            if (s_session_core.gotConfigPacket())
+            const gs::core::ControlPacketView control_packet = s_session_core.buildControlPacket(s_groundstation_config.deviceId);
+            if (control_packet.type == gs::core::ControlPacketType::Config)
             {
-                std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
-                auto& config = s_ground2air_config_packet;
-                gs::protocol::prepareConfigPacket(config,
-                                                 s_session_core.currentPingToken(),
-                                                 s_session_core.connectedAirDeviceId(),
-                                                 s_groundstation_config.deviceId);
-                s_transport.send(&config, sizeof(config), true);
-                //LOGD("send config packet");
+                s_transport.send(&control_packet.config_packet, sizeof(control_packet.config_packet), true);
             }
-            else
+            else if (control_packet.type == gs::core::ControlPacketType::Connect)
             {
-                Ground2Air_Connect_Packet ground2air_connect_packet =
-                    gs::protocol::makeConnectPacket(s_groundstation_config.deviceId);
-                s_transport.send(&ground2air_connect_packet, sizeof(ground2air_connect_packet), true);
+                s_transport.send(&control_packet.connect_packet, sizeof(control_packet.connect_packet), true);
             }
 
             last_comms_sent_tp = Clock::now();
@@ -565,17 +553,15 @@ static void comms_thread_proc()
 #ifdef USE_MAVLINK
         if (fdUART != -1)
         {
-            std::lock_guard<std::mutex> lg(s_ground2air_data_packet_mutex);
-            auto& data = s_ground2air_data_packet;
-
-            int frb = GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - s_tlm_size;
-            int n = read(fdUART, &(data.payload[s_tlm_size]), frb);
+            const int frb = static_cast<int>(s_session_core.telemetryFreeBytes());
+            uint8_t* payload_write_ptr = s_session_core.telemetryPayloadWritePtr();
+            int n = read(fdUART, payload_write_ptr, frb);
 
             bool gotRCPacket = false;
 
             if ( n > 0 )
             {
-                uint8_t* dPtr = (uint8_t*)(&data.payload[s_tlm_size]);
+                uint8_t* dPtr = payload_write_ptr;
                 for ( int i = 0; i < n; i++ )
                 {
                     mavlinkParserIn.processByte(*dPtr++);
@@ -594,29 +580,21 @@ static void comms_thread_proc()
                     }
                 }
 
-                s_tlm_size += n;
+                s_session_core.appendTelemetryBytes(n);
                 s_session_core.addInboundTelemetryBytes(n);
             }
 
-            if ( 
-                (s_tlm_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
-                gotRCPacket ||
-                ( 
-                    ( (s_tlm_size > 0 ) && (Clock::now() - last_data_sent_tp) >= std::chrono::milliseconds(100)) 
-                )
-            )
+            const gs::core::TelemetryTxDecision telemetry_tx =
+                s_session_core.buildTelemetryTxDecision(gotRCPacket,
+                                                        Clock::now(),
+                                                        s_groundstation_config.deviceId);
+            if (telemetry_tx.should_flush)
             {
-                gs::protocol::prepareTelemetryPacket(data,
-                                                     s_tlm_size,
-                                                     s_session_core.connectedAirDeviceId(),
-                                                     s_groundstation_config.deviceId);
-                if (s_session_core.gotConfigPacket())
+                if (telemetry_tx.should_send)
                 {
-                    s_transport.send(&data, data.size, true);
+                    s_transport.send(&telemetry_tx.packet, telemetry_tx.packet.size, true);
                     s_session_core.addSentPackets(1);
                 }
-                last_data_sent_tp = Clock::now();
-                s_tlm_size = 0;
             }
         }
 #endif

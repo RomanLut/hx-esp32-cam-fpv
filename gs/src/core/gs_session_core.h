@@ -29,6 +29,27 @@ struct SessionPacketDecision
     bool accepted_connect_config = false;
 };
 
+enum class ControlPacketType
+{
+    None,
+    Connect,
+    Config
+};
+
+struct ControlPacketView
+{
+    ControlPacketType type = ControlPacketType::None;
+    Ground2Air_Config_Packet config_packet = {};
+    Ground2Air_Connect_Packet connect_packet = {};
+};
+
+struct TelemetryTxDecision
+{
+    bool should_flush = false;
+    bool should_send = false;
+    Ground2Air_Data_Packet packet = {};
+};
+
 struct TelemetryPacketView
 {
     const Air2Ground_Data_Packet* packet = nullptr;
@@ -128,6 +149,14 @@ public:
                            OsdPacketView& out_view);
 
     bool promoteAcceptedConfig(Ground2Air_Config_Packet& config_out);
+    ControlPacketView buildControlPacket(uint16_t gs_device_id) const;
+    size_t telemetryBufferedSize() const;
+    size_t telemetryFreeBytes() const;
+    uint8_t* telemetryPayloadWritePtr();
+    void appendTelemetryBytes(size_t bytes);
+    TelemetryTxDecision buildTelemetryTxDecision(bool got_rc_packet,
+                                                 Clock::time_point now,
+                                                 uint16_t gs_device_id);
 
     std::mutex& configPacketMutex();
     Ground2Air_Config_Packet& configPacket();
@@ -166,10 +195,10 @@ public:
 
 private:
     mutable std::mutex m_state_mutex;
-    std::mutex m_config_packet_mutex;
+    mutable std::mutex m_config_packet_mutex;
     Ground2Air_Config_Packet m_config_packet = {};
 
-    std::mutex m_data_packet_mutex;
+    mutable std::mutex m_data_packet_mutex;
     Ground2Air_Data_Packet m_data_packet = {};
 
     AirStats m_last_air_stats = {};
@@ -178,9 +207,11 @@ private:
     PeriodicStatsSnapshot m_periodic_stats = {};
     FrameStatsState m_frame_stats = {};
     size_t m_total_data10 = 0;
+    size_t m_telemetry_buffered_size = 0;
     uint8_t m_last_sent_ping = 0;
     Clock::time_point m_last_ping_sent_tp = Clock::now();
     Clock::time_point m_last_frame_completed_tp = Clock::now();
+    Clock::time_point m_last_data_sent_tp = Clock::now();
     uint16_t m_connected_air_device_id = 0;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;

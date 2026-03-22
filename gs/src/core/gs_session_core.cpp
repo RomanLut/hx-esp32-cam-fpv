@@ -10,8 +10,10 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
         m_connected_air_device_id = 0;
         m_got_config_packet = false;
         m_accept_config_packet = false;
+        m_telemetry_buffered_size = 0;
         m_last_sent_ping = 0;
         m_last_ping_sent_tp = now;
+        m_last_data_sent_tp = now;
         m_ping_snapshot = {};
         m_ping_snapshot.last_received_tp = now;
     }
@@ -223,6 +225,98 @@ bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
     std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
     config_out = m_config_packet;
     return true;
+}
+
+ControlPacketView GsSessionCore::buildControlPacket(uint16_t gs_device_id) const
+{
+    ControlPacketView view;
+
+    std::lock_guard<std::mutex> state_lock(m_state_mutex);
+    if (!m_got_config_packet)
+    {
+        view.type = ControlPacketType::Connect;
+        view.connect_packet = protocol::makeConnectPacket(gs_device_id);
+        return view;
+    }
+
+    view.type = ControlPacketType::Config;
+    {
+        std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
+        view.config_packet = m_config_packet;
+    }
+    protocol::prepareConfigPacket(view.config_packet,
+                                  m_last_sent_ping,
+                                  m_connected_air_device_id,
+                                  gs_device_id);
+    return view;
+}
+
+size_t GsSessionCore::telemetryBufferedSize() const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return m_telemetry_buffered_size;
+}
+
+size_t GsSessionCore::telemetryFreeBytes() const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - m_telemetry_buffered_size;
+}
+
+uint8_t* GsSessionCore::telemetryPayloadWritePtr()
+{
+    std::lock_guard<std::mutex> data_lock(m_data_packet_mutex);
+    std::lock_guard<std::mutex> state_lock(m_state_mutex);
+    return &m_data_packet.payload[m_telemetry_buffered_size];
+}
+
+void GsSessionCore::appendTelemetryBytes(size_t bytes)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_telemetry_buffered_size += bytes;
+}
+
+TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
+                                                            Clock::time_point now,
+                                                            uint16_t gs_device_id)
+{
+    TelemetryTxDecision decision;
+
+    size_t buffered_size = 0;
+    uint16_t connected_air_device_id = 0;
+    bool got_config_packet = false;
+    {
+        std::lock_guard<std::mutex> state_lock(m_state_mutex);
+        buffered_size = m_telemetry_buffered_size;
+        got_config_packet = m_got_config_packet;
+        connected_air_device_id = m_connected_air_device_id;
+
+        decision.should_flush =
+            (buffered_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
+            got_rc_packet ||
+            ((buffered_size > 0) && ((now - m_last_data_sent_tp) >= std::chrono::milliseconds(100)));
+
+        if (!decision.should_flush)
+        {
+            return decision;
+        }
+
+        m_last_data_sent_tp = now;
+        m_telemetry_buffered_size = 0;
+    }
+
+    if (!got_config_packet)
+    {
+        return decision;
+    }
+
+    {
+        std::lock_guard<std::mutex> data_lock(m_data_packet_mutex);
+        decision.packet = m_data_packet;
+    }
+    protocol::prepareTelemetryPacket(decision.packet, buffered_size, connected_air_device_id, gs_device_id);
+    decision.should_send = true;
+    return decision;
 }
 
 std::mutex& GsSessionCore::configPacketMutex()
