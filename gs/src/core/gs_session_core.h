@@ -8,6 +8,7 @@
 #include "core/gs_protocol.h"
 #include "core/transport.h"
 #include "packets.h"
+#include "stats.h"
 
 namespace gs::core
 {
@@ -88,6 +89,16 @@ struct PeriodicStatsSnapshot
     size_t total_data = 0;
 };
 
+struct FrameStatsState
+{
+    int lost_frame_count = 0;
+    Stats frame_stats;
+    Stats frame_parts_stats;
+    Stats frame_time_stats;
+    Stats frame_quality_stats;
+    Stats queue_usage_stats;
+};
+
 class GsSessionCore
 {
 public:
@@ -139,6 +150,15 @@ public:
     void addReceivedBytes(size_t bytes);
     PeriodicStatsSnapshot consumePeriodicStats();
     uint8_t consumeDataRateSample();
+    void onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue_usage);
+    void onLostWholeFrames(int lost_whole_frames);
+    void onCompletedFrame(bool restored_by_fec,
+                          uint8_t completed_part_index,
+                          uint8_t quality,
+                          uint8_t queue_usage,
+                          Clock::time_point now);
+    FrameStatsState& frameStats();
+    const FrameStatsState& frameStats() const;
 
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
@@ -156,9 +176,11 @@ private:
     AirStatusState m_air_status = {};
     PingSnapshot m_ping_snapshot = {};
     PeriodicStatsSnapshot m_periodic_stats = {};
+    FrameStatsState m_frame_stats = {};
     size_t m_total_data10 = 0;
     uint8_t m_last_sent_ping = 0;
     Clock::time_point m_last_ping_sent_tp = Clock::now();
+    Clock::time_point m_last_frame_completed_tp = Clock::now();
     uint16_t m_connected_air_device_id = 0;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;

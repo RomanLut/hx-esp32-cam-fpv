@@ -362,6 +362,56 @@ uint8_t GsSessionCore::consumeDataRateSample()
     return static_cast<uint8_t>(sample);
 }
 
+void GsSessionCore::onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue_usage)
+{
+    m_frame_stats.lost_frame_count++;
+    m_frame_stats.frame_stats.add(0);
+    m_frame_stats.frame_time_stats.add(0);
+    m_frame_stats.frame_quality_stats.add(0);
+    m_frame_stats.frame_parts_stats.add(lost_partial_parts);
+    m_frame_stats.queue_usage_stats.add(queue_usage);
+}
+
+void GsSessionCore::onLostWholeFrames(int lost_whole_frames)
+{
+    m_frame_stats.lost_frame_count += lost_whole_frames;
+    m_frame_stats.frame_stats.addMultiple(0, lost_whole_frames);
+    m_frame_stats.frame_time_stats.addMultiple(0, lost_whole_frames);
+    m_frame_stats.frame_quality_stats.addMultiple(0, lost_whole_frames);
+    m_frame_stats.frame_parts_stats.addMultiple(0, lost_whole_frames);
+    m_frame_stats.queue_usage_stats.addMultiple(0, lost_whole_frames);
+}
+
+void GsSessionCore::onCompletedFrame(bool restored_by_fec,
+                                     uint8_t completed_part_index,
+                                     uint8_t quality,
+                                     uint8_t queue_usage,
+                                     Clock::time_point now)
+{
+    m_frame_stats.frame_stats.add(restored_by_fec ? 2 : 4);
+    m_frame_stats.frame_parts_stats.add(completed_part_index);
+    m_frame_stats.frame_quality_stats.add(quality);
+    m_frame_stats.queue_usage_stats.add(queue_usage);
+
+    auto frame_period = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_frame_completed_tp).count();
+    if (frame_period > 100)
+    {
+        frame_period = 100;
+    }
+    m_frame_stats.frame_time_stats.add(static_cast<uint8_t>(frame_period));
+    m_last_frame_completed_tp = now;
+}
+
+FrameStatsState& GsSessionCore::frameStats()
+{
+    return m_frame_stats;
+}
+
+const FrameStatsState& GsSessionCore::frameStats() const
+{
+    return m_frame_stats;
+}
+
 uint16_t GsSessionCore::connectedAirDeviceId() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);

@@ -265,6 +265,7 @@ static std::mutex& s_ground2air_data_packet_mutex = s_session_core.dataPacketMut
 static Ground2Air_Data_Packet& s_ground2air_data_packet = s_session_core.dataPacket();
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
 static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
+static gs::core::FrameStatsState& s_frame_state = s_session_core.frameStats();
 int s_tlm_size = 0;
 
 #ifdef TEST_LATENCY
@@ -280,7 +281,7 @@ mINI::INIFile s_iniFile("gs.ini");
 float video_fps = 0;
 bool had_loss = false;
 int s_total_data = 0;
-int s_lost_frame_count = 0;
+int& s_lost_frame_count = s_frame_state.lost_frame_count;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
 int s_wifi_queue_min = 0;
 int s_wifi_queue_max = 0;
@@ -311,12 +312,12 @@ Clock::time_point s_last_stats_packet_tp = Clock::now();
 
 Clock::time_point s_last_rc_command = Clock::now();
 
-Stats s_frame_stats;
-Stats s_frameParts_stats;
-Stats s_frameTime_stats;
-Stats s_frameQuality_stats;
+Stats& s_frame_stats = s_frame_state.frame_stats;
+Stats& s_frameParts_stats = s_frame_state.frame_parts_stats;
+Stats& s_frameTime_stats = s_frame_state.frame_time_stats;
+Stats& s_frameQuality_stats = s_frame_state.frame_quality_stats;
 Stats s_dataSize_stats;
-Stats s_queueUsage_stats;
+Stats& s_queueUsage_stats = s_frame_state.queue_usage_stats;
 
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
@@ -486,7 +487,6 @@ static void comms_thread_proc()
     Clock::time_point last_stats_tp10 = Clock::now();
     Clock::time_point last_comms_sent_tp = Clock::now();
     Clock::time_point last_data_sent_tp = Clock::now();
-    Clock::time_point last_frame_decoded = Clock::now();
 
     gs::core::VideoFrameAssembler videoFrameAssembler;
 
@@ -729,22 +729,12 @@ static void comms_thread_proc()
 
                 if (frameResult.lostPartialFrame)
                 {
-                    s_lost_frame_count++;
-                    s_frame_stats.add(0);
-                    s_frameTime_stats.add(0);
-                    s_frameQuality_stats.add(0);
-                    s_frameParts_stats.add(frameResult.lostPartialParts);
-                    s_queueUsage_stats.add(s_wifi_queue_max);
+                    s_session_core.onLostPartialFrame(frameResult.lostPartialParts, s_wifi_queue_max);
                 }
 
                 if (frameResult.lostWholeFrames > 0)
                 {
-                    s_lost_frame_count += frameResult.lostWholeFrames;
-                    s_frame_stats.addMultiple(0, frameResult.lostWholeFrames);
-                    s_frameTime_stats.addMultiple(0, frameResult.lostWholeFrames);
-                    s_frameQuality_stats.addMultiple(0, frameResult.lostWholeFrames);
-                    s_frameParts_stats.addMultiple(0, frameResult.lostWholeFrames);
-                    s_queueUsage_stats.addMultiple(0, frameResult.lostWholeFrames);
+                    s_session_core.onLostWholeFrames(frameResult.lostWholeFrames);
                 }
 
                 if (frameResult.completedFrame)
@@ -812,17 +802,11 @@ static void comms_thread_proc()
                         send_data_to_udp(s_groundstation_config.socket_fd,video_frame_data,video_frame.size());
                     }
 
-                    s_frame_stats.add(frameResult.completedRestoredByFec ? 2 : 4);
-                    s_frameParts_stats.add(frameResult.completedPartIndex);
-                    s_frameQuality_stats.add(s_curr_quality);
-                    s_queueUsage_stats.add(s_curr_quality);
-
-                    auto current_time = Clock::now();
-                    auto duration_since_last_frame = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_frame_decoded);
-                    auto milliseconds_since_last_frame = duration_since_last_frame.count();
-                    if( milliseconds_since_last_frame > 100) milliseconds_since_last_frame = 100;
-                    s_frameTime_stats.add((uint8_t)milliseconds_since_last_frame);
-                    last_frame_decoded = current_time;
+                    s_session_core.onCompletedFrame(frameResult.completedRestoredByFec,
+                                                    frameResult.completedPartIndex,
+                                                    s_curr_quality,
+                                                    s_curr_quality,
+                                                    Clock::now());
                 }
 
             }
