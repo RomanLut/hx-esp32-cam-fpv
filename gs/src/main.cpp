@@ -37,6 +37,7 @@
 
 #include "lodepng.h"
 #include "core/gs_protocol.h"
+#include "core/video_frame_assembler.h"
 
 #ifdef TEST_LATENCY
 extern "C"
@@ -485,10 +486,7 @@ static void comms_thread_proc()
     size_t total_data = 0;
     size_t total_data10 = 0;
 
-    std::vector<uint8_t> video_frame;
-    uint32_t video_frame_index = 0;
-    uint8_t video_next_part_index = 0;
-    bool video_restoredByFEC = false;
+    gs::core::VideoFrameAssembler videoFrameAssembler;
 
     struct RX_Data
     {
@@ -741,12 +739,12 @@ static void comms_thread_proc()
             {
                 if (packet_size > rx_data.size)
                 {
-                    LOGE("Video frame {}: data too big: {} > {}", video_frame_index, packet_size, rx_data.size);
+                    LOGE("Video frame {}: data too big: {} > {}", videoFrameAssembler.currentFrameIndex(), packet_size, rx_data.size);
                     break;
                 }
                 if (packet_size < sizeof(Air2Ground_Video_Packet))
                 {
-                    LOGE("Video frame {}: data too small: {} > {}", video_frame_index, packet_size, sizeof(Air2Ground_Video_Packet));
+                    LOGE("Video frame {}: data too small: {} > {}", videoFrameAssembler.currentFrameIndex(), packet_size, sizeof(Air2Ground_Video_Packet));
                     break;
                 }
 
@@ -772,135 +770,109 @@ static void comms_thread_proc()
 
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
-                //LOGI("OK Video frame {}, {} {} - CRC OK {}. {}", air2ground_video_packet.frame_index, (int)air2ground_video_packet.part_index, payload_size, crc, rx_queue.size());
 
-                if ((air2ground_video_packet.frame_index + 200u < video_frame_index) ||                 //frame from the distant past? TX was restarted
-                    (air2ground_video_packet.frame_index > video_frame_index)) //frame from the future and we still have other frames enqueued? Stale data
+                auto frameResult = videoFrameAssembler.pushPacket(
+                    air2ground_video_packet,
+                    rx_data.data.data() + sizeof(Air2Ground_Video_Packet),
+                    payload_size,
+                    restoredByFEC);
+
+                if (frameResult.lostPartialFrame)
                 {
-                    //if (video_next_part_index > 0) //incomplete frame
-                    //   s_decoder.decode_data(video_frame.data(), video_frame.size());
-
-                    //if (video_next_part_index > 0)
-                    //    LOGE("Aborting video frame {}, {}", video_frame_index, video_next_part_index);
-
-                    video_frame.clear();
-
-                    if ( video_next_part_index != 0 )
-                    {
-                        //video_frame_index - not all parts are received, frame is lost
-                        s_lost_frame_count++;
-                        s_frame_stats.add(0);
-                        s_frameTime_stats.add(0);
-                        s_frameQuality_stats.add(0);
-                        s_frameParts_stats.add(video_next_part_index);
-                        s_queueUsage_stats.add(s_wifi_queue_max);
-                    }
-
-                    //frames [video_frame_index + 1 ... untill air2ground_video_packet.frame_index) are lost completely
-                    int df = air2ground_video_packet.frame_index - video_frame_index;
-                    if ( df > 1)
-                    {
-                        df--;
-                        s_lost_frame_count += df;
-                        s_frame_stats.addMultiple( 0, df );
-                        s_frameTime_stats.addMultiple( 0, df );
-                        s_frameQuality_stats.addMultiple( 0, df );
-                        s_frameParts_stats.addMultiple( 0, df );
-                        s_queueUsage_stats.addMultiple(0,df);
-                    }
-
-                    video_frame_index = air2ground_video_packet.frame_index;
-                    video_next_part_index = 0;
-                    video_restoredByFEC = false;
+                    s_lost_frame_count++;
+                    s_frame_stats.add(0);
+                    s_frameTime_stats.add(0);
+                    s_frameQuality_stats.add(0);
+                    s_frameParts_stats.add(frameResult.lostPartialParts);
+                    s_queueUsage_stats.add(s_wifi_queue_max);
                 }
-                if (air2ground_video_packet.frame_index == video_frame_index && air2ground_video_packet.part_index == video_next_part_index)
-                {
-                    video_restoredByFEC |= restoredByFEC;
-                    video_next_part_index++;
-                    size_t offset = video_frame.size();
-                    video_frame.resize(offset + payload_size);
-                    memcpy(video_frame.data() + offset, rx_data.data.data() + sizeof(Air2Ground_Video_Packet), payload_size);
 
-                    if (air2ground_video_packet.last_part != 0)
+                if (frameResult.lostWholeFrames > 0)
+                {
+                    s_lost_frame_count += frameResult.lostWholeFrames;
+                    s_frame_stats.addMultiple(0, frameResult.lostWholeFrames);
+                    s_frameTime_stats.addMultiple(0, frameResult.lostWholeFrames);
+                    s_frameQuality_stats.addMultiple(0, frameResult.lostWholeFrames);
+                    s_frameParts_stats.addMultiple(0, frameResult.lostWholeFrames);
+                    s_queueUsage_stats.addMultiple(0, frameResult.lostWholeFrames);
+                }
+
+                if (frameResult.completedFrame)
+                {
+                    std::vector<uint8_t>& video_frame = *frameResult.frameData;
+                    uint8_t* video_frame_data = video_frame.empty() ? nullptr : &video_frame[0];
+                    s_decoder.decode_data(video_frame_data, video_frame.size());
+                    if(s_groundstation_config.record)
                     {
-                        //LOGI("Received frame {}, {}, size {}", video_frame_index, video_next_part_index, video_frame.size());
-                        s_decoder.decode_data(video_frame.data(), video_frame.size());
-                        if(s_groundstation_config.record)
-                        {
 #ifdef WRITE_RAW_MJPEG_STREAM                            
-                            std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                            fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
+                        std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+                        fwrite(video_frame_data,video_frame.size(),1,s_groundstation_config.record_file);
 #else
 
-                            int width, height;
-                            if ( getJPEGDimensions(video_frame.data(), width, height, 2048) )
-                            {
-                                //LOGI("Received frame {}, {}", width, height);
-
-                                if ( 
-                                    (width != s_avi_frameWidth) || 
-                                    (height != s_avi_frameHeight) ||
-                                    ( s_avi_ov2640HighFPS != s_ground2air_config_packet.camera.ov2640HighFPS ) ||
-                                    ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
-                                )
-                                {
-                                    toggleGSRecording(0, 0, "auto_restart_resolution_change_stop"); //stop
-                                    toggleGSRecording(width, height, "auto_restart_resolution_change_start"); //start
-                                }
-
-                                {
-                                    std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                                    uint16_t jpegSize = video_frame.size();
-                                    uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
-                                    size_t jpegSize1 = jpegSize + filler;
-                                    uint8_t buf[8];
-                                    memcpy(buf, dcBuf, 4); 
-                                    memcpy(&buf[4], &jpegSize1, 4);
-
-                                    fwrite(buf,8,1,s_groundstation_config.record_file);
-                                    fwrite(video_frame.data(),video_frame.size(),1,s_groundstation_config.record_file);
-
-                                    memset(buf, 0, 4); 
-                                    fwrite(buf,filler,1,s_groundstation_config.record_file);
-                                    
-                                    buildAviIdx(jpegSize1); // save avi index for frame
-                                    s_avi_frameCnt++;
-                                }
-
-                                if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
-                                {
-                                    toggleGSRecording(0, 0, "auto_split_stop"); //stop
-                                    toggleGSRecording(width, height, "auto_split_start"); //start
-                                }
-                            }
-                            else
-                            {
-                                LOGI("Received frame - unknown size!");
-                            }
-#endif                            
-                        }
-
-                        if(s_groundstation_config.socket_fd>0)
+                        int width, height;
+                        if ( getJPEGDimensions(video_frame_data, width, height, 2048) )
                         {
-                            send_data_to_udp(s_groundstation_config.socket_fd,video_frame.data(),video_frame.size());
+                            //LOGI("Received frame {}, {}", width, height);
+
+                            if ( 
+                                (width != s_avi_frameWidth) || 
+                                (height != s_avi_frameHeight) ||
+                                ( s_avi_ov2640HighFPS != s_ground2air_config_packet.camera.ov2640HighFPS ) ||
+                                ( s_avi_ov5640HighFPS != s_ground2air_config_packet.camera.ov5640HighFPS )
+                            )
+                            {
+                                toggleGSRecording(0, 0, "auto_restart_resolution_change_stop"); //stop
+                                toggleGSRecording(width, height, "auto_restart_resolution_change_start"); //start
+                            }
+
+                            {
+                                std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
+                                uint16_t jpegSize = video_frame.size();
+                                uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
+                                size_t jpegSize1 = jpegSize + filler;
+                                uint8_t buf[8];
+                                memcpy(buf, dcBuf, 4); 
+                                memcpy(&buf[4], &jpegSize1, 4);
+
+                                fwrite(buf,8,1,s_groundstation_config.record_file);
+                                fwrite(video_frame_data,video_frame.size(),1,s_groundstation_config.record_file);
+
+                                memset(buf, 0, 4); 
+                                fwrite(buf,filler,1,s_groundstation_config.record_file);
+                                
+                                buildAviIdx(jpegSize1); // save avi index for frame
+                                s_avi_frameCnt++;
+                            }
+
+                            if ( (s_avi_frameCnt == (DVR_MAX_FRAMES-1)) || (moviSize > 50*1024*1024))
+                            {
+                                toggleGSRecording(0, 0, "auto_split_stop"); //stop
+                                toggleGSRecording(width, height, "auto_split_start"); //start
+                            }
                         }
-                        video_next_part_index = 0;
-                        video_frame.clear();
-
-                        s_frame_stats.add(video_restoredByFEC ? 2 : 4);
-                        s_frameParts_stats.add(air2ground_video_packet.part_index);
-                        s_frameQuality_stats.add(s_curr_quality);
-                        s_queueUsage_stats.add(s_curr_quality);
-
-                        auto current_time = Clock::now();
-                        auto duration_since_last_frame = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_frame_decoded);
-                        auto milliseconds_since_last_frame = duration_since_last_frame.count();
-                        if( milliseconds_since_last_frame > 100) milliseconds_since_last_frame = 100;
-                        s_frameTime_stats.add((uint8_t)milliseconds_since_last_frame);
-                        last_frame_decoded = current_time;
-
-                        video_restoredByFEC = false;
+                        else
+                        {
+                            LOGI("Received frame - unknown size!");
+                        }
+#endif                            
                     }
+
+                    if(s_groundstation_config.socket_fd>0)
+                    {
+                        send_data_to_udp(s_groundstation_config.socket_fd,video_frame_data,video_frame.size());
+                    }
+
+                    s_frame_stats.add(frameResult.completedRestoredByFec ? 2 : 4);
+                    s_frameParts_stats.add(frameResult.completedPartIndex);
+                    s_frameQuality_stats.add(s_curr_quality);
+                    s_queueUsage_stats.add(s_curr_quality);
+
+                    auto current_time = Clock::now();
+                    auto duration_since_last_frame = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - last_frame_decoded);
+                    auto milliseconds_since_last_frame = duration_since_last_frame.count();
+                    if( milliseconds_since_last_frame > 100) milliseconds_since_last_frame = 100;
+                    s_frameTime_stats.add((uint8_t)milliseconds_since_last_frame);
+                    last_frame_decoded = current_time;
                 }
 
             }
