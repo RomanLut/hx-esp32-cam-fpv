@@ -281,21 +281,21 @@ float video_fps = 0;
 bool had_loss = false;
 int s_total_data = 0;
 int s_lost_frame_count = 0;
-WIFI_Rate& s_curr_wifi_rate = s_air_status.curr_wifi_rate;
-int& s_wifi_queue_min = s_air_status.wifi_queue_min;
-int& s_wifi_queue_max = s_air_status.wifi_queue_max;
-uint8_t& s_curr_quality = s_air_status.curr_quality;
+WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
+int s_wifi_queue_min = 0;
+int s_wifi_queue_max = 0;
+uint8_t s_curr_quality = 0;
 bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
-uint16_t& s_SDTotalSpaceGB16 = s_air_status.sd_total_space_gb16;
-uint16_t& s_SDFreeSpaceGB16 = s_air_status.sd_free_space_gb16;
-bool& s_air_record = s_air_status.air_record;
-bool& s_wifi_ovf = s_air_status.wifi_ovf;
-bool& s_SDDetected = s_air_status.sd_detected;
-bool& s_SDSlow = s_air_status.sd_slow;
-bool& s_SDError = s_air_status.sd_error;
-bool& s_isOV5640 = s_air_status.is_ov5640;
+uint16_t s_SDTotalSpaceGB16 = 0;
+uint16_t s_SDFreeSpaceGB16 = 0;
+bool s_air_record = false;
+bool s_wifi_ovf = false;
+bool s_SDDetected = false;
+bool s_SDSlow = false;
+bool s_SDError = false;
+bool s_isOV5640 = false;
 bool s_isDual = false;
 
 uint64_t s_GSSDTotalSpaceBytes = 0;
@@ -338,6 +338,22 @@ bool s_avi_ov5640HighFPS;
 bool s_reload_osd_font = false;
 
 static HXMavlinkParser mavlinkParserIn(true);
+
+static void syncAirStatusGlobals()
+{
+    s_curr_wifi_rate = s_air_status.curr_wifi_rate;
+    s_wifi_queue_min = s_air_status.wifi_queue_min;
+    s_wifi_queue_max = s_air_status.wifi_queue_max;
+    s_curr_quality = s_air_status.curr_quality;
+    s_SDTotalSpaceGB16 = s_air_status.sd_total_space_gb16;
+    s_SDFreeSpaceGB16 = s_air_status.sd_free_space_gb16;
+    s_air_record = s_air_status.air_record;
+    s_wifi_ovf = s_air_status.wifi_ovf;
+    s_SDDetected = s_air_status.sd_detected;
+    s_SDSlow = s_air_status.sd_slow;
+    s_SDError = s_air_status.sd_error;
+    s_isOV5640 = s_air_status.is_ov5640;
+}
 
 //===================================================================================
 //===================================================================================
@@ -470,14 +486,7 @@ static void comms_thread_proc()
     Clock::time_point last_stats_tp10 = Clock::now();
     Clock::time_point last_comms_sent_tp = Clock::now();
     Clock::time_point last_data_sent_tp = Clock::now();
-    uint8_t last_sent_ping = 0;
-    Clock::time_point last_ping_sent_tp = Clock::now();
-    Clock::time_point last_ping_received_tp = Clock::now();
     Clock::time_point last_frame_decoded = Clock::now();
-    Clock::duration ping_min = std::chrono::seconds(999);
-    Clock::duration ping_max = std::chrono::seconds(0);
-    Clock::duration ping_avg = std::chrono::seconds(0);
-    size_t ping_count = 0;
     size_t sent_count = 0;
     size_t in_tlm_size = 0;
     size_t out_tlm_size = 0;
@@ -499,28 +508,25 @@ static void comms_thread_proc()
     {
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
+            const gs::core::PingSnapshot ping_snapshot = s_session_core.consumePingSnapshot();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}", 
                 sent_count, total_data, in_tlm_size, out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
-                ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
+                std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.min).count(),
+                std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.max).count(),
+                ping_snapshot.count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.total).count() / ping_snapshot.count : 0,
                 video_fps,
                 s_session_core.connectedAirDeviceId(), s_groundstation_config.deviceId);
 
             s_total_data = total_data;
 
-            s_noPing = ( Clock::now() - last_ping_received_tp ) >= std::chrono::milliseconds(2000);
-            s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_min).count();
-            s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count();
+            s_noPing = (Clock::now() - ping_snapshot.last_received_tp) >= std::chrono::milliseconds(2000);
+            s_gs_stats.pingMinMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.min).count();
+            s_gs_stats.pingMaxMS = std::chrono::duration_cast<std::chrono::milliseconds>(ping_snapshot.max).count();
 
-            ping_min = std::chrono::seconds(999);
-            ping_max = std::chrono::seconds(0);
-            ping_avg = std::chrono::seconds(0);
             sent_count = 0;
             in_tlm_size = 0;
             out_tlm_size = 0;
-            ping_count = 0;
             total_data = 0;
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
@@ -547,7 +553,7 @@ static void comms_thread_proc()
                 std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
                 auto& config = s_ground2air_config_packet;
                 gs::protocol::prepareConfigPacket(config,
-                                                 last_sent_ping,
+                                                 s_session_core.currentPingToken(),
                                                  s_session_core.connectedAirDeviceId(),
                                                  s_groundstation_config.deviceId);
                 s_transport.send(&config, sizeof(config), true);
@@ -561,7 +567,7 @@ static void comms_thread_proc()
             }
 
             last_comms_sent_tp = Clock::now();
-            last_ping_sent_tp = Clock::now();
+            s_session_core.onPingSent(last_comms_sent_tp);
             sent_count++;
         }
 
@@ -722,16 +728,7 @@ static void comms_thread_proc()
 
                 const Air2Ground_Video_Packet& air2ground_video_packet = *video_view.packet;
 
-                if (air2ground_video_packet.pong == last_sent_ping)
-                {
-                    last_sent_ping++;
-                    last_ping_received_tp = Clock::now();
-                    auto d = (last_ping_received_tp - last_ping_sent_tp) / 2;
-                    ping_min = std::min(ping_min, d);
-                    ping_max = std::max(ping_max, d);
-                    ping_avg += d;
-                    ping_count++;
-                }
+                s_session_core.onVideoPong(air2ground_video_packet.pong, Clock::now());
 
                 total_data += rx_data.size;
                 total_data10 += rx_data.size;
@@ -880,6 +877,7 @@ static void comms_thread_proc()
                 total_data10 += rx_data.size;
 
                 const Air2Ground_OSD_Packet& air2ground_osd_packet = *osd_view.packet;
+                syncAirStatusGlobals();
 
                 if ((osd_view.osd_data_size >= 2) && (osd_view.osd_data_size <= MAX_OSD_PAYLOAD_SIZE))
                 {

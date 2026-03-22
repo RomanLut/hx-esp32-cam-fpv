@@ -10,6 +10,10 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
         m_connected_air_device_id = 0;
         m_got_config_packet = false;
         m_accept_config_packet = false;
+        m_last_sent_ping = 0;
+        m_last_ping_sent_tp = now;
+        m_ping_snapshot = {};
+        m_ping_snapshot.last_received_tp = now;
     }
 
     transport.getPacketFilter().set_packet_header_data(gs_device_id, 0);
@@ -259,6 +263,44 @@ AirStatusState& GsSessionCore::airStatus()
 const AirStatusState& GsSessionCore::airStatus() const
 {
     return m_air_status;
+}
+
+uint8_t GsSessionCore::currentPingToken() const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return m_last_sent_ping;
+}
+
+void GsSessionCore::onPingSent(Clock::time_point now)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_last_ping_sent_tp = now;
+}
+
+void GsSessionCore::onVideoPong(uint8_t pong, Clock::time_point now)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    if (pong != m_last_sent_ping)
+    {
+        return;
+    }
+
+    m_last_sent_ping++;
+    m_ping_snapshot.last_received_tp = now;
+    const auto ping = (now - m_last_ping_sent_tp) / 2;
+    m_ping_snapshot.min = std::min(m_ping_snapshot.min, ping);
+    m_ping_snapshot.max = std::max(m_ping_snapshot.max, ping);
+    m_ping_snapshot.total += ping;
+    m_ping_snapshot.count++;
+}
+
+PingSnapshot GsSessionCore::consumePingSnapshot()
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    PingSnapshot snapshot = m_ping_snapshot;
+    m_ping_snapshot = {};
+    m_ping_snapshot.last_received_tp = snapshot.last_received_tp;
+    return snapshot;
 }
 
 uint16_t GsSessionCore::connectedAirDeviceId() const

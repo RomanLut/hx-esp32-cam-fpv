@@ -63,6 +63,15 @@ struct AirStatusState
     bool is_ov5640 = false;
 };
 
+struct PingSnapshot
+{
+    Clock::duration min = std::chrono::seconds(999);
+    Clock::duration max = std::chrono::seconds(0);
+    Clock::duration total = std::chrono::seconds(0);
+    size_t count = 0;
+    Clock::time_point last_received_tp = Clock::now();
+};
+
 class GsSessionCore
 {
 public:
@@ -103,6 +112,10 @@ public:
     const AirStats& lastAirStats() const;
     AirStatusState& airStatus();
     const AirStatusState& airStatus() const;
+    uint8_t currentPingToken() const;
+    void onPingSent(Clock::time_point now);
+    void onVideoPong(uint8_t pong, Clock::time_point now);
+    PingSnapshot consumePingSnapshot();
 
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
@@ -118,6 +131,9 @@ private:
 
     AirStats m_last_air_stats = {};
     AirStatusState m_air_status = {};
+    PingSnapshot m_ping_snapshot = {};
+    uint8_t m_last_sent_ping = 0;
+    Clock::time_point m_last_ping_sent_tp = Clock::now();
     uint16_t m_connected_air_device_id = 0;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;
