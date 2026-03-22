@@ -12,6 +12,22 @@
 namespace gs::core
 {
 
+enum class SessionPacketType
+{
+    Ignore,
+    Config,
+    Video,
+    Telemetry,
+    OSD
+};
+
+struct SessionPacketDecision
+{
+    SessionPacketType type = SessionPacketType::Ignore;
+    protocol::AirPacketInfo packet_info = {};
+    bool accepted_connect_config = false;
+};
+
 class GsSessionCore
 {
 public:
@@ -23,6 +39,10 @@ public:
                                 ITransport& transport);
 
     bool isPacketForSession(const protocol::AirPacketInfo& packet_info, uint16_t gs_device_id) const;
+    SessionPacketDecision classifyPacket(const uint8_t* packet_data,
+                                         size_t packet_size,
+                                         uint16_t gs_device_id,
+                                         ITransport& transport);
 
     bool promoteAcceptedConfig(Ground2Air_Config_Packet& config_out);
 

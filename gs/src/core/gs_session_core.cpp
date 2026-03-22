@@ -64,6 +64,51 @@ bool GsSessionCore::isPacketForSession(const protocol::AirPacketInfo& packet_inf
            protocol::isPacketForSession(packet_info, gs_device_id, m_connected_air_device_id);
 }
 
+SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
+                                                    size_t packet_size,
+                                                    uint16_t gs_device_id,
+                                                    ITransport& transport)
+{
+    SessionPacketDecision decision;
+    if (!protocol::tryParseAirPacket(packet_data, packet_size, decision.packet_info))
+    {
+        return decision;
+    }
+
+    if (!gotConfigPacket())
+    {
+        decision.accepted_connect_config =
+            tryAcceptConnectConfig(decision.packet_info, packet_data, gs_device_id, transport);
+        return decision;
+    }
+
+    if (!isPacketForSession(decision.packet_info, gs_device_id))
+    {
+        return decision;
+    }
+
+    switch (decision.packet_info.header->type)
+    {
+    case Air2Ground_Header::Type::Config:
+        decision.type = SessionPacketType::Config;
+        break;
+    case Air2Ground_Header::Type::Video:
+        decision.type = SessionPacketType::Video;
+        break;
+    case Air2Ground_Header::Type::Telemetry:
+        decision.type = SessionPacketType::Telemetry;
+        break;
+    case Air2Ground_Header::Type::OSD:
+        decision.type = SessionPacketType::OSD;
+        break;
+    default:
+        decision.type = SessionPacketType::Ignore;
+        break;
+    }
+
+    return decision;
+}
+
 bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
 {
     std::lock_guard<std::mutex> state_lock(m_state_mutex);

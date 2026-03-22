@@ -395,7 +395,7 @@ void toggleGSRecording(int width, int height, const char* reason)
 
         s_avi_frameCnt = 0;
 
-        const TVMode* v = &vmodes[clamp((int)s_ground_link.config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
 
         if ( width != 0 )
         {
@@ -411,17 +411,17 @@ void toggleGSRecording(int width, int height, const char* reason)
 
         if (s_isOV5640)
         {
-            s_avi_fps = s_ground_link.config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+            s_avi_fps = s_ground2air_config_packet.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
         }
         else
         {
-            s_avi_fps = s_ground_link.config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+            s_avi_fps = s_ground2air_config_packet.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         }
 
         s_avi_frameWidth = width;
         s_avi_frameHeight = height;
-        s_avi_ov2640HighFPS = s_ground_link.config_packet.camera.ov2640HighFPS;
-        s_avi_ov5640HighFPS = s_ground_link.config_packet.camera.ov5640HighFPS;
+        s_avi_ov2640HighFPS = s_ground2air_config_packet.camera.ov2640HighFPS;
+        s_avi_ov5640HighFPS = s_ground2air_config_packet.camera.ov5640HighFPS;
 
         LOGI("{}x{} {}fps\n", s_avi_frameWidth, s_avi_frameHeight, s_avi_fps);
 
@@ -505,7 +505,7 @@ static void comms_thread_proc()
                 std::chrono::duration_cast<std::chrono::milliseconds>(ping_max).count(),
                 ping_count > 0 ? std::chrono::duration_cast<std::chrono::milliseconds>(ping_avg).count() / ping_count : 0,
                 video_fps,
-                s_ground_link.connected_air_device_id, s_groundstation_config.deviceId);
+                s_session_core.connectedAirDeviceId(), s_groundstation_config.deviceId);
 
             s_total_data = total_data;
 
@@ -541,13 +541,13 @@ static void comms_thread_proc()
 
         if (Clock::now() - last_comms_sent_tp >= std::chrono::milliseconds(500))
         {
-            if (s_ground_link.got_config_packet)
+            if (s_session_core.gotConfigPacket())
             {
-                std::lock_guard<std::mutex> lg(s_ground_link.config_packet_mutex);
-                auto& config = s_ground_link.config_packet;
+                std::lock_guard<std::mutex> lg(s_ground2air_config_packet_mutex);
+                auto& config = s_ground2air_config_packet;
                 gs::protocol::prepareConfigPacket(config,
                                                  last_sent_ping,
-                                                 s_ground_link.connected_air_device_id,
+                                                 s_session_core.connectedAirDeviceId(),
                                                  s_groundstation_config.deviceId);
                 s_transport.send(&config, sizeof(config), true);
                 //LOGD("send config packet");
@@ -569,8 +569,8 @@ static void comms_thread_proc()
 #ifdef USE_MAVLINK
         if (fdUART != -1)
         {
-            std::lock_guard<std::mutex> lg(s_ground_link.data_packet_mutex);
-            auto& data = s_ground_link.data_packet;
+            std::lock_guard<std::mutex> lg(s_ground2air_data_packet_mutex);
+            auto& data = s_ground2air_data_packet;
 
             int frb = GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - s_tlm_size;
             int n = read(fdUART, &(data.payload[s_tlm_size]), frb);
@@ -612,9 +612,9 @@ static void comms_thread_proc()
             {
                 gs::protocol::prepareTelemetryPacket(data,
                                                      s_tlm_size,
-                                                     s_ground_link.connected_air_device_id,
+                                                     s_session_core.connectedAirDeviceId(),
                                                      s_groundstation_config.deviceId);
-                if (s_ground_link.got_config_packet)
+                if (s_session_core.gotConfigPacket())
                 {
                     s_transport.send(&data, data.size, true);
                     sent_count++;
@@ -666,12 +666,22 @@ static void comms_thread_proc()
                 break;
             }
 
-            gs::protocol::AirPacketInfo packetInfo;
-            if (!gs::protocol::tryParseAirPacket(rx_data.data.data(), rx_data.size, packetInfo))
+            const auto packet_decision = s_session_core.classifyPacket(rx_data.data.data(),
+                                                                       rx_data.size,
+                                                                       s_groundstation_config.deviceId,
+                                                                       s_transport);
+            if (packet_decision.accepted_connect_config)
+            {
+                printf("Connecting to Air Device Id 0x%04x\n", s_session_core.connectedAirDeviceId());
+                break;
+            }
+
+            if (packet_decision.type == gs::core::SessionPacketType::Ignore)
             {
                 break;
             }
 
+            const auto& packetInfo = packet_decision.packet_info;
             const Air2Ground_Header& air2ground_header = *packetInfo.header;
             uint32_t packet_size = packetInfo.packetSize;
 
@@ -690,31 +700,14 @@ static void comms_thread_proc()
                 break;
             }
 */
-            if (!s_session_core.gotConfigPacket())
-            {
-                if (s_session_core.tryAcceptConnectConfig(packetInfo,
-                                                          rx_data.data.data(),
-                                                          s_groundstation_config.deviceId,
-                                                          s_transport))
-                {
-                    printf("Connecting to Air Device Id 0x%04x\n", s_session_core.connectedAirDeviceId());
-                }
-                break;
-            }
-
-            if (!s_session_core.isPacketForSession(packetInfo, s_groundstation_config.deviceId))
-            {
-                break;
-            }
-
             s_last_packet_tp = Clock::now();
             rx_data.rssi = (int16_t)s_transport.get_input_dBm();
 
-            if ( air2ground_header.type == Air2Ground_Header::Type::Config )
+            if (packet_decision.type == gs::core::SessionPacketType::Config)
             {
                 //we need config packet only on connection
             }
-            else if (air2ground_header.type == Air2Ground_Header::Type::Video)
+            else if (packet_decision.type == gs::core::SessionPacketType::Video)
             {
                 if (packet_size > rx_data.size)
                 {
@@ -855,7 +848,7 @@ static void comms_thread_proc()
                 }
 
             }
-            else if (air2ground_header.type == Air2Ground_Header::Type::Telemetry)
+            else if (packet_decision.type == gs::core::SessionPacketType::Telemetry)
             {
 #ifdef USE_MAVLINK
               if (fdUART != -1)
@@ -888,7 +881,7 @@ static void comms_thread_proc()
               }
 #endif
             }
-            else if (air2ground_header.type == Air2Ground_Header::Type::OSD)
+            else if (packet_decision.type == gs::core::SessionPacketType::OSD)
             {
                 if (packet_size > rx_data.size)
                 {
