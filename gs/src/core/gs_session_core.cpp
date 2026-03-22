@@ -109,6 +109,34 @@ SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
     return decision;
 }
 
+bool GsSessionCore::tryParseVideoPacket(const uint8_t* packet_data,
+                                        size_t transport_packet_size,
+                                        size_t packet_size,
+                                        VideoPacketView& out_view) const
+{
+    out_view = {};
+
+    if (packet_size > transport_packet_size)
+    {
+        return false;
+    }
+    if (packet_size < sizeof(Air2Ground_Video_Packet))
+    {
+        return false;
+    }
+
+    const auto* video_packet = reinterpret_cast<const Air2Ground_Video_Packet*>(packet_data);
+    if (!protocol::validateFixedHeaderCrc(*video_packet))
+    {
+        return false;
+    }
+
+    out_view.packet = video_packet;
+    out_view.payload = packet_data + sizeof(Air2Ground_Video_Packet);
+    out_view.payload_size = packet_size - sizeof(Air2Ground_Video_Packet);
+    return true;
+}
+
 bool GsSessionCore::tryParseTelemetryPacket(const uint8_t* packet_data,
                                             size_t transport_packet_size,
                                             size_t packet_size,

@@ -709,25 +709,17 @@ static void comms_thread_proc()
             }
             else if (packet_decision.type == gs::core::SessionPacketType::Video)
             {
-                if (packet_size > rx_data.size)
+                gs::core::VideoPacketView video_view;
+                if (!s_session_core.tryParseVideoPacket(rx_data.data.data(),
+                                                        rx_data.size,
+                                                        packet_size,
+                                                        video_view))
                 {
-                    LOGE("Video frame {}: data too big: {} > {}", videoFrameAssembler.currentFrameIndex(), packet_size, rx_data.size);
-                    break;
-                }
-                if (packet_size < sizeof(Air2Ground_Video_Packet))
-                {
-                    LOGE("Video frame {}: data too small: {} > {}", videoFrameAssembler.currentFrameIndex(), packet_size, sizeof(Air2Ground_Video_Packet));
+                    LOGE("Video frame {}: invalid packet {}", videoFrameAssembler.currentFrameIndex(), packet_size);
                     break;
                 }
 
-                size_t payload_size = packet_size - sizeof(Air2Ground_Video_Packet);
-                const Air2Ground_Video_Packet& air2ground_video_packet =
-                    *(const Air2Ground_Video_Packet*)rx_data.data.data();
-                if (!gs::protocol::validateFixedHeaderCrc(air2ground_video_packet))
-                {
-                    LOGE("Video frame {}, {} {}: crc mismatch", air2ground_video_packet.frame_index, (int)air2ground_video_packet.part_index, payload_size);
-                    break;
-                }
+                const Air2Ground_Video_Packet& air2ground_video_packet = *video_view.packet;
 
                 if (air2ground_video_packet.pong == last_sent_ping)
                 {
@@ -745,8 +737,8 @@ static void comms_thread_proc()
 
                 auto frameResult = videoFrameAssembler.pushPacket(
                     air2ground_video_packet,
-                    rx_data.data.data() + sizeof(Air2Ground_Video_Packet),
-                    payload_size,
+                    video_view.payload,
+                    video_view.payload_size,
                     restoredByFEC);
 
                 if (frameResult.lostPartialFrame)

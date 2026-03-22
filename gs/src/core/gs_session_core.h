@@ -34,6 +34,13 @@ struct TelemetryPacketView
     size_t payload_size = 0;
 };
 
+struct VideoPacketView
+{
+    const Air2Ground_Video_Packet* packet = nullptr;
+    const uint8_t* payload = nullptr;
+    size_t payload_size = 0;
+};
+
 struct OsdPacketView
 {
     const Air2Ground_OSD_Packet* packet = nullptr;
@@ -55,6 +62,10 @@ public:
                                          size_t packet_size,
                                          uint16_t gs_device_id,
                                          ITransport& transport);
+    bool tryParseVideoPacket(const uint8_t* packet_data,
+                             size_t transport_packet_size,
+                             size_t packet_size,
+                             VideoPacketView& out_view) const;
     bool tryParseTelemetryPacket(const uint8_t* packet_data,
                                  size_t transport_packet_size,
                                  size_t packet_size,
