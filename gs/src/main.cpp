@@ -1,4 +1,4 @@
-#include "main.h"
+﻿#include "main.h"
 
 #include <sys/statvfs.h>
 #include <csignal>
@@ -788,6 +788,7 @@ static void comms_thread_proc()
                                                     Clock::now());
                 }
 
+#endif
             }
             else if (received_packet.type == gs::core::SessionPacketType::Telemetry)
             {
@@ -831,7 +832,6 @@ static void comms_thread_proc()
 
         } 
         while (false);
-#endif
     }
 }
 
@@ -1045,6 +1045,1091 @@ int formatGSRSSI(int8_t rssi)
 
 //===================================================================================
 //===================================================================================
+static void drawDebugSettingsWindow(Ground2Air_Config_Packet& config)
+{
+    char buf[256];
+    sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %d%%..%d%% AQ:%d %s/%s###HAL",
+            ((int)s_last_gs_stats.rssiDbm[0] + (int)s_last_gs_stats.rssiDbm[1]) / 2,
+            video_fps,
+            s_lost_frame_count,
+            s_total_data / 1024,
+            s_wifi_queue_min,
+            s_wifi_queue_max,
+            s_curr_quality,
+            rateName[(int)s_curr_wifi_rate],
+            rateName[(int)config.dataChannel.wifi_rate]);
+
+    static const float slider_width = 480.0f;
+
+    ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once);
+    ImGui::Begin(buf);
+    {
+        {
+            int value = config.dataChannel.wifi_power;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("WIFI Power", &value, 0, 20);
+            config.dataChannel.wifi_power = value;
+        }
+        {
+            int value = (int)config.dataChannel.wifi_rate;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
+            if (config.dataChannel.wifi_rate != (WIFI_Rate)value)
+            {
+                config.dataChannel.wifi_rate = (WIFI_Rate)value;
+                saveGround2AirConfig(config);
+            }
+        }
+        {
+            bool pending = s_change_channel < Clock::now() + std::chrono::hours(1);
+            ImGui::BeginDisabled(pending);
+            if (ImGui::Button("APPLY"))
+            {
+                applyWifiChannel(config);
+            }
+            ImGui::EndDisabled();
+
+            int ch = s_groundstation_config.wifi_channel;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(slider_width - 93);
+            ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
+            if (ch != s_groundstation_config.wifi_channel)
+            {
+                saveGroundStationConfig();
+            }
+        }
+        {
+            int value = config.dataChannel.fec_codec_n;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("FEC_N", &value, FEC_K + 1, FEC_N);
+            if (config.dataChannel.fec_codec_n != (int8_t)value)
+            {
+                config.dataChannel.fec_codec_n = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+
+        if (s_isOV5640)
+        {
+            if (ImGui::Checkbox("ov5640HiFPS", &config.camera.ov5640HighFPS))
+            {
+                saveGround2AirConfig(config);
+            }
+        }
+        else
+        {
+            if (ImGui::Checkbox("ov2640HiFPS", &config.camera.ov2640HighFPS))
+            {
+                saveGround2AirConfig(config);
+            }
+        }
+        {
+            ImGui::SameLine();
+            int value = (int)config.camera.resolution;
+            ImGui::SetNextItemWidth(slider_width - 198);
+            ImGui::SliderInt("Resolution", &value, 0, 11);
+            if (config.camera.resolution != (Resolution)value)
+            {
+                config.camera.resolution = (Resolution)value;
+                saveGround2AirConfig(config);
+            }
+        }
+        {
+            int value = (int)config.camera.fps_limit;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("FPS Limit", &value, 0, 100);
+            config.camera.fps_limit = (uint8_t)value;
+        }
+        {
+            int value = config.camera.quality;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
+            config.camera.quality = value;
+        }
+
+        ImGui::Checkbox("AGC", &config.camera.agc);
+        ImGui::SameLine();
+        ImGui::Checkbox("AEC", &config.camera.aec);
+        if (config.camera.aec && !s_isOV5640)
+        {
+            ImGui::SameLine();
+            ImGui::Checkbox("AEC DSP", &config.camera.aec2);
+        }
+        ImGui::SameLine();
+        {
+            bool prev = config.camera.vflip;
+            ImGui::Checkbox("VFLIP", &config.camera.vflip);
+            if (prev != config.camera.vflip)
+            {
+                saveGround2AirConfig(config);
+            }
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
+
+        if (!config.camera.agc)
+        {
+            int value = config.camera.agc_gain;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("AGC Gain", &value, 0, 30);
+            config.camera.agc_gain = (int8_t)value;
+        }
+        else
+        {
+            int value = config.camera.gainceiling;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("GainCeiling", &value, 0, 6);
+            config.camera.gainceiling = (uint8_t)value;
+        }
+
+        if (config.camera.aec)
+        {
+            int value = config.camera.ae_level;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("AEC Level", &value, -2, 2);
+            if (config.camera.ae_level != (int8_t)value)
+            {
+                config.camera.ae_level = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+        else
+        {
+            int value = config.camera.aec_value;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("AEC Value", &value, 0, 1200);
+            config.camera.aec_value = (uint16_t)value;
+        }
+
+        {
+            int value = config.camera.brightness;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Brightness", &value, -2, 2);
+            if (config.camera.brightness != (int8_t)value)
+            {
+                config.camera.brightness = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+
+        {
+            int value = config.camera.contrast;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Contrast", &value, -2, 2);
+            if (config.camera.contrast != (int8_t)value)
+            {
+                config.camera.contrast = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+
+        {
+            int value = config.camera.saturation;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Saturation", &value, -2, 2);
+            if (config.camera.saturation != (int8_t)value)
+            {
+                config.camera.saturation = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+
+        {
+            int value = config.camera.sharpness;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
+            if (config.camera.sharpness != (int8_t)value)
+            {
+                config.camera.sharpness = (int8_t)value;
+                saveGround2AirConfig(config);
+            }
+        }
+
+        {
+            int ch = (int)s_groundstation_config.screenAspectRatio;
+            ImGui::SetNextItemWidth(slider_width);
+            ImGui::SliderInt("Letterbox", &ch, 0, 5);
+            if (ch != (int)s_groundstation_config.screenAspectRatio)
+            {
+                s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
+                saveGroundStationConfig();
+            }
+        }
+
+        if (bRestartRequired)
+        {
+            ImGui::Text("*Restart to apply!");
+        }
+
+        if (ImGui::Button("Profile 500ms"))
+        {
+            config.misc.profile1_btn++;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Profile 3s"))
+        {
+            config.misc.profile2_btn++;
+        }
+        ImGui::SameLine();
+        if (ImGui::Checkbox("VSync", &s_groundstation_config.vsync))
+        {
+            s_hal->set_vsync(s_groundstation_config.vsync, true);
+            saveGroundStationConfig();
+        }
+        ImGui::SameLine();
+        ImGui::Checkbox("Stats", &s_groundstation_config.stats);
+
+        if (ImGui::Button("Air Record"))
+        {
+            config.misc.air_record_btn++;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("GS Record"))
+        {
+            toggleGSRecording(0, 0, "debug_ui_button");
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Restart"))
+        {
+            restart_tp = Clock::now();
+            bRestart = true;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Exit"))
+        {
+            exitApp();
+        }
+
+        ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
+        ImGui::Text("AIR SD: %s%s%s %.2fGB/%.2fGB %s",
+                    s_SDDetected ? "Detected" : "Not detected",
+                    s_SDError ? " Error" : "",
+                    s_SDSlow ? " Slow" : "",
+                    s_SDFreeSpaceGB16 / 16.0f,
+                    s_SDTotalSpaceGB16 / 16.0f,
+                    s_isOV5640 ? "OV5640" : "OV2640");
+        ImGui::Text("GS SD: %s %.2fGB/%.2fGB",
+                    s_GSSDFreeSpaceBytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
+                    s_GSSDFreeSpaceBytes / (1024.0f * 1024 * 1024),
+                    s_GSSDTotalSpaceBytes / (1024.0f * 1024 * 1024));
+    }
+    ImGui::End();
+}
+
+//===================================================================================
+//===================================================================================
+static void drawTopOverlayStatus(const Ground2Air_Config_Packet& config)
+{
+    g_osd.draw();
+
+    {
+        char buf[32];
+        sprintf(buf, "AIR:%d", -((int)s_last_airStats.rssiDbm));
+
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(buf, ImVec2(128.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (!s_isDual)
+    {
+        char buf[32];
+        sprintf(buf, "GS:%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]));
+
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(buf, ImVec2(113.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+    else
+    {
+        char buf[32];
+        sprintf(buf, "GS:%d/%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]), formatGSRSSI(s_last_gs_stats.rssiDbm[1]));
+
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(buf, ImVec2(183.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    {
+        char buf[32];
+        sprintf(buf, "%d%%", (int)s_wifi_queue_max);
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(buf, ImVec2(55.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    {
+        char buf[32];
+        sprintf(buf, "%.1fMb", (int)s_total_data * 8.0f / (1024 * 1024));
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(buf, ImVec2(90.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        ImGui::Button(resolutionName[(int)config.camera.resolution]);
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    {
+        char buf[32];
+        sprintf(buf, "%02d", (int)video_fps);
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        if (!had_loss)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
+        }
+        else
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.4f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
+        }
+        ImGui::Button(buf, ImVec2(45.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_noPing)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("NO PING!");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_SDSlow)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("SD SLOW!");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_air_record)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("AIR");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_groundstation_config.record)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(1);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("GS");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (isHQDVRMode())
+    {
+        ImGui::SameLine();
+        ImGui::PushID(1);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("HQ DVR");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (g_CPUTemp.getTemperature() >= 80)
+    {
+        char buf[32];
+        sprintf(buf, "GS:%02dВ°C", (int)(g_CPUTemp.getTemperature() + 0.5f));
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button(buf, ImVec2(110.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_last_airStats.temperature >= 110)
+    {
+        char buf[32];
+        sprintf(buf, "Air:%02dВ°C", (int)(s_last_airStats.temperature));
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button(buf, ImVec2(137.0f, 0));
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_last_airStats.overheatTrottling != 0)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("OVERHEAT!");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
+    {
+        ImGui::PushID(1);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("Incompatible Air Unit firmware. Please update!");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (g_osd.isFontError())
+    {
+        ImGui::PushID(1);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("Displayport OSD Font Unexpected Format!");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+
+    if (s_last_airStats.suspended == 1)
+    {
+        ImGui::SameLine();
+        ImGui::PushID(0);
+        ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
+        ImGui::Button("OFF");
+        ImGui::PopStyleColor(3);
+        ImGui::PopID();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+static Ground2Air_Config_Packet beginRenderConfigFrame()
+{
+    return s_session_core.copyConfigPacket();
+}
+
+//===================================================================================
+//===================================================================================
+static bool finishRenderConfigFrame(Ground2Air_Config_Packet& config)
+{
+    return s_session_core.syncConfigPacket(config);
+}
+
+//===================================================================================
+//===================================================================================
+static void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
+{
+    if (ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle))
+    {
+        s_debugWindowVisisble = !s_debugWindowVisisble;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_S))
+    {
+        s_groundstation_config.stats = !s_groundstation_config.stats;
+    }
+
+    bool reset_resolution = false;
+    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+    {
+        bool found = false;
+        for (int i = 0; i < RESOLUTOINS_LIST_SIZE; i++)
+        {
+            if (config.camera.resolution == resolutionsList[i])
+            {
+                if (i != 0)
+                {
+                    config.camera.resolution = resolutionsList[i - 1];
+                    saveGround2AirConfig(config);
+                }
+                found = true;
+                break;
+            }
+        }
+        reset_resolution |= !found;
+    }
+
+    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_RightArrow))
+    {
+        bool found = false;
+        for (int i = 0; i < RESOLUTOINS_LIST_SIZE; i++)
+        {
+            if (config.camera.resolution == resolutionsList[i])
+            {
+                if (i != RESOLUTOINS_LIST_SIZE - 1)
+                {
+                    config.camera.resolution = resolutionsList[i + 1];
+                    saveGround2AirConfig(config);
+                }
+                found = true;
+                break;
+            }
+        }
+        reset_resolution |= !found;
+    }
+
+    if (reset_resolution)
+    {
+        config.camera.resolution = Resolution::SVGA16;
+        saveGround2AirConfig(config);
+    }
+
+    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_R, false))
+    {
+        config.misc.air_record_btn++;
+    }
+
+    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_G, false))
+    {
+        toggleGSRecording(0, 0, "keyboard_g");
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
+    {
+        exitApp();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+static void processPendingRestart(char* argv[])
+{
+    if (bRestart)
+    {
+        if (Clock::now() - restart_tp >= std::chrono::milliseconds(100))
+        {
+            bRestart = false;
+            execv(argv[0], argv);
+        }
+    }
+}
+
+//===================================================================================
+//===================================================================================
+static void processPendingWifiChannelChange()
+{
+    if (Clock::now() > s_change_channel)
+    {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < 300)
+        {
+            s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+        }
+        else
+        {
+            s_change_channel = Clock::now() + std::chrono::hours(10000);
+            s_transport.setChannel(s_groundstation_config.wifi_channel);
+        }
+    }
+}
+
+//===================================================================================
+//===================================================================================
+static void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
+{
+    if (s_reload_osd_font == true)
+    {
+        s_reload_osd_font = false;
+        loadOSDFontByCRC32(config.misc.osdFontCRC32);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+static void drawFullscreenStatsPanel(const Ground2Air_Config_Packet& config)
+{
+    char overlay[32];
+
+    ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
+    ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 4.0f, ImVec2(0, 24));
+
+    sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
+    ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
+    ImGui::PlotHistogram("Period", Stats::getter, &s_frameTime_stats, s_frameTime_stats.count(), 0, NULL, 0, 100.0f, ImVec2(0, 60));
+
+    sprintf(overlay, "cur: %d", s_curr_quality);
+    ImGui::PlotHistogram("Quality", Stats::getter, &s_frameQuality_stats, s_frameQuality_stats.count(), 0, overlay, 0, 64.0f, ImVec2(0, 60));
+
+    sprintf(overlay, "avg: %d KB/sec", ((int)(s_dataSize_stats.average()+0.5f) )*10);
+    ImGui::PlotHistogram("DataSize", Stats::getter, &s_dataSize_stats, s_dataSize_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+
+    sprintf(overlay, "%d%%", (int)(s_wifi_queue_max));
+    ImGui::PlotHistogram("Wifi Load", Stats::getter, &s_queueUsage_stats, s_queueUsage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+
+    ImGui::PopItemWidth();
+
+    const float table_width = 420.0f;
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
+    ImGui::SetCursorPosY(10);
+
+    if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f) ))
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
+
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f);
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("AirOutPacketRate");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d pkt/s", s_last_airStats.outPacketRate);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("AirInPacketRate");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d pkt/s", s_last_airStats.inPacketRate);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("AirOthersPacketRate");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d pkt/s", s_last_airStats.inRejectedPacketRate);
+        }
+
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("AirPacketLossRatio");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats.outPacketCounter, s_last_airStats.inPacketRate) );
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSOutPacketRate");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d pkt/s", s_last_gs_stats.outPacketCounter);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSInPacketRate");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d+%d", s_last_gs_stats.inPacketCounter[0], s_last_gs_stats.inPacketCounter[1]);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSPacketLossRatio1");
+
+            ImGui::TableSetColumnIndex(1);
+
+            int n = (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n;
+            ImGui::Text("%.1f,%.1f%%",
+                calcLossRatio(n, s_last_gs_stats.inPacketCounter[0]),
+                calcLossRatio(n, s_last_gs_stats.inPacketCounter[1]));
+        }
+/*
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSExpectedPktRate");
+
+            ImGui::TableSetColumnIndex(1);
+
+            ImGui::Text("%d", (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex) /12 * config.dataChannel.fec_codec_n);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSUniquePktRate");
+
+            ImGui::TableSetColumnIndex(1);
+
+            ImGui::Text("%d", s_last_gs_stats.inUniquePacketCounter);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSDublicatedPktRate");
+
+            ImGui::TableSetColumnIndex(1);
+
+            ImGui::Text("%d", s_last_gs_stats.inDublicatedPacketCounter);
+        }
+*/
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GSPacketLossRatio2");
+
+            ImGui::TableSetColumnIndex(1);
+
+            ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
+        }
+/*
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("FECSuccIndex");
+
+            ImGui::TableSetColumnIndex(1);
+
+            uint32_t blocksCount = s_last_gs_stats.FECBlocksCounter;
+            if ( blocksCount == 0 ) blocksCount = 1;
+            ImGui::Text("%.1f", s_last_gs_stats.FECSuccPacketIndexCounter * 1.0f / blocksCount);
+        }
+*/
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Air RSSI");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d dbm", -s_last_airStats.rssiDbm);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Air Noise Floor");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d dbm", -s_last_airStats.noiseFloorDbm);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Air SNR");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d db", (int)s_last_airStats.noiseFloorDbm - s_last_airStats.rssiDbm );
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GS RSSI 1");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[0]);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GS RSSI 2");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[1]);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GS Noise Floor");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d dbm", s_last_gs_stats.noiseFloorDbm);
+        }
+/*
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GS SNR");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d db", -((int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm) );
+        }
+*/
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Ping min");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d ms", s_last_gs_stats.pingMinMS);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Ping max");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d ms", s_last_gs_stats.pingMaxMS);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Capture FPS");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d FPS", s_last_airStats.captureFPS);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Frame size min");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d b", s_last_airStats.cam_frame_size_min);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Frame size max");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d b", s_last_airStats.cam_frame_size_max);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Camera Overflow");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d", s_last_airStats.cam_ovf_count);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Broken frames");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d", s_last_gs_stats.brokenFrames);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Temperature GS/Air");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%dР’В°C/%dР’В°C", (int)(g_CPUTemp.getTemperature()+0.5f), (int)(s_last_airStats.temperature));
+        }
+
+        ImGui::EndTable();
+    }
+
+    ImGui::SetCursorPosX(10);
+    ImGui::SetCursorPosY(400);
+
+    if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 24.0f) ))
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
+
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f);
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Mavlink Up");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d b/s", s_last_airStats.inMavlinkRate);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Mavlink Down");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d b/s", s_last_airStats.outMavlinkRate);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("GS RC Period Max");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d ms", s_last_gs_stats.RCPeriodMax);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("AIR RC Period Max");
+
+            ImGui::TableSetColumnIndex(1);
+            int v;
+            if ( s_last_airStats.RCPeriodMax == 0 )
+            {
+                v = -1;
+            }
+            else if ( s_last_airStats.RCPeriodMax <= 100 )
+            {
+                v = s_last_airStats.RCPeriodMax;
+            }
+            else
+            {
+                v = ((int)(s_last_airStats.RCPeriodMax - 101)) * 10;
+            }
+
+            ImGui::Text("%d ms", v);
+        }
+
+        {
+            ImGui::TableNextRow();
+            ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
+
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("Jpeg Decode");
+
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%d/%d/%d ms",
+                s_last_gs_stats.decodedJpegTimeMinMS,
+                s_last_gs_stats.decodedJpegTimeTotalMS / ( s_last_gs_stats.decodedJpegCount ? s_last_gs_stats.decodedJpegCount : 1 ),
+                s_last_gs_stats.decodedJpegTimeMaxMS
+                );
+        }
+
+        ImGui::EndTable();
+    }
+}
+
+//===================================================================================
+//===================================================================================
 int run(char* argv[])
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -1060,7 +2145,7 @@ int run(char* argv[])
 
     s_comms_thread = std::thread(&comms_thread_proc);
 
-    Ground2Air_Config_Packet config = s_session_core.copyConfigPacket();
+    Ground2Air_Config_Packet config = beginRenderConfigFrame();
 
     size_t video_frame_count = 0;
 
@@ -1084,694 +2169,10 @@ int run(char* argv[])
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav  | ImGuiWindowFlags_NoFocusOnAppearing);
         {
 
-            g_osd.draw();
-
-            {
-                //RC RSSI
-                char buf[32];
-                sprintf(buf, "AIR:%d", -((int)s_last_airStats.rssiDbm) );
-
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(128.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( !s_isDual )
-            {
-                //RSSI1
-                char buf[32];
-                sprintf(buf, "GS:%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]) );
-
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(113.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-            else
-            {
-                //RSSI1:RSSI2
-                char buf[32];
-                sprintf(buf, "GS:%d/%d", formatGSRSSI(s_last_gs_stats.rssiDbm[0]), formatGSRSSI(s_last_gs_stats.rssiDbm[1]) );
-
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(183.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            {
-                //queue usage
-                char buf[32];
-                sprintf(buf, "%d%%", (int)s_wifi_queue_max );
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, s_wifi_ovf ? 0.6f : 0, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(55.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            {
-                //video bitrate
-                char buf[32];
-                sprintf(buf, "%.1fMb", (int)s_total_data*8.0f/(1024*1024));
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::Button(buf, ImVec2(90.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            {
-                //resolution
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                //ImGui::Button(resolutionName[(int)config.camera.resolution], ImVec2(120.0f, 0));
-                ImGui::Button(resolutionName[(int)config.camera.resolution]);
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            {
-                //fps
-                char buf[32];
-                sprintf(buf, "%02d", (int)video_fps);
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                if ( !had_loss )
-                {
-                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.6f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.6f));
-                }
-                else
-                {
-                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0, 0.4f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.0f, 0.4f));
-                }
-                ImGui::Button(buf, ImVec2(45.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_noPing )
-            {
-                //NO PING!
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("NO PING!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_SDSlow )
-            {
-                //!SD SLOW!
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("SD SLOW!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_air_record )
-            {
-                //AIR REC
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("AIR");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            //GS REC
-            if ( s_groundstation_config.record )
-            {
-                ImGui::SameLine();
-                ImGui::PushID(1);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("GS");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            //HQ DRV mode
-            if ( isHQDVRMode() )
-            {
-                ImGui::SameLine();
-                ImGui::PushID(1);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("HQ DVR");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( g_CPUTemp.getTemperature() >= 80 )
-            {
-                //GS temperature
-                char buf[32];
-                sprintf(buf, "GS:%02d°C", (int)(g_CPUTemp.getTemperature()+0.5f));
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button(buf, ImVec2(110.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_last_airStats.temperature >= 110 )
-            {
-                //Camera temperature
-                char buf[32];
-                sprintf(buf, "Air:%02d°C", (int)(s_last_airStats.temperature));
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button(buf, ImVec2(137.0f, 0));
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_last_airStats.overheatTrottling != 0 )
-            {
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("OVERHEAT!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            //Incompatible firmware
-            if (Clock::now() - s_incompatibleFirmwareTime < std::chrono::milliseconds(5000))
-            {
-                ImGui::PushID(1);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("Incompatible Air Unit firmware. Please update!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            //OSD Font error
-            if (g_osd.isFontError())
-            {
-                ImGui::PushID(1);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("Displayport OSD Font Unexpected Format!");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
-            if ( s_last_airStats.suspended == 1 )
-            {
-                ImGui::SameLine();
-                ImGui::PushID(0);
-                ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::PushStyleColor(ImGuiCol_ButtonActive, (ImVec4)ImColor::HSV(0 / 7.0f, 0.6f, 0.6f));
-                ImGui::Button("OFF");
-                ImGui::PopStyleColor(3);
-                ImGui::PopID();
-            }
-
+            drawTopOverlayStatus(config);
             if ( s_groundstation_config.stats )
             {
-                char overlay[32];
-
-                ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
-                ImGui::PlotHistogram("Frames", Stats::getter, &s_frame_stats, s_frame_stats.count(), 0, NULL, 0, 4.0f, ImVec2(0, 24));            
-
-                sprintf(overlay, "max: %d", (int)s_frameParts_stats.max());
-                ImGui::PlotHistogram("Parts", Stats::getter, &s_frameParts_stats, s_frameParts_stats.count(), 0, overlay, 0, s_frameParts_stats.average()*2 + 1.0f, ImVec2(0, 60));
-                ImGui::PlotHistogram("Period", Stats::getter, &s_frameTime_stats, s_frameTime_stats.count(), 0, NULL, 0, 100.0f, ImVec2(0, 60));
-
-                sprintf(overlay, "cur: %d", s_curr_quality);
-                ImGui::PlotHistogram("Quality", Stats::getter, &s_frameQuality_stats, s_frameQuality_stats.count(), 0, overlay, 0, 64.0f, ImVec2(0, 60));
-
-                sprintf(overlay, "avg: %d KB/sec", ((int)(s_dataSize_stats.average()+0.5f) )*10);
-                ImGui::PlotHistogram("DataSize", Stats::getter, &s_dataSize_stats, s_dataSize_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
-
-                sprintf(overlay, "%d%%", (int)(s_wifi_queue_max));
-                ImGui::PlotHistogram("Wifi Load", Stats::getter, &s_queueUsage_stats, s_queueUsage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
-
-                ImGui::PopItemWidth();
-
-                const float table_width = 420.0f;
-                ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
-                ImGui::SetCursorPosY(10);
-
-                if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f) ))
-                {
-                    ImGuiStyle& style = ImGui::GetStyle();
-                    ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
- 
-                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f); 
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("AirOutPacketRate");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_airStats.outPacketRate);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("AirInPacketRate");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_airStats.inPacketRate);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("AirOthersPacketRate");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_airStats.inRejectedPacketRate);
-                    }
-
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("AirPacketLossRatio");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%.1f%%", calcLossRatio(s_last_gs_stats.outPacketCounter, s_last_airStats.inPacketRate) );
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSOutPacketRate");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d pkt/s", s_last_gs_stats.outPacketCounter);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSInPacketRate");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d+%d", s_last_gs_stats.inPacketCounter[0], s_last_gs_stats.inPacketCounter[1]);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSPacketLossRatio1");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        int n = (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n;
-                        ImGui::Text("%.1f,%.1f%%", 
-                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[0]),
-                            calcLossRatio(n, s_last_gs_stats.inPacketCounter[1]));
-                    }
-/*
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSExpectedPktRate");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        ImGui::Text("%d", (s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex) /12 * config.dataChannel.fec_codec_n);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSUniquePktRate");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        ImGui::Text("%d", s_last_gs_stats.inUniquePacketCounter);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSDublicatedPktRate");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        ImGui::Text("%d", s_last_gs_stats.inDublicatedPacketCounter);
-                    }
-*/
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GSPacketLossRatio2");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        ImGui::Text("%.1f%%", calcLossRatio((s_last_gs_stats.lastPacketIndex - s_last_gs_stats.statsPacketIndex)/12*config.dataChannel.fec_codec_n, s_last_gs_stats.inUniquePacketCounter));
-                    }
-/*
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("FECSuccIndex");
-
-                        ImGui::TableSetColumnIndex(1);
-
-                        uint32_t blocksCount = s_last_gs_stats.FECBlocksCounter;
-                        if ( blocksCount == 0 ) blocksCount = 1;
-                        ImGui::Text("%.1f", s_last_gs_stats.FECSuccPacketIndexCounter * 1.0f / blocksCount);
-                    }
-*/
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Air RSSI");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_airStats.rssiDbm);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Air Noise Floor");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", -s_last_airStats.noiseFloorDbm);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Air SNR");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d db", (int)s_last_airStats.noiseFloorDbm - s_last_airStats.rssiDbm );
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS RSSI 1");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[0]);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS RSSI 2");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", s_last_gs_stats.rssiDbm[1]);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS Noise Floor");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d dbm", s_last_gs_stats.noiseFloorDbm);
-                    }
-
-/*
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS SNR");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d db", -((int)s_last_gs_stats.noiseFloorDbm - s_last_gs_stats.rssiDbm) );
-                    }
-*/
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Ping min");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d ms", s_last_gs_stats.pingMinMS);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Ping max");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d ms", s_last_gs_stats.pingMaxMS);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Capture FPS");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d FPS", s_last_airStats.captureFPS);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Frame size min");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_min);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Frame size max");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b", s_last_airStats.cam_frame_size_max);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Camera Overflow");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d", s_last_airStats.cam_ovf_count);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Broken frames");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d", s_last_gs_stats.brokenFrames);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Temperature GS/Air");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d°C/%d°C", (int)(g_CPUTemp.getTemperature()+0.5f), (int)(s_last_airStats.temperature));
-                    }
-
-                    ImGui::EndTable();
-                }
-
-                ImGui::SetCursorPosX(10);
-                ImGui::SetCursorPosY(400);
-
-                if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 24.0f) ))
-                {
-                    ImGuiStyle& style = ImGui::GetStyle();
-                    ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg] );
- 
-                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f); 
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Mavlink Up");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b/s", s_last_airStats.inMavlinkRate);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Mavlink Down");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d b/s", s_last_airStats.outMavlinkRate);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("GS RC Period Max");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d ms", s_last_gs_stats.RCPeriodMax);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("AIR RC Period Max");
-
-                        ImGui::TableSetColumnIndex(1);
-                        int v;
-                        if ( s_last_airStats.RCPeriodMax == 0 )
-                        {
-                            v = -1;
-                        }
-                        else if ( s_last_airStats.RCPeriodMax <= 100 )
-                        {
-                            v = s_last_airStats.RCPeriodMax;
-                        }
-                        else 
-                        {
-                            v = ((int)(s_last_airStats.RCPeriodMax - 101)) * 10;
-                        }
-
-                        ImGui::Text("%d ms", v);
-                    }
-
-                    {
-                        ImGui::TableNextRow();
-                        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, c );
-
-                        ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("Jpeg Decode");
-
-                        ImGui::TableSetColumnIndex(1);
-                        ImGui::Text("%d/%d/%d ms", 
-                            s_last_gs_stats.decodedJpegTimeMinMS, 
-                            s_last_gs_stats.decodedJpegTimeTotalMS / ( s_last_gs_stats.decodedJpegCount ? s_last_gs_stats.decodedJpegCount : 1 ), 
-                            s_last_gs_stats.decodedJpegTimeMaxMS 
-                            );
-                    }
-
-                    ImGui::EndTable();
-                }
-
-
+                drawFullscreenStatsPanel(config);
             }
 
         }
@@ -1784,403 +2185,19 @@ int run(char* argv[])
         //------------ debug window
         if ( s_debugWindowVisisble )
         {
-            char buf[256];
-            sprintf(buf, "RSSI:%d FPS:%1.0f/%d %dKB/S %d%%..%d%% AQ:%d %s/%s###HAL", 
-            ((int)s_last_gs_stats.rssiDbm[0] + (int)s_last_gs_stats.rssiDbm[1])/2, video_fps, s_lost_frame_count, 
-            s_total_data/1024, 
-            s_wifi_queue_min,s_wifi_queue_max,
-            s_curr_quality,
-            rateName[(int)s_curr_wifi_rate], rateName[(int)config.dataChannel.wifi_rate]);
-
-            static const float SLIDER_WIDTH = 480.0f;
-
-            ImGui::SetNextWindowCollapsed(true, ImGuiCond_Once); 
-            ImGui::Begin(buf);
-            {
-                {
-                    int value = config.dataChannel.wifi_power;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("WIFI Power", &value, 0, 20); 
-                    config.dataChannel.wifi_power = value;
-                }
-                {
-                    int value = (int)config.dataChannel.wifi_rate;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("WIFI Rate", &value, (int)WIFI_Rate::RATE_B_2M_CCK, (int)WIFI_Rate::RATE_N_72M_MCS7_S);
-                    if (config.dataChannel.wifi_rate != (WIFI_Rate)value) 
-                    {
-                        config.dataChannel.wifi_rate = (WIFI_Rate)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-                {
-                    bool pending = s_change_channel < Clock::now() + std::chrono::hours(1);
-                    ImGui::BeginDisabled( pending);
-                    if (ImGui::Button("APPLY"))
-                    {
-                        //start sending new channel to air, restart after 2 seconds
-                        applyWifiChannel(config);
-                    }
-                    ImGui::EndDisabled();
-
-                    int ch = s_groundstation_config.wifi_channel;
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 93); 
-                    ImGui::SliderInt("WIFI Channel", &s_groundstation_config.wifi_channel, 1, 13);
-                    if ( ch != s_groundstation_config.wifi_channel)
-                    {
-                        saveGroundStationConfig();
-                    }
-                }
-                {
-                    int value = config.dataChannel.fec_codec_n;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("FEC_N", &value,FEC_K+1, FEC_N);
-                    if (config.dataChannel.fec_codec_n != (int8_t)value)
-                    {
-                        config.dataChannel.fec_codec_n = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-                
-                if ( s_isOV5640 )
-
-                {
-                    if ( ImGui::Checkbox("ov5640HiFPS", &config.camera.ov5640HighFPS) )
-                    {
-                        saveGround2AirConfig(config);
-                    }
-                }
-                else
-                {
-                    if ( ImGui::Checkbox("ov2640HiFPS", &config.camera.ov2640HighFPS) )
-                    {
-                        saveGround2AirConfig(config);
-                    }
-                }
-                {
-                    ImGui::SameLine();
-                    int value = (int)config.camera.resolution;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH - 198); 
-                    ImGui::SliderInt("Resolution", &value, 0, 11);
-                    if ( config.camera.resolution != (Resolution)value )
-                    {
-                        config.camera.resolution = (Resolution)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-                {
-                    int value = (int)config.camera.fps_limit;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("FPS Limit", &value, 0, 100);
-                    config.camera.fps_limit = (uint8_t)value;
-                }
-                {
-                    int value = config.camera.quality;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Quality(0-auto)", &value, 0, 63);
-                    config.camera.quality = value;
-                }
-
-                ImGui::Checkbox("AGC", &config.camera.agc);
-                ImGui::SameLine();            
-                ImGui::Checkbox("AEC", &config.camera.aec);
-                if ( config.camera.aec && !s_isOV5640)
-                {
-                    ImGui::SameLine();            
-                    ImGui::Checkbox("AEC DSP", &config.camera.aec2);
-                }
-                ImGui::SameLine();            
-                {
-                    bool prev = config.camera.vflip;
-                    ImGui::Checkbox("VFLIP", &config.camera.vflip);
-                    if ( prev != config.camera.vflip )
-                    {
-                        saveGround2AirConfig(config);
-                    }
-                }
-                ImGui::SameLine();            
-                ImGui::Checkbox("HMIRROR", &config.camera.hmirror);
-
-                if ( !config.camera.agc )
-                {
-                    int value = config.camera.agc_gain;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("AGC Gain", &value, 0, 30);
-                    config.camera.agc_gain = (int8_t)value;
-                }
-                else 
-                {
-                    int value = config.camera.gainceiling;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("GainCeiling", &value, 0, 6);
-                    config.camera.gainceiling = (uint8_t)value;
-                }
-
-                if ( config.camera.aec )
-                {
-                    int value = config.camera.ae_level;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("AEC Level", &value, -2, 2);
-                    if ( config.camera.ae_level != (int8_t)value)
-                    {
-                        config.camera.ae_level = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-                else 
-                {
-                    int value = config.camera.aec_value;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("AEC Value", &value, 0, 1200);
-                    config.camera.aec_value = (uint16_t)value;
-                }
-
-                {
-                    int value = config.camera.brightness;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Brightness", &value, -2, 2);
-                    if (config.camera.brightness != (int8_t)value)
-                    {
-                        config.camera.brightness = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-
-                {
-                    int value = config.camera.contrast;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Contrast", &value, -2, 2);
-                    if (config.camera.contrast != (int8_t)value)
-                    {
-                        config.camera.contrast = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-
-                {
-                    int value = config.camera.saturation;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Saturation", &value, -2, 2);
-                    if (config.camera.saturation != (int8_t)value)
-                    {
-                        config.camera.saturation = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-
-                {
-                    int value = config.camera.sharpness;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Sharpness(3-auto)", &value, -2, 3);
-                    if (config.camera.sharpness != (int8_t)value)
-                    {
-                        config.camera.sharpness = (int8_t)value;
-                        saveGround2AirConfig(config);
-                    }
-                }
-
-    /* does nothing ?
-                if ( s_isOV5640 )
-                {
-                    int value = config.camera.denoise;
-                    ImGui::SliderInt("Denoise", &value, 0, 8);
-                    config.camera.denoise = (int8_t)value;
-                }
-    */
-                {
-                    int ch = (int)s_groundstation_config.screenAspectRatio;
-                    ImGui::SetNextItemWidth(SLIDER_WIDTH); 
-                    ImGui::SliderInt("Letterbox", &ch, 0, 5);
-                    if ( ch != (int)s_groundstation_config.screenAspectRatio)
-                    {
-                        s_groundstation_config.screenAspectRatio = (ScreenAspectRatio)ch;
-                        saveGroundStationConfig();
-                    }
-                }
-
-                if ( bRestartRequired)
-                {
-                    ImGui::Text("*Restart to apply!");
-                }
-
-                {
-                    //ImGui::Checkbox("LC", &config.camera.lenc);
-                    //ImGui::SameLine();
-                    //ImGui::Checkbox("DCW", &config.camera.dcw);
-                    //ImGui::SameLine();
-                    //ImGui::Checkbox("H", &config.camera.hmirror);
-                    //ImGui::SameLine();
-                    //ImGui::Checkbox("V", &config.camera.vflip);
-                    //ImGui::SameLine();
-                    //ImGui::Checkbox("Raw", &config.camera.raw_gma);
-                    //ImGui::SameLine();
-                }
-                if ( ImGui::Button("Profile 500ms") )
-                {
-                    config.misc.profile1_btn++;
-                }
-                ImGui::SameLine();
-                if ( ImGui::Button("Profile 3s") )
-                {
-                    config.misc.profile2_btn++;
-                }
-                ImGui::SameLine();
-                if ( ImGui::Checkbox("VSync", &s_groundstation_config.vsync) )
-                {
-                    s_hal->set_vsync(s_groundstation_config.vsync, true);
-                    saveGroundStationConfig();
-                }
-                ImGui::SameLine();
-                ImGui::Checkbox("Stats", &s_groundstation_config.stats);
-
-                if ( ImGui::Button("Air Record") )
-                {
-                    config.misc.air_record_btn++;
-                }
-
-                ImGui::SameLine();
-                if (ImGui::Button("GS Record"))
-                {
-                    toggleGSRecording(0, 0, "debug_ui_button");
-                }
-
-                ImGui::SameLine();
-                if (ImGui::Button("Restart"))
-                {
-                    restart_tp = Clock::now();
-                    bRestart = true;
-                }
-
-                ImGui::SameLine();
-                if (ImGui::Button("Exit"))
-                {
-                    exitApp();
-                }
-                
-                ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
-                ImGui::Text("AIR SD: %s%s%s %.2fGB/%.2fGB %s", 
-                    s_SDDetected ? "Detected" : "Not detected", s_SDError ? " Error" :"",  s_SDSlow ? " Slow" : "",
-                    s_SDFreeSpaceGB16 / 16.0f, s_SDTotalSpaceGB16 / 16.0f,
-                    s_isOV5640 ? "OV5640" : "OV2640");
-                ImGui::Text("GS SD: %s %.2fGB/%.2fGB", 
-                        s_GSSDFreeSpaceBytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
-                        s_GSSDFreeSpaceBytes/(1024.0f*1024*1024), s_GSSDTotalSpaceBytes/(1024.0f*1024*1024));
-            }
-            ImGui::End();
+            drawDebugSettingsWindow(config);
         } //debug window
-        
-        if ( ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle))
-        {
-            s_debugWindowVisisble = !s_debugWindowVisisble;
-        }
 
-        if ( ImGui::IsKeyPressed(ImGuiKey_S))
-        {
-            s_groundstation_config.stats = !s_groundstation_config.stats;
-        }
+        handleRenderHotkeys(config, ignoreKeys);
+        processPendingRestart(argv);
+        processPendingWifiChannelChange();
 
-        bool resetRes = false;
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow) )
-        {
-            bool found = false;
-            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
-            {
-                if ( config.camera.resolution == resolutionsList[i])
-                {
-                    if ( i!=0)
-                    {
-                        config.camera.resolution = resolutionsList[i-1];
-                        saveGround2AirConfig(config);
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            resetRes |=  !found;
-        }
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_RightArrow))
-        {
-            bool found = false;
-            for ( int i = 0; i < RESOLUTOINS_LIST_SIZE; i++ )
-            {
-                if ( config.camera.resolution == resolutionsList[i])
-                {
-                    if ( i != RESOLUTOINS_LIST_SIZE-1 )
-                    {
-                        config.camera.resolution = resolutionsList[i+1];
-                        saveGround2AirConfig(config);
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            resetRes |= !found;
-        }
-
-        if ( resetRes )
-        {
-            config.camera.resolution = Resolution::SVGA16;
-            saveGround2AirConfig(config);
-        }
-
-        if ( !ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_R, false))
-        {
-            config.misc.air_record_btn++;
-        }
-
-        if (!ignoreKeys &&  ImGui::IsKeyPressed(ImGuiKey_G, false))
-        {
-            /*
-            if ( g_framePacketsDebug.isOn() ) 
-            {
-                g_framePacketsDebug.off();
-            }
-            else
-            {
-                g_framePacketsDebug.captureFrame(true);
-            }*/
-            toggleGSRecording(0, 0, "keyboard_g");
-        }
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignoreKeys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
-        {
-            exitApp();
-        }
-
-        if ( bRestart ) 
-        {
-            if (Clock::now() - restart_tp >= std::chrono::milliseconds(100)) 
-            {
-                bRestart = false;
-                execv(argv[0],argv);
-            }
-        } 
-
-        if ( Clock::now() > s_change_channel )
-        {
-            if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < 300 )
-            {
-                //still not changed - wait
-                s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
-            }
-            else
-            {
-                s_change_channel = Clock::now() + std::chrono::hours(10000);
-                s_transport.setChannel(s_groundstation_config.wifi_channel);
-            }
-        }
-
-        if (s_session_core.syncConfigPacket(config))
+        if (finishRenderConfigFrame(config))
         {
             s_reload_osd_font = true;
         }
 
-        if ( s_reload_osd_font == true )
-        {
-            s_reload_osd_font = false;
-            loadOSDFontByCRC32(config.misc.osdFontCRC32);
-        }
+        processPendingOsdFontReload(config);
     };
 
     s_hal->add_render_callback(f);
@@ -2888,3 +2905,4 @@ int main(int argc, const char* argv[])
 
     return result;
 }
+
