@@ -3,36 +3,7 @@
 #include "main.h"
 #include "imgui.h"
 #include "packets.h"
-
-//=======================================================
-//=======================================================
-enum class OSDMenuId
-{
-    Main,
-    CameraSettings,
-    Resolution,
-    Brightness,
-    Contrast,
-    Exposure,
-    Saturation,
-    Sharpness,
-    ExitToShell,
-    Letterbox,
-    WifiRate,
-    WifiChannel,
-    Restart,
-    FEC,
-    GSSettings,
-    GSWifiSettings,
-    GSScreen,
-    OSDFont,
-    Search,
-    GSTxPower,
-    GSTxInterface, 
-    Image,
-    CameraStopCH,
-    Debug
-};
+#include "core/osd_menu_common.h"
 
 //=======================================================
 //=======================================================

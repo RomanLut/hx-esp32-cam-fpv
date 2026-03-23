@@ -173,7 +173,7 @@ generate_gf (void) {
 
 #define gf_mul(x,y) (*gf_mul_table)[x][y]
 
-#define USE_GF_MULC register const gf * __gf_mulc_
+#define USE_GF_MULC const gf * __gf_mulc_
 
 #define GF_MULC0(c) __gf_mulc_ = (const gf*)&((*gf_mul_table)[c])
 #define GF_ADDMULC(dst, x) dst ^= __gf_mulc_[x]
@@ -199,11 +199,11 @@ generate_gf (void) {
 
 #define UNROLL 16               /* 1, 4, 8, 16 */
 static void
-_addmul1(register gf*restrict dst, const register gf*restrict src, gf c, size_t sz) {
+_addmul1(gf*restrict dst, const gf*restrict src, gf c, size_t sz) {
     USE_GF_MULC;
     const gf* lim = &dst[sz - UNROLL + 1];
 
-    register uint32_t temp1;
+    uint32_t temp1;
 
     GF_MULC0 (c);
 

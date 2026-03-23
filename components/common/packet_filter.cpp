@@ -4,8 +4,8 @@
 //=============================================================================================
 void PacketFilter::set_packet_header_data( uint16_t from_device_id, uint16_t to_device_id )
 {
-    m_from_device_id = from_device_id;
-    m_to_device_id = to_device_id;
+    m_from_device_id.store(from_device_id, std::memory_order_release);
+    m_to_device_id.store(to_device_id, std::memory_order_release);
 }
 
  //=============================================================================================
@@ -14,16 +14,16 @@ void PacketFilter::set_packet_header_data( uint16_t from_device_id, uint16_t to_
 {
     packet->packet_version = PACKET_VERSION;
     packet->packet_signature = PACKET_SIGNATURE;
-    packet->fromDeviceId = this->m_from_device_id;
-    packet->toDeviceId = this->m_to_device_id;
+    packet->fromDeviceId = this->m_from_device_id.load(std::memory_order_acquire);
+    packet->toDeviceId = this->m_to_device_id.load(std::memory_order_acquire);
 }
 
 //=============================================================================================
 //=============================================================================================
 void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id )
 {
-    m_filter_from_device_id = filter_from_device_id;
-    m_filter_to_device_id = filter_to_device_id;
+    m_filter_from_device_id.store(filter_from_device_id, std::memory_order_release);
+    m_filter_to_device_id.store(filter_to_device_id, std::memory_order_release);
 }
 
 //=============================================================================================
@@ -49,12 +49,15 @@ void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_
         return PacketFilterResult::WrongVersion;
     }
 
-    if ( ( this->m_filter_from_device_id !=0 ) && ( header->fromDeviceId != this->m_filter_from_device_id ) )
+    const uint16_t filter_from_device_id = this->m_filter_from_device_id.load(std::memory_order_acquire);
+    const uint16_t filter_to_device_id = this->m_filter_to_device_id.load(std::memory_order_acquire);
+
+    if ( ( filter_from_device_id !=0 ) && ( header->fromDeviceId != filter_from_device_id ) )
     {
         return PacketFilterResult::Drop;
     }
 
-    if ( ( this->m_filter_to_device_id != 0 ) && ( header->toDeviceId != this->m_filter_to_device_id ) )
+    if ( ( filter_to_device_id != 0 ) && ( header->toDeviceId != filter_to_device_id ) )
     {
         return PacketFilterResult::Drop;
     }

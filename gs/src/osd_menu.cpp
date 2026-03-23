@@ -280,17 +280,10 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        const char** rn = s_isOV5640 ? config.camera.ov5640HighFPS? resolutionName5640Hi : resolutionName5640 : config.camera.ov2640HighFPS? resolutionName2640Hi : resolutionName2640;
-        sprintf(buf, "Resolution: %s##0", rn[clamp((int)config.camera.resolution, 0, 11)]);
+        sprintf(buf, "Resolution: %s##0", gs::menu::getResolutionSummary(config, s_isOV5640).c_str());
         if ( this->drawMenuItem( buf, 1) )
         {
-            int item = 0;
-            if ( config.camera.resolution == Resolution::VGA16) item = 0;
-            else if ( config.camera.resolution == Resolution::VGA) item = 1;
-            else if ( config.camera.resolution == Resolution::SVGA16) item = 2;
-            else if ( config.camera.resolution == Resolution::SVGA) item = 3;
-            else if ( config.camera.resolution == Resolution::XGA16) item = 4;
-            else if ( config.camera.resolution == Resolution::HD) item = 5;
+            int item = gs::menu::getResolutionMenuIndex(config.camera.resolution);
             this->goForward( OSDMenuId::Resolution, item );
         }
     }
@@ -308,14 +301,8 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        int i = config.dataChannel.wifi_rate == WIFI_Rate::RATE_G_18M_ODFM ? 0 : 
-            config.dataChannel.wifi_rate == WIFI_Rate::RATE_G_24M_ODFM ? 1 :
-            config.dataChannel.wifi_rate == WIFI_Rate::RATE_G_36M_ODFM ? 2 :
-            config.dataChannel.wifi_rate == WIFI_Rate::RATE_N_19_5M_MCS2 ? 3 :
-            config.dataChannel.wifi_rate == WIFI_Rate::RATE_N_26M_MCS3 ? 4 :
-            config.dataChannel.wifi_rate == WIFI_Rate::RATE_N_39M_MCS4 ? 5 : 6;
-        const char* rates[] = {"OFDM 18Mbps", "OFDM 24Mbps", "OFDM 36Mbps", "MCS2L 19.5Mbps", "MCS3L 26Mbps", "MCS4L 39Mbps", "Other"};
-        sprintf(buf, "Wifi Rate: %s##2", rates[i]);
+        int i = gs::menu::getWifiRateMenuIndex(config.dataChannel.wifi_rate);
+        sprintf(buf, "Wifi Rate: %s##2", gs::menu::getWifiRateSummary(config).c_str());
         if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::WifiRate, i );
@@ -324,9 +311,8 @@ void OSDMenu::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        int i  = config.dataChannel.fec_codec_n == 8 ? 0 : config.dataChannel.fec_codec_n == 12 ? 2 : 1;
-        const char* levels[] = {"Weak (6/8)", "Medium (6/10)", "Strong (6/12)"};
-        sprintf(buf, "FEC: %s##3", levels[i]);
+        int i = gs::menu::getFecMenuIndex(config);
+        sprintf(buf, "FEC: %s##3", gs::menu::getFecSummary(config).c_str());
         if ( this->drawMenuItem( buf, 4) )
         {
             this->goForward( OSDMenuId::FEC, i );
@@ -559,40 +545,38 @@ void OSDMenu::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    const char** rn = s_isOV5640 ? config.camera.ov5640HighFPS? resolutionName5640Hia : resolutionName5640a : config.camera.ov2640HighFPS? resolutionName2640Hia : resolutionName2640a;
-
-    if ( this->drawMenuItem( rn[(int)Resolution::VGA16], 0) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 0, true), 0) )
     {
         config.camera.resolution = Resolution::VGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( rn[(int)Resolution::VGA], 1) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 1, true), 1) )
     {
         config.camera.resolution = Resolution::VGA;
         saveAndExit = true;
     }
     
 
-    if ( this->drawMenuItem( rn[(int)Resolution::SVGA16], 2) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 2, true), 2) )
     {
         config.camera.resolution = Resolution::SVGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( rn[(int)Resolution::SVGA], 3) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 3, true), 3) )
     {
         config.camera.resolution = Resolution::SVGA;
         saveAndExit = true;
     }
 
-    if (this->drawMenuItem( rn[(int)Resolution::XGA16], 4) )
+    if (this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 4, true), 4) )
     {
         config.camera.resolution = Resolution::XGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( rn[(int)Resolution::HD], 5) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 5, true), 5) )
     {
         config.camera.resolution = Resolution::HD;
         saveAndExit = true;
