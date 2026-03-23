@@ -639,19 +639,19 @@ static void comms_thread_proc()
                 break;
             }
 
-            const gs::core::ReceivedPacketResult received_packet =
+            const gs::core::SessionEvent session_event =
                 s_session_core.processReceivedPacket(rx_data.data.data(),
                                                      rx_data.size,
                                                      s_groundstation_config.deviceId,
                                                      Clock::now(),
                                                      s_transport);
-            if (received_packet.status == gs::core::ReceivedPacketStatus::AcceptedConnectConfig)
+            if (session_event.kind == gs::core::SessionEventKind::ConnectAccepted)
             {
                 printf("Connecting to Air Device Id 0x%04x\n", s_session_core.connectedAirDeviceId());
                 break;
             }
 
-            if (received_packet.status == gs::core::ReceivedPacketStatus::Ignore)
+            if (session_event.kind == gs::core::SessionEventKind::Ignore)
             {
                 break;
             }
@@ -674,30 +674,34 @@ static void comms_thread_proc()
             s_last_packet_tp = Clock::now();
             rx_data.rssi = (int16_t)s_transport.get_input_dBm();
 
-            if (received_packet.status == gs::core::ReceivedPacketStatus::Invalid)
+            if (session_event.kind == gs::core::SessionEventKind::InvalidVideoPacket)
             {
-                if (received_packet.type == gs::core::SessionPacketType::Video)
-                {
-                    LOGE("Video frame {}: invalid packet {}", videoFrameAssembler.currentFrameIndex(), received_packet.packet_info.packetSize);
-                }
-                else if (received_packet.type == gs::core::SessionPacketType::Telemetry)
-                {
-                    LOGE("Telemetry frame: invalid packet {}", received_packet.packet_info.packetSize);
-                }
-                else if (received_packet.type == gs::core::SessionPacketType::OSD)
-                {
-                    LOGE("OSD frame: invalid packet");
-                }
+                LOGE("Video frame {}: invalid packet {}", videoFrameAssembler.currentFrameIndex(), session_event.packet_info.packetSize);
+                break;
+            }
+            else if (session_event.kind == gs::core::SessionEventKind::InvalidTelemetryPacket)
+            {
+                LOGE("Telemetry frame: invalid packet {}", session_event.packet_info.packetSize);
+                break;
+            }
+            else if (session_event.kind == gs::core::SessionEventKind::InvalidOsdPacket)
+            {
+                LOGE("OSD frame: invalid packet");
+                break;
+            }
+            else if (session_event.kind == gs::core::SessionEventKind::UnsupportedPacket)
+            {
+                LOGE("Unknown air packet: {}", session_event.packet_info.header->type);
                 break;
             }
 
-            if (received_packet.type == gs::core::SessionPacketType::Config)
+            if (session_event.kind == gs::core::SessionEventKind::ConfigReceived)
             {
                 //we need config packet only on connection
             }
-            else if (received_packet.type == gs::core::SessionPacketType::Video)
+            else if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
             {
-                const gs::core::VideoPacketView& video_view = received_packet.video;
+                const gs::core::VideoPacketView& video_view = session_event.video;
                 const Air2Ground_Video_Packet& air2ground_video_packet = *video_view.packet;
 
                 auto frameResult = videoFrameAssembler.pushPacket(
@@ -790,12 +794,12 @@ static void comms_thread_proc()
 
 #endif
             }
-            else if (received_packet.type == gs::core::SessionPacketType::Telemetry)
+            else if (session_event.kind == gs::core::SessionEventKind::TelemetryPayload)
             {
 #ifdef USE_MAVLINK
               if (fdUART != -1)
               {
-                const gs::core::TelemetryPacketView& telemetry_view = received_packet.telemetry;
+                const gs::core::TelemetryPacketView& telemetry_view = session_event.telemetry;
                 const uint8_t* payload =
                     reinterpret_cast<const uint8_t*>(telemetry_view.packet) + sizeof(Air2Ground_Data_Packet);
                 write(fdUART, payload, telemetry_view.payload_size);
@@ -803,30 +807,18 @@ static void comms_thread_proc()
               }
 #endif
             }
-            else if (received_packet.type == gs::core::SessionPacketType::OSD)
+            else if (session_event.kind == gs::core::SessionEventKind::OsdUpdate)
             {
-                const gs::core::OsdPacketView& osd_view = received_packet.osd;
+                const gs::core::OsdPacketView& osd_view = session_event.osd;
                 const Air2Ground_OSD_Packet& air2ground_osd_packet = *osd_view.packet;
                 syncAirStatusGlobals();
 
-                if ((osd_view.osd_data_size >= 2) && (osd_view.osd_data_size <= MAX_OSD_PAYLOAD_SIZE))
+                if (!g_framePacketsDebug.isOn())
                 {
-                    if (!g_framePacketsDebug.isOn())
-                    {
-                        g_osd.update(&air2ground_osd_packet.osd_enc_start, osd_view.osd_data_size);
-                    }
-                }
-                else
-                {
-                    LOGE("OSD Enc Data size incorrect{}", osd_view.osd_data_size);
+                    g_osd.update(&air2ground_osd_packet.osd_enc_start, osd_view.osd_data_size);
                 }
 
                 s_last_stats_packet_tp = Clock::now();
-            }
-            else
-            {
-                LOGE("Unknown air packet: {}", received_packet.packet_info.header->type);
-                break;
             }
 
 

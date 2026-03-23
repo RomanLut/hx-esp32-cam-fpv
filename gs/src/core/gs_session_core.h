@@ -22,12 +22,18 @@ enum class SessionPacketType
     OSD
 };
 
-enum class ReceivedPacketStatus
+enum class SessionEventKind
 {
     Ignore,
-    AcceptedConnectConfig,
-    Parsed,
-    Invalid
+    ConnectAccepted,
+    ConfigReceived,
+    VideoPacket,
+    TelemetryPayload,
+    OsdUpdate,
+    InvalidVideoPacket,
+    InvalidTelemetryPacket,
+    InvalidOsdPacket,
+    UnsupportedPacket
 };
 
 struct SessionPacketDecision
@@ -128,10 +134,9 @@ struct FrameStatsState
     Stats queue_usage_stats;
 };
 
-struct ReceivedPacketResult
+struct SessionEvent
 {
-    ReceivedPacketStatus status = ReceivedPacketStatus::Ignore;
-    SessionPacketType type = SessionPacketType::Ignore;
+    SessionEventKind kind = SessionEventKind::Ignore;
     protocol::AirPacketInfo packet_info = {};
     VideoPacketView video = {};
     TelemetryPacketView telemetry = {};
@@ -177,11 +182,11 @@ public:
     TelemetryTxDecision buildTelemetryTxDecision(bool got_rc_packet,
                                                  Clock::time_point now,
                                                  uint16_t gs_device_id);
-    ReceivedPacketResult processReceivedPacket(const uint8_t* packet_data,
-                                               size_t transport_packet_size,
-                                               uint16_t gs_device_id,
-                                               Clock::time_point now,
-                                               ITransport& transport);
+    SessionEvent processReceivedPacket(const uint8_t* packet_data,
+                                       size_t transport_packet_size,
+                                       uint16_t gs_device_id,
+                                       Clock::time_point now,
+                                       ITransport& transport);
 
     Ground2Air_Config_Packet copyConfigPacket() const;
 

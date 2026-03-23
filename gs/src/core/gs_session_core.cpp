@@ -337,22 +337,21 @@ TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
     return decision;
 }
 
-ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
-                                                          size_t transport_packet_size,
-                                                          uint16_t gs_device_id,
-                                                          Clock::time_point now,
-                                                          ITransport& transport)
+SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
+                                                  size_t transport_packet_size,
+                                                  uint16_t gs_device_id,
+                                                  Clock::time_point now,
+                                                  ITransport& transport)
 {
-    ReceivedPacketResult result;
+    SessionEvent result;
 
     const SessionPacketDecision decision =
         classifyPacket(packet_data, transport_packet_size, gs_device_id, transport);
     result.packet_info = decision.packet_info;
-    result.type = decision.type;
 
     if (decision.accepted_connect_config)
     {
-        result.status = ReceivedPacketStatus::AcceptedConnectConfig;
+        result.kind = SessionEventKind::ConnectAccepted;
         return result;
     }
 
@@ -364,7 +363,7 @@ ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_
     switch (decision.type)
     {
     case SessionPacketType::Config:
-        result.status = ReceivedPacketStatus::Parsed;
+        result.kind = SessionEventKind::ConfigReceived;
         return result;
 
     case SessionPacketType::Video:
@@ -373,12 +372,12 @@ ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_
                                  decision.packet_info.packetSize,
                                  result.video))
         {
-            result.status = ReceivedPacketStatus::Invalid;
+            result.kind = SessionEventKind::InvalidVideoPacket;
             return result;
         }
         onVideoPong(result.video.packet->pong, now);
         addReceivedBytes(transport_packet_size);
-        result.status = ReceivedPacketStatus::Parsed;
+        result.kind = SessionEventKind::VideoPacket;
         return result;
 
     case SessionPacketType::Telemetry:
@@ -387,11 +386,11 @@ ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_
                                      decision.packet_info.packetSize,
                                      result.telemetry))
         {
-            result.status = ReceivedPacketStatus::Invalid;
+            result.kind = SessionEventKind::InvalidTelemetryPacket;
             return result;
         }
         addReceivedBytes(transport_packet_size);
-        result.status = ReceivedPacketStatus::Parsed;
+        result.kind = SessionEventKind::TelemetryPayload;
         return result;
 
     case SessionPacketType::OSD:
@@ -400,15 +399,21 @@ ReceivedPacketResult GsSessionCore::processReceivedPacket(const uint8_t* packet_
                                decision.packet_info.packetSize,
                                result.osd))
         {
-            result.status = ReceivedPacketStatus::Invalid;
+            result.kind = SessionEventKind::InvalidOsdPacket;
+            return result;
+        }
+        if ((result.osd.osd_data_size < 2) || (result.osd.osd_data_size > MAX_OSD_PAYLOAD_SIZE))
+        {
+            result.kind = SessionEventKind::InvalidOsdPacket;
             return result;
         }
         addReceivedBytes(transport_packet_size);
-        result.status = ReceivedPacketStatus::Parsed;
+        result.kind = SessionEventKind::OsdUpdate;
         return result;
 
     case SessionPacketType::Ignore:
     default:
+        result.kind = SessionEventKind::UnsupportedPacket;
         return result;
     }
 }
