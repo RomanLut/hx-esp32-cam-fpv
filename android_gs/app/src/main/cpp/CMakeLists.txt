@@ -44,23 +44,35 @@ add_library(android_gs_core SHARED
     android_jpeg_decoder.cpp
     android_video_renderer.cpp
     native_bridge.cpp
+    ../../../../../gs/src/imgui/imgui.cpp
+    ../../../../../gs/src/imgui/imgui_draw.cpp
+    ../../../../../gs/src/imgui/imgui_tables.cpp
+    ../../../../../gs/src/imgui/imgui_widgets.cpp
+    ../../../../../gs/src/imgui/backends/imgui_impl_opengl3.cpp
     ../../../../../gs/src/utils/lodepng.cpp
     ../../../../../gs/src/core/gs_protocol.cpp
     ../../../../../gs/src/core/gs_session_core.cpp
     ../../../../../gs/src/core/osd_menu_common.cpp
+    ../../../../../gs/src/core/osd_menu_controller.cpp
+    ../../../../../gs/src/core/osd_menu_imgui_shared.cpp
     ../../../../../gs/src/core/video_frame_assembler.cpp
     ../../../../../components/common/crc.cpp
     ../../../../../components/common/fec.cpp
     ../../../../../components/common/packet_filter.cpp
+    ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
 )
 
 target_include_directories(android_gs_core PRIVATE
     ../../../../../gs/src
     ../../../../../gs/src/utils
+    ../../../../../gs/src/imgui
+    ../../../../../gs/src/imgui/backends
     ../../../../../components/common
     ${LIBJPEG_TURBO_INSTALL_DIR}/include
 )
+
+target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2)
 
 find_library(log-lib log)
 find_library(android-lib android)

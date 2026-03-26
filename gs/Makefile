@@ -5,6 +5,9 @@ SRCS := src/main.cpp \
 	src/core/gs_protocol.cpp \
 	src/core/gs_session_core.cpp \
 	src/core/osd_menu_common.cpp \
+	src/core/osd_menu_controller.cpp \
+	src/core/osd_menu_imgui_shared.cpp \
+	src/core/osd_menu_shared.cpp \
 	src/core/osd_base.cpp \
 	src/core/video_frame_assembler.cpp \
 	src/droid_sans_font.cpp \

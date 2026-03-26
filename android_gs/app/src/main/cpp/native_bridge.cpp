@@ -15,6 +15,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <memory>
 #include <vector>
 #include <algorithm>
 #include <sys/statvfs.h>
@@ -24,8 +25,11 @@
 #include "android_video_renderer.h"
 #include "fec.h"
 #include "crc.h"
+#include "lodepng.h"
 #include "core/gs_session_core.h"
 #include "core/osd_menu_common.h"
+#include "core/osd_menu_controller.h"
+#include "core/osd_menu_imgui_shared.h"
 #include "core/transport.h"
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
@@ -37,30 +41,9 @@ constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
-constexpr float kLinuxMenuRefWidth = 1280.0f;
-constexpr float kLinuxMenuRefHeight = 720.0f;
-constexpr float kLinuxMenuWindowWidth = 500.0f;
-constexpr float kLinuxMenuWindowHeight = 600.0f;
-constexpr float kLinuxMenuButtonWidth = 442.0f;
-constexpr float kLinuxMenuButtonHeight = 35.0f;
-constexpr float kLinuxMenuItemInset = 29.0f;
-constexpr float kLinuxMenuCenterYOffset = 120.0f;
-constexpr float kLinuxMenuGapLarge = 20.0f;
 constexpr float kAndroidNavButtonSize = 72.0f;
 constexpr float kAndroidNavGap = 10.0f;
 constexpr float kAndroidNavMargin = 18.0f;
-
-float linuxMenuScaleForSurface(float view_width, float view_height)
-{
-    if (view_width <= 0.0f || view_height <= 0.0f)
-    {
-        return 1.0f;
-    }
-
-    const float width_scale = view_width / kLinuxMenuRefWidth;
-    const float height_scale = view_height / kLinuxMenuRefHeight;
-    return std::min(width_scale, height_scale);
-}
 
 struct NavPadLayout
 {
@@ -75,63 +58,32 @@ struct NavPadLayout
     float down_y = 0.0f;
 };
 
-enum class AndroidMenuNavAction
-{
-    None,
-    Up,
-    Down,
-    Back,
-    Activate,
-};
-
-NavPadLayout buildNavPadLayout(float view_width, float view_height)
+NavPadLayout buildNavPadLayout(float surface_width, float surface_height)
 {
     NavPadLayout layout;
-    const float ui_scale = std::min(view_width / 1280.0f, view_height / 720.0f);
+    const float ui_scale = std::min(surface_width / 1280.0f, surface_height / 720.0f);
     const float control_scale = std::max(0.85f, ui_scale);
     layout.size = kAndroidNavButtonSize * control_scale;
     layout.gap = kAndroidNavGap * control_scale;
     layout.margin = kAndroidNavMargin * control_scale;
-    layout.right_x = view_width - layout.margin - layout.size;
+    layout.right_x = surface_width - layout.margin - layout.size;
     layout.left_x = layout.right_x - layout.size - layout.gap - layout.size;
     layout.center_x = layout.left_x + layout.size + layout.gap;
-    layout.down_y = view_height - layout.margin - layout.size;
+    layout.down_y = surface_height - layout.margin - layout.size;
     layout.mid_y = layout.down_y - layout.gap - layout.size;
     layout.up_y = layout.mid_y - layout.gap - layout.size;
     return layout;
 }
 
-bool pointInRect(float x, float y, float rx, float ry, float rw, float rh)
+bool pointInRect(float x, float y, float rect_x, float rect_y, float rect_w, float rect_h)
 {
-    return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+    return rect_w > 0.0f &&
+           rect_h > 0.0f &&
+           x >= rect_x &&
+           x <= rect_x + rect_w &&
+           y >= rect_y &&
+           y <= rect_y + rect_h;
 }
-
-enum class AndroidMenuId
-{
-    Main,
-    Search,
-    GSSettings,
-    GSScreen,
-    Letterbox,
-    GSWifiSettings,
-    GSTxInterface,
-    GSTxPower,
-    Debug,
-    CameraSettings,
-    OSDFont,
-    CameraStopCH,
-    ExitToShell,
-    Resolution,
-    Image,
-    Brightness,
-    Contrast,
-    Exposure,
-    Saturation,
-    Sharpness,
-    WifiRate,
-    WifiChannel,
-    FEC
-};
 
 class AndroidTransport final : public gs::core::ITransport
 {
@@ -385,10 +337,53 @@ private:
     std::vector<bool> m_processed;
 };
 
+struct NativeHandle;
+
+class AndroidMenuPlatform final : public gs::menu::IOSDMenuPlatform
+{
+public:
+    explicit AndroidMenuPlatform(NativeHandle& handle)
+        : m_handle(handle)
+    {
+    }
+
+    TGroundstationConfig& groundstationConfig() override;
+    const TGroundstationConfig& groundstationConfig() const override;
+    gs::core::ITransport& transport() override;
+    const gs::core::ITransport& transport() const override;
+    bool isOV5640() const override;
+    bool isDualCamera() const override;
+    gs::menu::AirStorageStatus airStorageStatus() const override;
+    gs::menu::GroundStorageStatus groundStorageStatus() const override;
+    const char* currentOSDFontName() const override;
+    const std::vector<std::string>& osdFontsList() const override;
+    void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override;
+    void saveGroundStationConfig() override;
+    void saveGround2AirConfig(const Ground2Air_Config_Packet& config) override;
+    void applyWifiChannel(Ground2Air_Config_Packet& config) override;
+    void applyWifiChannelInstant(Ground2Air_Config_Packet& config) override;
+    void applyGSTxPower(Ground2Air_Config_Packet& config) override;
+    void airUnpair() override;
+    void exitApp() override;
+    void restartGPIOButtons() override;
+    void setVsync(bool enabled) override;
+    std::string systemIPv4() const override;
+    Clock::time_point lastPacketTime() const override;
+    void captureFrameDebug(bool until_loss) override;
+    void disableFrameDebug() override;
+
+private:
+    NativeHandle& m_handle;
+    std::vector<std::string> m_osd_fonts = {"INAV_default_24.png"};
+    std::string m_current_osd_font = "INAV_default_24.png";
+};
+
 struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)
         : gs_device_id(gs_device_id_value),
+          menu_platform(std::make_unique<AndroidMenuPlatform>(*this)),
+          menu_controller(std::make_unique<gs::menu::OSDMenuController>(*menu_platform)),
           jpeg_decoder(renderer)
     {
         init_crc8_table();
@@ -396,6 +391,15 @@ struct NativeHandle
         tx_fec = fec_new(2, 3);
         session.resetPairing(gs_device_id, transport, Clock::now());
         transport.getPacketFilter().set_packet_filtering(0, 0);
+        groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+        groundstation_config.wifiBand = DEFAULT_GS_WIFI_BAND;
+        groundstation_config.screenAspectRatio = ScreenAspectRatio::LETTERBOX;
+        groundstation_config.txPower = gs::menu::kDefaultTxPower;
+        groundstation_config.vsync = true;
+        groundstation_config.txInterface = "auto";
+        groundstation_config.GPIOKeysLayout = 0;
+        groundstation_config.stats = true;
+        groundstation_config.deviceId = gs_device_id;
     }
 
     ~NativeHandle()
@@ -452,6 +456,7 @@ struct NativeHandle
     uint64_t udp_packets_received = 0;
     float udp_throughput_mbps = 0.0f;
     float udp_video_fps = 0.0f;
+    Clock::time_point last_packet_tp = Clock::now();
     std::string udp_peer_host = "192.168.4.1";
     int udp_peer_port = 5600;
     int udp_local_port = 5600;
@@ -459,61 +464,18 @@ struct NativeHandle
     std::atomic<bool> udp_stop_requested = false;
     bool udp_running = false;
     std::thread udp_thread;
-    bool menu_visible = false;
-    AndroidMenuId menu_id = AndroidMenuId::Main;
-    int menu_selected_item = 0;
-    std::vector<AndroidMenuId> menu_back_ids;
-    std::vector<int> menu_back_items;
-    bool show_stats = true;
-    int gs_screen_aspect_ratio = 1;
-    bool gs_vsync = true;
+    TGroundstationConfig groundstation_config = {};
+    std::unique_ptr<AndroidMenuPlatform> menu_platform;
+    std::unique_ptr<gs::menu::OSDMenuController> menu_controller;
     AndroidVideoRenderer renderer;
     AndroidJpegDecoder jpeg_decoder;
-    int gs_wifi_band = DEFAULT_GS_WIFI_BAND;
-    int gs_tx_power = kDefaultTxPower;
-    std::string gs_tx_interface = "auto";
-    int gs_gpio_keys_layout = 0;
     int gs_packet_debug_mode = 0;
-    int gs_osd_font_index = 0;
     bool exit_requested = false;
-};
-
-struct AndroidMenuScreen
-{
-    std::string title;
-    std::vector<std::string> items;
-    std::vector<std::string> statuses;
-    std::vector<std::string> status_lines;
-    int selected_item = 0;
-    bool can_go_back = false;
 };
 
 void commitMenuConfig(NativeHandle& handle)
 {
     handle.session.setConfigPacket(handle.config_packet);
-}
-
-void menuGoForward(NativeHandle& handle, AndroidMenuId new_menu_id, int new_item)
-{
-    handle.menu_back_ids.push_back(handle.menu_id);
-    handle.menu_back_items.push_back(handle.menu_selected_item);
-    handle.menu_id = new_menu_id;
-    handle.menu_selected_item = new_item;
-    handle.menu_visible = true;
-}
-
-void menuGoBack(NativeHandle& handle)
-{
-    if (handle.menu_back_ids.empty())
-    {
-        handle.menu_visible = false;
-        return;
-    }
-
-    handle.menu_id = handle.menu_back_ids.back();
-    handle.menu_back_ids.pop_back();
-    handle.menu_selected_item = handle.menu_back_items.back();
-    handle.menu_back_items.pop_back();
 }
 
 std::string formatStorageLine(const char* label, bool ok, double free_gb, double total_gb, const char* suffix = "")
@@ -558,572 +520,137 @@ std::string buildGsSdStatus()
         free_bytes >= kGsSdMinFreeSpaceBytes ? "" : " Low space");
 }
 
-std::string getWifiChannelLabel(int channel)
+TGroundstationConfig& AndroidMenuPlatform::groundstationConfig()
 {
-    char buf[64];
-    if (channel >= 36 && channel <= 48)
-    {
-        std::snprintf(buf, sizeof(buf), "%d  (5.8GHz,ETSI,FCC)", channel);
-    }
-    else if (channel >= 52 && channel <= 144)
-    {
-        std::snprintf(buf, sizeof(buf), "%d  (5.8GHz,ETSI,FCC,DFS)", channel);
-    }
-    else if (channel >= 149 && channel <= 165)
-    {
-        std::snprintf(buf, sizeof(buf), "%d  (5.8GHz,FCC)", channel);
-    }
-    else if (channel == 12 || channel == 13)
-    {
-        std::snprintf(buf, sizeof(buf), "%d  (2.4GHz,ETSI)", channel);
-    }
-    else
-    {
-        std::snprintf(buf, sizeof(buf), "%d  (2.4GHz,ETSI,FCC)", channel);
-    }
-    return buf;
+    return m_handle.groundstation_config;
 }
 
-AndroidMenuScreen buildAndroidMenuScreen(const NativeHandle& handle)
+const TGroundstationConfig& AndroidMenuPlatform::groundstationConfig() const
 {
-    AndroidMenuScreen screen;
-    screen.selected_item = handle.menu_selected_item;
-    screen.can_go_back = !handle.menu_back_ids.empty();
-    const auto& config = handle.config_packet;
-    constexpr std::array<const char*, 3> kScreenModes = {
-        "Stretch",
-        "Letterbox",
-        "Zoom to Fill"
-    };
-    constexpr std::array<const char*, 3> kWifiBands = {
-        "2.4GHz",
-        "5.8GHz",
-        "2.4GHz & 5.8GHz"
-    };
-    constexpr std::array<const char*, 2> kGpioLayouts = {
-        "DIY VRX",
-        "Runcam VRX"
-    };
-    constexpr std::array<const char*, 1> kOsdFonts = {
-        "Built-in"
-    };
-
-    switch (handle.menu_id)
-    {
-    case AndroidMenuId::Main:
-        screen.title = "ESP32-CAM-FPV";
-        screen.items.push_back("Search & Connect...");
-        screen.items.push_back("Resolution: " + gs::menu::getResolutionSummary(config, handle.session.airStatus().is_ov5640));
-        screen.items.push_back("Wifi Channel: " + std::to_string(config.dataChannel.wifi_channel));
-        screen.items.push_back("Wifi Rate: " + gs::menu::getWifiRateSummary(config));
-        screen.items.push_back("FEC: " + gs::menu::getFecSummary(config));
-        screen.items.push_back("Camera Settings...");
-        screen.items.push_back("Ground Station Settings...");
-        screen.status_lines.push_back(buildAirSdStatus(handle));
-        screen.status_lines.push_back(buildGsSdStatus());
-        break;
-
-    case AndroidMenuId::Search:
-        screen.title = std::string("Menu -> Search (") + kWifiBands[std::clamp(handle.gs_wifi_band, 0, 2)] + ")...";
-        if (handle.session.connectedAirDeviceId() != 0)
-        {
-            screen.status_lines.push_back("Found Channel: " + std::to_string(config.dataChannel.wifi_channel));
-        }
-        else
-        {
-            screen.status_lines.push_back("Searching: Channel " + std::to_string(config.dataChannel.wifi_channel) + "...");
-        }
-        break;
-
-    case AndroidMenuId::GSSettings:
-        screen.title = "Menu -> GS Settings";
-        screen.items.push_back("Screen Settings...");
-        screen.items.push_back("Wifi Settings...");
-        screen.items.push_back("Debuging...");
-        screen.items.push_back("GPIO Keys Layout: " + std::string(kGpioLayouts[std::clamp(handle.gs_gpio_keys_layout, 0, 1)]));
-        screen.items.push_back("Exit To Shell");
-        screen.status_lines.push_back("IP: 192.168.4.2");
-        break;
-
-    case AndroidMenuId::GSScreen:
-        screen.title = "Menu -> GS Screen";
-        screen.items.push_back("Screen Mode: " + std::string(kScreenModes[std::clamp(handle.gs_screen_aspect_ratio, 0, 2)]));
-        break;
-
-    case AndroidMenuId::Letterbox:
-        screen.title = "GS Settings -> Screen Mode";
-        for (const char* label : kScreenModes)
-        {
-            screen.items.push_back(label);
-        }
-        break;
-
-    case AndroidMenuId::GSWifiSettings:
-        screen.title = "Menu -> GS Wifi Settings";
-        screen.items.push_back("Band: " + std::string(kWifiBands[std::clamp(handle.gs_wifi_band, 0, 2)]));
-        screen.items.push_back("TX Interface: " + handle.gs_tx_interface);
-        screen.items.push_back("TX Power: " + std::to_string(handle.gs_tx_power));
-        if (handle.transport.getRXDescriptor().interfaces.empty())
-        {
-            screen.status_lines.push_back("No network interfaces detected");
-        }
-        else
-        {
-            for (const auto& iface : handle.transport.getRXDescriptor().interfaces)
-            {
-                screen.status_lines.push_back(iface);
-            }
-        }
-        break;
-
-    case AndroidMenuId::GSTxInterface:
-        screen.title = "GS Settings -> TX Interface";
-        screen.items.push_back("auto");
-        for (const auto& iface : handle.transport.getRXDescriptor().interfaces)
-        {
-            screen.items.push_back(iface);
-        }
-        break;
-
-    case AndroidMenuId::GSTxPower:
-        screen.title = "Menu -> Tx Power";
-        for (int power = kMinTxPower; power <= kMaxTxPower; ++power)
-        {
-            screen.items.push_back(std::to_string(power));
-        }
-        break;
-
-    case AndroidMenuId::Debug:
-        screen.title = "Menu -> Debugging";
-        screen.items.push_back("Toggle Statistics");
-        screen.items.push_back("Draw packets");
-        screen.items.push_back("Draw packets till loss");
-        screen.items.push_back("Hide packets");
-        break;
-
-    case AndroidMenuId::CameraSettings:
-        screen.title = "Menu -> Camera Settings";
-        screen.items.push_back("Image Settings...");
-        screen.items.push_back("OSD Font: " + std::string(kOsdFonts[std::clamp(handle.gs_osd_font_index, 0, static_cast<int>(kOsdFonts.size() - 1))]));
-        screen.items.push_back(std::string("Autostart recording: ") + (config.misc.autostartRecord ? "On" : "Off"));
-        screen.items.push_back(std::string("Camera Off RC Channel: ") + (config.misc.cameraStopChannel == 0 ? "None" : std::to_string(config.misc.cameraStopChannel)));
-        screen.items.push_back(std::string("Mavlink2 to Msp RC: ") + (config.misc.mavlink2mspRC ? "On" : "Off"));
-        screen.items.push_back("Air to GS MTU: " + std::to_string(config.dataChannel.fec_codec_mtu));
-        break;
-
-    case AndroidMenuId::OSDFont:
-        screen.title = "GS -> Displayport OSD Font";
-        for (const char* font : kOsdFonts)
-        {
-            screen.items.push_back(font);
-        }
-        break;
-
-    case AndroidMenuId::Image:
-        screen.title = "Menu -> Image Settings";
-        screen.items.push_back("Brightness: " + std::to_string(config.camera.brightness));
-        screen.items.push_back("Contrast: " + std::to_string(config.camera.contrast));
-        screen.items.push_back("Exposure: " + std::to_string(config.camera.ae_level));
-        screen.items.push_back("Saturation: " + std::to_string(config.camera.saturation));
-        screen.items.push_back("Sharpness: " + std::string((std::array<const char*, 5>{"Blur more", "Blur", "Normal", "Sharpen", "Sharpen more"})[std::clamp<int>(config.camera.sharpness, -2, 2) + 2]));
-        if (!handle.session.airStatus().is_ov5640)
-        {
-            screen.items.push_back(std::string("Vertical Flip: ") + (config.camera.vflip ? "Enabled" : "Disabled"));
-            screen.items.push_back(std::string("40FPS (overclock): ") + (config.camera.ov2640HighFPS ? "Enabled" : "Disabled"));
-        }
-        else
-        {
-            screen.items.push_back(std::string("50fps Modes: ") + (config.camera.ov5640HighFPS ? "Enabled" : "Disabled"));
-        }
-        break;
-
-    case AndroidMenuId::Brightness:
-    case AndroidMenuId::Contrast:
-    case AndroidMenuId::Exposure:
-    case AndroidMenuId::Saturation:
-        screen.title = handle.menu_id == AndroidMenuId::Brightness ? "Camera Settings -> Brightness" :
-                       handle.menu_id == AndroidMenuId::Contrast ? "Camera Settings -> Contrast" :
-                       handle.menu_id == AndroidMenuId::Exposure ? "Camera Settings -> Exposure" :
-                                                                    "Camera Settings -> Saturation";
-        for (int value = -2; value <= 2; ++value)
-        {
-            screen.items.push_back(std::to_string(value));
-        }
-        break;
-
-    case AndroidMenuId::Sharpness:
-        screen.title = "Camera Settings -> Sharpness";
-        screen.items = {"Blue more", "Blur", "Normal", "Sharpen", "Sharpen more"};
-        break;
-
-    case AndroidMenuId::Resolution:
-        screen.title = "Menu -> Resolution";
-        for (int i = 0; i < 6; ++i)
-        {
-            screen.items.push_back(gs::menu::getResolutionOptionLabel(config, handle.session.airStatus().is_ov5640, i, true));
-        }
-        break;
-
-    case AndroidMenuId::WifiRate:
-        screen.title = "Menu -> Wifi Rate";
-        for (int i = 0; i < 6; ++i)
-        {
-            screen.items.push_back(gs::menu::getWifiRateOptionLabel(i));
-        }
-        break;
-
-    case AndroidMenuId::WifiChannel:
-        screen.title = "Menu -> Wifi Channel";
-        for (int i = 0; i < WIFI_CHANNELS_COUNT; ++i)
-        {
-            const int channel = WIFI_CHANNELS_BY_INDEX[i];
-            if (!isWifiChannelAllowedByBand(channel, handle.gs_wifi_band))
-            {
-                continue;
-            }
-            screen.items.push_back(getWifiChannelLabel(channel));
-        }
-        break;
-
-    case AndroidMenuId::CameraStopCH:
-        screen.title = "Menu -> Camera Stop Channel";
-        screen.items.push_back("None");
-        for (int i = 1; i <= 18; ++i)
-        {
-            screen.items.push_back(std::to_string(i));
-        }
-        break;
-
-    case AndroidMenuId::ExitToShell:
-        screen.title = "Exit To Shell ?";
-        screen.items.push_back("Exit");
-        screen.items.push_back("Cancel");
-        break;
-
-    case AndroidMenuId::FEC:
-        screen.title = "Menu -> FEC";
-        for (int i = 0; i < 3; ++i)
-        {
-            screen.items.push_back(gs::menu::getFecOptionLabel(i));
-        }
-        break;
-    }
-
-    return screen;
+    return m_handle.groundstation_config;
 }
 
-void handleAndroidMenuSelection(NativeHandle& handle, int item_index)
+gs::core::ITransport& AndroidMenuPlatform::transport()
 {
-    handle.menu_selected_item = item_index;
-
-    switch (handle.menu_id)
-    {
-    case AndroidMenuId::Main:
-        switch (item_index)
-        {
-        case 0:
-            handle.session.resetPairing(handle.gs_device_id, handle.transport, Clock::now());
-            handle.transport.getPacketFilter().set_packet_filtering(0, 0);
-            menuGoForward(handle, AndroidMenuId::Search, 0);
-            break;
-        case 1: menuGoForward(handle, AndroidMenuId::Resolution, gs::menu::getResolutionMenuIndex(handle.config_packet.camera.resolution)); break;
-        case 2: menuGoForward(handle, AndroidMenuId::WifiChannel, 0); break;
-        case 3: menuGoForward(handle, AndroidMenuId::WifiRate, gs::menu::getWifiRateMenuIndex(handle.config_packet.dataChannel.wifi_rate)); break;
-        case 4: menuGoForward(handle, AndroidMenuId::FEC, gs::menu::getFecMenuIndex(handle.config_packet)); break;
-        case 5: menuGoForward(handle, AndroidMenuId::CameraSettings, 0); break;
-        case 6: menuGoForward(handle, AndroidMenuId::GSSettings, 0); break;
-        default: break;
-        }
-        break;
-
-    case AndroidMenuId::Search:
-        break;
-
-    case AndroidMenuId::GSSettings:
-        if (item_index == 0)
-        {
-            menuGoForward(handle, AndroidMenuId::GSScreen, 0);
-        }
-        else if (item_index == 1)
-        {
-            menuGoForward(handle, AndroidMenuId::GSWifiSettings, 0);
-        }
-        else if (item_index == 2)
-        {
-            menuGoForward(handle, AndroidMenuId::Debug, 0);
-        }
-        else if (item_index == 3)
-        {
-            handle.gs_gpio_keys_layout = (handle.gs_gpio_keys_layout + 1) % 2;
-        }
-        else if (item_index == 4)
-        {
-            menuGoForward(handle, AndroidMenuId::ExitToShell, 0);
-        }
-        break;
-
-    case AndroidMenuId::GSScreen:
-        if (item_index == 0)
-        {
-            menuGoForward(handle,
-                          AndroidMenuId::Letterbox,
-                          std::clamp(handle.gs_screen_aspect_ratio, 0, 2));
-        }
-        break;
-
-    case AndroidMenuId::Letterbox:
-        handle.gs_screen_aspect_ratio = std::clamp(item_index, 0, 2);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::GSWifiSettings:
-        if (item_index == 0)
-        {
-            handle.gs_wifi_band = (handle.gs_wifi_band + 1) % 3;
-        }
-        else if (item_index == 1)
-        {
-            int selected_index = 0;
-            const auto& interfaces = handle.transport.getRXDescriptor().interfaces;
-            for (size_t i = 0; i < interfaces.size(); ++i)
-            {
-                if (interfaces[i] == handle.gs_tx_interface)
-                {
-                    selected_index = static_cast<int>(i) + 1;
-                    break;
-                }
-            }
-            menuGoForward(handle, AndroidMenuId::GSTxInterface, selected_index);
-        }
-        else if (item_index == 2)
-        {
-            menuGoForward(handle, AndroidMenuId::GSTxPower, handle.gs_tx_power - kMinTxPower);
-        }
-        break;
-
-    case AndroidMenuId::GSTxInterface:
-        if (item_index <= 0)
-        {
-            handle.gs_tx_interface = "auto";
-        }
-        else
-        {
-            const auto& interfaces = handle.transport.getRXDescriptor().interfaces;
-            const size_t interface_index = static_cast<size_t>(item_index - 1);
-            if (interface_index < interfaces.size())
-            {
-                handle.gs_tx_interface = interfaces[interface_index];
-            }
-        }
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::GSTxPower:
-        handle.gs_tx_power = std::clamp(item_index + kMinTxPower, kMinTxPower, kMaxTxPower);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Debug:
-        if (item_index == 0)
-        {
-            handle.show_stats = !handle.show_stats;
-        }
-        else if (item_index == 1)
-        {
-            handle.gs_packet_debug_mode = 1;
-        }
-        else if (item_index == 2)
-        {
-            handle.gs_packet_debug_mode = 2;
-        }
-        else if (item_index == 3)
-        {
-            handle.gs_packet_debug_mode = 0;
-        }
-        break;
-
-    case AndroidMenuId::CameraSettings:
-        if (item_index == 0)
-        {
-            menuGoForward(handle, AndroidMenuId::Image, 0);
-        }
-        else if (item_index == 1)
-        {
-            menuGoForward(handle, AndroidMenuId::OSDFont, handle.gs_osd_font_index);
-        }
-        else if (item_index == 2)
-        {
-            handle.config_packet.misc.autostartRecord ^= 1;
-            commitMenuConfig(handle);
-        }
-        else if (item_index == 3)
-        {
-            menuGoForward(handle, AndroidMenuId::CameraStopCH, handle.config_packet.misc.cameraStopChannel);
-        }
-        else if (item_index == 4)
-        {
-            handle.config_packet.misc.mavlink2mspRC ^= 1;
-            commitMenuConfig(handle);
-        }
-        else if (item_index == 5)
-        {
-            handle.config_packet.dataChannel.fec_codec_mtu =
-                handle.config_packet.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU ? AIR2GROUND_MIN_MTU : AIR2GROUND_MAX_MTU;
-            commitMenuConfig(handle);
-        }
-        break;
-
-    case AndroidMenuId::OSDFont:
-        handle.gs_osd_font_index = std::clamp(item_index, 0, 0);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Image:
-        if (item_index == 0) menuGoForward(handle, AndroidMenuId::Brightness, handle.config_packet.camera.brightness + 2);
-        else if (item_index == 1) menuGoForward(handle, AndroidMenuId::Contrast, handle.config_packet.camera.contrast + 2);
-        else if (item_index == 2) menuGoForward(handle, AndroidMenuId::Exposure, handle.config_packet.camera.ae_level + 2);
-        else if (item_index == 3) menuGoForward(handle, AndroidMenuId::Saturation, handle.config_packet.camera.saturation + 2);
-        else if (item_index == 4) menuGoForward(handle, AndroidMenuId::Sharpness, handle.config_packet.camera.sharpness + 2);
-        else if (!handle.session.airStatus().is_ov5640 && item_index == 5)
-        {
-            handle.config_packet.camera.vflip = !handle.config_packet.camera.vflip;
-            handle.config_packet.camera.hmirror = handle.config_packet.camera.vflip;
-            commitMenuConfig(handle);
-        }
-        else if (!handle.session.airStatus().is_ov5640 && item_index == 6)
-        {
-            handle.config_packet.camera.ov2640HighFPS = !handle.config_packet.camera.ov2640HighFPS;
-            commitMenuConfig(handle);
-        }
-        else if (handle.session.airStatus().is_ov5640 && item_index == 5)
-        {
-            handle.config_packet.camera.ov5640HighFPS = !handle.config_packet.camera.ov5640HighFPS;
-            commitMenuConfig(handle);
-        }
-        break;
-
-    case AndroidMenuId::Brightness:
-        handle.config_packet.camera.brightness = static_cast<int8_t>(item_index - 2);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Contrast:
-        handle.config_packet.camera.contrast = static_cast<int8_t>(item_index - 2);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Exposure:
-        handle.config_packet.camera.ae_level = static_cast<int8_t>(item_index - 2);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Saturation:
-        handle.config_packet.camera.saturation = static_cast<int8_t>(item_index - 2);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Sharpness:
-        handle.config_packet.camera.sharpness = static_cast<int8_t>(item_index - 2);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::Resolution:
-        handle.config_packet.camera.resolution = gs::menu::getResolutionForMenuIndex(item_index);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::WifiRate:
-        handle.config_packet.dataChannel.wifi_rate = gs::menu::getWifiRateForMenuIndex(item_index);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::WifiChannel:
-        {
-            int visible_index = 0;
-            for (int i = 0; i < WIFI_CHANNELS_COUNT; ++i)
-            {
-                const int channel = WIFI_CHANNELS_BY_INDEX[i];
-                if (!isWifiChannelAllowedByBand(channel, handle.gs_wifi_band))
-                {
-                    continue;
-                }
-                if (visible_index == item_index)
-                {
-                    handle.config_packet.dataChannel.wifi_channel = channel;
-                    commitMenuConfig(handle);
-                    break;
-                }
-                visible_index++;
-            }
-        }
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::CameraStopCH:
-        if (item_index >= 0 && item_index <= 18)
-        {
-            handle.config_packet.misc.cameraStopChannel = static_cast<uint8_t>(item_index);
-            commitMenuConfig(handle);
-        }
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::ExitToShell:
-        if (item_index == 0)
-        {
-            handle.exit_requested = true;
-        }
-        menuGoBack(handle);
-        break;
-
-    case AndroidMenuId::FEC:
-        handle.config_packet.dataChannel.fec_codec_k = FEC_K;
-        handle.config_packet.dataChannel.fec_codec_n = gs::menu::getFecNForMenuIndex(item_index);
-        commitMenuConfig(handle);
-        menuGoBack(handle);
-        break;
-    }
+    return m_handle.transport;
 }
 
-void moveAndroidMenuSelection(NativeHandle& handle, int delta)
+const gs::core::ITransport& AndroidMenuPlatform::transport() const
 {
-    const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
-    if (screen.items.empty())
-    {
-        return;
-    }
-
-    const int max_index = static_cast<int>(screen.items.size()) - 1;
-    handle.menu_selected_item = std::clamp(handle.menu_selected_item + delta, 0, max_index);
+    return m_handle.transport;
 }
 
-AndroidMenuNavAction hitTestAndroidMenuNav(float x, float y, float view_width, float view_height)
+bool AndroidMenuPlatform::isOV5640() const
 {
-    const NavPadLayout nav = buildNavPadLayout(view_width, view_height);
-    if (pointInRect(x, y, nav.center_x, nav.up_y, nav.size, nav.size))
+    return m_handle.session.airStatus().is_ov5640;
+}
+
+bool AndroidMenuPlatform::isDualCamera() const
+{
+    return false;
+}
+
+gs::menu::AirStorageStatus AndroidMenuPlatform::airStorageStatus() const
+{
+    const auto& air = m_handle.session.airStatus();
+    return {air.sd_detected, air.sd_error, air.sd_slow, air.sd_free_space_gb16, air.sd_total_space_gb16};
+}
+
+gs::menu::GroundStorageStatus AndroidMenuPlatform::groundStorageStatus() const
+{
+    struct statvfs fs = {};
+    if (statvfs("/data", &fs) != 0)
     {
-        return AndroidMenuNavAction::Up;
+        return {};
     }
-    if (pointInRect(x, y, nav.left_x, nav.mid_y, nav.size, nav.size))
-    {
-        return AndroidMenuNavAction::Back;
-    }
-    if (pointInRect(x, y, nav.right_x, nav.mid_y, nav.size, nav.size))
-    {
-        return AndroidMenuNavAction::Activate;
-    }
-    if (pointInRect(x, y, nav.center_x, nav.down_y, nav.size, nav.size))
-    {
-        return AndroidMenuNavAction::Down;
-    }
-    return AndroidMenuNavAction::None;
+
+    return {
+        static_cast<uint64_t>(fs.f_bavail) * static_cast<uint64_t>(fs.f_frsize),
+        static_cast<uint64_t>(fs.f_blocks) * static_cast<uint64_t>(fs.f_frsize),
+    };
+}
+
+const char* AndroidMenuPlatform::currentOSDFontName() const
+{
+    return m_current_osd_font.c_str();
+}
+
+const std::vector<std::string>& AndroidMenuPlatform::osdFontsList() const
+{
+    return m_osd_fonts;
+}
+
+void AndroidMenuPlatform::selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name)
+{
+    m_current_osd_font = font_name;
+    config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(font_name.c_str()),
+                                             font_name.length());
+    m_handle.session.setConfigPacket(m_handle.config_packet);
+}
+
+void AndroidMenuPlatform::saveGroundStationConfig()
+{
+}
+
+void AndroidMenuPlatform::saveGround2AirConfig(const Ground2Air_Config_Packet& config)
+{
+    m_handle.config_packet = config;
+    m_handle.session.setConfigPacket(m_handle.config_packet);
+}
+
+void AndroidMenuPlatform::applyWifiChannel(Ground2Air_Config_Packet& config)
+{
+    saveGround2AirConfig(config);
+}
+
+void AndroidMenuPlatform::applyWifiChannelInstant(Ground2Air_Config_Packet& config)
+{
+    saveGround2AirConfig(config);
+}
+
+void AndroidMenuPlatform::applyGSTxPower(Ground2Air_Config_Packet& config)
+{
+    saveGround2AirConfig(config);
+}
+
+void AndroidMenuPlatform::airUnpair()
+{
+    m_handle.session.resetPairing(m_handle.gs_device_id, m_handle.transport, Clock::now());
+    m_handle.transport.getPacketFilter().set_packet_filtering(0, 0);
+}
+
+void AndroidMenuPlatform::exitApp()
+{
+    m_handle.exit_requested = true;
+}
+
+void AndroidMenuPlatform::restartGPIOButtons()
+{
+}
+
+void AndroidMenuPlatform::setVsync(bool enabled)
+{
+    m_handle.groundstation_config.vsync = enabled;
+}
+
+std::string AndroidMenuPlatform::systemIPv4() const
+{
+    return "0.0.0.0";
+}
+
+Clock::time_point AndroidMenuPlatform::lastPacketTime() const
+{
+    return m_handle.last_packet_tp;
+}
+
+void AndroidMenuPlatform::captureFrameDebug(bool until_loss)
+{
+    m_handle.gs_packet_debug_mode = until_loss ? 2 : 1;
+}
+
+void AndroidMenuPlatform::disableFrameDebug()
+{
+    m_handle.gs_packet_debug_mode = 0;
 }
 
 jlong toJLong(NativeHandle* handle)
@@ -1213,30 +740,6 @@ jobjectArray toJByteArrayArray(JNIEnv* env, const std::vector<std::vector<uint8_
         jbyteArray packet_array = toJByteArray(env, packets[i]);
         env->SetObjectArrayElement(result, static_cast<jsize>(i), packet_array);
         env->DeleteLocalRef(packet_array);
-    }
-
-    return result;
-}
-
-jobjectArray toJStringArray(JNIEnv* env, const std::vector<std::string>& items)
-{
-    jclass string_class = env->FindClass("java/lang/String");
-    if (string_class == nullptr)
-    {
-        return nullptr;
-    }
-
-    jobjectArray result = env->NewObjectArray(static_cast<jsize>(items.size()), string_class, nullptr);
-    if (result == nullptr)
-    {
-        return nullptr;
-    }
-
-    for (size_t i = 0; i < items.size(); ++i)
-    {
-        jstring value = env->NewStringUTF(items[i].c_str());
-        env->SetObjectArrayElement(result, static_cast<jsize>(i), value);
-        env->DeleteLocalRef(value);
     }
 
     return result;
@@ -1334,16 +837,6 @@ std::string sanitizeStatusValue(std::string value)
     std::replace(value.begin(), value.end(), '\n', ' ');
     std::replace(value.begin(), value.end(), '\r', ' ');
     return value;
-}
-
-std::string buildAndroidMenuTitle(const NativeHandle& handle, const AndroidMenuScreen& screen)
-{
-    if (screen.title == "ESP32-CAM-FPV")
-    {
-        return std::string("ESP32-CAM-FPV v0.5.3 ") +
-               (handle.session.airStatus().is_ov5640 ? "OV5640" : "OV2640");
-    }
-    return screen.title;
 }
 
 bool tryParseVideoPacketWire(const uint8_t* packet_data,
@@ -1532,6 +1025,7 @@ int processTransportPacket(NativeHandle& handle,
                 handle.transport);
 
             handle.last_event_kind = session_event.kind;
+            handle.last_packet_tp = Clock::now();
 
             if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
             {
@@ -1630,15 +1124,14 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
     }
 
     AndroidVideoRenderer::OverlayMenuState menu_state;
-    if (handle.menu_visible)
+    if (handle.menu_controller->isVisible())
     {
-        const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
+        const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
         menu_state.visible = true;
-        menu_state.title = buildAndroidMenuTitle(handle, screen);
-        menu_state.items = screen.items;
-        menu_state.statuses = screen.statuses;
-        menu_state.status_lines = screen.status_lines;
-        menu_state.selected_index = screen.selected_item;
+        menu_state.title = snapshot.title;
+        menu_state.items = snapshot.items;
+        menu_state.status_lines = snapshot.statuses;
+        menu_state.selected_index = snapshot.selected_item;
         menu_state.footer = build_info;
     }
 
@@ -1656,67 +1149,114 @@ void handleTapLocked(NativeHandle& handle,
         return;
     }
 
-    if (!handle.menu_visible)
+    if (!handle.menu_controller->isVisible())
     {
-        handle.menu_visible = true;
-        handle.menu_id = AndroidMenuId::Main;
-        handle.menu_selected_item = 0;
-        handle.menu_back_ids.clear();
-        handle.menu_back_items.clear();
+        handle.menu_controller->open();
         return;
     }
 
-    const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
-    switch (hitTestAndroidMenuNav(x, y, view_width, view_height))
+    const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
+    const auto menu_layout = gs::menu::imgui::buildMenuFrameLayout(view_width, view_height, true, 29.0f);
+    const auto nav_layout = buildNavPadLayout(view_width, view_height);
+
+    if (pointInRect(x, y, nav_layout.center_x, nav_layout.up_y, nav_layout.size, nav_layout.size))
     {
-    case AndroidMenuNavAction::Up:
-        moveAndroidMenuSelection(handle, -1);
+        handle.menu_controller->moveSelection(-1);
         return;
-    case AndroidMenuNavAction::Down:
-        moveAndroidMenuSelection(handle, 1);
+    }
+
+    if (pointInRect(x, y, nav_layout.center_x, nav_layout.down_y, nav_layout.size, nav_layout.size))
+    {
+        handle.menu_controller->moveSelection(1);
         return;
-    case AndroidMenuNavAction::Back:
-        menuGoBack(handle);
+    }
+
+    if (pointInRect(x, y, nav_layout.left_x, nav_layout.mid_y, nav_layout.size, nav_layout.size))
+    {
+        handle.menu_controller->goBackPublic();
         return;
-    case AndroidMenuNavAction::Activate:
-        if (!screen.items.empty())
+    }
+
+    if (pointInRect(x, y, nav_layout.right_x, nav_layout.mid_y, nav_layout.size, nav_layout.size))
+    {
+        handle.menu_controller->activateSelected(handle.config_packet);
+        return;
+    }
+
+    const float menu_x = menu_layout.window_x;
+    const float menu_y = menu_layout.window_y;
+    const float menu_w = menu_layout.window_width;
+    const float menu_h = menu_layout.window_height;
+    const float item_x = menu_x + menu_layout.item_indent;
+    float item_y = menu_y + menu_layout.button_height + menu_layout.large_gap;
+
+    for (size_t index = 0; index < snapshot.items.size(); ++index)
+    {
+        if (pointInRect(x, y, item_x, item_y, menu_layout.item_width, menu_layout.button_height))
         {
-            handleAndroidMenuSelection(handle, std::clamp(handle.menu_selected_item, 0, static_cast<int>(screen.items.size()) - 1));
-        }
-        return;
-    case AndroidMenuNavAction::None:
-        break;
-    }
-
-    const float scale = linuxMenuScaleForSurface(view_width, view_height);
-    const float menu_width = kLinuxMenuWindowWidth * scale;
-    const float menu_height = kLinuxMenuWindowHeight * scale;
-    const float menu_x = std::floor((view_width - menu_width) * 0.5f);
-    const float menu_offset_y = (std::lround(view_height) == 576) ? 100.0f : kLinuxMenuCenterYOffset;
-    const float menu_y = std::floor((view_height - menu_height) * 0.5f + menu_offset_y * scale);
-
-    if (x < menu_x || x > menu_x + menu_width || y < menu_y || y > menu_y + menu_height)
-    {
-        menuGoBack(handle);
-        return;
-    }
-
-    const float button_height = kLinuxMenuButtonHeight * scale;
-    const float button_width = kLinuxMenuButtonWidth * scale;
-    const float item_x = menu_x + kLinuxMenuItemInset * scale;
-    const float large_gap = (view_height > 480.0f) ? kLinuxMenuGapLarge * scale : 0.0f;
-    float cursor_y = menu_y + button_height + large_gap;
-
-    for (size_t index = 0; index < screen.items.size(); ++index)
-    {
-        const float row_y = cursor_y;
-        if (y >= row_y && y <= row_y + button_height &&
-            x >= item_x && x <= item_x + button_width)
-        {
-            handleAndroidMenuSelection(handle, static_cast<int>(index));
+            handle.menu_controller->activateItemByVisibleIndex(handle.config_packet, static_cast<int>(index));
             return;
         }
-        cursor_y += button_height;
+        item_y += menu_layout.button_height + menu_layout.item_gap_y;
+    }
+
+    if (!pointInRect(x, y, menu_x, menu_y, menu_w, menu_h))
+    {
+        handle.menu_controller->goBackPublic();
+        return;
+    }
+}
+
+bool handleKeyLocked(NativeHandle& handle, int key_code)
+{
+    constexpr int kKeycodeBack = 4;
+    constexpr int kKeycodeDpadUp = 19;
+    constexpr int kKeycodeDpadDown = 20;
+    constexpr int kKeycodeDpadLeft = 21;
+    constexpr int kKeycodeDpadRight = 22;
+    constexpr int kKeycodeDpadCenter = 23;
+    constexpr int kKeycodeEnter = 66;
+    constexpr int kKeycodeMenu = 82;
+
+    if (!handle.menu_controller->isVisible())
+    {
+        if (key_code == kKeycodeMenu || key_code == kKeycodeDpadCenter || key_code == kKeycodeEnter)
+        {
+            handle.menu_controller->open();
+            return true;
+        }
+        return false;
+    }
+
+    switch (key_code)
+    {
+    case kKeycodeDpadUp:
+        handle.menu_controller->moveSelection(-1);
+        return true;
+    case kKeycodeDpadDown:
+        handle.menu_controller->moveSelection(1);
+        return true;
+    case kKeycodeDpadLeft:
+    case kKeycodeBack:
+        handle.menu_controller->goBackPublic();
+        return true;
+    case kKeycodeDpadRight:
+    case kKeycodeDpadCenter:
+    case kKeycodeEnter:
+        handle.menu_controller->activateSelected(handle.config_packet);
+        return true;
+    case kKeycodeMenu:
+        if (handle.menu_controller->isVisible())
+        {
+            handle.menu_controller->close();
+        }
+        else
+        {
+            handle.menu_controller->open();
+        }
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -2070,7 +1610,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return static_cast<jint>(std::clamp(native_handle->gs_screen_aspect_ratio, 0, 2));
+    return native_handle->groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH ? 0 : 1;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -2086,48 +1626,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env *
     }
 
     native_handle->renderer.setScreenMode(std::clamp(static_cast<int>(screen_mode), 0, 2));
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setFontAtlasPng(JNIEnv* env,
-                                                          jobject /* thiz */,
-                                                          jlong handle,
-                                                          jbyteArray png_bytes)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr || png_bytes == nullptr)
-    {
-        return;
-    }
-
-    std::vector<uint8_t> bytes = fromJByteArray(env, png_bytes);
-    if (bytes.empty())
-    {
-        return;
-    }
-
-    native_handle->renderer.setFontAtlasPng(bytes.data(), bytes.size());
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setMenuFontTtf(JNIEnv* env,
-                                                         jobject /* thiz */,
-                                                         jlong handle,
-                                                         jbyteArray ttf_bytes)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr || ttf_bytes == nullptr)
-    {
-        return;
-    }
-
-    std::vector<uint8_t> bytes = fromJByteArray(env, ttf_bytes);
-    if (bytes.empty())
-    {
-        return;
-    }
-
-    native_handle->renderer.setMenuFontTtf(bytes.data(), bytes.size());
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -2168,6 +1666,22 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
                     static_cast<float>(y),
                     static_cast<float>(view_width),
                     static_cast<float>(view_height));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_handleKey(JNIEnv* /* env */,
+                                                    jobject /* thiz */,
+                                                    jlong handle,
+                                                    jint key_code)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return handleKeyLocked(*native_handle, static_cast<int>(key_code)) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -2231,151 +1745,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_submitVideoFrame(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isMenuVisible(JNIEnv* /* env */,
-                                                        jobject /* thiz */,
-                                                        jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return JNI_FALSE;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return native_handle->menu_visible ? JNI_TRUE : JNI_FALSE;
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setMenuVisible(JNIEnv* /* env */,
-                                                         jobject /* thiz */,
-                                                         jlong handle,
-                                                         jboolean visible)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    native_handle->menu_visible = visible == JNI_TRUE;
-    if (native_handle->menu_visible)
-    {
-        native_handle->menu_id = AndroidMenuId::Main;
-        native_handle->menu_selected_item = 0;
-        native_handle->menu_back_ids.clear();
-        native_handle->menu_back_items.clear();
-    }
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_menuGoBack(JNIEnv* /* env */,
-                                                     jobject /* thiz */,
-                                                     jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    menuGoBack(*native_handle);
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getMenuSelectedIndex(JNIEnv* /* env */,
-                                                               jobject /* thiz */,
-                                                               jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return 0;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return buildAndroidMenuScreen(*native_handle).selected_item;
-}
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getMenuTitle(JNIEnv* env,
-                                                       jobject /* thiz */,
-                                                       jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return env->NewStringUTF("");
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    const AndroidMenuScreen screen = buildAndroidMenuScreen(*native_handle);
-    return env->NewStringUTF(screen.title.c_str());
-}
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getMenuItems(JNIEnv* env,
-                                                       jobject /* thiz */,
-                                                       jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return nullptr;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return toJStringArray(env, buildAndroidMenuScreen(*native_handle).items);
-}
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getMenuStatuses(JNIEnv* env,
-                                                          jobject /* thiz */,
-                                                          jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return nullptr;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return toJStringArray(env, buildAndroidMenuScreen(*native_handle).statuses);
-}
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getMenuStatusLines(JNIEnv* env,
-                                                             jobject /* thiz */,
-                                                             jlong handle)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return nullptr;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return toJStringArray(env, buildAndroidMenuScreen(*native_handle).status_lines);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_menuSelectItem(JNIEnv* /* env */,
-                                                         jobject /* thiz */,
-                                                         jlong handle,
-                                                         jint item_index)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    handleAndroidMenuSelection(*native_handle, static_cast<int>(item_index));
-}
-
-extern "C" JNIEXPORT jboolean JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_consumeExitRequested(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle)
@@ -2415,11 +1784,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     native_handle->last_video_part_index = 0;
     native_handle->last_video_last_part = 0;
     native_handle->last_video_payload_size = 0;
-    native_handle->menu_visible = false;
-    native_handle->menu_id = AndroidMenuId::Main;
-    native_handle->menu_selected_item = 0;
-    native_handle->menu_back_ids.clear();
-    native_handle->menu_back_items.clear();
+    native_handle->menu_controller->close();
 }
 
 extern "C" JNIEXPORT void JNICALL

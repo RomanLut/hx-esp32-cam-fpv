@@ -32,21 +32,11 @@ object NativeCore {
     external fun getLastEventKind(handle: Long): Int
     external fun getScreenAspectRatio(handle: Long): Int
     external fun setRendererScreenMode(handle: Long, screenMode: Int)
-    external fun setFontAtlasPng(handle: Long, pngBytes: ByteArray)
-    external fun setMenuFontTtf(handle: Long, ttfBytes: ByteArray)
     external fun syncRendererOverlay(handle: Long, buildInfo: String)
     external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
+    external fun handleKey(handle: Long, keyCode: Int): Boolean
     external fun setRenderSurface(handle: Long, surface: Surface)
     external fun clearRenderSurface(handle: Long)
-    external fun isMenuVisible(handle: Long): Boolean
-    external fun setMenuVisible(handle: Long, visible: Boolean)
-    external fun menuGoBack(handle: Long)
-    external fun getMenuSelectedIndex(handle: Long): Int
-    external fun getMenuTitle(handle: Long): String
-    external fun getMenuItems(handle: Long): Array<String>
-    external fun getMenuStatuses(handle: Long): Array<String>
-    external fun getMenuStatusLines(handle: Long): Array<String>
-    external fun menuSelectItem(handle: Long, itemIndex: Int)
     external fun consumeExitRequested(handle: Long): Boolean
     external fun resetSession(handle: Long)
     external fun destroyHandle(handle: Long)

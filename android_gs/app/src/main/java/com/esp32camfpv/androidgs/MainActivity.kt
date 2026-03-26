@@ -2,6 +2,7 @@ package com.esp32camfpv.androidgs
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.enableEdgeToEdge
@@ -24,12 +25,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 
 private val VideoBackgroundColor = Color(0xFF0A0D14)
 
 class MainActivity : ComponentActivity() {
+    private var inputNativeHandle: Long = 0L
+    private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -45,25 +48,40 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AndroidGsApp(
+                        onHandleChanged = { inputNativeHandle = it },
                         onExitApp = { finishAffinity() }
                     )
                 }
             }
         }
     }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val nativeHandle = inputNativeHandle
+        if (nativeHandle != 0L && event.action == KeyEvent.ACTION_DOWN) {
+            if (NativeCore.handleKey(nativeHandle, event.keyCode)) {
+                NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
+                NativeCore.syncRendererOverlay(nativeHandle, inputBuildInfo)
+                if (NativeCore.consumeExitRequested(nativeHandle)) {
+                    finishAffinity()
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 }
 
 @Composable
 private fun AndroidGsApp(
+    onHandleChanged: (Long) -> Unit,
     onExitApp: () -> Unit
 ) {
-    val context = LocalContext.current
     val nativeHandle = remember { NativeCore.createHandle(1) }
-    val menuFontBytes = remember(context) {
-        context.assets.open("ui_fonts/ProggyClean.ttf").use { it.readBytes() }
-    }
     DisposableEffect(nativeHandle) {
+        onHandleChanged(nativeHandle)
         onDispose {
+            onHandleChanged(0L)
             NativeCore.stopUdpClient(nativeHandle)
             NativeCore.destroyHandle(nativeHandle)
         }
@@ -76,7 +94,6 @@ private fun AndroidGsApp(
     }
 
     LaunchedEffect(nativeHandle) {
-        NativeCore.setMenuFontTtf(nativeHandle, menuFontBytes)
         refreshNativeState()
         NativeCore.startUdpClient(nativeHandle)
     }

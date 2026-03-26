@@ -1,0 +1,38 @@
+#pragma once
+
+#include "imgui.h"
+
+namespace gs::menu::imgui
+{
+
+struct MenuFrameLayout
+{
+    float scale = 1.0f;
+    float window_x = 0.0f;
+    float window_y = 0.0f;
+    float window_width = 500.0f;
+    float window_height = 600.0f;
+    float title_width = 500.0f;
+    float item_width = 442.0f;
+    float status_width = 500.0f;
+    float button_height = 35.0f;
+    float item_indent = 29.0f;
+    float item_gap_y = 4.0f;
+    float large_gap = 20.0f;
+    float small_gap = 8.0f;
+};
+
+MenuFrameLayout buildMenuFrameLayout(float surface_width,
+                                     float surface_height,
+                                     bool scale_to_surface,
+                                     float item_indent);
+void beginMenuWindow(const char* window_name, const MenuFrameLayout& layout, ImGuiWindowFlags extra_flags = 0);
+void endMenuWindow();
+void drawMenuTitle(const char* caption, const MenuFrameLayout& layout);
+bool drawMenuItem(const char* caption, const MenuFrameLayout& layout, bool selected);
+void drawMenuStatus(const char* caption, const MenuFrameLayout& layout);
+void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout);
+void drawLargeGap(const MenuFrameLayout& layout);
+void drawSmallGap(const MenuFrameLayout& layout);
+
+} // namespace gs::menu::imgui

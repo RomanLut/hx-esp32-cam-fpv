@@ -4,8 +4,9 @@
 #include <GLES2/gl2.h>
 #include <android/log.h>
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "imgui/imstb_truetype.h"
+#include "core/osd_menu_imgui_shared.h"
+#include "imgui.h"
+#include "backends/imgui_impl_opengl3.h"
 #include "utils/lodepng.h"
 
 #include <algorithm>
@@ -17,36 +18,11 @@ namespace
 {
 
 constexpr const char* kLogTag = "AndroidGSRenderer";
-constexpr int kMenuFirstChar = 32;
-constexpr int kMenuGlyphCount = 96;
-constexpr float kMenuBakedPixelHeight = 13.0f;
 constexpr float kLinuxMenuFontGlobalScale = 2.0f;
-constexpr float kLinuxMenuRefWidth = 1280.0f;
-constexpr float kLinuxMenuRefHeight = 720.0f;
-constexpr float kLinuxMenuWindowWidth = 500.0f;
-constexpr float kLinuxMenuWindowHeight = 600.0f;
-constexpr float kLinuxMenuButtonWidth = 442.0f;
-constexpr float kLinuxMenuButtonHeight = 35.0f;
-constexpr float kLinuxMenuItemInset = 29.0f;
-constexpr float kLinuxMenuCenterYOffset = 120.0f;
-constexpr float kLinuxMenuGapLarge = 20.0f;
-constexpr float kLinuxMenuGapSmall = 8.0f;
 constexpr float kAndroidNavButtonSize = 72.0f;
 constexpr float kAndroidNavGap = 10.0f;
 constexpr float kAndroidNavMargin = 18.0f;
 constexpr float kAndroidNavLabelScale = 0.75f;
-
-float linuxMenuScaleForSurface(int surface_width, int surface_height)
-{
-    if (surface_width <= 0 || surface_height <= 0)
-    {
-        return 1.0f;
-    }
-
-    const float width_scale = static_cast<float>(surface_width) / kLinuxMenuRefWidth;
-    const float height_scale = static_cast<float>(surface_height) / kLinuxMenuRefHeight;
-    return std::min(width_scale, height_scale);
-}
 
 struct NavPadLayout
 {
@@ -178,6 +154,21 @@ std::array<float, 4> whiteColor()
     return {1.0f, 1.0f, 1.0f, 1.0f};
 }
 
+ImVec4 toImGuiColor(const std::array<float, 4>& color)
+{
+    return ImVec4(color[0], color[1], color[2], color[3]);
+}
+
+bool pointInRect(float x, float y, const AndroidVideoRenderer::Rect& rect)
+{
+    return rect.width > 0.0f &&
+           rect.height > 0.0f &&
+           x >= rect.x &&
+           x <= rect.x + rect.width &&
+           y >= rect.y &&
+           y <= rect.y + rect.height;
+}
+
 } // namespace
 
 AndroidVideoRenderer::AndroidVideoRenderer()
@@ -239,26 +230,6 @@ void AndroidVideoRenderer::setScreenMode(int screen_mode)
     m_cv.notify_all();
 }
 
-void AndroidVideoRenderer::setFontAtlasPng(const uint8_t* png_data, size_t size)
-{
-    (void)png_data;
-    (void)size;
-}
-
-void AndroidVideoRenderer::setMenuFontTtf(const uint8_t* ttf_data, size_t size)
-{
-    if (ttf_data == nullptr || size == 0)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_pending_font_ttf.assign(ttf_data, ttf_data + size);
-    m_font_dirty = true;
-    m_overlay_dirty = true;
-    m_cv.notify_all();
-}
-
 void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -268,13 +239,54 @@ void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips
     m_cv.notify_all();
 }
 
+AndroidVideoRenderer::MenuAction AndroidVideoRenderer::dispatchTap(float x, float y)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_overlay_menu.visible || m_imgui_context == nullptr)
+    {
+        return {};
+    }
+
+    if (pointInRect(x, y, m_nav_up_bounds))
+    {
+        return {MenuActionKind::Up, -1};
+    }
+    if (pointInRect(x, y, m_nav_down_bounds))
+    {
+        return {MenuActionKind::Down, -1};
+    }
+    if (pointInRect(x, y, m_nav_left_bounds))
+    {
+        return {MenuActionKind::Back, -1};
+    }
+    if (pointInRect(x, y, m_nav_right_bounds))
+    {
+        return {MenuActionKind::Activate, -1};
+    }
+
+    for (size_t index = 0; index < m_menu_item_bounds.size(); ++index)
+    {
+        if (pointInRect(x, y, m_menu_item_bounds[index]))
+        {
+            return {MenuActionKind::SelectItem, static_cast<int>(index)};
+        }
+    }
+
+    if (!pointInRect(x, y, m_menu_bounds))
+    {
+        return {MenuActionKind::Outside, -1};
+    }
+
+    return {};
+}
+
 void AndroidVideoRenderer::run()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     while (!m_exit)
     {
         m_cv.wait(lock, [this] {
-            return m_exit || m_surface_dirty || m_frame_dirty || m_mode_dirty || m_overlay_dirty || m_font_dirty;
+            return m_exit || m_surface_dirty || m_frame_dirty || m_mode_dirty || m_overlay_dirty || m_touch_pending;
         });
 
         if (m_exit)
@@ -292,14 +304,14 @@ void AndroidVideoRenderer::run()
             m_frame_dirty = false;
             m_mode_dirty = false;
             m_overlay_dirty = false;
-            m_font_dirty = false;
+            if (m_touch_pending)
+            {
+                m_touch_pending = false;
+                m_touch_processed_sequence = m_touch_sequence;
+                m_touch_action = {};
+                m_cv.notify_all();
+            }
             continue;
-        }
-
-        if (m_font_dirty)
-        {
-            uploadFontTextureLocked();
-            m_font_dirty = false;
         }
 
         if (m_frame_dirty)
@@ -443,7 +455,7 @@ bool AndroidVideoRenderer::initEglLocked()
     m_egl_display = display;
     m_egl_surface = surface;
     m_egl_context = context;
-    return true;
+    return initImGuiLocked();
 }
 
 void AndroidVideoRenderer::destroyEglLocked()
@@ -452,11 +464,6 @@ void AndroidVideoRenderer::destroyEglLocked()
     const EGLSurface surface = static_cast<EGLSurface>(m_egl_surface);
     const EGLContext context = static_cast<EGLContext>(m_egl_context);
 
-    if (m_font_texture != 0)
-    {
-        glDeleteTextures(1, &m_font_texture);
-        m_font_texture = 0;
-    }
     if (m_white_texture != 0)
     {
         glDeleteTextures(1, &m_white_texture);
@@ -472,6 +479,8 @@ void AndroidVideoRenderer::destroyEglLocked()
         glDeleteProgram(m_program);
         m_program = 0;
     }
+
+    destroyImGuiLocked();
 
     if (display != nullptr && display != EGL_NO_DISPLAY)
     {
@@ -496,6 +505,52 @@ void AndroidVideoRenderer::destroyEglLocked()
     m_egl_context = nullptr;
     m_uploaded_width = 0;
     m_uploaded_height = 0;
+}
+
+bool AndroidVideoRenderer::initImGuiLocked()
+{
+    IMGUI_CHECKVERSION();
+    ImGuiContext* context = ImGui::CreateContext();
+    if (context == nullptr)
+    {
+        return false;
+    }
+
+    m_imgui_context = context;
+    ImGui::SetCurrentContext(context);
+    ImGui::StyleColorsDark();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+    io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScrollbarSize = static_cast<float>(m_surface_width) / 80.0f;
+    style.ItemInnerSpacing = ImVec2(style.ItemSpacing.x / 2.0f, style.ItemSpacing.y / 2.0f);
+    io.FontGlobalScale = kLinuxMenuFontGlobalScale;
+
+    if (!ImGui_ImplOpenGL3_Init("#version 100"))
+    {
+        destroyImGuiLocked();
+        return false;
+    }
+
+    return true;
+}
+
+void AndroidVideoRenderer::destroyImGuiLocked()
+{
+    if (m_imgui_context == nullptr)
+    {
+        return;
+    }
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui::DestroyContext(static_cast<ImGuiContext*>(m_imgui_context));
+    m_imgui_context = nullptr;
 }
 
 void AndroidVideoRenderer::uploadFrameLocked()
@@ -543,96 +598,6 @@ void AndroidVideoRenderer::ensureTextureLocked()
     m_uploaded_height = m_frame_height;
 }
 
-bool AndroidVideoRenderer::uploadFontTextureLocked()
-{
-    if (m_pending_font_ttf.empty())
-    {
-        return false;
-    }
-
-    constexpr int atlas_width = 512;
-    constexpr int atlas_height = 512;
-    std::vector<unsigned char> alpha_pixels(static_cast<size_t>(atlas_width) * static_cast<size_t>(atlas_height), 0);
-    std::vector<stbtt_bakedchar> baked(static_cast<size_t>(kMenuGlyphCount));
-    const int bake_result = stbtt_BakeFontBitmap(
-        m_pending_font_ttf.data(),
-        0,
-        kMenuBakedPixelHeight,
-        alpha_pixels.data(),
-        atlas_width,
-        atlas_height,
-        kMenuFirstChar,
-        kMenuGlyphCount,
-        baked.data());
-    if (bake_result <= 0)
-    {
-        __android_log_print(ANDROID_LOG_WARN, kLogTag, "Menu font bake failed");
-        return false;
-    }
-
-    std::vector<uint8_t> rgba_pixels(static_cast<size_t>(atlas_width) * static_cast<size_t>(atlas_height) * 4, 255);
-    for (size_t i = 0; i < alpha_pixels.size(); ++i)
-    {
-        rgba_pixels[i * 4 + 3] = alpha_pixels[i];
-    }
-
-    m_font.pixels = std::move(rgba_pixels);
-    m_font.width = atlas_width;
-    m_font.height = atlas_height;
-    m_font.first_char = kMenuFirstChar;
-    m_font.glyph_count = kMenuGlyphCount;
-    m_font.baked_pixel_height = kMenuBakedPixelHeight;
-    m_font.min_yoff = 0.0f;
-    m_font.max_ybottom = 0.0f;
-    m_font.glyphs.resize(static_cast<size_t>(kMenuGlyphCount));
-    for (int glyph = 0; glyph < kMenuGlyphCount; ++glyph)
-    {
-        const stbtt_bakedchar& src = baked[static_cast<size_t>(glyph)];
-        auto& dst = m_font.glyphs[static_cast<size_t>(glyph)];
-        dst.x0 = src.x0;
-        dst.y0 = src.y0;
-        dst.x1 = src.x1;
-        dst.y1 = src.y1;
-        dst.xoff = src.xoff;
-        dst.yoff = src.yoff;
-        dst.xadvance = src.xadvance;
-
-        const float glyph_top = src.yoff;
-        const float glyph_bottom = src.yoff + static_cast<float>(src.y1 - src.y0);
-        if (glyph == 0)
-        {
-            m_font.min_yoff = glyph_top;
-            m_font.max_ybottom = glyph_bottom;
-        }
-        else
-        {
-            m_font.min_yoff = std::min(m_font.min_yoff, glyph_top);
-            m_font.max_ybottom = std::max(m_font.max_ybottom, glyph_bottom);
-        }
-    }
-
-    if (m_font_texture == 0)
-    {
-        glGenTextures(1, &m_font_texture);
-    }
-    glBindTexture(GL_TEXTURE_2D, m_font_texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D,
-                 0,
-                 GL_RGBA,
-                 m_font.width,
-                 m_font.height,
-                 0,
-                 GL_RGBA,
-                 GL_UNSIGNED_BYTE,
-                 m_font.pixels.data());
-    return true;
-}
-
 void AndroidVideoRenderer::drawTexturedQuadLocked(float x,
                                                   float y,
                                                   float width,
@@ -674,71 +639,41 @@ void AndroidVideoRenderer::drawRectLocked(float x, float y, float width, float h
     drawTexturedQuadLocked(x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, m_white_texture, color);
 }
 
-void AndroidVideoRenderer::drawTextLocked(float x, float y, float char_height, const std::string& text, const std::array<float, 4>& color)
-{
-    if (m_font_texture == 0 || m_font.glyph_count <= 0 || text.empty() || m_font.glyphs.empty())
-    {
-        return;
-    }
-
-    const float scale = char_height / std::max(1.0f, m_font.baked_pixel_height);
-    float cursor_x = x;
-    for (const unsigned char ch : text)
-    {
-        const int glyph_index = std::clamp<int>(static_cast<int>(ch) - m_font.first_char, 0, m_font.glyph_count - 1);
-        const auto& glyph = m_font.glyphs[static_cast<size_t>(glyph_index)];
-        const float glyph_width = static_cast<float>(glyph.x1 - glyph.x0) * scale;
-        const float glyph_height = static_cast<float>(glyph.y1 - glyph.y0) * scale;
-        const float draw_x = cursor_x + glyph.xoff * scale;
-        const float draw_y = y + glyph.yoff * scale;
-        const float u0 = static_cast<float>(glyph.x0) / static_cast<float>(m_font.width);
-        const float u1 = static_cast<float>(glyph.x1) / static_cast<float>(m_font.width);
-        const float v0 = static_cast<float>(glyph.y0) / static_cast<float>(m_font.height);
-        const float v1 = static_cast<float>(glyph.y1) / static_cast<float>(m_font.height);
-        drawTexturedQuadLocked(draw_x, draw_y, glyph_width, glyph_height, u0, v0, u1, v1, m_font_texture, color);
-        cursor_x += glyph.xadvance * scale;
-    }
-}
-
-void AndroidVideoRenderer::drawTextLineLocked(float x,
-                                              float y,
-                                              float max_width,
-                                              float box_height,
-                                              float char_height,
-                                              const std::string& text,
-                                              const std::array<float, 4>& color)
-{
-    const float char_width = char_height * 0.6f;
-    const int max_chars = std::max(0, static_cast<int>(std::floor(max_width / std::max(char_width, 1.0f))));
-    std::string clipped = text;
-    if (max_chars > 0 && static_cast<int>(clipped.size()) > max_chars)
-    {
-        clipped.resize(static_cast<size_t>(max_chars));
-    }
-    if (clipped.empty())
-    {
-        return;
-    }
-
-    const float scale = char_height / std::max(1.0f, m_font.baked_pixel_height);
-    const float line_top = m_font.min_yoff * scale;
-    const float line_bottom = m_font.max_ybottom * scale;
-    const float line_height = std::max(1.0f, line_bottom - line_top);
-    const float aligned_y = y + (box_height - line_height) * 0.5f - line_top;
-    drawTextLocked(x, aligned_y, char_height, clipped, color);
-}
-
 void AndroidVideoRenderer::drawHudLocked()
 {
     if (m_overlay_chips.empty())
     {
         return;
     }
+    drawHudImGuiLocked();
+}
 
-    float x = 8.0f;
-    const float y = 8.0f;
+void AndroidVideoRenderer::drawHudImGuiLocked()
+{
+    if (m_imgui_context == nullptr || m_overlay_chips.empty())
+    {
+        return;
+    }
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
     const float chip_height = std::max(20.0f, static_cast<float>(m_surface_height) * 0.04f);
-    const float text_height = chip_height * 0.62f;
+    const float start_x = 8.0f;
+    const float start_y = 8.0f;
+    float x = start_x;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height)), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
+    ImGui::Begin("OSD_HUD_ANDROID",
+                 nullptr,
+                 ImGuiWindowFlags_NoDecoration |
+                     ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoInputs);
+
     for (const auto& chip : m_overlay_chips)
     {
         if (chip.text.empty())
@@ -746,22 +681,21 @@ void AndroidVideoRenderer::drawHudLocked()
             continue;
         }
 
-        const float chip_width = std::max(44.0f, 16.0f + static_cast<float>(chip.text.size()) * text_height * 0.6f);
-        drawRectLocked(x,
-                       y,
-                       chip_width,
-                       chip_height,
-                       chip.alert ? std::array<float, 4>{0.54f, 0.29f, 0.29f, 0.80f}
-                                  : std::array<float, 4>{0.42f, 0.42f, 0.42f, 0.80f});
-        drawTextLineLocked(x + 8.0f,
-                           y,
-                           chip_width - 16.0f,
-                           chip_height,
-                           text_height,
-                           chip.text,
-                           whiteColor());
+        const ImVec2 text_size = ImGui::CalcTextSize(chip.text.c_str());
+        const float chip_width = std::max(44.0f, 16.0f + text_size.x);
+        const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
+                                     : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
+        ImGui::SetCursorPos(ImVec2(x, start_y));
+        ImGui::PushStyleColor(ImGuiCol_Button, bg);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
+        ImGui::Button(chip.text.c_str(), ImVec2(chip_width, chip_height));
+        ImGui::PopStyleColor(3);
         x += chip_width + 6.0f;
     }
+
+    ImGui::End();
+    ImGui::PopStyleVar(3);
 }
 
 void AndroidVideoRenderer::drawMenuLocked()
@@ -771,116 +705,146 @@ void AndroidVideoRenderer::drawMenuLocked()
         return;
     }
 
-    const float scale = linuxMenuScaleForSurface(m_surface_width, m_surface_height);
-    const float menu_width = kLinuxMenuWindowWidth * scale;
-    const float menu_height = kLinuxMenuWindowHeight * scale;
-    const float menu_x = std::floor((static_cast<float>(m_surface_width) - menu_width) * 0.5f);
-    const float menu_offset_y = (m_surface_height == 576) ? 100.0f : kLinuxMenuCenterYOffset;
-    const float menu_y = std::floor((static_cast<float>(m_surface_height) - menu_height) * 0.5f + menu_offset_y * scale);
-    const float button_height = kLinuxMenuButtonHeight * scale;
-    const float button_width = kLinuxMenuButtonWidth * scale;
-    const float item_x = menu_x + kLinuxMenuItemInset * scale;
-    const float item_text_x = item_x + 8.0f * scale;
-    const float title_text_x = menu_x + 10.0f * scale;
-    const float text_height = kMenuBakedPixelHeight * kLinuxMenuFontGlobalScale * scale;
-    const float large_gap = (static_cast<float>(m_surface_height) > 480.0f) ? kLinuxMenuGapLarge * scale : 0.0f;
-    const float small_gap = kLinuxMenuGapSmall * scale;
-    float cursor_y = menu_y;
-
     drawRectLocked(0.0f, 0.0f, static_cast<float>(m_surface_width), static_cast<float>(m_surface_height), {0.0f, 0.0f, 0.0f, 0.40f});
-    drawRectLocked(menu_x, cursor_y, menu_width, button_height, {0.38f, 0.54f, 0.41f, 1.0f});
-    drawTextLineLocked(title_text_x,
-                       cursor_y,
-                       menu_width - 20.0f * scale,
-                       button_height,
-                       text_height,
-                       m_overlay_menu.title,
-                       {0.93f, 0.97f, 0.95f, 1.0f});
-    cursor_y += button_height + large_gap;
+    drawMenuImGuiLocked();
+}
+
+void AndroidVideoRenderer::drawMenuImGuiLocked()
+{
+    if (m_imgui_context == nullptr)
+    {
+        return;
+    }
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+    const auto layout = gs::menu::imgui::buildMenuFrameLayout(static_cast<float>(m_surface_width),
+                                                              static_cast<float>(m_surface_height),
+                                                              true,
+                                                              29.0f);
+    m_menu_item_bounds.clear();
+    gs::menu::imgui::beginMenuWindow("OSD_MENU_ANDROID", layout);
+    gs::menu::imgui::drawMenuTitle(m_overlay_menu.title.c_str(), layout);
+    m_menu_bounds = {
+        ImGui::GetWindowPos().x,
+        ImGui::GetWindowPos().y,
+        ImGui::GetWindowSize().x,
+        ImGui::GetWindowSize().y};
 
     for (size_t index = 0; index < m_overlay_menu.items.size(); ++index)
     {
-        const float row_y = cursor_y;
-        const bool selected = static_cast<int>(index) == m_overlay_menu.selected_index;
-        drawRectLocked(item_x,
-                       row_y,
-                       button_width,
-                       button_height,
-                       selected ? std::array<float, 4>{0.30f, 0.54f, 0.80f, 1.0f}
-                                : std::array<float, 4>{0.15f, 0.20f, 0.35f, 1.0f});
-
         std::string item_text = m_overlay_menu.items[index];
         if (index < m_overlay_menu.statuses.size() && !m_overlay_menu.statuses[index].empty())
         {
             item_text += " ";
             item_text += m_overlay_menu.statuses[index];
         }
-        drawTextLineLocked(item_text_x,
-                           row_y,
-                           button_width - 16.0f * scale,
-                           button_height,
-                           text_height,
-                           item_text,
-                           {1.0f, 1.0f, 1.0f, 1.0f});
-        cursor_y += button_height;
+        if (gs::menu::imgui::drawMenuItem(item_text.c_str(), layout, static_cast<int>(index) == m_overlay_menu.selected_index))
+        {
+            m_touch_action = {MenuActionKind::SelectItem, static_cast<int>(index)};
+        }
+        const ImVec2 min = ImGui::GetItemRectMin();
+        const ImVec2 max = ImGui::GetItemRectMax();
+        m_menu_item_bounds.push_back({min.x, min.y, max.x - min.x, max.y - min.y});
     }
 
     if (!m_overlay_menu.status_lines.empty())
     {
-        cursor_y += large_gap;
+        gs::menu::imgui::drawLargeGap(layout);
         for (size_t index = 0; index < std::min<size_t>(2, m_overlay_menu.status_lines.size()); ++index)
         {
-            drawRectLocked(menu_x,
-                           cursor_y,
-                           menu_width,
-                           button_height,
-                           {0.19f, 0.19f, 0.19f, 1.0f});
-            drawTextLineLocked(title_text_x,
-                               cursor_y,
-                               menu_width - 20.0f * scale,
-                               button_height,
-                               text_height,
-                               m_overlay_menu.status_lines[index],
-                               {1.0f, 1.0f, 1.0f, 1.0f});
-            cursor_y += button_height + small_gap;
+            gs::menu::imgui::drawMenuStatus(m_overlay_menu.status_lines[index].c_str(), layout);
+            if (index + 1 < std::min<size_t>(2, m_overlay_menu.status_lines.size()))
+            {
+                gs::menu::imgui::drawSmallGap(layout);
+            }
         }
     }
 
-    if (!m_overlay_menu.footer.empty())
-    {
-        drawTextLineLocked(menu_x + menu_width - 240.0f * scale,
-                           menu_y + menu_height - button_height,
-                           230.0f * scale,
-                           button_height,
-                           text_height,
-                           m_overlay_menu.footer,
-                           {0.80f, 0.83f, 0.90f, 1.0f});
-    }
+    gs::menu::imgui::drawMenuFooterRight(m_overlay_menu.footer.c_str(), layout);
+    gs::menu::imgui::endMenuWindow();
 
     const NavPadLayout nav = buildNavPadLayout(m_surface_width, m_surface_height);
-    const float nav_text_height = nav.size * kAndroidNavLabelScale;
-    const std::array<float, 4> active_bg = {0.16f, 0.20f, 0.26f, 0.92f};
-    const std::array<float, 4> back_bg = {0.22f, 0.18f, 0.18f, 0.92f};
-    const std::array<float, 4> enter_bg = {0.18f, 0.27f, 0.18f, 0.92f};
-    const std::array<float, 4> text_color = {0.95f, 0.97f, 0.98f, 1.0f};
+    const ImVec2 nav_size(nav.size, nav.size);
+    m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
+    m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
+    m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
+    m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
+    const ImVec4 active_bg = toImGuiColor({0.16f, 0.20f, 0.26f, 0.92f});
+    const ImVec4 back_bg = toImGuiColor({0.22f, 0.18f, 0.18f, 0.92f});
+    const ImVec4 enter_bg = toImGuiColor({0.18f, 0.27f, 0.18f, 0.92f});
 
-    drawRectLocked(nav.center_x, nav.up_y, nav.size, nav.size, active_bg);
-    drawTextLineLocked(nav.center_x, nav.up_y, nav.size, nav.size, nav_text_height, "UP", text_color);
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height)), ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::Begin("OSD_MENU_ANDROID_NAV",
+                 nullptr,
+                 ImGuiWindowFlags_NoDecoration |
+                     ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoBackground);
 
-    drawRectLocked(nav.left_x, nav.mid_y, nav.size, nav.size, back_bg);
-    drawTextLineLocked(nav.left_x, nav.mid_y, nav.size, nav.size, nav_text_height, "BACK", text_color);
+    auto drawNavButton = [&](const char* label, float x, float y, const ImVec4& bg, MenuActionKind action)
+    {
+        ImGui::SetCursorPos(ImVec2(x, y));
+        ImGui::PushStyleColor(ImGuiCol_Button, bg);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
+        if (ImGui::Button(label, nav_size))
+        {
+            m_touch_action = {action, -1};
+        }
+        ImGui::PopStyleColor(3);
+    };
 
-    drawRectLocked(nav.right_x, nav.mid_y, nav.size, nav.size, enter_bg);
-    drawTextLineLocked(nav.right_x, nav.mid_y, nav.size, nav.size, nav_text_height, "OK", text_color);
+    drawNavButton("UP", nav.center_x, nav.up_y, active_bg, MenuActionKind::Up);
+    drawNavButton("LEFT", nav.left_x, nav.mid_y, back_bg, MenuActionKind::Back);
+    drawNavButton("RIGHT", nav.right_x, nav.mid_y, enter_bg, MenuActionKind::Activate);
+    drawNavButton("DOWN", nav.center_x, nav.down_y, active_bg, MenuActionKind::Down);
 
-    drawRectLocked(nav.center_x, nav.down_y, nav.size, nav.size, active_bg);
-    drawTextLineLocked(nav.center_x, nav.down_y, nav.size, nav.size, nav_text_height, "DOWN", text_color);
+    ImGui::End();
+    ImGui::PopStyleVar(2);
 }
 
 void AndroidVideoRenderer::drawOverlayLocked()
 {
+    if (m_imgui_context != nullptr)
+    {
+        ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
+        io.DeltaTime = 1.0f / 60.0f;
+        m_touch_action = {};
+        if (m_touch_pending)
+        {
+            io.AddMousePosEvent(m_touch_x, m_touch_y);
+            io.AddMouseButtonEvent(0, true);
+            io.AddMouseButtonEvent(0, false);
+        }
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui::NewFrame();
+    }
+
     drawHudLocked();
     drawMenuLocked();
+
+    if (m_touch_pending)
+    {
+        if (m_touch_action.kind == MenuActionKind::None && !pointInRect(m_touch_x, m_touch_y, m_menu_bounds))
+        {
+            m_touch_action = {MenuActionKind::Outside, -1};
+        }
+        m_touch_pending = false;
+        m_touch_processed_sequence = m_touch_sequence;
+        m_cv.notify_all();
+    }
+
+    if (m_imgui_context != nullptr)
+    {
+        ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
 }
 
 void AndroidVideoRenderer::drawFrameLocked()

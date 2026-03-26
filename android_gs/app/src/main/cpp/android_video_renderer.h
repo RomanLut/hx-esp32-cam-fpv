@@ -14,6 +14,31 @@
 class AndroidVideoRenderer
 {
 public:
+    enum class MenuActionKind
+    {
+        None,
+        Outside,
+        SelectItem,
+        Up,
+        Down,
+        Back,
+        Activate,
+    };
+
+    struct MenuAction
+    {
+        MenuActionKind kind = MenuActionKind::None;
+        int item_index = -1;
+    };
+
+    struct Rect
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+    };
+
     struct OverlayChip
     {
         std::string text;
@@ -38,55 +63,25 @@ public:
     void clearSurface();
     void submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride);
     void setScreenMode(int screen_mode);
-    void setFontAtlasPng(const uint8_t* png_data, size_t size);
-    void setMenuFontTtf(const uint8_t* ttf_data, size_t size);
     void setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state);
+    MenuAction dispatchTap(float x, float y);
 
 private:
-    struct GlyphTexture
-    {
-        struct Glyph
-        {
-            int x0 = 0;
-            int y0 = 0;
-            int x1 = 0;
-            int y1 = 0;
-            float xoff = 0.0f;
-            float yoff = 0.0f;
-            float xadvance = 0.0f;
-        };
-
-        std::vector<uint8_t> pixels;
-        int width = 0;
-        int height = 0;
-        int first_char = 32;
-        int glyph_count = 0;
-        float baked_pixel_height = 32.0f;
-        float min_yoff = 0.0f;
-        float max_ybottom = 0.0f;
-        std::vector<Glyph> glyphs;
-    };
-
     void run();
     void applyPendingSurfaceLocked();
     bool initEglLocked();
     void destroyEglLocked();
+    bool initImGuiLocked();
+    void destroyImGuiLocked();
     void drawFrameLocked();
     void uploadFrameLocked();
     void ensureTextureLocked();
-    bool uploadFontTextureLocked();
     void drawOverlayLocked();
     void drawHudLocked();
+    void drawHudImGuiLocked();
     void drawMenuLocked();
+    void drawMenuImGuiLocked();
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
-    void drawTextLocked(float x, float y, float char_height, const std::string& text, const std::array<float, 4>& color);
-    void drawTextLineLocked(float x,
-                            float y,
-                            float max_width,
-                            float box_height,
-                            float char_height,
-                            const std::string& text,
-                            const std::array<float, 4>& color);
     void drawTexturedQuadLocked(float x,
                                 float y,
                                 float width,
@@ -116,7 +111,6 @@ private:
     int m_screen_mode = 1;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
-    bool m_font_dirty = false;
 
     void* m_egl_display = nullptr;
     void* m_egl_surface = nullptr;
@@ -124,15 +118,25 @@ private:
     unsigned int m_program = 0;
     unsigned int m_texture = 0;
     unsigned int m_white_texture = 0;
-    unsigned int m_font_texture = 0;
+    void* m_imgui_context = nullptr;
     int m_surface_width = 0;
     int m_surface_height = 0;
     int m_uploaded_width = 0;
     int m_uploaded_height = 0;
     bool m_has_uploaded_frame = false;
     std::vector<uint8_t> m_pending_font_png;
-    std::vector<uint8_t> m_pending_font_ttf;
-    GlyphTexture m_font;
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
+    Rect m_menu_bounds;
+    std::vector<Rect> m_menu_item_bounds;
+    Rect m_nav_up_bounds;
+    Rect m_nav_down_bounds;
+    Rect m_nav_left_bounds;
+    Rect m_nav_right_bounds;
+    bool m_touch_pending = false;
+    uint64_t m_touch_sequence = 0;
+    uint64_t m_touch_processed_sequence = 0;
+    float m_touch_x = 0.0f;
+    float m_touch_y = 0.0f;
+    MenuAction m_touch_action;
 };
