@@ -8,15 +8,26 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <limits>
 
 class AndroidJpegDecoder
 {
 public:
+    struct DecodeStats
+    {
+        uint32_t broken_frames = 0;
+        uint32_t decoded_count = 0;
+        uint32_t decoded_total_ms = 0;
+        uint32_t decoded_min_ms = 99;
+        uint32_t decoded_max_ms = 0;
+    };
+
     explicit AndroidJpegDecoder(AndroidVideoRenderer& renderer);
     ~AndroidJpegDecoder();
 
     void submitJpeg(const uint8_t* jpeg_data, size_t jpeg_size);
     uint64_t submittedFrameCount() const;
+    DecodeStats statsSnapshot() const;
 
 private:
     void run();
@@ -30,4 +41,9 @@ private:
     std::vector<uint8_t> m_pending_jpeg;
     bool m_has_pending_jpeg = false;
     std::atomic<uint64_t> m_submitted_frames = 0;
+    std::atomic<uint32_t> m_broken_frames = 0;
+    std::atomic<uint32_t> m_decoded_count = 0;
+    std::atomic<uint32_t> m_decoded_total_ms = 0;
+    std::atomic<uint32_t> m_decoded_min_ms = 99;
+    std::atomic<uint32_t> m_decoded_max_ms = 0;
 };

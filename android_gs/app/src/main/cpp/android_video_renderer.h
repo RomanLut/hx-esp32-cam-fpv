@@ -11,6 +11,8 @@
 #include <thread>
 #include <vector>
 
+#include "core/stats_panel_shared.h"
+
 class AndroidVideoRenderer
 {
 public:
@@ -56,6 +58,12 @@ public:
         std::string footer;
     };
 
+    struct OverlayStatsState
+    {
+        bool visible = false;
+        gs::stats::FullscreenStatsSnapshot snapshot = {};
+    };
+
     AndroidVideoRenderer();
     ~AndroidVideoRenderer();
 
@@ -63,7 +71,7 @@ public:
     void clearSurface();
     void submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride);
     void setScreenMode(int screen_mode);
-    void setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state);
+    void setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state, const OverlayStatsState& stats_state);
     MenuAction dispatchTap(float x, float y);
 
 private:
@@ -79,6 +87,7 @@ private:
     void drawOverlayLocked();
     void drawHudLocked();
     void drawHudImGuiLocked();
+    void drawStatsLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
@@ -127,6 +136,7 @@ private:
     std::vector<uint8_t> m_pending_font_png;
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
+    OverlayStatsState m_overlay_stats;
     Rect m_menu_bounds;
     std::vector<Rect> m_menu_item_bounds;
     Rect m_nav_up_bounds;

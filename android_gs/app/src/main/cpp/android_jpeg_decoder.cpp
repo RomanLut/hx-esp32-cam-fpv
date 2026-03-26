@@ -4,6 +4,7 @@
 #include <turbojpeg.h>
 
 #include <algorithm>
+#include <chrono>
 
 namespace
 {
@@ -46,6 +47,17 @@ uint64_t AndroidJpegDecoder::submittedFrameCount() const
     return m_submitted_frames.load();
 }
 
+AndroidJpegDecoder::DecodeStats AndroidJpegDecoder::statsSnapshot() const
+{
+    DecodeStats stats;
+    stats.broken_frames = m_broken_frames.load();
+    stats.decoded_count = m_decoded_count.load();
+    stats.decoded_total_ms = m_decoded_total_ms.load();
+    stats.decoded_min_ms = m_decoded_min_ms.load();
+    stats.decoded_max_ms = m_decoded_max_ms.load();
+    return stats;
+}
+
 void AndroidJpegDecoder::run()
 {
     tjhandle tj_instance = tjInitDecompress();
@@ -72,6 +84,7 @@ void AndroidJpegDecoder::run()
             m_has_pending_jpeg = false;
         }
 
+        const auto decode_begin = std::chrono::steady_clock::now();
         int width = 0;
         int height = 0;
         int subsamp = 0;
@@ -85,10 +98,12 @@ void AndroidJpegDecoder::run()
                                 &colorspace) != 0)
         {
             __android_log_print(ANDROID_LOG_WARN, kLogTag, "tjDecompressHeader3 failed: %s", tjGetErrorStr());
+            m_broken_frames.fetch_add(1);
             continue;
         }
         if (width <= 0 || height <= 0)
         {
+            m_broken_frames.fetch_add(1);
             continue;
         }
 
@@ -107,11 +122,24 @@ void AndroidJpegDecoder::run()
                           TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) != 0)
         {
             __android_log_print(ANDROID_LOG_WARN, kLogTag, "tjDecompress2 failed: %s", tjGetErrorStr());
+            m_broken_frames.fetch_add(1);
             continue;
         }
 
+        const uint32_t duration_ms = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - decode_begin).count());
         m_renderer.submitFrame(rgba.data(), rgba.size(), width, height, stride);
         m_submitted_frames.fetch_add(1);
+        m_decoded_count.fetch_add(1);
+        m_decoded_total_ms.fetch_add(duration_ms);
+        uint32_t current_min = m_decoded_min_ms.load();
+        while (duration_ms < current_min && !m_decoded_min_ms.compare_exchange_weak(current_min, duration_ms))
+        {
+        }
+        uint32_t current_max = m_decoded_max_ms.load();
+        while (duration_ms > current_max && !m_decoded_max_ms.compare_exchange_weak(current_max, duration_ms))
+        {
+        }
     }
 
     tjDestroy(tj_instance);

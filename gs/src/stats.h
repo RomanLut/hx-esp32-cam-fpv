@@ -31,17 +31,17 @@ class Stats
         for ( int i = 0; i < count; i++ ) this->add(value);
     }
 
-    int count()
+    int count() const
     {
         return STATS_SIZE;
     }
 
-    float average()
+    float average() const
     {
         return this->sum / (float)STATS_SIZE;
     }
 
-    uint8_t max()
+    uint8_t max() const
     {
         uint8_t res = 0;
         for ( int i = 0; i < STATS_SIZE; i++ ) if ( this->data[i] > res) res = this->data[i];

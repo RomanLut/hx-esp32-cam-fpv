@@ -55,6 +55,7 @@ add_library(android_gs_core SHARED
     ../../../../../gs/src/core/osd_menu_common.cpp
     ../../../../../gs/src/core/osd_menu_controller.cpp
     ../../../../../gs/src/core/osd_menu_imgui_shared.cpp
+    ../../../../../gs/src/core/stats_panel_shared.cpp
     ../../../../../gs/src/core/video_frame_assembler.cpp
     ../../../../../components/common/crc.cpp
     ../../../../../components/common/fec.cpp

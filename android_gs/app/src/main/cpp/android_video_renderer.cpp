@@ -230,11 +230,14 @@ void AndroidVideoRenderer::setScreenMode(int screen_mode)
     m_cv.notify_all();
 }
 
-void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state)
+void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips,
+                                           const OverlayMenuState& menu_state,
+                                           const OverlayStatsState& stats_state)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_overlay_chips = chips;
     m_overlay_menu = menu_state;
+    m_overlay_stats = stats_state;
     m_overlay_dirty = true;
     m_cv.notify_all();
 }
@@ -661,19 +664,6 @@ void AndroidVideoRenderer::drawHudImGuiLocked()
     const float start_y = 8.0f;
     float x = start_x;
 
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height)), ImGuiCond_Always);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
-    ImGui::Begin("OSD_HUD_ANDROID",
-                 nullptr,
-                 ImGuiWindowFlags_NoDecoration |
-                     ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoSavedSettings |
-                     ImGuiWindowFlags_NoBackground |
-                     ImGuiWindowFlags_NoInputs);
-
     for (const auto& chip : m_overlay_chips)
     {
         if (chip.text.empty())
@@ -693,9 +683,17 @@ void AndroidVideoRenderer::drawHudImGuiLocked()
         ImGui::PopStyleColor(3);
         x += chip_width + 6.0f;
     }
+}
 
-    ImGui::End();
-    ImGui::PopStyleVar(3);
+void AndroidVideoRenderer::drawStatsLocked()
+{
+    if (!m_overlay_stats.visible || m_imgui_context == nullptr)
+    {
+        return;
+    }
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+    gs::stats::drawFullscreenStatsPanel(m_overlay_stats.snapshot);
 }
 
 void AndroidVideoRenderer::drawMenuLocked()
@@ -823,9 +821,25 @@ void AndroidVideoRenderer::drawOverlayLocked()
         }
         ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
+        ImGui::Begin("ANDROID_FULLSCREEN_OVERLAY",
+                     nullptr,
+                     ImGuiWindowFlags_NoDecoration |
+                         ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoBackground |
+                         ImGuiWindowFlags_NoInputs |
+                         ImGuiWindowFlags_NoNav |
+                         ImGuiWindowFlags_NoFocusOnAppearing);
     }
 
     drawHudLocked();
+    drawStatsLocked();
     drawMenuLocked();
 
     if (m_touch_pending)
@@ -842,6 +856,8 @@ void AndroidVideoRenderer::drawOverlayLocked()
     if (m_imgui_context != nullptr)
     {
         ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+        ImGui::End();
+        ImGui::PopStyleVar(4);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }

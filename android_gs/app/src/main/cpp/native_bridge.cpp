@@ -398,7 +398,7 @@ struct NativeHandle
         groundstation_config.vsync = true;
         groundstation_config.txInterface = "auto";
         groundstation_config.GPIOKeysLayout = 0;
-        groundstation_config.stats = true;
+        groundstation_config.stats = false;
         groundstation_config.deviceId = gs_device_id;
     }
 
@@ -469,6 +469,11 @@ struct NativeHandle
     std::unique_ptr<gs::menu::OSDMenuController> menu_controller;
     AndroidVideoRenderer renderer;
     AndroidJpegDecoder jpeg_decoder;
+    gs::stats::GroundStatsSnapshot last_ground_stats = {};
+    Stats data_size_stats = {};
+    Clock::time_point last_periodic_stats_tp = Clock::now();
+    Clock::time_point last_data_rate_sample_tp = Clock::now();
+    uint64_t last_udp_packets_sample = 0;
     int gs_packet_debug_mode = 0;
     bool exit_requested = false;
 };
@@ -1053,12 +1058,34 @@ int processTransportPacket(NativeHandle& handle,
                         video_payload_size,
                         restored_by_fec);
 
+                    if (result.lostPartialFrame)
+                    {
+                        handle.session.onLostPartialFrame(result.lostPartialParts,
+                                                          static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
+                    }
+
+                    if (result.lostWholeFrames > 0)
+                    {
+                        handle.session.onLostWholeFrames(result.lostWholeFrames);
+                    }
+
                     if (result.completedFrame && result.frameData != nullptr)
                     {
                         handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+                        handle.session.onCompletedFrame(result.completedRestoredByFec,
+                                                        result.completedPartIndex,
+                                                        handle.session.airStatus().curr_quality,
+                                                        static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max),
+                                                        Clock::now());
                     }
                 }
             }
+            else if (session_event.kind == gs::core::SessionEventKind::TelemetryPayload)
+            {
+                handle.session.addInboundTelemetryBytes(session_event.telemetry.payload_size);
+            }
+
+            handle.session.addReceivedBytes(packet_size);
 
             handle.session.syncConfigPacket(handle.config_packet);
             handle.rx_decoder.setDescriptor(
@@ -1089,7 +1116,9 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
         return {};
     }
 
-    return buildTransportPacketsForControl(handle, payload.data(), payload.size());
+    auto packets = buildTransportPacketsForControl(handle, payload.data(), payload.size());
+    handle.session.addSentPackets(packets.size());
+    return packets;
 }
 
 void updateUdpStatsLocked(NativeHandle& handle,
@@ -1104,6 +1133,33 @@ void updateUdpStatsLocked(NativeHandle& handle,
 
 void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_info)
 {
+    const Clock::time_point now = Clock::now();
+    if (now - handle.last_data_rate_sample_tp >= std::chrono::milliseconds(100))
+    {
+        handle.data_size_stats.add(handle.session.consumeDataRateSample());
+        handle.last_data_rate_sample_tp = now;
+    }
+
+    if (now - handle.last_periodic_stats_tp >= std::chrono::milliseconds(1000))
+    {
+        const gs::core::PeriodicStatsSnapshot periodic_stats = handle.session.consumePeriodicStats();
+        const gs::core::LinkStatusSnapshot link_status = handle.session.consumeLinkStatus(now);
+        handle.last_ground_stats.out_packet_counter = static_cast<uint16_t>(periodic_stats.sent_count);
+        handle.last_ground_stats.in_packet_counter[0] = static_cast<uint16_t>(handle.udp_packets_received - handle.last_udp_packets_sample);
+        handle.last_ground_stats.in_packet_counter[1] = 0;
+        handle.last_udp_packets_sample = handle.udp_packets_received;
+        handle.last_ground_stats.ping_min_ms = link_status.ping_min_ms;
+        handle.last_ground_stats.ping_max_ms = link_status.ping_max_ms;
+
+        const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.statsSnapshot();
+        handle.last_ground_stats.broken_frames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
+        handle.last_ground_stats.decoded_jpeg_count = static_cast<int>(jpeg_stats.decoded_count);
+        handle.last_ground_stats.decoded_jpeg_time_total_ms = static_cast<int>(jpeg_stats.decoded_total_ms);
+        handle.last_ground_stats.decoded_jpeg_time_min_ms = static_cast<int>(jpeg_stats.decoded_min_ms);
+        handle.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(jpeg_stats.decoded_max_ms);
+        handle.last_periodic_stats_tp = now;
+    }
+
     std::vector<AndroidVideoRenderer::OverlayChip> chips;
     chips.push_back({"AIR:" + std::to_string(-static_cast<int>(handle.session.lastAirStats().rssiDbm)), false});
     chips.push_back({"GS:UDP", false});
@@ -1124,6 +1180,7 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
     }
 
     AndroidVideoRenderer::OverlayMenuState menu_state;
+    AndroidVideoRenderer::OverlayStatsState stats_state;
     if (handle.menu_controller->isVisible())
     {
         const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
@@ -1135,7 +1192,25 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         menu_state.footer = build_info;
     }
 
-    handle.renderer.setOverlayState(chips, menu_state);
+    if (handle.groundstation_config.stats)
+    {
+        stats_state.visible = true;
+        stats_state.snapshot.fec_codec_n = handle.config_packet.dataChannel.fec_codec_n;
+        stats_state.snapshot.current_quality = handle.session.airStatus().curr_quality;
+        stats_state.snapshot.wifi_queue_max = handle.session.airStatus().wifi_queue_max;
+        stats_state.snapshot.cpu_temp_c = 0;
+        stats_state.snapshot.air_stats = handle.session.lastAirStats();
+        const auto& frame_stats = handle.session.frameStats();
+        stats_state.snapshot.frame_stats = frame_stats.frame_stats;
+        stats_state.snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
+        stats_state.snapshot.frame_time_stats = frame_stats.frame_time_stats;
+        stats_state.snapshot.frame_quality_stats = frame_stats.frame_quality_stats;
+        stats_state.snapshot.queue_usage_stats = frame_stats.queue_usage_stats;
+        stats_state.snapshot.data_size_stats = handle.data_size_stats;
+        stats_state.snapshot.ground_stats = handle.last_ground_stats;
+    }
+
+    handle.renderer.setOverlayState(chips, menu_state, stats_state);
 }
 
 void handleTapLocked(NativeHandle& handle,
