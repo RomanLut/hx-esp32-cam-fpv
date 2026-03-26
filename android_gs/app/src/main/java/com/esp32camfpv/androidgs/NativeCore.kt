@@ -1,5 +1,7 @@
 package com.esp32camfpv.androidgs
 
+import android.view.Surface
+
 object NativeCore {
     const val EVENT_IGNORE = 0
     const val EVENT_CONNECT_ACCEPTED = 1
@@ -19,15 +21,23 @@ object NativeCore {
     external fun getBuildInfo(): String
     external fun createHandle(gsDeviceId: Int = 1): Long
     external fun describeHandle(handle: Long): String
-    external fun pushPacket(
+    external fun startUdpClient(
         handle: Long,
-        data: ByteArray,
-        restoredByFec: Boolean = false,
-        inputDbm: Int = 0
-    ): Int
-    external fun buildControlTransportPackets(handle: Long): Array<ByteArray>?
-    external fun takeCompletedFrame(handle: Long): ByteArray?
+        peerHost: String = "192.168.4.1",
+        peerPort: Int = 5600,
+        localPort: Int = 5600
+    ): Boolean
+    external fun stopUdpClient(handle: Long)
+    external fun isUdpClientRunning(handle: Long): Boolean
     external fun getLastEventKind(handle: Long): Int
+    external fun getScreenAspectRatio(handle: Long): Int
+    external fun setRendererScreenMode(handle: Long, screenMode: Int)
+    external fun setFontAtlasPng(handle: Long, pngBytes: ByteArray)
+    external fun setMenuFontTtf(handle: Long, ttfBytes: ByteArray)
+    external fun syncRendererOverlay(handle: Long, buildInfo: String)
+    external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
+    external fun setRenderSurface(handle: Long, surface: Surface)
+    external fun clearRenderSurface(handle: Long)
     external fun isMenuVisible(handle: Long): Boolean
     external fun setMenuVisible(handle: Long, visible: Boolean)
     external fun menuGoBack(handle: Long)

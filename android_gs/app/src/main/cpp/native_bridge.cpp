@@ -1,14 +1,27 @@
 #include <jni.h>
+#include <android/native_window_jni.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
 #include <cstdint>
 #include <cstring>
+#include <cerrno>
+#include <cmath>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 #include <algorithm>
 #include <sys/statvfs.h>
+#include <unistd.h>
 
+#include "android_jpeg_decoder.h"
+#include "android_video_renderer.h"
 #include "fec.h"
 #include "crc.h"
 #include "core/gs_session_core.h"
@@ -24,6 +37,74 @@ constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
+constexpr float kLinuxMenuRefWidth = 1280.0f;
+constexpr float kLinuxMenuRefHeight = 720.0f;
+constexpr float kLinuxMenuWindowWidth = 500.0f;
+constexpr float kLinuxMenuWindowHeight = 600.0f;
+constexpr float kLinuxMenuButtonWidth = 442.0f;
+constexpr float kLinuxMenuButtonHeight = 35.0f;
+constexpr float kLinuxMenuItemInset = 29.0f;
+constexpr float kLinuxMenuCenterYOffset = 120.0f;
+constexpr float kLinuxMenuGapLarge = 20.0f;
+constexpr float kAndroidNavButtonSize = 72.0f;
+constexpr float kAndroidNavGap = 10.0f;
+constexpr float kAndroidNavMargin = 18.0f;
+
+float linuxMenuScaleForSurface(float view_width, float view_height)
+{
+    if (view_width <= 0.0f || view_height <= 0.0f)
+    {
+        return 1.0f;
+    }
+
+    const float width_scale = view_width / kLinuxMenuRefWidth;
+    const float height_scale = view_height / kLinuxMenuRefHeight;
+    return std::min(width_scale, height_scale);
+}
+
+struct NavPadLayout
+{
+    float size = 0.0f;
+    float gap = 0.0f;
+    float margin = 0.0f;
+    float left_x = 0.0f;
+    float right_x = 0.0f;
+    float center_x = 0.0f;
+    float up_y = 0.0f;
+    float mid_y = 0.0f;
+    float down_y = 0.0f;
+};
+
+enum class AndroidMenuNavAction
+{
+    None,
+    Up,
+    Down,
+    Back,
+    Activate,
+};
+
+NavPadLayout buildNavPadLayout(float view_width, float view_height)
+{
+    NavPadLayout layout;
+    const float ui_scale = std::min(view_width / 1280.0f, view_height / 720.0f);
+    const float control_scale = std::max(0.85f, ui_scale);
+    layout.size = kAndroidNavButtonSize * control_scale;
+    layout.gap = kAndroidNavGap * control_scale;
+    layout.margin = kAndroidNavMargin * control_scale;
+    layout.right_x = view_width - layout.margin - layout.size;
+    layout.left_x = layout.right_x - layout.size - layout.gap - layout.size;
+    layout.center_x = layout.left_x + layout.size + layout.gap;
+    layout.down_y = view_height - layout.margin - layout.size;
+    layout.mid_y = layout.down_y - layout.gap - layout.size;
+    layout.up_y = layout.mid_y - layout.gap - layout.size;
+    return layout;
+}
+
+bool pointInRect(float x, float y, float rx, float ry, float rw, float rh)
+{
+    return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+}
 
 enum class AndroidMenuId
 {
@@ -307,7 +388,8 @@ private:
 struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)
-        : gs_device_id(gs_device_id_value)
+        : gs_device_id(gs_device_id_value),
+          jpeg_decoder(renderer)
     {
         init_crc8_table();
         init_fec();
@@ -318,6 +400,7 @@ struct NativeHandle
 
     ~NativeHandle()
     {
+        stopUdpClient();
         if (tx_fec)
         {
             fec_free(tx_fec);
@@ -325,7 +408,19 @@ struct NativeHandle
         }
     }
 
+    void stopUdpClient()
+    {
+        udp_stop_requested.store(true);
+        if (udp_thread.joinable())
+        {
+            udp_thread.join();
+        }
+        std::lock_guard<std::mutex> lock(mutex);
+        udp_running = false;
+    }
+
     uint16_t gs_device_id = 1;
+    mutable std::mutex mutex;
     gs::core::GsSessionCore session;
     gs::core::VideoFrameAssembler assembler;
     AndroidTransport transport;
@@ -354,14 +449,26 @@ struct NativeHandle
     uint32_t last_video_part_index = 0;
     uint32_t last_video_last_part = 0;
     uint32_t last_video_payload_size = 0;
+    uint64_t udp_packets_received = 0;
+    float udp_throughput_mbps = 0.0f;
+    float udp_video_fps = 0.0f;
+    std::string udp_peer_host = "192.168.4.1";
+    int udp_peer_port = 5600;
+    int udp_local_port = 5600;
+    std::string udp_last_error;
+    std::atomic<bool> udp_stop_requested = false;
+    bool udp_running = false;
+    std::thread udp_thread;
     bool menu_visible = false;
     AndroidMenuId menu_id = AndroidMenuId::Main;
     int menu_selected_item = 0;
     std::vector<AndroidMenuId> menu_back_ids;
     std::vector<int> menu_back_items;
     bool show_stats = true;
-    int gs_screen_aspect_ratio = 3;
+    int gs_screen_aspect_ratio = 1;
     bool gs_vsync = true;
+    AndroidVideoRenderer renderer;
+    AndroidJpegDecoder jpeg_decoder;
     int gs_wifi_band = DEFAULT_GS_WIFI_BAND;
     int gs_tx_power = kDefaultTxPower;
     std::string gs_tx_interface = "auto";
@@ -483,13 +590,10 @@ AndroidMenuScreen buildAndroidMenuScreen(const NativeHandle& handle)
     screen.selected_item = handle.menu_selected_item;
     screen.can_go_back = !handle.menu_back_ids.empty();
     const auto& config = handle.config_packet;
-    constexpr std::array<const char*, 6> kLetterboxModes = {
+    constexpr std::array<const char*, 3> kScreenModes = {
         "Stretch",
         "Letterbox",
-        "Screen is 5:4",
-        "Screen is 4:3",
-        "Screen is 16:9",
-        "Screen is 16:10"
+        "Zoom to Fill"
     };
     constexpr std::array<const char*, 3> kWifiBands = {
         "2.4GHz",
@@ -543,13 +647,12 @@ AndroidMenuScreen buildAndroidMenuScreen(const NativeHandle& handle)
 
     case AndroidMenuId::GSScreen:
         screen.title = "Menu -> GS Screen";
-        screen.items.push_back("Letterbox: " + std::string(kLetterboxModes[std::clamp(handle.gs_screen_aspect_ratio, 0, 5)]));
-        screen.items.push_back(std::string("Vertical Sync: ") + (handle.gs_vsync ? "Enabled" : "Disabled"));
+        screen.items.push_back("Screen Mode: " + std::string(kScreenModes[std::clamp(handle.gs_screen_aspect_ratio, 0, 2)]));
         break;
 
     case AndroidMenuId::Letterbox:
-        screen.title = "GS Settings -> Letterbox";
-        for (const char* label : kLetterboxModes)
+        screen.title = "GS Settings -> Screen Mode";
+        for (const char* label : kScreenModes)
         {
             screen.items.push_back(label);
         }
@@ -764,16 +867,12 @@ void handleAndroidMenuSelection(NativeHandle& handle, int item_index)
         {
             menuGoForward(handle,
                           AndroidMenuId::Letterbox,
-                          std::clamp(handle.gs_screen_aspect_ratio, 0, 5));
-        }
-        else if (item_index == 1)
-        {
-            handle.gs_vsync = !handle.gs_vsync;
+                          std::clamp(handle.gs_screen_aspect_ratio, 0, 2));
         }
         break;
 
     case AndroidMenuId::Letterbox:
-        handle.gs_screen_aspect_ratio = std::clamp(item_index, 0, 5);
+        handle.gs_screen_aspect_ratio = std::clamp(item_index, 0, 2);
         menuGoBack(handle);
         break;
 
@@ -993,6 +1092,40 @@ void handleAndroidMenuSelection(NativeHandle& handle, int item_index)
     }
 }
 
+void moveAndroidMenuSelection(NativeHandle& handle, int delta)
+{
+    const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
+    if (screen.items.empty())
+    {
+        return;
+    }
+
+    const int max_index = static_cast<int>(screen.items.size()) - 1;
+    handle.menu_selected_item = std::clamp(handle.menu_selected_item + delta, 0, max_index);
+}
+
+AndroidMenuNavAction hitTestAndroidMenuNav(float x, float y, float view_width, float view_height)
+{
+    const NavPadLayout nav = buildNavPadLayout(view_width, view_height);
+    if (pointInRect(x, y, nav.center_x, nav.up_y, nav.size, nav.size))
+    {
+        return AndroidMenuNavAction::Up;
+    }
+    if (pointInRect(x, y, nav.left_x, nav.mid_y, nav.size, nav.size))
+    {
+        return AndroidMenuNavAction::Back;
+    }
+    if (pointInRect(x, y, nav.right_x, nav.mid_y, nav.size, nav.size))
+    {
+        return AndroidMenuNavAction::Activate;
+    }
+    if (pointInRect(x, y, nav.center_x, nav.down_y, nav.size, nav.size))
+    {
+        return AndroidMenuNavAction::Down;
+    }
+    return AndroidMenuNavAction::None;
+}
+
 jlong toJLong(NativeHandle* handle)
 {
     return reinterpret_cast<jlong>(handle);
@@ -1006,6 +1139,24 @@ NativeHandle* fromJLong(jlong handle)
 jstring newJavaString(JNIEnv* env, const std::string& value)
 {
     return env->NewStringUTF(value.c_str());
+}
+
+std::string fromJString(JNIEnv* env, jstring value)
+{
+    if (env == nullptr || value == nullptr)
+    {
+        return {};
+    }
+
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    if (chars == nullptr)
+    {
+        return {};
+    }
+
+    std::string result(chars);
+    env->ReleaseStringUTFChars(value, chars);
+    return result;
 }
 
 jbyteArray toJByteArray(JNIEnv* env, const std::vector<uint8_t>& bytes)
@@ -1101,6 +1252,8 @@ std::string buildInfoString()
     return out.str();
 }
 
+std::string sanitizeStatusValue(std::string value);
+
 std::string describeHandleString(const NativeHandle& handle)
 {
     std::ostringstream out;
@@ -1128,6 +1281,12 @@ std::string describeHandleString(const NativeHandle& handle)
         << " | vid_part=" << handle.last_video_part_index
         << " | vid_last=" << handle.last_video_last_part
         << " | vid_payload=" << handle.last_video_payload_size
+        << " | udp_running=" << (handle.udp_running ? 1 : 0)
+        << " | udp_peer=" << sanitizeStatusValue(handle.udp_peer_host + ":" + std::to_string(handle.udp_peer_port))
+        << " | udp_packets=" << handle.udp_packets_received
+        << " | udp_mbps=" << std::fixed << std::setprecision(2) << handle.udp_throughput_mbps
+        << " | udp_fps=" << std::fixed << std::setprecision(2) << handle.udp_video_fps
+        << " | udp_error=" << sanitizeStatusValue(handle.udp_last_error)
         << " | air_rssi=" << -static_cast<int>(handle.session.lastAirStats().rssiDbm)
         << " | queue_max=" << handle.session.airStatus().wifi_queue_max
         << " | wifi_ovf=" << (handle.session.airStatus().wifi_ovf ? 1 : 0)
@@ -1149,7 +1308,7 @@ int processVideoPacket(NativeHandle& handle,
 
     if (result.completedFrame && result.frameData != nullptr)
     {
-        handle.last_completed_frame = *result.frameData;
+        handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
     }
 
     return static_cast<int>(session_event.kind);
@@ -1167,6 +1326,24 @@ uint32_t readLe32(const uint8_t* data)
            (static_cast<uint32_t>(data[1]) << 8) |
            (static_cast<uint32_t>(data[2]) << 16) |
            (static_cast<uint32_t>(data[3]) << 24);
+}
+
+std::string sanitizeStatusValue(std::string value)
+{
+    std::replace(value.begin(), value.end(), '|', '/');
+    std::replace(value.begin(), value.end(), '\n', ' ');
+    std::replace(value.begin(), value.end(), '\r', ' ');
+    return value;
+}
+
+std::string buildAndroidMenuTitle(const NativeHandle& handle, const AndroidMenuScreen& screen)
+{
+    if (screen.title == "ESP32-CAM-FPV")
+    {
+        return std::string("ESP32-CAM-FPV v0.5.3 ") +
+               (handle.session.airStatus().is_ov5640 ? "OV5640" : "OV2640");
+    }
+    return screen.title;
 }
 
 bool tryParseVideoPacketWire(const uint8_t* packet_data,
@@ -1292,6 +1469,389 @@ std::vector<std::vector<uint8_t>> buildTransportPacketsForControl(NativeHandle& 
     return packets;
 }
 
+int processTransportPacket(NativeHandle& handle,
+                           const uint8_t* data,
+                           size_t size,
+                           bool restored_by_fec,
+                           int input_dbm)
+{
+    if (data == nullptr || size == 0)
+    {
+        handle.last_event_kind = gs::core::SessionEventKind::Ignore;
+        return static_cast<int>(handle.last_event_kind);
+    }
+
+    handle.transport.setInputDbm(input_dbm);
+    handle.last_event_kind = gs::core::SessionEventKind::Ignore;
+
+    if (size >= sizeof(Packet_Header))
+    {
+        const auto* header = reinterpret_cast<const Packet_Header*>(data);
+        handle.transport_packets_seen++;
+        handle.last_transport_block = header->block_index;
+        handle.last_transport_packet_index = header->packet_index;
+        handle.last_transport_payload_size = header->size;
+        handle.last_transport_from = header->fromDeviceId;
+        handle.last_transport_to = header->toDeviceId;
+    }
+
+    const bool use_transport_filter = false;
+    const auto filter_result = PacketFilter::PacketFilterResult::Pass;
+    if (filter_result != PacketFilter::PacketFilterResult::Pass)
+    {
+        handle.transport_packets_filtered++;
+        return static_cast<int>(handle.last_event_kind);
+    }
+
+    handle.transport_packets_passed_filter++;
+    handle.rx_decoder.push(
+        data,
+        size,
+        handle.transport.getPacketFilter(),
+        use_transport_filter,
+        [&](const uint8_t* decoded_payload, size_t decoded_size)
+        {
+            handle.decoded_packets_seen++;
+            const uint8_t* packet_data = decoded_payload;
+            size_t packet_size = decoded_size;
+
+            if (packet_size >= sizeof(Air2Ground_Header))
+            {
+                const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
+                handle.last_decoded_type = static_cast<uint32_t>(header->type);
+                handle.last_decoded_size = header->size;
+                handle.last_decoded_air = header->airDeviceId;
+                handle.last_decoded_gs = header->gsDeviceId;
+            }
+
+            const gs::core::SessionEvent session_event = handle.session.processReceivedPacket(
+                packet_data,
+                packet_size,
+                handle.gs_device_id,
+                Clock::now(),
+                handle.transport);
+
+            handle.last_event_kind = session_event.kind;
+
+            if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
+            {
+                Air2Ground_Video_Packet video_packet = {};
+                const uint8_t* video_payload = nullptr;
+                size_t video_payload_size = 0;
+                if (!tryParseVideoPacketWire(packet_data,
+                                             packet_size,
+                                             video_packet,
+                                             video_payload,
+                                             video_payload_size))
+                {
+                    handle.last_event_kind = gs::core::SessionEventKind::InvalidVideoPacket;
+                }
+                else
+                {
+                    handle.last_video_frame_index = video_packet.frame_index;
+                    handle.last_video_part_index = video_packet.part_index;
+                    handle.last_video_last_part = video_packet.last_part;
+                    handle.last_video_payload_size = static_cast<uint32_t>(video_payload_size);
+
+                    auto result = handle.assembler.pushPacket(
+                        video_packet,
+                        video_payload,
+                        video_payload_size,
+                        restored_by_fec);
+
+                    if (result.completedFrame && result.frameData != nullptr)
+                    {
+                        handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+                    }
+                }
+            }
+
+            handle.session.syncConfigPacket(handle.config_packet);
+            handle.rx_decoder.setDescriptor(
+                handle.config_packet.dataChannel.fec_codec_k,
+                handle.config_packet.dataChannel.fec_codec_n,
+                handle.config_packet.dataChannel.fec_codec_mtu);
+        });
+
+    return static_cast<int>(handle.last_event_kind);
+}
+
+std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandle& handle)
+{
+    const gs::core::ControlPacketView view = handle.session.buildControlPacket(handle.gs_device_id);
+    std::vector<uint8_t> payload;
+    switch (view.type)
+    {
+    case gs::core::ControlPacketType::Connect:
+        payload.resize(sizeof(view.connect_packet));
+        std::memcpy(payload.data(), &view.connect_packet, sizeof(view.connect_packet));
+        break;
+    case gs::core::ControlPacketType::Config:
+        payload.resize(sizeof(view.config_packet));
+        std::memcpy(payload.data(), &view.config_packet, sizeof(view.config_packet));
+        break;
+    case gs::core::ControlPacketType::None:
+    default:
+        return {};
+    }
+
+    return buildTransportPacketsForControl(handle, payload.data(), payload.size());
+}
+
+void updateUdpStatsLocked(NativeHandle& handle,
+                          uint64_t packets_received,
+                          float throughput_mbps,
+                          float video_fps)
+{
+    handle.udp_packets_received = packets_received;
+    handle.udp_throughput_mbps = throughput_mbps;
+    handle.udp_video_fps = video_fps;
+}
+
+void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_info)
+{
+    std::vector<AndroidVideoRenderer::OverlayChip> chips;
+    chips.push_back({"AIR:" + std::to_string(-static_cast<int>(handle.session.lastAirStats().rssiDbm)), false});
+    chips.push_back({"GS:UDP", false});
+    chips.push_back({std::to_string(handle.session.airStatus().wifi_queue_max) + "%", false});
+
+    std::ostringstream throughput_text;
+    throughput_text << std::fixed << std::setprecision(1) << handle.udp_throughput_mbps << "Mb";
+    chips.push_back({throughput_text.str(), false});
+    chips.push_back({gs::menu::getResolutionSummary(handle.config_packet, handle.session.airStatus().is_ov5640), false});
+    chips.push_back({std::to_string(static_cast<int>(std::round(handle.udp_video_fps))), false});
+    if (handle.session.airStatus().wifi_ovf)
+    {
+        chips.push_back({"OVF", true});
+    }
+    if (handle.session.airStatus().air_record)
+    {
+        chips.push_back({"AIR", true});
+    }
+
+    AndroidVideoRenderer::OverlayMenuState menu_state;
+    if (handle.menu_visible)
+    {
+        const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
+        menu_state.visible = true;
+        menu_state.title = buildAndroidMenuTitle(handle, screen);
+        menu_state.items = screen.items;
+        menu_state.statuses = screen.statuses;
+        menu_state.status_lines = screen.status_lines;
+        menu_state.selected_index = screen.selected_item;
+        menu_state.footer = build_info;
+    }
+
+    handle.renderer.setOverlayState(chips, menu_state);
+}
+
+void handleTapLocked(NativeHandle& handle,
+                     float x,
+                     float y,
+                     float view_width,
+                     float view_height)
+{
+    if (view_width <= 0.0f || view_height <= 0.0f)
+    {
+        return;
+    }
+
+    if (!handle.menu_visible)
+    {
+        handle.menu_visible = true;
+        handle.menu_id = AndroidMenuId::Main;
+        handle.menu_selected_item = 0;
+        handle.menu_back_ids.clear();
+        handle.menu_back_items.clear();
+        return;
+    }
+
+    const AndroidMenuScreen screen = buildAndroidMenuScreen(handle);
+    switch (hitTestAndroidMenuNav(x, y, view_width, view_height))
+    {
+    case AndroidMenuNavAction::Up:
+        moveAndroidMenuSelection(handle, -1);
+        return;
+    case AndroidMenuNavAction::Down:
+        moveAndroidMenuSelection(handle, 1);
+        return;
+    case AndroidMenuNavAction::Back:
+        menuGoBack(handle);
+        return;
+    case AndroidMenuNavAction::Activate:
+        if (!screen.items.empty())
+        {
+            handleAndroidMenuSelection(handle, std::clamp(handle.menu_selected_item, 0, static_cast<int>(screen.items.size()) - 1));
+        }
+        return;
+    case AndroidMenuNavAction::None:
+        break;
+    }
+
+    const float scale = linuxMenuScaleForSurface(view_width, view_height);
+    const float menu_width = kLinuxMenuWindowWidth * scale;
+    const float menu_height = kLinuxMenuWindowHeight * scale;
+    const float menu_x = std::floor((view_width - menu_width) * 0.5f);
+    const float menu_offset_y = (std::lround(view_height) == 576) ? 100.0f : kLinuxMenuCenterYOffset;
+    const float menu_y = std::floor((view_height - menu_height) * 0.5f + menu_offset_y * scale);
+
+    if (x < menu_x || x > menu_x + menu_width || y < menu_y || y > menu_y + menu_height)
+    {
+        menuGoBack(handle);
+        return;
+    }
+
+    const float button_height = kLinuxMenuButtonHeight * scale;
+    const float button_width = kLinuxMenuButtonWidth * scale;
+    const float item_x = menu_x + kLinuxMenuItemInset * scale;
+    const float large_gap = (view_height > 480.0f) ? kLinuxMenuGapLarge * scale : 0.0f;
+    float cursor_y = menu_y + button_height + large_gap;
+
+    for (size_t index = 0; index < screen.items.size(); ++index)
+    {
+        const float row_y = cursor_y;
+        if (y >= row_y && y <= row_y + button_height &&
+            x >= item_x && x <= item_x + button_width)
+        {
+            handleAndroidMenuSelection(handle, static_cast<int>(index));
+            return;
+        }
+        cursor_y += button_height;
+    }
+}
+
+void runUdpClient(NativeHandle& handle,
+                  std::string peer_host,
+                  int peer_port,
+                  int local_port)
+{
+    using ClockType = std::chrono::steady_clock;
+
+    addrinfo hints = {};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    addrinfo* addrinfo_result = nullptr;
+    const std::string peer_port_string = std::to_string(peer_port);
+    if (getaddrinfo(peer_host.c_str(), peer_port_string.c_str(), &hints, &addrinfo_result) != 0 ||
+        addrinfo_result == nullptr)
+    {
+        std::lock_guard<std::mutex> lock(handle.mutex);
+        handle.udp_running = false;
+        handle.udp_last_error = "peer resolve failed";
+        return;
+    }
+
+    const int socket_fd = socket(addrinfo_result->ai_family, addrinfo_result->ai_socktype, addrinfo_result->ai_protocol);
+    if (socket_fd < 0)
+    {
+        freeaddrinfo(addrinfo_result);
+        std::lock_guard<std::mutex> lock(handle.mutex);
+        handle.udp_running = false;
+        handle.udp_last_error = "socket create failed";
+        return;
+    }
+
+    sockaddr_in local_address = {};
+    local_address.sin_family = AF_INET;
+    local_address.sin_port = htons(static_cast<uint16_t>(local_port));
+    local_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(socket_fd, reinterpret_cast<const sockaddr*>(&local_address), sizeof(local_address)) != 0)
+    {
+        close(socket_fd);
+        freeaddrinfo(addrinfo_result);
+        std::lock_guard<std::mutex> lock(handle.mutex);
+        handle.udp_running = false;
+        handle.udp_last_error = "bind failed";
+        return;
+    }
+
+    timeval timeout = {};
+    timeout.tv_usec = 250000;
+    setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    {
+        std::lock_guard<std::mutex> lock(handle.mutex);
+        handle.udp_running = true;
+        handle.udp_last_error.clear();
+        updateUdpStatsLocked(handle, 0, 0.0f, 0.0f);
+    }
+
+    std::array<uint8_t, 2048> rx_buffer = {};
+    uint64_t packets_received = 0;
+    uint64_t bytes_window = 0;
+    uint64_t frame_count_start = handle.jpeg_decoder.submittedFrameCount();
+    auto stats_window_start = ClockType::now();
+    auto next_control_send = ClockType::now();
+
+    while (!handle.udp_stop_requested.load())
+    {
+        const auto now = ClockType::now();
+        if (now >= next_control_send)
+        {
+            std::vector<std::vector<uint8_t>> control_packets;
+            {
+                std::lock_guard<std::mutex> lock(handle.mutex);
+                control_packets = buildControlTransportPacketsLocked(handle);
+            }
+            for (const auto& packet : control_packets)
+            {
+                if (!packet.empty())
+                {
+                    sendto(socket_fd,
+                           packet.data(),
+                           packet.size(),
+                           0,
+                           addrinfo_result->ai_addr,
+                           static_cast<socklen_t>(addrinfo_result->ai_addrlen));
+                }
+            }
+            next_control_send = now + std::chrono::milliseconds(250);
+        }
+
+        ssize_t received = recvfrom(socket_fd, rx_buffer.data(), rx_buffer.size(), 0, nullptr, nullptr);
+        if (received > 0)
+        {
+            packets_received++;
+            bytes_window += static_cast<uint64_t>(received);
+            std::lock_guard<std::mutex> lock(handle.mutex);
+            processTransportPacket(handle, rx_buffer.data(), static_cast<size_t>(received), false, 0);
+        }
+        else if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
+        {
+            std::lock_guard<std::mutex> lock(handle.mutex);
+            handle.udp_last_error = std::string("recv failed: ") + std::strerror(errno);
+            break;
+        }
+
+        const auto stats_now = ClockType::now();
+        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stats_now - stats_window_start).count();
+        if (elapsed_ms >= 1000)
+        {
+            const uint64_t frame_count_now = handle.jpeg_decoder.submittedFrameCount();
+            const float throughput_mbps = static_cast<float>(bytes_window * 8.0) /
+                                          static_cast<float>(elapsed_ms * 1000.0);
+            const float video_fps = static_cast<float>((frame_count_now - frame_count_start) * 1000.0) /
+                                    static_cast<float>(elapsed_ms);
+
+            {
+                std::lock_guard<std::mutex> lock(handle.mutex);
+                updateUdpStatsLocked(handle, packets_received, throughput_mbps, video_fps);
+            }
+
+            bytes_window = 0;
+            frame_count_start = frame_count_now;
+            stats_window_start = stats_now;
+        }
+    }
+
+    close(socket_fd);
+    freeaddrinfo(addrinfo_result);
+
+    std::lock_guard<std::mutex> lock(handle.mutex);
+    handle.udp_running = false;
+}
+
 } // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -1320,6 +1880,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_describeHandle(JNIEnv* env,
         return newJavaString(env, "Session handle is null");
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return newJavaString(env, describeHandleString(*native_handle));
 }
 
@@ -1340,103 +1901,18 @@ Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
     std::vector<uint8_t> bytes = fromJByteArray(env, data);
     if (bytes.empty())
     {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
         native_handle->last_event_kind = gs::core::SessionEventKind::Ignore;
         return static_cast<jint>(native_handle->last_event_kind);
     }
 
-    native_handle->transport.setInputDbm(static_cast<int>(inputDbm));
-    native_handle->last_event_kind = gs::core::SessionEventKind::Ignore;
-
-    if (bytes.size() >= sizeof(Packet_Header))
-    {
-        const auto* header = reinterpret_cast<const Packet_Header*>(bytes.data());
-        native_handle->transport_packets_seen++;
-        native_handle->last_transport_block = header->block_index;
-        native_handle->last_transport_packet_index = header->packet_index;
-        native_handle->last_transport_payload_size = header->size;
-        native_handle->last_transport_from = header->fromDeviceId;
-        native_handle->last_transport_to = header->toDeviceId;
-    }
-
-    const bool use_transport_filter = false;
-    const auto filter_result = PacketFilter::PacketFilterResult::Pass;
-    if (filter_result != PacketFilter::PacketFilterResult::Pass)
-    {
-        native_handle->transport_packets_filtered++;
-        return static_cast<jint>(native_handle->last_event_kind);
-    }
-
-    native_handle->transport_packets_passed_filter++;
-    native_handle->rx_decoder.push(
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return static_cast<jint>(processTransportPacket(
+        *native_handle,
         bytes.data(),
         bytes.size(),
-        native_handle->transport.getPacketFilter(),
-        use_transport_filter,
-        [&](const uint8_t* decoded_payload, size_t decoded_size)
-        {
-            native_handle->decoded_packets_seen++;
-            const uint8_t* packet_data = decoded_payload;
-            size_t packet_size = decoded_size;
-
-            if (packet_size >= sizeof(Air2Ground_Header))
-            {
-                const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
-                native_handle->last_decoded_type = static_cast<uint32_t>(header->type);
-                native_handle->last_decoded_size = header->size;
-                native_handle->last_decoded_air = header->airDeviceId;
-                native_handle->last_decoded_gs = header->gsDeviceId;
-            }
-
-            const gs::core::SessionEvent session_event = native_handle->session.processReceivedPacket(
-                packet_data,
-                packet_size,
-                native_handle->gs_device_id,
-                Clock::now(),
-                native_handle->transport);
-
-            native_handle->last_event_kind = session_event.kind;
-
-            if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
-            {
-                Air2Ground_Video_Packet video_packet = {};
-                const uint8_t* video_payload = nullptr;
-                size_t video_payload_size = 0;
-                if (!tryParseVideoPacketWire(packet_data,
-                                             packet_size,
-                                             video_packet,
-                                             video_payload,
-                                             video_payload_size))
-                {
-                    native_handle->last_event_kind = gs::core::SessionEventKind::InvalidVideoPacket;
-                }
-                else
-                {
-                    native_handle->last_video_frame_index = video_packet.frame_index;
-                    native_handle->last_video_part_index = video_packet.part_index;
-                    native_handle->last_video_last_part = video_packet.last_part;
-                    native_handle->last_video_payload_size = static_cast<uint32_t>(video_payload_size);
-
-                    auto result = native_handle->assembler.pushPacket(
-                        video_packet,
-                        video_payload,
-                        video_payload_size,
-                        restoredByFec == JNI_TRUE);
-
-                    if (result.completedFrame && result.frameData != nullptr)
-                    {
-                        native_handle->last_completed_frame = *result.frameData;
-                    }
-                }
-            }
-
-            native_handle->session.syncConfigPacket(native_handle->config_packet);
-            native_handle->rx_decoder.setDescriptor(
-                native_handle->config_packet.dataChannel.fec_codec_k,
-                native_handle->config_packet.dataChannel.fec_codec_n,
-                native_handle->config_packet.dataChannel.fec_codec_mtu);
-        });
-
-    return static_cast<jint>(native_handle->last_event_kind);
+        restoredByFec == JNI_TRUE,
+        static_cast<int>(inputDbm)));
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -1450,24 +1926,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_buildControlTransportPackets(JNIEnv* e
         return nullptr;
     }
 
-    const gs::core::ControlPacketView view = native_handle->session.buildControlPacket(native_handle->gs_device_id);
-    std::vector<uint8_t> payload;
-    switch (view.type)
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    auto packets = buildControlTransportPacketsLocked(*native_handle);
+    if (packets.empty())
     {
-    case gs::core::ControlPacketType::Connect:
-        payload.resize(sizeof(view.connect_packet));
-        std::memcpy(payload.data(), &view.connect_packet, sizeof(view.connect_packet));
-        break;
-    case gs::core::ControlPacketType::Config:
-        payload.resize(sizeof(view.config_packet));
-        std::memcpy(payload.data(), &view.config_packet, sizeof(view.config_packet));
-        break;
-    case gs::core::ControlPacketType::None:
-    default:
         return nullptr;
     }
-
-    return toJByteArrayArray(env, buildTransportPacketsForControl(*native_handle, payload.data(), payload.size()));
+    return toJByteArrayArray(env, packets);
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -1476,7 +1941,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_takeCompletedFrame(JNIEnv* env,
                                                              jlong handle)
 {
     NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr || native_handle->last_completed_frame.empty())
+    if (native_handle == nullptr)
+    {
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    if (native_handle->last_completed_frame.empty())
     {
         return nullptr;
     }
@@ -1484,6 +1955,92 @@ Java_com_esp32camfpv_androidgs_NativeCore_takeCompletedFrame(JNIEnv* env,
     std::vector<uint8_t> frame = std::move(native_handle->last_completed_frame);
     native_handle->last_completed_frame.clear();
     return toJByteArray(env, frame);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_startUdpClient(JNIEnv* env,
+                                                         jobject /* thiz */,
+                                                         jlong handle,
+                                                         jstring peer_host,
+                                                         jint peer_port,
+                                                         jint local_port)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    const std::string peer = fromJString(env, peer_host);
+    if (peer.empty())
+    {
+        return JNI_FALSE;
+    }
+
+    bool join_stale_thread = false;
+    {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
+        if (native_handle->udp_running)
+        {
+            return JNI_FALSE;
+        }
+        join_stale_thread = native_handle->udp_thread.joinable();
+    }
+
+    if (join_stale_thread)
+    {
+        native_handle->stopUdpClient();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
+        if (native_handle->udp_running || native_handle->udp_thread.joinable())
+        {
+            return JNI_FALSE;
+        }
+        native_handle->udp_peer_host = peer;
+        native_handle->udp_peer_port = static_cast<int>(peer_port);
+        native_handle->udp_local_port = static_cast<int>(local_port);
+        native_handle->udp_last_error.clear();
+    }
+
+    native_handle->udp_stop_requested.store(false);
+    native_handle->udp_thread = std::thread(
+        runUdpClient,
+        std::ref(*native_handle),
+        peer,
+        static_cast<int>(peer_port),
+        static_cast<int>(local_port));
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_stopUdpClient(JNIEnv* /* env */,
+                                                        jobject /* thiz */,
+                                                        jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->stopUdpClient();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_isUdpClientRunning(JNIEnv* /* env */,
+                                                             jobject /* thiz */,
+                                                             jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return native_handle->udp_running ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1497,7 +2054,180 @@ Java_com_esp32camfpv_androidgs_NativeCore_getLastEventKind(JNIEnv* /* env */,
         return static_cast<jint>(gs::core::SessionEventKind::Ignore);
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return static_cast<jint>(native_handle->last_event_kind);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */,
+                                                               jobject /* thiz */,
+                                                               jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return static_cast<jint>(std::clamp(native_handle->gs_screen_aspect_ratio, 0, 2));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env */,
+                                                                jobject /* thiz */,
+                                                                jlong handle,
+                                                                jint screen_mode)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->renderer.setScreenMode(std::clamp(static_cast<int>(screen_mode), 0, 2));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setFontAtlasPng(JNIEnv* env,
+                                                          jobject /* thiz */,
+                                                          jlong handle,
+                                                          jbyteArray png_bytes)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr || png_bytes == nullptr)
+    {
+        return;
+    }
+
+    std::vector<uint8_t> bytes = fromJByteArray(env, png_bytes);
+    if (bytes.empty())
+    {
+        return;
+    }
+
+    native_handle->renderer.setFontAtlasPng(bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setMenuFontTtf(JNIEnv* env,
+                                                         jobject /* thiz */,
+                                                         jlong handle,
+                                                         jbyteArray ttf_bytes)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr || ttf_bytes == nullptr)
+    {
+        return;
+    }
+
+    std::vector<uint8_t> bytes = fromJByteArray(env, ttf_bytes);
+    if (bytes.empty())
+    {
+        return;
+    }
+
+    native_handle->renderer.setMenuFontTtf(bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
+                                                              jobject /* thiz */,
+                                                              jlong handle,
+                                                              jstring build_info)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    const std::string info = fromJString(env, build_info);
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    syncRendererOverlayLocked(*native_handle, info);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
+                                                    jobject /* thiz */,
+                                                    jlong handle,
+                                                    jfloat x,
+                                                    jfloat y,
+                                                    jfloat view_width,
+                                                    jfloat view_height)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    handleTapLocked(*native_handle,
+                    static_cast<float>(x),
+                    static_cast<float>(y),
+                    static_cast<float>(view_width),
+                    static_cast<float>(view_height));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setRenderSurface(JNIEnv* env,
+                                                           jobject /* thiz */,
+                                                           jlong handle,
+                                                           jobject surface)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr || surface == nullptr)
+    {
+        return;
+    }
+
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+    native_handle->renderer.setSurface(window);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_clearRenderSurface(JNIEnv* /* env */,
+                                                             jobject /* thiz */,
+                                                             jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->renderer.clearSurface();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_submitVideoFrame(JNIEnv* env,
+                                                           jobject /* thiz */,
+                                                           jlong handle,
+                                                           jobject rgba,
+                                                           jint width,
+                                                           jint height,
+                                                           jint stride)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr || rgba == nullptr)
+    {
+        return;
+    }
+
+    auto* data = static_cast<uint8_t*>(env->GetDirectBufferAddress(rgba));
+    const jlong capacity = env->GetDirectBufferCapacity(rgba);
+    if (data == nullptr || capacity <= 0)
+    {
+        return;
+    }
+
+    native_handle->renderer.submitFrame(
+        data,
+        static_cast<size_t>(capacity),
+        static_cast<int>(width),
+        static_cast<int>(height),
+        static_cast<int>(stride));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1506,7 +2236,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_isMenuVisible(JNIEnv* /* env */,
                                                         jlong handle)
 {
     NativeHandle* native_handle = fromJLong(handle);
-    return native_handle != nullptr && native_handle->menu_visible ? JNI_TRUE : JNI_FALSE;
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return native_handle->menu_visible ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1521,6 +2257,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setMenuVisible(JNIEnv* /* env */,
         return;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     native_handle->menu_visible = visible == JNI_TRUE;
     if (native_handle->menu_visible)
     {
@@ -1542,6 +2279,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_menuGoBack(JNIEnv* /* env */,
         return;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     menuGoBack(*native_handle);
 }
 
@@ -1556,6 +2294,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getMenuSelectedIndex(JNIEnv* /* env */
         return 0;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return buildAndroidMenuScreen(*native_handle).selected_item;
 }
 
@@ -1570,6 +2309,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getMenuTitle(JNIEnv* env,
         return env->NewStringUTF("");
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     const AndroidMenuScreen screen = buildAndroidMenuScreen(*native_handle);
     return env->NewStringUTF(screen.title.c_str());
 }
@@ -1585,6 +2325,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getMenuItems(JNIEnv* env,
         return nullptr;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return toJStringArray(env, buildAndroidMenuScreen(*native_handle).items);
 }
 
@@ -1599,6 +2340,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getMenuStatuses(JNIEnv* env,
         return nullptr;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return toJStringArray(env, buildAndroidMenuScreen(*native_handle).statuses);
 }
 
@@ -1613,6 +2355,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getMenuStatusLines(JNIEnv* env,
         return nullptr;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     return toJStringArray(env, buildAndroidMenuScreen(*native_handle).status_lines);
 }
 
@@ -1628,6 +2371,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_menuSelectItem(JNIEnv* /* env */,
         return;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     handleAndroidMenuSelection(*native_handle, static_cast<int>(item_index));
 }
 
@@ -1642,6 +2386,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_consumeExitRequested(JNIEnv* /* env */
         return JNI_FALSE;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     const bool requested = native_handle->exit_requested;
     native_handle->exit_requested = false;
     return requested ? JNI_TRUE : JNI_FALSE;
@@ -1658,6 +2403,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
         return;
     }
 
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
     native_handle->session.resetPairing(native_handle->gs_device_id,
                                         native_handle->transport,
                                         Clock::now());
