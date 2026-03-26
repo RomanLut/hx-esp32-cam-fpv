@@ -64,6 +64,12 @@ public:
         gs::stats::FullscreenStatsSnapshot snapshot = {};
     };
 
+    struct OverlayPacketDebugState
+    {
+        bool visible = false;
+        std::vector<std::string> lines;
+    };
+
     AndroidVideoRenderer();
     ~AndroidVideoRenderer();
 
@@ -71,7 +77,10 @@ public:
     void clearSurface();
     void submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride);
     void setScreenMode(int screen_mode);
-    void setOverlayState(const std::vector<OverlayChip>& chips, const OverlayMenuState& menu_state, const OverlayStatsState& stats_state);
+    void setOverlayState(const std::vector<OverlayChip>& chips,
+                         const OverlayMenuState& menu_state,
+                         const OverlayStatsState& stats_state,
+                         const OverlayPacketDebugState& packet_debug_state);
     MenuAction dispatchTap(float x, float y);
 
 private:
@@ -88,6 +97,7 @@ private:
     void drawHudLocked();
     void drawHudImGuiLocked();
     void drawStatsLocked();
+    void drawPacketDebugLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
@@ -137,6 +147,7 @@ private:
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
     OverlayStatsState m_overlay_stats;
+    OverlayPacketDebugState m_overlay_packet_debug;
     Rect m_menu_bounds;
     std::vector<Rect> m_menu_item_bounds;
     Rect m_nav_up_bounds;

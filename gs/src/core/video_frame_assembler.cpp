@@ -25,6 +25,10 @@ VideoFrameAssembler::Result VideoFrameAssembler::pushPacket(const Air2Ground_Vid
         {
             result.lostPartialFrame = true;
             result.lostPartialParts = m_nextPartIndex;
+            if (packet.frame_index == m_frameIndex + 1)
+            {
+                result.abandonedOnNewFrameWhileWaitingNextPart = true;
+            }
         }
 
         int df = packet.frame_index - m_frameIndex;

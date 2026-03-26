@@ -17,6 +17,7 @@ public:
         bool lostPartialFrame = false;
         uint8_t lostPartialParts = 0;
         int lostWholeFrames = 0;
+        bool abandonedOnNewFrameWhileWaitingNextPart = false;
 
         bool completedFrame = false;
         bool completedRestoredByFec = false;

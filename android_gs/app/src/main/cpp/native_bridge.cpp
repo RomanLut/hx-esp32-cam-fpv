@@ -149,6 +149,13 @@ private:
 class GroundToAirTransportDecoder
 {
 public:
+    struct BlockStatsEvent
+    {
+        bool block_completed = false;
+        bool restored_by_fec = false;
+        uint8_t max_fec_packet_index = 0;
+    };
+
     GroundToAirTransportDecoder()
     {
         static bool fec_initialized = false;
@@ -201,11 +208,17 @@ public:
         m_fec = fec_new(m_k, m_n);
     }
 
-    template <typename DispatchFn>
+    uint8_t codingN() const
+    {
+        return m_n;
+    }
+
+    template <typename BlockStatsFn, typename DispatchFn>
     void push(const uint8_t* data,
               size_t size,
               PacketFilter& packet_filter,
               bool use_filter,
+              BlockStatsFn&& on_block_stats,
               DispatchFn&& dispatch)
     {
         if (!data || size < sizeof(Packet_Header))
@@ -231,6 +244,7 @@ public:
             m_has_block = true;
             m_current_block_index = header->block_index;
             m_block_mtu = header->size;
+            m_block_stats_emitted = false;
         }
         else if (header->block_index < m_current_block_index)
         {
@@ -251,7 +265,7 @@ public:
 
         if (header->packet_index < m_k && !m_processed[header->packet_index])
         {
-            dispatch(m_packets[header->packet_index].data(), m_block_mtu);
+            dispatch(m_packets[header->packet_index].data(), m_block_mtu, false);
             m_processed[header->packet_index] = true;
         }
 
@@ -272,6 +286,25 @@ public:
         if (total_count < m_k || !m_fec)
         {
             return;
+        }
+
+        if (!m_block_stats_emitted)
+        {
+            BlockStatsEvent event = {};
+            event.block_completed = true;
+            event.restored_by_fec = primary_count < m_k;
+            if (event.restored_by_fec)
+            {
+                for (uint8_t i = m_k; i < m_n; ++i)
+                {
+                    if (m_present[i])
+                    {
+                        event.max_fec_packet_index = std::max(event.max_fec_packet_index, i);
+                    }
+                }
+            }
+            on_block_stats(event);
+            m_block_stats_emitted = true;
         }
 
         std::vector<const gf*> sources(m_k, nullptr);
@@ -304,6 +337,7 @@ public:
 
         fec_decode(m_fec, sources.data(), outputs.data(), indices.data(), m_block_mtu);
 
+        std::vector<bool> restored_primary(m_k, false);
         size_t recovered_index = 0;
         for (uint8_t i = 0; i < m_k; ++i)
         {
@@ -311,6 +345,7 @@ public:
             {
                 std::memcpy(m_packets[i].data(), recovered[recovered_index++].data(), m_block_mtu);
                 m_present[i] = true;
+                restored_primary[i] = true;
             }
         }
 
@@ -318,7 +353,7 @@ public:
         {
             if (!m_processed[i])
             {
-                dispatch(m_packets[i].data(), m_block_mtu);
+                dispatch(m_packets[i].data(), m_block_mtu, restored_primary[i]);
                 m_processed[i] = true;
             }
         }
@@ -330,11 +365,241 @@ private:
     uint8_t m_n = 8;
     uint16_t m_configured_mtu = AIR2GROUND_MAX_MTU;
     bool m_has_block = false;
+    bool m_block_stats_emitted = false;
     uint32_t m_current_block_index = 0;
     uint16_t m_block_mtu = 0;
     std::vector<std::array<uint8_t, AIR2GROUND_MAX_MTU>> m_packets;
     std::vector<bool> m_present;
     std::vector<bool> m_processed;
+};
+
+struct AndroidGsStats
+{
+    uint16_t outPacketCounter = 0;
+    uint16_t inPacketCounter[2] = {0, 0};
+    uint32_t lastPacketIndex = 0;
+    uint32_t statsPacketIndex = 0;
+    uint16_t inDublicatedPacketCounter = 0;
+    uint16_t inUniquePacketCounter = 0;
+    uint32_t FECSuccPacketIndexCounter = 0;
+    uint32_t FECBlocksCounter = 0;
+    int8_t rssiDbm[2] = {0, 0};
+    int8_t noiseFloorDbm = 0;
+    uint8_t brokenFrames = 0;
+    int pingMinMS = 0;
+    int pingMaxMS = 0;
+    int RCPeriodMax = -1;
+};
+
+class AndroidFramePacketsDebug
+{
+public:
+    void off()
+    {
+        m_state = State::Off;
+        m_lines.clear();
+    }
+
+    void captureFrame(bool until_loss)
+    {
+        clear();
+        m_state = State::SyncBlockStart;
+        m_need_broken = until_loss;
+        m_retry_count = 0;
+    }
+
+    bool isVisible() const
+    {
+        return m_state == State::Showing && !m_lines.empty();
+    }
+
+    const std::vector<std::string>& lines() const
+    {
+        return m_lines;
+    }
+
+    void onPacketReceived(uint32_t block_index,
+                          uint32_t packet_index,
+                          const uint8_t* data,
+                          bool old,
+                          uint8_t fec_k,
+                          uint8_t fec_n)
+    {
+        if (m_state == State::Off)
+        {
+            return;
+        }
+
+        if (m_state == State::SyncBlockStart)
+        {
+            if (old)
+            {
+                return;
+            }
+            m_first_block = block_index + 1;
+            m_state = State::Capture;
+        }
+
+        if (m_state != State::Capture)
+        {
+            return;
+        }
+
+        if (block_index < m_first_block)
+        {
+            return;
+        }
+
+        const uint32_t relative_block = block_index - m_first_block;
+        const uint32_t row = relative_block / kBlocksPerRow;
+        const uint32_t col = relative_block % kBlocksPerRow;
+        if (row >= kRows)
+        {
+            const bool has_lost_block = buildLines(fec_k, fec_n);
+            m_state = State::Showing;
+            if (!has_lost_block && m_need_broken && m_retry_count < 100)
+            {
+                const int retry_count = m_retry_count + 1;
+                captureFrame(true);
+                m_retry_count = retry_count;
+            }
+            return;
+        }
+
+        if (packet_index >= kPacketsPerBlock)
+        {
+            return;
+        }
+
+        const uint8_t c = old ? kCharOldRejected : getPacketTypeChar(packet_index, data, fec_k);
+        uint8_t& cell = m_buffer[row][col][packet_index];
+        if (cell == kCharEmpty)
+        {
+            cell = c;
+        }
+    }
+
+private:
+    static constexpr int kPacketsPerBlock = 12;
+    static constexpr int kBlocksPerRow = 4;
+    static constexpr int kRows = 20;
+    static constexpr uint8_t kCharEmpty = '-';
+    static constexpr uint8_t kCharFrameStart = 'F';
+    static constexpr uint8_t kCharFramePart = 'P';
+    static constexpr uint8_t kCharFrameEnd = 'E';
+    static constexpr uint8_t kCharFrameSingle = 'B';
+    static constexpr uint8_t kCharTelemetry = 'T';
+    static constexpr uint8_t kCharConfig = 'C';
+    static constexpr uint8_t kCharOsd = 'O';
+    static constexpr uint8_t kCharUnknown = '?';
+    static constexpr uint8_t kCharFec = '*';
+    static constexpr uint8_t kCharOldRejected = 'J';
+    static constexpr uint8_t kCharBlockLost = '!';
+
+    enum class State : uint8_t
+    {
+        Off = 0,
+        SyncBlockStart = 1,
+        Capture = 2,
+        Showing = 3,
+    };
+
+    void clear()
+    {
+        for (auto& row : m_buffer)
+        {
+            for (auto& block : row)
+            {
+                block.fill(kCharEmpty);
+            }
+        }
+        m_lines.clear();
+    }
+
+    bool buildLines(uint8_t fec_k, uint8_t fec_n)
+    {
+        m_lines.clear();
+        bool has_lost_block = false;
+        const int packet_columns = std::min<int>(fec_n > 0 ? fec_n : kPacketsPerBlock, kPacketsPerBlock);
+
+        for (int row = 0; row < kRows; ++row)
+        {
+            std::string line;
+            line.reserve(kBlocksPerRow * (kPacketsPerBlock + 2));
+            for (int block = 0; block < kBlocksPerRow; ++block)
+            {
+                int block_count = 0;
+                for (int packet = 0; packet < packet_columns; ++packet)
+                {
+                    const char c = static_cast<char>(m_buffer[row][block][packet]);
+                    if (c != static_cast<char>(kCharEmpty) &&
+                        c != static_cast<char>(kCharOldRejected) &&
+                        c != static_cast<char>(kCharUnknown))
+                    {
+                        block_count++;
+                    }
+                    line.push_back(c);
+                }
+                if (block_count < fec_k)
+                {
+                    has_lost_block = true;
+                    line.push_back(static_cast<char>(kCharBlockLost));
+                }
+                else
+                {
+                    line.push_back(' ');
+                }
+                line.push_back(' ');
+            }
+            m_lines.push_back(std::move(line));
+        }
+
+        return has_lost_block;
+    }
+
+    uint8_t getPacketTypeChar(uint32_t packet_index, const uint8_t* data, uint8_t fec_k) const
+    {
+        if (packet_index >= fec_k)
+        {
+            return kCharFec;
+        }
+
+        if (data == nullptr)
+        {
+            return kCharUnknown;
+        }
+
+        const auto* header = reinterpret_cast<const Air2Ground_Header*>(data);
+        if (header->type == Air2Ground_Header::Type::Video)
+        {
+            const auto* video = reinterpret_cast<const Air2Ground_Video_Packet*>(data);
+            if (video->part_index == 0)
+            {
+                return video->last_part == 1 ? kCharFrameSingle : kCharFrameStart;
+            }
+            return video->last_part == 1 ? kCharFrameEnd : kCharFramePart;
+        }
+        if (header->type == Air2Ground_Header::Type::Telemetry)
+        {
+            return kCharTelemetry;
+        }
+        if (header->type == Air2Ground_Header::Type::OSD)
+        {
+            return kCharOsd;
+        }
+        if (header->type == Air2Ground_Header::Type::Config)
+        {
+            return kCharConfig;
+        }
+        return kCharUnknown;
+    }
+
+    std::array<std::array<std::array<uint8_t, kPacketsPerBlock>, kBlocksPerRow>, kRows> m_buffer = {};
+    State m_state = State::Off;
+    uint32_t m_first_block = 0;
+    bool m_need_broken = false;
+    int m_retry_count = 0;
+    std::vector<std::string> m_lines;
 };
 
 struct NativeHandle;
@@ -469,7 +734,14 @@ struct NativeHandle
     std::unique_ptr<gs::menu::OSDMenuController> menu_controller;
     AndroidVideoRenderer renderer;
     AndroidJpegDecoder jpeg_decoder;
+    AndroidFramePacketsDebug frame_packets_debug;
     gs::stats::GroundStatsSnapshot last_ground_stats = {};
+    AndroidGsStats gs_stats = {};
+    std::vector<uint32_t> received_packet_ids;
+    int restored_transport_packets = 0;
+    int restored_video_parts = 0;
+    int restored_completed_frames = 0;
+    int abandoned_new_frame_waiting_next_part = 0;
     Stats data_size_stats = {};
     Clock::time_point last_periodic_stats_tp = Clock::now();
     Clock::time_point last_data_rate_sample_tp = Clock::now();
@@ -651,11 +923,13 @@ Clock::time_point AndroidMenuPlatform::lastPacketTime() const
 void AndroidMenuPlatform::captureFrameDebug(bool until_loss)
 {
     m_handle.gs_packet_debug_mode = until_loss ? 2 : 1;
+    m_handle.frame_packets_debug.captureFrame(until_loss);
 }
 
 void AndroidMenuPlatform::disableFrameDebug()
 {
     m_handle.gs_packet_debug_mode = 0;
+    m_handle.frame_packets_debug.off();
 }
 
 jlong toJLong(NativeHandle* handle)
@@ -985,12 +1259,44 @@ int processTransportPacket(NativeHandle& handle,
     if (size >= sizeof(Packet_Header))
     {
         const auto* header = reinterpret_cast<const Packet_Header*>(data);
+        const uint32_t previous_last_block = handle.last_transport_block;
         handle.transport_packets_seen++;
         handle.last_transport_block = header->block_index;
         handle.last_transport_packet_index = header->packet_index;
         handle.last_transport_payload_size = header->size;
         handle.last_transport_from = header->fromDeviceId;
         handle.last_transport_to = header->toDeviceId;
+
+        const uint32_t packet_order_index =
+            header->block_index * static_cast<uint32_t>(handle.rx_decoder.codingN()) + header->packet_index;
+        handle.gs_stats.inPacketCounter[0]++;
+        handle.gs_stats.lastPacketIndex = packet_order_index;
+
+        auto it = std::lower_bound(handle.received_packet_ids.begin(),
+                                   handle.received_packet_ids.end(),
+                                   packet_order_index);
+        if (it == handle.received_packet_ids.end() || *it != packet_order_index)
+        {
+            handle.received_packet_ids.insert(it, packet_order_index);
+            handle.gs_stats.inUniquePacketCounter++;
+        }
+        else
+        {
+            handle.gs_stats.inDublicatedPacketCounter++;
+        }
+
+        const uint32_t too_old_ids = packet_order_index > 100 ? packet_order_index - 100 : 0;
+        it = std::lower_bound(handle.received_packet_ids.begin(),
+                              handle.received_packet_ids.end(),
+                              too_old_ids);
+        handle.received_packet_ids.erase(handle.received_packet_ids.begin(), it);
+
+        handle.frame_packets_debug.onPacketReceived(header->block_index,
+                                                    header->packet_index,
+                                                    data + sizeof(Packet_Header),
+                                                    header->block_index < previous_last_block,
+                                                    handle.config_packet.dataChannel.fec_codec_k,
+                                                    handle.config_packet.dataChannel.fec_codec_n);
     }
 
     const bool use_transport_filter = false;
@@ -1007,9 +1313,26 @@ int processTransportPacket(NativeHandle& handle,
         size,
         handle.transport.getPacketFilter(),
         use_transport_filter,
-        [&](const uint8_t* decoded_payload, size_t decoded_size)
+        [&](const GroundToAirTransportDecoder::BlockStatsEvent& event)
+        {
+            if (!event.block_completed)
+            {
+                return;
+            }
+
+            handle.gs_stats.FECBlocksCounter++;
+            if (event.restored_by_fec)
+            {
+                handle.gs_stats.FECSuccPacketIndexCounter += event.max_fec_packet_index;
+            }
+        },
+        [&](const uint8_t* decoded_payload, size_t decoded_size, bool decoded_restored_by_fec)
         {
             handle.decoded_packets_seen++;
+            if (decoded_restored_by_fec)
+            {
+                handle.restored_transport_packets++;
+            }
             const uint8_t* packet_data = decoded_payload;
             size_t packet_size = decoded_size;
 
@@ -1056,10 +1379,18 @@ int processTransportPacket(NativeHandle& handle,
                         video_packet,
                         video_payload,
                         video_payload_size,
-                        restored_by_fec);
+                        decoded_restored_by_fec);
+                    if (decoded_restored_by_fec)
+                    {
+                        handle.restored_video_parts++;
+                    }
 
                     if (result.lostPartialFrame)
                     {
+                        if (result.abandonedOnNewFrameWhileWaitingNextPart)
+                        {
+                            handle.abandoned_new_frame_waiting_next_part++;
+                        }
                         handle.session.onLostPartialFrame(result.lostPartialParts,
                                                           static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
                     }
@@ -1072,6 +1403,10 @@ int processTransportPacket(NativeHandle& handle,
                     if (result.completedFrame && result.frameData != nullptr)
                     {
                         handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+                        if (result.completedRestoredByFec)
+                        {
+                            handle.restored_completed_frames++;
+                        }
                         handle.session.onCompletedFrame(result.completedRestoredByFec,
                                                         result.completedPartIndex,
                                                         handle.session.airStatus().curr_quality,
@@ -1144,19 +1479,46 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
     {
         const gs::core::PeriodicStatsSnapshot periodic_stats = handle.session.consumePeriodicStats();
         const gs::core::LinkStatusSnapshot link_status = handle.session.consumeLinkStatus(now);
-        handle.last_ground_stats.out_packet_counter = static_cast<uint16_t>(periodic_stats.sent_count);
-        handle.last_ground_stats.in_packet_counter[0] = static_cast<uint16_t>(handle.udp_packets_received - handle.last_udp_packets_sample);
-        handle.last_ground_stats.in_packet_counter[1] = 0;
-        handle.last_udp_packets_sample = handle.udp_packets_received;
-        handle.last_ground_stats.ping_min_ms = link_status.ping_min_ms;
-        handle.last_ground_stats.ping_max_ms = link_status.ping_max_ms;
+        handle.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
+        handle.gs_stats.pingMinMS = link_status.ping_min_ms;
+        handle.gs_stats.pingMaxMS = link_status.ping_max_ms;
 
         const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.statsSnapshot();
-        handle.last_ground_stats.broken_frames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
+        handle.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
+
+        handle.last_ground_stats.out_packet_counter = handle.gs_stats.outPacketCounter;
+        handle.last_ground_stats.in_packet_counter[0] = handle.gs_stats.inPacketCounter[0];
+        handle.last_ground_stats.in_packet_counter[1] = handle.gs_stats.inPacketCounter[1];
+        handle.last_ground_stats.last_packet_index = handle.gs_stats.lastPacketIndex;
+        handle.last_ground_stats.stats_packet_index = handle.gs_stats.statsPacketIndex;
+        handle.last_ground_stats.in_duplicated_packet_counter = handle.gs_stats.inDublicatedPacketCounter;
+        handle.last_ground_stats.in_unique_packet_counter = handle.gs_stats.inUniquePacketCounter;
+        handle.last_ground_stats.fec_succ_packet_index_counter = handle.gs_stats.FECSuccPacketIndexCounter;
+        handle.last_ground_stats.fec_blocks_counter = handle.gs_stats.FECBlocksCounter;
+        handle.last_ground_stats.rssi_dbm[0] = handle.gs_stats.rssiDbm[0];
+        handle.last_ground_stats.rssi_dbm[1] = handle.gs_stats.rssiDbm[1];
+        handle.last_ground_stats.noise_floor_dbm = handle.gs_stats.noiseFloorDbm;
+        handle.last_ground_stats.broken_frames = handle.gs_stats.brokenFrames;
+        handle.last_ground_stats.ping_min_ms = handle.gs_stats.pingMinMS;
+        handle.last_ground_stats.ping_max_ms = handle.gs_stats.pingMaxMS;
+        handle.last_ground_stats.rc_period_max = handle.gs_stats.RCPeriodMax;
         handle.last_ground_stats.decoded_jpeg_count = static_cast<int>(jpeg_stats.decoded_count);
         handle.last_ground_stats.decoded_jpeg_time_total_ms = static_cast<int>(jpeg_stats.decoded_total_ms);
         handle.last_ground_stats.decoded_jpeg_time_min_ms = static_cast<int>(jpeg_stats.decoded_min_ms);
         handle.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(jpeg_stats.decoded_max_ms);
+        handle.last_ground_stats.restored_transport_packets = handle.restored_transport_packets;
+        handle.last_ground_stats.restored_video_parts = handle.restored_video_parts;
+        handle.last_ground_stats.restored_completed_frames = handle.restored_completed_frames;
+        handle.last_ground_stats.abandoned_new_frame_waiting_next_part = handle.abandoned_new_frame_waiting_next_part;
+
+        AndroidGsStats next_stats = {};
+        next_stats.statsPacketIndex = handle.last_ground_stats.last_packet_index;
+        handle.gs_stats = next_stats;
+        handle.restored_transport_packets = 0;
+        handle.restored_video_parts = 0;
+        handle.restored_completed_frames = 0;
+        handle.abandoned_new_frame_waiting_next_part = 0;
+        handle.last_udp_packets_sample = handle.udp_packets_received;
         handle.last_periodic_stats_tp = now;
     }
 
@@ -1181,6 +1543,7 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
 
     AndroidVideoRenderer::OverlayMenuState menu_state;
     AndroidVideoRenderer::OverlayStatsState stats_state;
+    AndroidVideoRenderer::OverlayPacketDebugState packet_debug_state;
     if (handle.menu_controller->isVisible())
     {
         const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
@@ -1209,8 +1572,13 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         stats_state.snapshot.data_size_stats = handle.data_size_stats;
         stats_state.snapshot.ground_stats = handle.last_ground_stats;
     }
+    if (handle.frame_packets_debug.isVisible())
+    {
+        packet_debug_state.visible = true;
+        packet_debug_state.lines = handle.frame_packets_debug.lines();
+    }
 
-    handle.renderer.setOverlayState(chips, menu_state, stats_state);
+    handle.renderer.setOverlayState(chips, menu_state, stats_state, packet_debug_state);
 }
 
 void handleTapLocked(NativeHandle& handle,

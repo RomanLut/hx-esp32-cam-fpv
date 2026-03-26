@@ -12,6 +12,7 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
+#include <errno.h>
 #include <unistd.h>
 
 #include "vcd_profiler.h"
@@ -67,6 +68,8 @@ static bool s_udp_peer_known = false;
 constexpr uint16_t APFPV_UDP_PORT = 5600;
 static constexpr const char* APFPV_IP = "192.168.4.1";
 static constexpr const char* APFPV_NETMASK = "255.255.255.0";
+static constexpr int APFPV_UDP_SEND_TIMEOUT_US = 20000;
+static constexpr int APFPV_UDP_SEND_BUFFER_SIZE = 8 * 1024;
 
 #ifdef TX_COMPLETION_CB
 static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus);
@@ -387,6 +390,14 @@ static esp_err_t start_udp_socket()
     timeout.tv_usec = 200000;
     setsockopt(s_udp_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
+    timeval send_timeout = {};
+    send_timeout.tv_sec = 0;
+    send_timeout.tv_usec = APFPV_UDP_SEND_TIMEOUT_US;
+    setsockopt(s_udp_socket, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout));
+
+    int send_buffer_size = APFPV_UDP_SEND_BUFFER_SIZE;
+    setsockopt(s_udp_socket, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size));
+
     sockaddr_in bind_addr = {};
     bind_addr.sin_family = AF_INET;
     bind_addr.sin_port = htons(APFPV_UDP_PORT);
@@ -560,6 +571,31 @@ IRAM_ATTR static void wifi_tx_proc(void *)
                                               sizeof(s_udp_peer_addr));
                             res = sent == static_cast<int>(packet.size) ? ESP_OK : ESP_FAIL;
                             packet_sent = (res == ESP_OK);
+
+                            if (!packet_sent)
+                            {
+                                const int udp_errno = errno;
+                                const bool udp_backpressure =
+                                    udp_errno == EAGAIN ||
+                                    udp_errno == EWOULDBLOCK ||
+                                    udp_errno == ENOMEM ||
+                                    udp_errno == ENOBUFS;
+
+                                if (udp_backpressure)
+                                {
+                                    s_stats.wlan_error_count++;
+
+                                    // Keep the packet in the local queue so queue-based adaptive
+                                    // quality can see the congestion instead of hiding it in the
+                                    // socket/AP buffers.
+                                    if (spins > 1000)
+                                        vTaskDelay(1);
+                                    else
+                                        taskYIELD();
+                                    spins++;
+                                    continue;
+                                }
+                            }
                         }
                     }
                     if (packet_sent)

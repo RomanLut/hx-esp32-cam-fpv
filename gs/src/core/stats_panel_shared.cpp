@@ -148,6 +148,10 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         snapshot.ground_stats.decoded_jpeg_time_max_ms);
         });
+        row("Restored Transport", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_transport_packets); });
+        row("Restored Video Parts", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_video_parts); });
+        row("Restored Frames", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_completed_frames); });
+        row("Abandoned On New Frame", [&] { ImGui::Text("%d", snapshot.ground_stats.abandoned_new_frame_waiting_next_part); });
 
         ImGui::EndTable();
     }
