@@ -208,7 +208,7 @@ void AndroidVideoRenderer::clearSurface()
 
 void AndroidVideoRenderer::submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride)
 {
-    if (rgba == nullptr || size == 0 || width <= 0 || height <= 0 || stride < width * 4)
+    if (rgba == nullptr || size == 0 || width <= 0 || height <= 0 || stride < width * 3)
     {
         return;
     }
@@ -228,7 +228,7 @@ void AndroidVideoRenderer::submitFrame(const uint8_t* rgba, size_t size, int wid
 
 void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& rgba, int width, int height, int stride)
 {
-    if (rgba.empty() || width <= 0 || height <= 0 || stride < width * 4)
+    if (rgba.empty() || width <= 0 || height <= 0 || stride < width * 3)
     {
         return;
     }
@@ -619,7 +619,7 @@ void AndroidVideoRenderer::uploadFrameLocked()
         0,
         m_frame_width,
         m_frame_height,
-        GL_RGBA,
+        GL_RGB,
         GL_UNSIGNED_BYTE,
         m_locked_frame.rgba.data());
     m_has_uploaded_frame = true;
@@ -641,11 +641,11 @@ void AndroidVideoRenderer::ensureTextureLocked()
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
-        GL_RGBA,
+        GL_RGB,
         m_frame_width,
         m_frame_height,
         0,
-        GL_RGBA,
+        GL_RGB,
         GL_UNSIGNED_BYTE,
         nullptr);
     m_uploaded_width = m_frame_width;

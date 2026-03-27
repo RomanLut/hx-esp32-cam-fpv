@@ -7,8 +7,8 @@ AndroidJpegDecoder::AndroidJpegDecoder(AndroidVideoRenderer& renderer)
       m_core([&renderer] {
           gs::core::JpegDecoderCore::Config config;
           config.worker_count = 2;
-          config.pixel_format = TJPF_RGBA;
-          config.bytes_per_pixel = 4;
+          config.pixel_format = TJPF_RGB;
+          config.bytes_per_pixel = 3;
           config.tj_flags = TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE;
           return config;
       }()),
