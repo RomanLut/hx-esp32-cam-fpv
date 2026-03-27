@@ -24,6 +24,7 @@
 #include "android_jpeg_decoder.h"
 #include "android_video_renderer.h"
 #include "fec.h"
+#include "fec_block_decoder.h"
 #include "crc.h"
 #include "lodepng.h"
 #include "core/gs_session_core.h"
@@ -146,233 +147,6 @@ private:
     int m_input_dbm = 0;
 };
 
-class GroundToAirTransportDecoder
-{
-public:
-    struct BlockStatsEvent
-    {
-        bool block_completed = false;
-        bool restored_by_fec = false;
-        uint8_t max_fec_packet_index = 0;
-    };
-
-    GroundToAirTransportDecoder()
-    {
-        static bool fec_initialized = false;
-        if (!fec_initialized)
-        {
-            init_fec();
-            fec_initialized = true;
-        }
-        setDescriptor(FEC_K, 8, AIR2GROUND_MAX_MTU);
-    }
-
-    ~GroundToAirTransportDecoder()
-    {
-        if (m_fec)
-        {
-            fec_free(m_fec);
-            m_fec = nullptr;
-        }
-    }
-
-    void reset()
-    {
-        m_has_block = false;
-        m_current_block_index = 0;
-        m_block_mtu = 0;
-        m_present.assign(m_n, false);
-        m_processed.assign(m_n, false);
-    }
-
-    void setDescriptor(uint8_t k, uint8_t n, uint16_t mtu)
-    {
-        if (k == 0 || n == 0 || k >= n || n > 12 || mtu == 0 || mtu > AIR2GROUND_MAX_MTU)
-        {
-            return;
-        }
-
-        m_k = k;
-        m_n = n;
-        m_configured_mtu = mtu;
-        m_packets.assign(m_n, {});
-        m_present.assign(m_n, false);
-        m_processed.assign(m_n, false);
-        reset();
-
-        if (m_fec)
-        {
-            fec_free(m_fec);
-            m_fec = nullptr;
-        }
-        m_fec = fec_new(m_k, m_n);
-    }
-
-    uint8_t codingN() const
-    {
-        return m_n;
-    }
-
-    template <typename BlockStatsFn, typename DispatchFn>
-    void push(const uint8_t* data,
-              size_t size,
-              PacketFilter& packet_filter,
-              bool use_filter,
-              BlockStatsFn&& on_block_stats,
-              DispatchFn&& dispatch)
-    {
-        if (!data || size < sizeof(Packet_Header))
-        {
-            return;
-        }
-
-        if (use_filter &&
-            packet_filter.filter_packet(data, size, AIR2GROUND_MAX_MTU) != PacketFilter::PacketFilterResult::Pass)
-        {
-            return;
-        }
-
-        const auto* header = reinterpret_cast<const Packet_Header*>(data);
-        if (header->packet_index >= m_n)
-        {
-            return;
-        }
-
-        if (!m_has_block || header->block_index > m_current_block_index)
-        {
-            reset();
-            m_has_block = true;
-            m_current_block_index = header->block_index;
-            m_block_mtu = header->size;
-            m_block_stats_emitted = false;
-        }
-        else if (header->block_index < m_current_block_index)
-        {
-            return;
-        }
-
-        if (m_block_mtu != header->size || header->size == 0 || header->size > m_configured_mtu)
-        {
-            reset();
-            return;
-        }
-
-        const size_t payload_size = std::min<size_t>(header->size, size - sizeof(Packet_Header));
-        auto& packet = m_packets[header->packet_index];
-        packet.fill(0);
-        std::memcpy(packet.data(), data + sizeof(Packet_Header), payload_size);
-        m_present[header->packet_index] = true;
-
-        if (header->packet_index < m_k && !m_processed[header->packet_index])
-        {
-            dispatch(m_packets[header->packet_index].data(), m_block_mtu, false);
-            m_processed[header->packet_index] = true;
-        }
-
-        size_t primary_count = 0;
-        size_t total_count = 0;
-        for (uint8_t i = 0; i < m_n; ++i)
-        {
-            if (m_present[i])
-            {
-                total_count++;
-                if (i < m_k)
-                {
-                    primary_count++;
-                }
-            }
-        }
-
-        if (total_count < m_k || !m_fec)
-        {
-            return;
-        }
-
-        if (!m_block_stats_emitted)
-        {
-            BlockStatsEvent event = {};
-            event.block_completed = true;
-            event.restored_by_fec = primary_count < m_k;
-            if (event.restored_by_fec)
-            {
-                for (uint8_t i = m_k; i < m_n; ++i)
-                {
-                    if (m_present[i])
-                    {
-                        event.max_fec_packet_index = std::max(event.max_fec_packet_index, i);
-                    }
-                }
-            }
-            on_block_stats(event);
-            m_block_stats_emitted = true;
-        }
-
-        std::vector<const gf*> sources(m_k, nullptr);
-        std::vector<unsigned> indices(m_k, 0);
-        std::vector<std::array<uint8_t, AIR2GROUND_MAX_MTU>> recovered;
-        recovered.resize(m_k - primary_count);
-        std::vector<gf*> outputs;
-        outputs.reserve(recovered.size());
-        for (auto& packet_buf : recovered)
-        {
-            outputs.push_back(packet_buf.data());
-        }
-
-        size_t source_index = 0;
-        for (uint8_t i = 0; i < m_n && source_index < m_k; ++i)
-        {
-            if (!m_present[i])
-            {
-                continue;
-            }
-            sources[source_index] = m_packets[i].data();
-            indices[source_index] = i;
-            source_index++;
-        }
-
-        if (source_index < m_k)
-        {
-            return;
-        }
-
-        fec_decode(m_fec, sources.data(), outputs.data(), indices.data(), m_block_mtu);
-
-        std::vector<bool> restored_primary(m_k, false);
-        size_t recovered_index = 0;
-        for (uint8_t i = 0; i < m_k; ++i)
-        {
-            if (!m_present[i])
-            {
-                std::memcpy(m_packets[i].data(), recovered[recovered_index++].data(), m_block_mtu);
-                m_present[i] = true;
-                restored_primary[i] = true;
-            }
-        }
-
-        for (uint8_t i = 0; i < m_k; ++i)
-        {
-            if (!m_processed[i])
-            {
-                dispatch(m_packets[i].data(), m_block_mtu, restored_primary[i]);
-                m_processed[i] = true;
-            }
-        }
-    }
-
-private:
-    fec_t* m_fec = nullptr;
-    uint8_t m_k = FEC_K;
-    uint8_t m_n = 8;
-    uint16_t m_configured_mtu = AIR2GROUND_MAX_MTU;
-    bool m_has_block = false;
-    bool m_block_stats_emitted = false;
-    uint32_t m_current_block_index = 0;
-    uint16_t m_block_mtu = 0;
-    std::vector<std::array<uint8_t, AIR2GROUND_MAX_MTU>> m_packets;
-    std::vector<bool> m_present;
-    std::vector<bool> m_processed;
-};
-
 struct AndroidGsStats
 {
     uint16_t outPacketCounter = 0;
@@ -477,6 +251,27 @@ public:
         {
             cell = c;
         }
+    }
+
+    void onPacketRestored(uint32_t block_index,
+                          uint32_t packet_index,
+                          const uint8_t* data,
+                          uint8_t fec_k)
+    {
+        if (m_state != State::Capture || block_index < m_first_block || packet_index >= kPacketsPerBlock)
+        {
+            return;
+        }
+
+        const uint32_t relative_block = block_index - m_first_block;
+        const uint32_t row = relative_block / kBlocksPerRow;
+        const uint32_t col = relative_block % kBlocksPerRow;
+        if (row >= kRows)
+        {
+            return;
+        }
+
+        m_buffer[row][col][packet_index] = getPacketTypeChar(packet_index, data, fec_k);
     }
 
 private:
@@ -654,6 +449,19 @@ struct NativeHandle
         init_crc8_table();
         init_fec();
         tx_fec = fec_new(2, 3);
+        FecBlockDecoder::Descriptor decoder_descriptor = {};
+        decoder_descriptor.coding_k = FEC_K;
+        decoder_descriptor.coding_n = 8;
+        decoder_descriptor.mtu = AIR2GROUND_MAX_MTU;
+        decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
+        decoder_descriptor.restart_backjump_blocks = 64;
+        decoder_descriptor.max_block_queue_size = 3;
+        decoder_descriptor.duplicate_window = 100;
+        decoder_descriptor.interface_count = 1;
+        rx_decoder_k = decoder_descriptor.coding_k;
+        rx_decoder_n = decoder_descriptor.coding_n;
+        rx_decoder_mtu = decoder_descriptor.mtu;
+        rx_decoder.init(decoder_descriptor);
         session.resetPairing(gs_device_id, transport, Clock::now());
         transport.getPacketFilter().set_packet_filtering(0, 0);
         groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
@@ -665,6 +473,27 @@ struct NativeHandle
         groundstation_config.GPIOKeysLayout = 0;
         groundstation_config.stats = false;
         groundstation_config.deviceId = gs_device_id;
+
+        FecBlockDecoder::Callbacks callbacks = {};
+        callbacks.on_packet_received = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data, bool old)
+        {
+            frame_packets_debug.onPacketReceived(
+                block_index,
+                packet_index,
+                packet_data,
+                old,
+                config_packet.dataChannel.fec_codec_k,
+                config_packet.dataChannel.fec_codec_n);
+        };
+        callbacks.on_packet_restored = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data)
+        {
+            frame_packets_debug.onPacketRestored(
+                block_index,
+                packet_index,
+                packet_data,
+                config_packet.dataChannel.fec_codec_k);
+        };
+        rx_decoder.setCallbacks(std::move(callbacks));
     }
 
     ~NativeHandle()
@@ -693,7 +522,10 @@ struct NativeHandle
     gs::core::GsSessionCore session;
     gs::core::VideoFrameAssembler assembler;
     AndroidTransport transport;
-    GroundToAirTransportDecoder rx_decoder;
+    FecBlockDecoder rx_decoder;
+    uint8_t rx_decoder_k = FEC_K;
+    uint8_t rx_decoder_n = 8;
+    uint16_t rx_decoder_mtu = AIR2GROUND_MAX_MTU;
     Ground2Air_Config_Packet config_packet = {};
     gs::core::SessionEventKind last_event_kind = gs::core::SessionEventKind::Ignore;
     std::vector<uint8_t> last_completed_frame;
@@ -737,7 +569,6 @@ struct NativeHandle
     AndroidFramePacketsDebug frame_packets_debug;
     gs::stats::GroundStatsSnapshot last_ground_stats = {};
     AndroidGsStats gs_stats = {};
-    std::vector<uint32_t> received_packet_ids;
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
     int restored_completed_frames = 0;
@@ -1241,10 +1072,162 @@ std::vector<std::vector<uint8_t>> buildTransportPacketsForControl(NativeHandle& 
     return packets;
 }
 
+void syncRxDecoderStatsLocked(NativeHandle& handle)
+{
+    const FecBlockDecoder::Stats stats = handle.rx_decoder.getStats();
+    handle.gs_stats.lastPacketIndex = stats.last_packet_index;
+    handle.gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
+    handle.gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
+    handle.gs_stats.FECBlocksCounter = stats.fec_blocks_count;
+    handle.gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
+}
+
+void ensureRxDecoderConfigLocked(NativeHandle& handle)
+{
+    const uint8_t config_k = handle.config_packet.dataChannel.fec_codec_k;
+    const uint8_t config_n = handle.config_packet.dataChannel.fec_codec_n;
+    const uint16_t config_mtu = handle.config_packet.dataChannel.fec_codec_mtu;
+
+    const uint8_t effective_k = config_k > 0 ? config_k : FEC_K;
+    const uint8_t effective_n = config_n > 0 ? config_n : static_cast<uint8_t>(8);
+    const uint16_t effective_mtu = config_mtu > 0 ? config_mtu : static_cast<uint16_t>(AIR2GROUND_MAX_MTU);
+
+    if (handle.rx_decoder_k == effective_k &&
+        handle.rx_decoder_n == effective_n &&
+        handle.rx_decoder_mtu == effective_mtu)
+    {
+        return;
+    }
+
+    FecBlockDecoder::Descriptor decoder_descriptor = {};
+    decoder_descriptor.coding_k = effective_k;
+    decoder_descriptor.coding_n = effective_n;
+    decoder_descriptor.mtu = effective_mtu;
+    decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
+    decoder_descriptor.restart_backjump_blocks = 64;
+    decoder_descriptor.max_block_queue_size = 3;
+    decoder_descriptor.duplicate_window = 100;
+    decoder_descriptor.interface_count = 1;
+
+    handle.rx_decoder_k = effective_k;
+    handle.rx_decoder_n = effective_n;
+    handle.rx_decoder_mtu = effective_mtu;
+    handle.rx_decoder.init(decoder_descriptor);
+    syncRxDecoderStatsLocked(handle);
+}
+
+void processDecodedTransportPacketsLocked(NativeHandle& handle)
+{
+    handle.rx_decoder.process(Clock::now());
+    syncRxDecoderStatsLocked(handle);
+
+    std::array<uint8_t, sizeof(Packet_Header) + AIR2GROUND_MAX_MTU> decoded_buffer = {};
+    size_t decoded_size = 0;
+    bool decoded_restored_by_fec = false;
+    while (handle.rx_decoder.receive(decoded_buffer.data(), decoded_size, decoded_restored_by_fec))
+    {
+        handle.decoded_packets_seen++;
+        if (decoded_restored_by_fec)
+        {
+            handle.restored_transport_packets++;
+        }
+        const uint8_t* packet_data = decoded_buffer.data();
+        const size_t packet_size = decoded_size;
+
+        if (packet_size >= sizeof(Air2Ground_Header))
+        {
+            const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
+            handle.last_decoded_type = static_cast<uint32_t>(header->type);
+            handle.last_decoded_size = header->size;
+            handle.last_decoded_air = header->airDeviceId;
+            handle.last_decoded_gs = header->gsDeviceId;
+        }
+
+        const gs::core::SessionEvent session_event = handle.session.processReceivedPacket(
+            packet_data,
+            packet_size,
+            handle.gs_device_id,
+            Clock::now(),
+            handle.transport);
+
+        handle.last_event_kind = session_event.kind;
+        handle.last_packet_tp = Clock::now();
+
+        if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
+        {
+            Air2Ground_Video_Packet video_packet = {};
+            const uint8_t* video_payload = nullptr;
+            size_t video_payload_size = 0;
+            if (!tryParseVideoPacketWire(packet_data,
+                                         packet_size,
+                                         video_packet,
+                                         video_payload,
+                                         video_payload_size))
+            {
+                handle.last_event_kind = gs::core::SessionEventKind::InvalidVideoPacket;
+            }
+            else
+            {
+                handle.last_video_frame_index = video_packet.frame_index;
+                handle.last_video_part_index = video_packet.part_index;
+                handle.last_video_last_part = video_packet.last_part;
+                handle.last_video_payload_size = static_cast<uint32_t>(video_payload_size);
+
+                auto result = handle.assembler.pushPacket(
+                    video_packet,
+                    video_payload,
+                    video_payload_size,
+                    decoded_restored_by_fec);
+                if (decoded_restored_by_fec)
+                {
+                    handle.restored_video_parts++;
+                }
+
+                if (result.lostPartialFrame)
+                {
+                    if (result.abandonedOnNewFrameWhileWaitingNextPart)
+                    {
+                        handle.abandoned_new_frame_waiting_next_part++;
+                    }
+                    handle.session.onLostPartialFrame(result.lostPartialParts,
+                                                      static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
+                }
+
+                if (result.lostWholeFrames > 0)
+                {
+                    handle.session.onLostWholeFrames(result.lostWholeFrames);
+                }
+
+                if (result.completedFrame && result.frameData != nullptr)
+                {
+                    handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+                    if (result.completedRestoredByFec)
+                    {
+                        handle.restored_completed_frames++;
+                    }
+                    handle.session.onCompletedFrame(result.completedRestoredByFec,
+                                                    result.completedPartIndex,
+                                                    handle.session.airStatus().curr_quality,
+                                                    static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max),
+                                                    Clock::now());
+                }
+            }
+        }
+        else if (session_event.kind == gs::core::SessionEventKind::TelemetryPayload)
+        {
+            handle.session.addInboundTelemetryBytes(session_event.telemetry.payload_size);
+        }
+
+        handle.session.addReceivedBytes(packet_size);
+        handle.session.syncConfigPacket(handle.config_packet);
+        ensureRxDecoderConfigLocked(handle);
+    }
+}
+
 int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
-                           bool restored_by_fec,
+                           bool /* restored_by_fec */,
                            int input_dbm)
 {
     if (data == nullptr || size == 0)
@@ -1259,176 +1242,18 @@ int processTransportPacket(NativeHandle& handle,
     if (size >= sizeof(Packet_Header))
     {
         const auto* header = reinterpret_cast<const Packet_Header*>(data);
-        const uint32_t previous_last_block = handle.last_transport_block;
         handle.transport_packets_seen++;
+        handle.gs_stats.inPacketCounter[0]++;
         handle.last_transport_block = header->block_index;
         handle.last_transport_packet_index = header->packet_index;
         handle.last_transport_payload_size = header->size;
         handle.last_transport_from = header->fromDeviceId;
         handle.last_transport_to = header->toDeviceId;
-
-        const uint32_t packet_order_index =
-            header->block_index * static_cast<uint32_t>(handle.rx_decoder.codingN()) + header->packet_index;
-        handle.gs_stats.inPacketCounter[0]++;
-        handle.gs_stats.lastPacketIndex = packet_order_index;
-
-        auto it = std::lower_bound(handle.received_packet_ids.begin(),
-                                   handle.received_packet_ids.end(),
-                                   packet_order_index);
-        if (it == handle.received_packet_ids.end() || *it != packet_order_index)
-        {
-            handle.received_packet_ids.insert(it, packet_order_index);
-            handle.gs_stats.inUniquePacketCounter++;
-        }
-        else
-        {
-            handle.gs_stats.inDublicatedPacketCounter++;
-        }
-
-        const uint32_t too_old_ids = packet_order_index > 100 ? packet_order_index - 100 : 0;
-        it = std::lower_bound(handle.received_packet_ids.begin(),
-                              handle.received_packet_ids.end(),
-                              too_old_ids);
-        handle.received_packet_ids.erase(handle.received_packet_ids.begin(), it);
-
-        handle.frame_packets_debug.onPacketReceived(header->block_index,
-                                                    header->packet_index,
-                                                    data + sizeof(Packet_Header),
-                                                    header->block_index < previous_last_block,
-                                                    handle.config_packet.dataChannel.fec_codec_k,
-                                                    handle.config_packet.dataChannel.fec_codec_n);
-    }
-
-    const bool use_transport_filter = false;
-    const auto filter_result = PacketFilter::PacketFilterResult::Pass;
-    if (filter_result != PacketFilter::PacketFilterResult::Pass)
-    {
-        handle.transport_packets_filtered++;
-        return static_cast<int>(handle.last_event_kind);
     }
 
     handle.transport_packets_passed_filter++;
-    handle.rx_decoder.push(
-        data,
-        size,
-        handle.transport.getPacketFilter(),
-        use_transport_filter,
-        [&](const GroundToAirTransportDecoder::BlockStatsEvent& event)
-        {
-            if (!event.block_completed)
-            {
-                return;
-            }
-
-            handle.gs_stats.FECBlocksCounter++;
-            if (event.restored_by_fec)
-            {
-                handle.gs_stats.FECSuccPacketIndexCounter += event.max_fec_packet_index;
-            }
-        },
-        [&](const uint8_t* decoded_payload, size_t decoded_size, bool decoded_restored_by_fec)
-        {
-            handle.decoded_packets_seen++;
-            if (decoded_restored_by_fec)
-            {
-                handle.restored_transport_packets++;
-            }
-            const uint8_t* packet_data = decoded_payload;
-            size_t packet_size = decoded_size;
-
-            if (packet_size >= sizeof(Air2Ground_Header))
-            {
-                const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
-                handle.last_decoded_type = static_cast<uint32_t>(header->type);
-                handle.last_decoded_size = header->size;
-                handle.last_decoded_air = header->airDeviceId;
-                handle.last_decoded_gs = header->gsDeviceId;
-            }
-
-            const gs::core::SessionEvent session_event = handle.session.processReceivedPacket(
-                packet_data,
-                packet_size,
-                handle.gs_device_id,
-                Clock::now(),
-                handle.transport);
-
-            handle.last_event_kind = session_event.kind;
-            handle.last_packet_tp = Clock::now();
-
-            if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
-            {
-                Air2Ground_Video_Packet video_packet = {};
-                const uint8_t* video_payload = nullptr;
-                size_t video_payload_size = 0;
-                if (!tryParseVideoPacketWire(packet_data,
-                                             packet_size,
-                                             video_packet,
-                                             video_payload,
-                                             video_payload_size))
-                {
-                    handle.last_event_kind = gs::core::SessionEventKind::InvalidVideoPacket;
-                }
-                else
-                {
-                    handle.last_video_frame_index = video_packet.frame_index;
-                    handle.last_video_part_index = video_packet.part_index;
-                    handle.last_video_last_part = video_packet.last_part;
-                    handle.last_video_payload_size = static_cast<uint32_t>(video_payload_size);
-
-                    auto result = handle.assembler.pushPacket(
-                        video_packet,
-                        video_payload,
-                        video_payload_size,
-                        decoded_restored_by_fec);
-                    if (decoded_restored_by_fec)
-                    {
-                        handle.restored_video_parts++;
-                    }
-
-                    if (result.lostPartialFrame)
-                    {
-                        if (result.abandonedOnNewFrameWhileWaitingNextPart)
-                        {
-                            handle.abandoned_new_frame_waiting_next_part++;
-                        }
-                        handle.session.onLostPartialFrame(result.lostPartialParts,
-                                                          static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
-                    }
-
-                    if (result.lostWholeFrames > 0)
-                    {
-                        handle.session.onLostWholeFrames(result.lostWholeFrames);
-                    }
-
-                    if (result.completedFrame && result.frameData != nullptr)
-                    {
-                        handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
-                        if (result.completedRestoredByFec)
-                        {
-                            handle.restored_completed_frames++;
-                        }
-                        handle.session.onCompletedFrame(result.completedRestoredByFec,
-                                                        result.completedPartIndex,
-                                                        handle.session.airStatus().curr_quality,
-                                                        static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max),
-                                                        Clock::now());
-                    }
-                }
-            }
-            else if (session_event.kind == gs::core::SessionEventKind::TelemetryPayload)
-            {
-                handle.session.addInboundTelemetryBytes(session_event.telemetry.payload_size);
-            }
-
-            handle.session.addReceivedBytes(packet_size);
-
-            handle.session.syncConfigPacket(handle.config_packet);
-            handle.rx_decoder.setDescriptor(
-                handle.config_packet.dataChannel.fec_codec_k,
-                handle.config_packet.dataChannel.fec_codec_n,
-                handle.config_packet.dataChannel.fec_codec_mtu);
-        });
-
+    handle.rx_decoder.pushPacket(data, size, 0, Clock::now());
+    syncRxDecoderStatsLocked(handle);
     return static_cast<int>(handle.last_event_kind);
 }
 
@@ -2085,6 +1910,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
 
     const std::string info = fromJString(env, build_info);
     std::lock_guard<std::mutex> lock(native_handle->mutex);
+    processDecodedTransportPacketsLocked(*native_handle);
     syncRendererOverlayLocked(*native_handle, info);
 }
 
@@ -2220,7 +2046,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
                                         native_handle->transport,
                                         Clock::now());
     native_handle->transport.getPacketFilter().set_packet_filtering(0, 0);
-    native_handle->rx_decoder.reset();
+    native_handle->rx_decoder.reset(Clock::now());
     native_handle->last_event_kind = gs::core::SessionEventKind::Ignore;
     native_handle->last_completed_frame.clear();
     native_handle->last_video_frame_index = 0;

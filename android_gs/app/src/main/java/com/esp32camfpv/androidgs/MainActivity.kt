@@ -105,7 +105,7 @@ private fun AndroidGsApp(
                 onExitApp()
                 return@LaunchedEffect
             }
-            delay(if (NativeCore.isUdpClientRunning(nativeHandle)) 250 else 600)
+            delay(if (NativeCore.isUdpClientRunning(nativeHandle)) 16 else 250)
         }
     }
 
