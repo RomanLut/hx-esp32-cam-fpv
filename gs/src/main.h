@@ -124,6 +124,11 @@ struct GSStats
     
     int decodedJpegTimeMinMS = 99;
     int decodedJpegTimeMaxMS = 0;
+    int textureUploadCount = 0;
+    int textureUploadTimeTotalMS = 0;
+    int textureUploadTimeMinMS = 99;
+    int textureUploadTimeMaxMS = 0;
+    int discardedFrames = 0;
     int receivedCompletedFrames = 0;
     int restoredCompletedFrames = 0;
 };

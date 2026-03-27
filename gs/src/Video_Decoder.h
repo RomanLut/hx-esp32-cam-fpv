@@ -2,6 +2,7 @@
 
 #include <memory>
 #include "imgui.h"
+#include "core/video_frame_assembler.h"
 
 class IHAL;
 
@@ -11,7 +12,7 @@ public:
     Video_Decoder();
     ~Video_Decoder();
 
-    bool decode_data(void const* data, size_t size);
+    bool decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer);
     void inject_test_data(uint32_t value);
 
     bool init(IHAL& hal);

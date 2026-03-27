@@ -41,6 +41,20 @@ namespace
 
 constexpr const char* kNativeLogTag = "AndroidGSNative";
 
+const char* androidPerfModeName()
+{
+    switch (kAndroidPerfMode)
+    {
+    case AndroidPerfMode::SkipDecodeSynthetic:
+        return "skip_decode";
+    case AndroidPerfMode::SkipUpload:
+        return "skip_upload";
+    case AndroidPerfMode::Baseline:
+    default:
+        return "baseline";
+    }
+}
+
 constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
@@ -920,9 +934,9 @@ int processVideoPacket(NativeHandle& handle,
         video_view.payload_size,
         restored_by_fec);
 
-    if (result.completedFrame && result.frameData != nullptr)
+    if (result.completedFrame && result.frameData)
     {
-        handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+        handle.jpeg_decoder.submitJpeg(result.frameData);
     }
 
     return static_cast<int>(session_event.kind);
@@ -1195,9 +1209,9 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                     handle.session.onLostWholeFrames(result.lostWholeFrames);
                 }
 
-                if (result.completedFrame && result.frameData != nullptr)
+                if (result.completedFrame && result.frameData)
                 {
-                    handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
+                    handle.jpeg_decoder.submitJpeg(result.frameData);
                     handle.session.onCompletedFrame(result.completedRestoredByFec,
                                                     result.completedPartIndex,
                                                     handle.session.airStatus().curr_quality,
@@ -1302,6 +1316,8 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.gs_stats.pingMaxMS = link_status.ping_max_ms;
 
         const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.consumeStats();
+        const AndroidVideoRenderer::RendererStats renderer_stats = handle.renderer.consumeStats();
+        const gs::core::VideoFrameAssembler::Stats assembler_stats = handle.assembler.consumeStats();
         handle.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
 
         handle.last_ground_stats.out_packet_counter = handle.gs_stats.outPacketCounter;
@@ -1324,6 +1340,14 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.last_ground_stats.decoded_jpeg_time_total_ms = static_cast<int>(jpeg_stats.decoded_total_ms);
         handle.last_ground_stats.decoded_jpeg_time_min_ms = static_cast<int>(jpeg_stats.decoded_min_ms);
         handle.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(jpeg_stats.decoded_max_ms);
+        handle.last_ground_stats.texture_upload_count = static_cast<int>(renderer_stats.upload_count);
+        handle.last_ground_stats.texture_upload_time_total_ms = static_cast<int>(renderer_stats.upload_total_ms);
+        handle.last_ground_stats.texture_upload_time_min_ms = static_cast<int>(renderer_stats.upload_min_ms);
+        handle.last_ground_stats.texture_upload_time_max_ms = static_cast<int>(renderer_stats.upload_max_ms);
+        handle.last_ground_stats.discarded_frames = static_cast<int>(
+            assembler_stats.discarded_frames +
+            jpeg_stats.overwritten_pending_count +
+            renderer_stats.discarded_pending_count);
         handle.last_ground_stats.restored_transport_packets = handle.restored_transport_packets;
         handle.last_ground_stats.restored_video_parts = handle.restored_video_parts;
         handle.last_ground_stats.received_completed_frames = periodic_stats.received_completed_frames;
@@ -1331,12 +1355,24 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         __android_log_print(
             ANDROID_LOG_INFO,
             kNativeLogTag,
-            "frame_audit completed=%d+%d submitted=%u rendered=%u overwritten=%u broken=%u udp_fps=%.2f",
+            "frame_audit mode=%s completed=%d+%d submitted=%u rendered=%u overwritten=%u upload=%u swap=%u decode_ms=%u/%u/%u upload_ms=%u/%u/%u swap_ms=%u/%u/%u broken=%u udp_fps=%.2f",
+            androidPerfModeName(),
             periodic_stats.received_completed_frames,
             periodic_stats.restored_completed_frames,
             jpeg_stats.input_submitted_count,
             jpeg_stats.decoded_count,
             jpeg_stats.overwritten_pending_count,
+            renderer_stats.upload_count,
+            renderer_stats.swap_count,
+            jpeg_stats.decoded_min_ms,
+            jpeg_stats.decoded_count == 0 ? 0u : (jpeg_stats.decoded_total_ms / jpeg_stats.decoded_count),
+            jpeg_stats.decoded_max_ms,
+            renderer_stats.upload_min_ms,
+            renderer_stats.upload_count == 0 ? 0u : (renderer_stats.upload_total_ms / renderer_stats.upload_count),
+            renderer_stats.upload_max_ms,
+            renderer_stats.swap_min_ms,
+            renderer_stats.swap_count == 0 ? 0u : (renderer_stats.swap_total_ms / renderer_stats.swap_count),
+            renderer_stats.swap_max_ms,
             jpeg_stats.broken_frames,
             handle.udp_video_fps);
 

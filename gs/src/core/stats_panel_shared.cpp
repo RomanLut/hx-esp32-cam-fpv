@@ -119,9 +119,9 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     }
 
     ImGui::SetCursorPosX(10);
-    ImGui::SetCursorPosY(400);
+    ImGui::SetCursorPosY(340);
 
-    if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 24.0f)))
+    if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 220.0f)))
     {
         ImGuiStyle& style = ImGui::GetStyle();
         const ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg]);
@@ -163,6 +163,16 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         snapshot.ground_stats.decoded_jpeg_time_max_ms);
         });
+        row("Texture Upload", [&]
+        {
+            const int avg = snapshot.ground_stats.texture_upload_time_total_ms /
+                            (snapshot.ground_stats.texture_upload_count ? snapshot.ground_stats.texture_upload_count : 1);
+            ImGui::Text("%d/%d/%d ms",
+                        snapshot.ground_stats.texture_upload_time_min_ms,
+                        avg,
+                        snapshot.ground_stats.texture_upload_time_max_ms);
+        });
+        row("Discarded frames", [&] { ImGui::Text("%d", snapshot.ground_stats.discarded_frames); });
         ImGui::EndTable();
     }
 }

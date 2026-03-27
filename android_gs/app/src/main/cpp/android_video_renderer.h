@@ -1,21 +1,38 @@
 #pragma once
 
+#include "android_jni_shared.h"
+
 #include <android/native_window.h>
 
 #include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
-#include <deque>
 #include "core/stats_panel_shared.h"
+
+enum class AndroidPerfMode
+{
+    Baseline,
+    SkipDecodeSynthetic,
+    SkipUpload,
+};
+
+inline constexpr AndroidPerfMode kAndroidPerfMode = AndroidPerfMode::Baseline;
 
 class AndroidVideoRenderer
 {
 public:
+    enum class PixelFormat
+    {
+        RGB24,
+        RGB565,
+    };
+
     enum class MenuActionKind
     {
         None,
@@ -70,27 +87,61 @@ public:
         std::vector<std::string> lines;
     };
 
+    struct RendererStats
+    {
+        uint32_t upload_count = 0;
+        uint32_t upload_total_ms = 0;
+        uint32_t upload_min_ms = 99;
+        uint32_t upload_max_ms = 0;
+        uint32_t discarded_pending_count = 0;
+        uint32_t swap_count = 0;
+        uint32_t swap_total_ms = 0;
+        uint32_t swap_min_ms = 99;
+        uint32_t swap_max_ms = 0;
+    };
+
     AndroidVideoRenderer();
     ~AndroidVideoRenderer();
 
     void setSurface(ANativeWindow* window);
     void clearSurface();
-    void submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride);
-    void submitFrame(std::vector<uint8_t>&& rgba, int width, int height, int stride);
+    void submitFrame(const uint8_t* pixels,
+                     size_t size,
+                     int width,
+                     int height,
+                     int stride,
+                     PixelFormat pixel_format = PixelFormat::RGB24);
+    void submitFrame(jobject direct_buffer_global_ref,
+                     const uint8_t* pixels,
+                     size_t size,
+                     int width,
+                     int height,
+                     int stride,
+                     PixelFormat pixel_format = PixelFormat::RGB24);
+    void submitFrame(std::vector<uint8_t>&& pixels,
+                     int width,
+                     int height,
+                     int stride,
+                     PixelFormat pixel_format = PixelFormat::RGB24);
     void setScreenMode(int screen_mode);
     void setOverlayState(const std::vector<OverlayChip>& chips,
                          const OverlayMenuState& menu_state,
                          const OverlayStatsState& stats_state,
                          const OverlayPacketDebugState& packet_debug_state);
     MenuAction dispatchTap(float x, float y);
+    RendererStats consumeStats();
 
 private:
     struct PendingFrame
     {
-        std::vector<uint8_t> rgba;
+        std::vector<uint8_t> pixels;
+        jobject direct_buffer_global_ref = nullptr;
+        const uint8_t* direct_pixels = nullptr;
+        size_t direct_size = 0;
         int width = 0;
         int height = 0;
         int stride = 0;
+        PixelFormat pixel_format = PixelFormat::RGB24;
     };
 
     void run();
@@ -120,9 +171,9 @@ private:
                                 float v1,
                                 unsigned int texture,
                                 const std::array<float, 4>& color);
+    void releaseFrameRefLocked(PendingFrame& frame);
 
     std::mutex m_mutex;
-    std::mutex m_frame_mutex;
     std::condition_variable m_cv;
     std::thread m_thread;
     bool m_exit = false;
@@ -131,12 +182,13 @@ private:
     ANativeWindow* m_pending_window = nullptr;
     bool m_surface_dirty = false;
 
-    std::deque<PendingFrame> m_frame_queue;
+    PendingFrame m_pending_frame;
     PendingFrame m_locked_frame;
+    bool m_has_pending_frame = false;
     int m_frame_width = 0;
     int m_frame_height = 0;
     int m_frame_stride = 0;
-    bool m_frame_dirty = false;
+    std::atomic<bool> m_frame_dirty = false;
 
     int m_screen_mode = 1;
     bool m_mode_dirty = true;
@@ -154,6 +206,7 @@ private:
     int m_uploaded_width = 0;
     int m_uploaded_height = 0;
     bool m_has_uploaded_frame = false;
+    std::vector<uint8_t> m_rgb_upload_buffer;
     std::vector<uint8_t> m_pending_font_png;
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
@@ -171,4 +224,14 @@ private:
     float m_touch_x = 0.0f;
     float m_touch_y = 0.0f;
     MenuAction m_touch_action;
+
+    std::atomic<uint32_t> m_upload_count = 0;
+    std::atomic<uint32_t> m_upload_total_ms = 0;
+    std::atomic<uint32_t> m_upload_min_ms = 99;
+    std::atomic<uint32_t> m_upload_max_ms = 0;
+    std::atomic<uint32_t> m_discarded_pending_count = 0;
+    std::atomic<uint32_t> m_swap_count = 0;
+    std::atomic<uint32_t> m_swap_total_ms = 0;
+    std::atomic<uint32_t> m_swap_min_ms = 99;
+    std::atomic<uint32_t> m_swap_max_ms = 0;
 };

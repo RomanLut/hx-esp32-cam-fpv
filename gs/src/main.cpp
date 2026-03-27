@@ -502,6 +502,7 @@ static void comms_thread_proc()
             const Clock::time_point now = Clock::now();
             const gs::core::LinkStatusSnapshot link_status = s_session_core.consumeLinkStatus(now);
             const gs::core::PeriodicStatsSnapshot periodic_stats = s_session_core.consumePeriodicStats();
+            const gs::core::VideoFrameAssembler::Stats assembler_stats = videoFrameAssembler.consumeStats();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}", 
                 periodic_stats.sent_count, periodic_stats.total_data, periodic_stats.in_tlm_size, periodic_stats.out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
@@ -518,6 +519,7 @@ static void comms_thread_proc()
             s_gs_stats.pingMaxMS = link_status.ping_max_ms;
             s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
             s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
+            s_gs_stats.discardedFrames += static_cast<int>(assembler_stats.discarded_frames);
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
@@ -725,14 +727,15 @@ static void comms_thread_proc()
 
                 if (frameResult.completedFrame)
                 {
-                    std::vector<uint8_t>& video_frame = *frameResult.frameData;
-                    uint8_t* video_frame_data = video_frame.empty() ? nullptr : &video_frame[0];
-                    s_decoder.decode_data(video_frame_data, video_frame.size());
+                    auto video_frame = frameResult.frameData;
+                    uint8_t* video_frame_data =
+                        video_frame->data.empty() ? nullptr : video_frame->data.data();
+                    s_decoder.decode_data(video_frame);
                     if(s_groundstation_config.record)
                     {
 #ifdef WRITE_RAW_MJPEG_STREAM                            
                         std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                        fwrite(video_frame_data,video_frame.size(),1,s_groundstation_config.record_file);
+                        fwrite(video_frame_data,video_frame->data.size(),1,s_groundstation_config.record_file);
 #else
 
                         int width, height;
@@ -753,7 +756,7 @@ static void comms_thread_proc()
 
                             {
                                 std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                                uint16_t jpegSize = video_frame.size();
+                                uint16_t jpegSize = video_frame->data.size();
                                 uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3; 
                                 size_t jpegSize1 = jpegSize + filler;
                                 uint8_t buf[8];
@@ -761,7 +764,7 @@ static void comms_thread_proc()
                                 memcpy(&buf[4], &jpegSize1, 4);
 
                                 fwrite(buf,8,1,s_groundstation_config.record_file);
-                                fwrite(video_frame_data,video_frame.size(),1,s_groundstation_config.record_file);
+                                fwrite(video_frame_data,video_frame->data.size(),1,s_groundstation_config.record_file);
 
                                 memset(buf, 0, 4); 
                                 fwrite(buf,filler,1,s_groundstation_config.record_file);
@@ -785,7 +788,7 @@ static void comms_thread_proc()
 
                     if(s_groundstation_config.socket_fd>0)
                     {
-                        send_data_to_udp(s_groundstation_config.socket_fd,video_frame_data,video_frame.size());
+                        send_data_to_udp(s_groundstation_config.socket_fd,video_frame_data,video_frame->data.size());
                     }
 
                     s_session_core.onCompletedFrame(frameResult.completedRestoredByFec,
@@ -1724,6 +1727,11 @@ static void drawFullscreenStatsPanel(const Ground2Air_Config_Packet& config)
     snapshot.ground_stats.decoded_jpeg_time_total_ms = s_last_gs_stats.decodedJpegTimeTotalMS;
     snapshot.ground_stats.decoded_jpeg_time_min_ms = s_last_gs_stats.decodedJpegTimeMinMS;
     snapshot.ground_stats.decoded_jpeg_time_max_ms = s_last_gs_stats.decodedJpegTimeMaxMS;
+    snapshot.ground_stats.texture_upload_count = s_last_gs_stats.textureUploadCount;
+    snapshot.ground_stats.texture_upload_time_total_ms = s_last_gs_stats.textureUploadTimeTotalMS;
+    snapshot.ground_stats.texture_upload_time_min_ms = s_last_gs_stats.textureUploadTimeMinMS;
+    snapshot.ground_stats.texture_upload_time_max_ms = s_last_gs_stats.textureUploadTimeMaxMS;
+    snapshot.ground_stats.discarded_frames = s_last_gs_stats.discardedFrames;
     snapshot.ground_stats.received_completed_frames = s_last_gs_stats.receivedCompletedFrames;
     snapshot.ground_stats.restored_completed_frames = s_last_gs_stats.restoredCompletedFrames;
     gs::stats::drawFullscreenStatsPanel(snapshot);

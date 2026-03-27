@@ -5,9 +5,52 @@
 namespace gs::core
 {
 
+VideoFrameAssembler::FrameBufferPoolState::FrameBufferPoolState(size_t count)
+{
+    free_buffers.reserve(count);
+    for (size_t index = 0; index < count; ++index)
+    {
+        free_buffers.emplace_back(std::make_unique<FrameBuffer>());
+    }
+}
+
+VideoFrameAssembler::VideoFrameAssembler()
+    : m_frameBufferPool(std::make_shared<FrameBufferPoolState>(3))
+{
+}
+
+auto VideoFrameAssembler::acquireFrameBuffer() -> FrameBufferPtr
+{
+    auto pool = m_frameBufferPool;
+    std::lock_guard<std::mutex> lock(pool->mutex);
+    if (pool->free_buffers.empty())
+    {
+        return {};
+    }
+
+    FrameBuffer* buffer = pool->free_buffers.back().release();
+    pool->free_buffers.pop_back();
+    buffer->data.clear();
+
+    return FrameBufferPtr(buffer, [pool](FrameBuffer* released_buffer)
+    {
+        released_buffer->data.clear();
+        std::lock_guard<std::mutex> release_lock(pool->mutex);
+        pool->free_buffers.emplace_back(released_buffer);
+    });
+}
+
 uint32_t VideoFrameAssembler::currentFrameIndex() const
 {
     return m_frameIndex;
+}
+
+VideoFrameAssembler::Stats VideoFrameAssembler::consumeStats()
+{
+    Stats stats;
+    stats.discarded_frames = m_discardedFrames;
+    m_discardedFrames = 0;
+    return stats;
 }
 
 VideoFrameAssembler::Result VideoFrameAssembler::pushPacket(const Air2Ground_Video_Packet& packet,
@@ -19,7 +62,8 @@ VideoFrameAssembler::Result VideoFrameAssembler::pushPacket(const Air2Ground_Vid
 
     if ((packet.frame_index + 200u < m_frameIndex) || (packet.frame_index > m_frameIndex))
     {
-        m_currentFrame.clear();
+        m_currentFrame.reset();
+        m_discardCurrentFrame = false;
 
         if (m_nextPartIndex != 0)
         {
@@ -47,29 +91,43 @@ VideoFrameAssembler::Result VideoFrameAssembler::pushPacket(const Air2Ground_Vid
         return result;
     }
 
+    if (m_discardCurrentFrame)
+    {
+        return result;
+    }
+
+    if (!m_currentFrame)
+    {
+        m_currentFrame = acquireFrameBuffer();
+        if (!m_currentFrame)
+        {
+            m_discardCurrentFrame = true;
+            ++m_discardedFrames;
+            return result;
+        }
+    }
+
     m_restoredByFec |= restoredByFec;
     m_nextPartIndex++;
 
-    size_t offset = m_currentFrame.size();
-    m_currentFrame.resize(offset + payloadSize);
-    memcpy(m_currentFrame.data() + offset, payload, payloadSize);
+    size_t offset = m_currentFrame->data.size();
+    m_currentFrame->data.resize(offset + payloadSize);
+    memcpy(m_currentFrame->data.data() + offset, payload, payloadSize);
 
     if (packet.last_part == 0)
     {
         return result;
     }
 
-    m_completedFrame = std::move(m_currentFrame);
-    m_currentFrame.clear();
-
     result.completedFrame = true;
     result.completedRestoredByFec = m_restoredByFec;
     result.completedPartIndex = packet.part_index;
     result.completedFrameIndex = packet.frame_index;
-    result.frameData = &m_completedFrame;
+    result.frameData = std::move(m_currentFrame);
 
     m_nextPartIndex = 0;
     m_restoredByFec = false;
+    m_discardCurrentFrame = false;
 
     return result;
 }

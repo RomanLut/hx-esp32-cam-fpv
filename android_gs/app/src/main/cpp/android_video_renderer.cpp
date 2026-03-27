@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -169,6 +170,54 @@ bool pointInRect(float x, float y, const AndroidVideoRenderer::Rect& rect)
            y <= rect.y + rect.height;
 }
 
+void logGlError(const char* stage)
+{
+    const GLenum error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s glError=0x%04x", stage, error);
+    }
+}
+
+struct AttachGuard
+{
+    JNIEnv* env = nullptr;
+    bool detach = false;
+
+    bool attach()
+    {
+        JavaVM* vm = androidGetJavaVm();
+        if (vm == nullptr)
+        {
+            return false;
+        }
+
+        const jint get_env_result = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+        if (get_env_result == JNI_OK)
+        {
+            return true;
+        }
+
+        if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        {
+            env = nullptr;
+            return false;
+        }
+
+        detach = true;
+        return true;
+    }
+
+    ~AttachGuard()
+    {
+        JavaVM* vm = androidGetJavaVm();
+        if (detach && vm != nullptr)
+        {
+            vm->DetachCurrentThread();
+        }
+    }
+};
+
 } // namespace
 
 AndroidVideoRenderer::AndroidVideoRenderer()
@@ -186,6 +235,13 @@ AndroidVideoRenderer::~AndroidVideoRenderer()
     if (m_thread.joinable())
     {
         m_thread.join();
+    }
+
+    AttachGuard jni;
+    if (jni.attach())
+    {
+        releaseFrameRefLocked(m_locked_frame);
+        releaseFrameRefLocked(m_pending_frame);
     }
 }
 
@@ -206,42 +262,108 @@ void AndroidVideoRenderer::clearSurface()
     setSurface(nullptr);
 }
 
-void AndroidVideoRenderer::submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride)
+void AndroidVideoRenderer::submitFrame(const uint8_t* pixels,
+                                       size_t size,
+                                       int width,
+                                       int height,
+                                       int stride,
+                                       PixelFormat pixel_format)
 {
-    if (rgba == nullptr || size == 0 || width <= 0 || height <= 0 || stride < width * 3)
+    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
+    if (pixels == nullptr || size == 0 || width <= 0 || height <= 0 || stride < min_stride)
     {
         return;
     }
 
     PendingFrame frame;
-    frame.rgba.assign(rgba, rgba + size);
+    frame.pixels.assign(pixels, pixels + size);
     frame.width = width;
     frame.height = height;
     frame.stride = stride;
+    frame.pixel_format = pixel_format;
     {
-        std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
-        m_frame_queue.push_back(std::move(frame));
-        m_frame_dirty = true;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_has_pending_frame)
+        {
+            m_discarded_pending_count.fetch_add(1);
+        }
+        releaseFrameRefLocked(m_pending_frame);
+        m_pending_frame = std::move(frame);
+        m_has_pending_frame = true;
+        m_frame_dirty.store(true);
     }
     m_cv.notify_all();
 }
 
-void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& rgba, int width, int height, int stride)
+void AndroidVideoRenderer::submitFrame(jobject direct_buffer_global_ref,
+                                       const uint8_t* pixels,
+                                       size_t size,
+                                       int width,
+                                       int height,
+                                       int stride,
+                                       PixelFormat pixel_format)
 {
-    if (rgba.empty() || width <= 0 || height <= 0 || stride < width * 3)
+    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
+    if (direct_buffer_global_ref == nullptr ||
+        pixels == nullptr ||
+        size == 0 ||
+        width <= 0 ||
+        height <= 0 ||
+        stride < min_stride)
     {
         return;
     }
 
     PendingFrame frame;
-    frame.rgba = std::move(rgba);
+    frame.direct_buffer_global_ref = direct_buffer_global_ref;
+    frame.direct_pixels = pixels;
+    frame.direct_size = size;
     frame.width = width;
     frame.height = height;
     frame.stride = stride;
+    frame.pixel_format = pixel_format;
     {
-        std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
-        m_frame_queue.push_back(std::move(frame));
-        m_frame_dirty = true;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_has_pending_frame)
+        {
+            m_discarded_pending_count.fetch_add(1);
+        }
+        releaseFrameRefLocked(m_pending_frame);
+        m_pending_frame = std::move(frame);
+        m_has_pending_frame = true;
+        m_frame_dirty.store(true);
+    }
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
+                                       int width,
+                                       int height,
+                                       int stride,
+                                       PixelFormat pixel_format)
+{
+    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
+    if (pixels.empty() || width <= 0 || height <= 0 || stride < min_stride)
+    {
+        return;
+    }
+
+    PendingFrame frame;
+    frame.pixels = std::move(pixels);
+    frame.width = width;
+    frame.height = height;
+    frame.stride = stride;
+    frame.pixel_format = pixel_format;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_has_pending_frame)
+        {
+            m_discarded_pending_count.fetch_add(1);
+        }
+        releaseFrameRefLocked(m_pending_frame);
+        m_pending_frame = std::move(frame);
+        m_has_pending_frame = true;
+        m_frame_dirty.store(true);
     }
     m_cv.notify_all();
 }
@@ -309,13 +431,36 @@ AndroidVideoRenderer::MenuAction AndroidVideoRenderer::dispatchTap(float x, floa
     return {};
 }
 
+AndroidVideoRenderer::RendererStats AndroidVideoRenderer::consumeStats()
+{
+    RendererStats stats;
+    stats.upload_count = m_upload_count.exchange(0);
+    stats.upload_total_ms = m_upload_total_ms.exchange(0);
+    stats.upload_min_ms = m_upload_min_ms.exchange(99);
+    stats.upload_max_ms = m_upload_max_ms.exchange(0);
+    stats.discarded_pending_count = m_discarded_pending_count.exchange(0);
+    stats.swap_count = m_swap_count.exchange(0);
+    stats.swap_total_ms = m_swap_total_ms.exchange(0);
+    stats.swap_min_ms = m_swap_min_ms.exchange(99);
+    stats.swap_max_ms = m_swap_max_ms.exchange(0);
+    if (stats.upload_count == 0)
+    {
+        stats.upload_min_ms = 99;
+    }
+    if (stats.swap_count == 0)
+    {
+        stats.swap_min_ms = 99;
+    }
+    return stats;
+}
+
 void AndroidVideoRenderer::run()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
     while (!m_exit)
     {
         m_cv.wait(lock, [this] {
-            return m_exit || m_surface_dirty || m_frame_dirty || m_mode_dirty || m_overlay_dirty || m_touch_pending;
+            return m_exit || m_surface_dirty || m_frame_dirty.load() || m_mode_dirty || m_overlay_dirty || m_touch_pending;
         });
 
         if (m_exit)
@@ -330,7 +475,7 @@ void AndroidVideoRenderer::run()
 
         if (m_egl_display == nullptr || m_egl_surface == nullptr || m_program == 0)
         {
-            m_frame_dirty = false;
+            m_frame_dirty.store(false);
             m_mode_dirty = false;
             m_overlay_dirty = false;
             if (m_touch_pending)
@@ -343,30 +488,27 @@ void AndroidVideoRenderer::run()
             continue;
         }
 
-        if (m_frame_dirty)
+        if (m_frame_dirty.load())
         {
             bool have_new_frame = false;
-            bool queue_has_more_frames = false;
+            if (m_has_pending_frame)
             {
-                std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
-                if (!m_frame_queue.empty())
-                {
-                    m_locked_frame = std::move(m_frame_queue.back());
-                    m_frame_queue.clear();
-                    m_frame_width = m_locked_frame.width;
-                    m_frame_height = m_locked_frame.height;
-                    m_frame_stride = m_locked_frame.stride;
-                    have_new_frame = true;
-                }
-                queue_has_more_frames = !m_frame_queue.empty();
+                releaseFrameRefLocked(m_locked_frame);
+                m_locked_frame = std::move(m_pending_frame);
+                m_pending_frame = {};
+                m_has_pending_frame = false;
+                m_frame_width = m_locked_frame.width;
+                m_frame_height = m_locked_frame.height;
+                m_frame_stride = m_locked_frame.stride;
+                have_new_frame = true;
             }
 
-            if (have_new_frame && !m_locked_frame.rgba.empty())
+            if (have_new_frame)
             {
                 uploadFrameLocked();
             }
 
-            m_frame_dirty = queue_has_more_frames;
+            m_frame_dirty.store(m_has_pending_frame);
         }
         else if (m_mode_dirty || m_overlay_dirty)
         {
@@ -556,6 +698,22 @@ void AndroidVideoRenderer::destroyEglLocked()
     m_uploaded_height = 0;
 }
 
+void AndroidVideoRenderer::releaseFrameRefLocked(PendingFrame& frame)
+{
+    if (frame.direct_buffer_global_ref != nullptr)
+    {
+        AttachGuard jni;
+        if (jni.attach())
+        {
+            jni.env->DeleteGlobalRef(frame.direct_buffer_global_ref);
+        }
+        frame.direct_buffer_global_ref = nullptr;
+    }
+    frame.direct_pixels = nullptr;
+    frame.direct_size = 0;
+    frame.pixels.clear();
+}
+
 bool AndroidVideoRenderer::initImGuiLocked()
 {
     IMGUI_CHECKVERSION();
@@ -604,25 +762,61 @@ void AndroidVideoRenderer::destroyImGuiLocked()
 
 void AndroidVideoRenderer::uploadFrameLocked()
 {
-    if (m_locked_frame.rgba.empty())
+    if (m_locked_frame.pixels.empty() && m_locked_frame.direct_pixels == nullptr)
     {
         return;
     }
 
-    ensureTextureLocked();
-    glBindTexture(GL_TEXTURE_2D, m_texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(
-        GL_TEXTURE_2D,
-        0,
-        0,
-        0,
-        m_frame_width,
-        m_frame_height,
-        GL_RGB,
-        GL_UNSIGNED_BYTE,
-        m_locked_frame.rgba.data());
-    m_has_uploaded_frame = true;
+    if (kAndroidPerfMode != AndroidPerfMode::SkipUpload)
+    {
+        const auto upload_begin = std::chrono::steady_clock::now();
+        ensureTextureLocked();
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        const void* upload_pixels = m_locked_frame.direct_pixels != nullptr
+            ? static_cast<const void*>(m_locked_frame.direct_pixels)
+            : static_cast<const void*>(m_locked_frame.pixels.data());
+        if (m_locked_frame.pixel_format == PixelFormat::RGB565)
+        {
+            const size_t pixel_count =
+                static_cast<size_t>(m_frame_width) * static_cast<size_t>(m_frame_height);
+            m_rgb_upload_buffer.resize(pixel_count * 3u);
+            const auto* src_words = static_cast<const uint16_t*>(upload_pixels);
+            uint8_t* dst = m_rgb_upload_buffer.data();
+            for (size_t index = 0; index < pixel_count; ++index)
+            {
+                const uint16_t pixel = src_words[index];
+                *dst++ = static_cast<uint8_t>(((pixel >> 11) & 0x1fu) * 255u / 31u);
+                *dst++ = static_cast<uint8_t>(((pixel >> 5) & 0x3fu) * 255u / 63u);
+                *dst++ = static_cast<uint8_t>((pixel & 0x1fu) * 255u / 31u);
+            }
+            upload_pixels = m_rgb_upload_buffer.data();
+        }
+        glTexSubImage2D(
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            m_frame_width,
+            m_frame_height,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            upload_pixels);
+        logGlError("glTexSubImage2D");
+        const uint32_t duration_ms = static_cast<uint32_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - upload_begin).count());
+        m_upload_count.fetch_add(1);
+        m_upload_total_ms.fetch_add(duration_ms);
+        uint32_t current_min = m_upload_min_ms.load();
+        while (duration_ms < current_min && !m_upload_min_ms.compare_exchange_weak(current_min, duration_ms))
+        {
+        }
+        uint32_t current_max = m_upload_max_ms.load();
+        while (duration_ms > current_max && !m_upload_max_ms.compare_exchange_weak(current_max, duration_ms))
+        {
+        }
+        m_has_uploaded_frame = true;
+    }
     drawFrameLocked();
 }
 
@@ -648,6 +842,7 @@ void AndroidVideoRenderer::ensureTextureLocked()
         GL_RGB,
         GL_UNSIGNED_BYTE,
         nullptr);
+    logGlError("glTexImage2D");
     m_uploaded_width = m_frame_width;
     m_uploaded_height = m_frame_height;
 }
@@ -1011,5 +1206,18 @@ void AndroidVideoRenderer::drawFrameLocked()
 
     drawOverlayLocked();
 
+    const auto swap_begin = std::chrono::steady_clock::now();
     eglSwapBuffers(static_cast<EGLDisplay>(m_egl_display), static_cast<EGLSurface>(m_egl_surface));
+    const uint32_t swap_duration_ms = static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - swap_begin).count());
+    m_swap_count.fetch_add(1);
+    m_swap_total_ms.fetch_add(swap_duration_ms);
+    uint32_t swap_min = m_swap_min_ms.load();
+    while (swap_duration_ms < swap_min && !m_swap_min_ms.compare_exchange_weak(swap_min, swap_duration_ms))
+    {
+    }
+    uint32_t swap_max = m_swap_max_ms.load();
+    while (swap_duration_ms > swap_max && !m_swap_max_ms.compare_exchange_weak(swap_max, swap_duration_ms))
+    {
+    }
 }

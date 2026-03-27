@@ -30,7 +30,7 @@ extern "C"
 struct Input
 {
     int32_t test_value = -1;
-    std::vector<uint8_t> data;
+    gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer;
 };
 using Input_ptr = Pool<Input>::Ptr;
 
@@ -150,20 +150,25 @@ ImVec2 Video_Decoder::get_video_resolution() const
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::decode_data(void const* data, size_t size)
+bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer)
 {
-    if (!data || size == 0)
+    if (!jpeg_buffer || jpeg_buffer->data.empty())
     {
         s_gs_stats.brokenFrames++;
         return false;
     }
         
     Input_ptr input = m_impl->input_pool.acquire();
-    input->data.resize(size);
-    memcpy(input->data.data(), data, size);
+    input->test_value = -1;
+    input->jpeg_buffer = std::move(jpeg_buffer);
 
     {
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
+        if (!m_impl->input_queue.empty())
+        {
+            s_gs_stats.discardedFrames += static_cast<int>(m_impl->input_queue.size());
+            m_impl->input_queue.clear();
+        }
         m_impl->input_queue.push_back(input);
     }
 
@@ -179,6 +184,7 @@ void Video_Decoder::inject_test_data(uint32_t value)
 {
     Input_ptr input = m_impl->input_pool.acquire();
     input->test_value = value;
+    input->jpeg_buffer.reset();
 
     {
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
@@ -212,6 +218,10 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             if (!m_impl->input_queue.empty())
             {
                 input = m_impl->input_queue.back();
+                if (m_impl->input_queue.size() > 1)
+                {
+                    s_gs_stats.discardedFrames += static_cast<int>(m_impl->input_queue.size() - 1);
+                }
                 m_impl->input_queue.clear();
             }
             else
@@ -242,8 +252,8 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             m_impl->output_queue.push_back(std::move(output));
         }
 #else
-        const uint8_t* data = (const uint8_t*)input->data.data();
-        size_t size = input->data.size();
+        const uint8_t* data = input->jpeg_buffer->data.data();
+        size_t size = input->jpeg_buffer->data.size();
 
         //find the end marker for JPEG. Data after that can be discarded
         const uint8_t* dptr = &data[size - 2];
@@ -273,6 +283,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         if (tjDecompressHeader3(tjInstance, data, size, &width, &height, &inSubsamp, &inColorspace) < 0)
         {
+            input->jpeg_buffer.reset();
             s_gs_stats.brokenFrames++;
             tjDestroy(tjInstance);
             LOGE("Jpeg header error: {}", tjGetErrorStr());
@@ -302,6 +313,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         }
         
         tjDestroy(tjInstance);
+        input->jpeg_buffer.reset();
 
         Clock::time_point t2 = Clock::now();
         int duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
@@ -315,7 +327,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             m_impl->output_queue.push_back(std::move(output));
         }
 
-        //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->data.size() - size);
+        //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->jpeg_buffer->data.size() - size);
 #endif
     }
 }
@@ -332,6 +344,10 @@ size_t Video_Decoder::lock_output()
             return 0;
 
         m_impl->locked_outputs.push_back(m_impl->output_queue.back());
+        if (count > 1)
+        {
+            s_gs_stats.discardedFrames += static_cast<int>(count - 1);
+        }
         m_impl->output_queue.clear();
     }
 
@@ -351,9 +367,12 @@ size_t Video_Decoder::lock_output()
     }
 
 #if defined(IMGUI_IMPL_OPENGL_ES2)
+    Clock::time_point upload_t1 = Clock::now();
     GLCHK(glBindTexture(GL_TEXTURE_2D, output.texture));
     GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+    Clock::time_point upload_t2 = Clock::now();
 #else
+    Clock::time_point upload_t1 = Clock::now();
     //calculate total size
     GLCHK(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, output.pbo));
     size_t pbo_size = output.rgb_data.size();
@@ -376,7 +395,14 @@ size_t Video_Decoder::lock_output()
     GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0));
 
     GLCHK(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
+    Clock::time_point upload_t2 = Clock::now();
 #endif
+
+    int upload_duration = std::chrono::duration_cast<std::chrono::milliseconds>(upload_t2 - upload_t1).count();
+    s_gs_stats.textureUploadCount++;
+    s_gs_stats.textureUploadTimeTotalMS += upload_duration;
+    s_gs_stats.textureUploadTimeMinMS = std::min(s_gs_stats.textureUploadTimeMinMS, upload_duration);
+    s_gs_stats.textureUploadTimeMaxMS = std::max(s_gs_stats.textureUploadTimeMaxMS, upload_duration);
 
     m_texture = output.texture;
     m_resolution = ImVec2((float)output.width, (float)output.height);
