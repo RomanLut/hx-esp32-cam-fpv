@@ -59,6 +59,7 @@ add_library(android_gs_core SHARED
     ../../../../../gs/src/core/video_frame_assembler.cpp
     ../../../../../components/common/crc.cpp
     ../../../../../components/common/fec.cpp
+    ../../../../../components/common/fec_block_decoder.cpp
     ../../../../../components/common/packet_filter.cpp
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp

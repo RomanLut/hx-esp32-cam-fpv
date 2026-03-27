@@ -6,6 +6,7 @@
 #include <thread>
 #include <functional>
 #include "core/transport.h"
+#include "fec_block_decoder.h"
 
 #define MIN_TX_POWER 5
 #define DEFAULT_TX_POWER 45
@@ -58,6 +59,7 @@ private:
     void prepare_tx_packet_header(uint8_t* buffer);
     bool process_rx_packet(PCap& pcap);
     void process_rx_packets();
+    void sync_rx_decoder_stats();
 
     void tx_thread_proc();
     void rx_thread_proc(size_t index);
@@ -78,6 +80,7 @@ private:
     size_t m_data_stats_rate = 0;
     size_t m_data_stats_data_accumulated = 0;
     Clock::time_point m_data_stats_last_tp = Clock::now();
+    uint64_t m_last_rx_decoded_bytes_total = 0;
     PacketFilter m_packet_filter;
 };
 

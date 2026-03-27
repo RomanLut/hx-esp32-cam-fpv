@@ -23,6 +23,7 @@ SRCS := src/main.cpp \
 	src/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \
+	../components/common/fec_block_decoder.cpp \
 	../components/common/avi.cpp \
 	../components/common/packets.cpp \
 	../components/common/wifi_channels.cpp \

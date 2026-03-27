@@ -148,58 +148,9 @@ struct Comms::RX
 {
     std::vector<std::thread> threads;
 
-    fec_t* fec = nullptr;
-    std::array<uint8_t const*, 16> fec_src_packet_ptrs;
-    std::array<uint8_t*, 32> fec_dst_packet_ptrs;
-
     std::vector<std::string> interfaces;  //this list contans both RX and TX interfaces. We do not support TX only interface.
     std::vector<std::unique_ptr<PCap>> pcaps;
-    std::vector<uint32_t> pcal_last_block_index;
-
-    size_t transport_packet_size = 0;   //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR) + Packet_Header + mtu
-    size_t streaming_packet_size = 0;   //Packet_Header + mtu
-    size_t payload_size = 0;            //mtu
-
-
-    struct Packet
-    {
-        bool is_processed = false;
-        bool restoredByFEC;
-        uint32_t index = 0;
-        uint16_t size;  //size of user data without Packet_header
-        std::vector<uint8_t> data;   //data without Packet_Header - current mtu
-    };
-
-    using Packet_ptr = Pool<Packet>::Ptr;
-    Pool<Packet> packet_pool;
-
-    struct Block
-    {
-        uint32_t index = 0;
-
-        std::vector<Packet_ptr> packets;
-        std::vector<Packet_ptr> fec_packets;
-    };
-
-    using Block_ptr = Pool<Block>::Ptr;
-    Pool<Block> block_pool;
-
-    ////////////////////////////////////////
-    std::mutex block_queue_mutex;
-    std::deque<Block_ptr> block_queue;
-
-    std::mutex received_packet_ids_mutex;
-    std::deque<uint32_t> received_packet_ids;
-    uint32_t lastPacketIdByInterface[2];
-
-    Clock::time_point last_block_tp = Clock::now();
-    Clock::time_point last_packet_tp = Clock::now();
-
-    uint32_t next_block_index = 0;
-    ////////////////////////////////////////
-
-    std::mutex ready_packet_queue_mutex;
-    std::deque<Packet_ptr> ready_packet_queue;
+    FecBlockDecoder decoder;
 };
 
 //===================================================================================
@@ -271,6 +222,9 @@ Comms::Comms()
 //===================================================================================
 Comms::~Comms()
 {
+    if (!m_impl)
+        return;
+
     m_exit = true;
 
     m_impl->tx.packet_queue_cv.notify_all();
@@ -282,7 +236,6 @@ Comms::~Comms()
     if (m_impl->tx.thread.joinable())
         m_impl->tx.thread.join();
 
-    fec_free(m_impl->rx.fec);
     fec_free(m_impl->tx.fec);
 }
 
@@ -550,132 +503,8 @@ bool Comms::process_rx_packet(PCap& pcap)
             }
         }
 
-        uint32_t block_index = header.block_index;
-        uint32_t packet_index = header.packet_index;
-
-        uint32_t packetOrderIndex = block_index * m_rx_descriptor.coding_n + packet_index;
-        s_gs_stats.lastPacketIndex = packetOrderIndex;
-
-        RX& rx = m_impl->rx;
-        rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
-
-        {
-            std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
-
-            auto it = std::lower_bound(rx.received_packet_ids.begin(), rx.received_packet_ids.end(), packetOrderIndex);
-            if (it == rx.received_packet_ids.end() || *it != packetOrderIndex) 
-            {
-                rx.received_packet_ids.insert(it, packetOrderIndex);
-                s_gs_stats.inUniquePacketCounter++;
-            }
-            else
-            {
-                s_gs_stats.inDublicatedPacketCounter++;
-            }
-
-            uint32_t tooOldIds = std::max(rx.lastPacketIdByInterface[0],rx.lastPacketIdByInterface[1])-100;
-            it = std::lower_bound(rx.received_packet_ids.begin(), rx.received_packet_ids.end(), tooOldIds);
-            rx.received_packet_ids.erase(rx.received_packet_ids.begin(), it);
-        }
-
-        bool clear_received_packet_ids = false;
-        {
-            if (packet_index >= m_rx_descriptor.coding_n)
-            {
-                LOGE("packet index out of range: {} > {}", packet_index, m_rx_descriptor.coding_n);
-                return true;
-            }
-
-            std::lock_guard<std::mutex> lg(rx.block_queue_mutex);
-
-            //keep track of what interface returned what index. 
-            //this should allow us to skip stale blocks sooner
-            rx.pcal_last_block_index[pcap.index] = block_index;
-
-            g_framePacketsDebug.onPacketReceived(header.block_index, header.packet_index, payload + sizeof(Packet_Header), block_index < rx.next_block_index);
-
-            if (block_index < rx.next_block_index)
-            {
-                uint32_t backjump = rx.next_block_index - block_index;
-                if (backjump >= RX_RESTART_BACKJUMP_BLOCKS)
-                {
-                    LOGW("Detected TX stream restart: block jump back {} -> {} (delta {})", rx.next_block_index, block_index, backjump);
-
-                    //Keep current pairing, but drop stale transport state so new stream can flow immediately.
-                    rx.block_queue.clear();
-                    std::fill(rx.pcal_last_block_index.begin(), rx.pcal_last_block_index.end(), block_index);
-                    rx.next_block_index = block_index;
-                    rx.last_block_tp = Clock::now();
-                    rx.last_packet_tp = Clock::now();
-
-                    {
-                        std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);
-                        rx.ready_packet_queue.clear();
-                    }
-
-                    clear_received_packet_ids = true;
-                }
-                else
-                {
-                    //normal reordering/late duplicate from previous block window
-                    return true;
-                }
-            }
-
-            RX::Block_ptr block;
-
-            //find the block
-            {
-                auto iter = std::lower_bound(rx.block_queue.begin(), rx.block_queue.end(), block_index, [](RX::Block_ptr const& l, uint32_t index) { return l->index < index; });
-                if (iter != rx.block_queue.end() && (*iter)->index == block_index)
-                    block = *iter;
-                else
-                {
-                    block = rx.block_pool.acquire();
-                    block->index = block_index;
-                    rx.block_queue.insert(iter, block);
-                }
-            }
-
-            RX::Packet_ptr packet = rx.packet_pool.acquire();
-            packet->data.resize(header.size);
-            packet->index = packet_index;
-            packet->size = header.size;
-            memcpy(packet->data.data(), payload + sizeof(Packet_Header), header.size);
-
-            //store packet
-            if (packet_index >= m_rx_descriptor.coding_k)
-            {
-                auto iter = std::lower_bound(block->fec_packets.begin(), block->fec_packets.end(), packet_index, [](RX::Packet_ptr const& l, uint32_t index) { return l->index < index; });
-                if (iter != block->fec_packets.end() && (*iter)->index == packet_index)
-                {
-                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index *m_rx_descriptor.coding_n + packet_index);
-                    return true;
-                }
-                else
-                    block->fec_packets.insert(iter, packet);
-            }
-            else
-            {
-                auto iter = std::lower_bound(block->packets.begin(), block->packets.end(), packet_index, [](RX::Packet_ptr const& l, uint32_t index) { return l->index < index; });
-                if (iter != block->packets.end() && (*iter)->index == packet_index)
-                {
-                    //LOGW("Duplicated packet {} from block {} (index {})", packet_index, block_index, block_index * m_rx_descriptor.coding_n + packet_index);
-                    return true;
-                }
-                else
-                    block->packets.insert(iter, packet);
-            }
-
-        }
-
-        if (clear_received_packet_ids)
-        {
-            std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
-            rx.received_packet_ids.clear();
-            std::fill(std::begin(rx.lastPacketIdByInterface), std::end(rx.lastPacketIdByInterface), 0u);
-            rx.lastPacketIdByInterface[pcap.index] = packetOrderIndex;
-        }
+        m_impl->rx.decoder.pushPacket(payload, bytes, pcap.index, Clock::now());
+        sync_rx_decoder_stats();
 
         //m_impl->rx_queue.enqueue(payload, bytes);
         //        if (receive_callback && bytes > 0)
@@ -838,18 +667,11 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     //this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_rx_descriptor.coding_k == 0 || 
-        m_rx_descriptor.coding_n < m_rx_descriptor.coding_k || 
-        m_rx_descriptor.coding_k > m_impl->rx.fec_src_packet_ptrs.size() || 
-        m_rx_descriptor.coding_n > m_impl->rx.fec_dst_packet_ptrs.size())
+        m_rx_descriptor.coding_n < m_rx_descriptor.coding_k)
     {
         LOGE("Invalid coding params: {} / {}", m_rx_descriptor.coding_k, m_rx_descriptor.coding_n);
         return false;
     }
-
-    if (m_impl->rx.fec)
-        fec_free(m_impl->rx.fec);
-
-    m_impl->rx.fec = fec_new(m_rx_descriptor.coding_k, m_rx_descriptor.coding_n);
 
     /////////
 
@@ -864,10 +686,6 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     //calculate some offsets and sizes
     m_packet_header_offset = m_impl->tx_packet_header_length;
     m_payload_offset = m_packet_header_offset + sizeof(Packet_Header);
-
-    m_impl->rx.transport_packet_size = m_payload_offset + m_rx_descriptor.mtu;
-    m_impl->rx.streaming_packet_size = m_impl->rx.transport_packet_size - m_impl->tx_packet_header_length;
-    m_impl->rx.payload_size = m_rx_descriptor.mtu;
 
     m_impl->tx.transport_packet_size = m_payload_offset + m_tx_descriptor.mtu;
     m_impl->tx.streaming_packet_size = m_impl->tx.transport_packet_size - m_impl->tx_packet_header_length;
@@ -884,29 +702,6 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
         }
         else
             packet.data.resize(m_payload_offset);
-    };
-
-    m_impl->rx.packet_pool.on_acquire = [this](RX::Packet& packet) 
-    {
-        packet.index = 0;
-        packet.is_processed = false;
-        packet.data.clear();
-        packet.data.reserve(m_impl->rx.payload_size);  
-    };
-    m_impl->rx.block_pool.on_acquire = [this](RX::Block& block) 
-    {
-        block.index = 0;
-
-        block.packets.clear();
-        block.packets.reserve(m_rx_descriptor.coding_k);
-
-        block.fec_packets.clear();
-        block.fec_packets.reserve(m_rx_descriptor.coding_n - m_rx_descriptor.coding_k);
-    };
-    m_impl->rx.block_pool.on_release = [this](RX::Block& block) 
-    {
-        block.packets.clear();
-        block.fec_packets.clear();
     };
 
     //    m_impl->pcap = pcap_open_live(m_interface.c_str(), 2048, 1, -1, pcap_error);
@@ -928,7 +723,6 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     //        return false;
     //    }
 
-    m_impl->rx.pcal_last_block_index.resize( this->m_rx_descriptor.interfaces.size() );
     m_impl->rx.pcaps.resize( this->m_rx_descriptor.interfaces.size() );
     size_t index = 0;
     for (auto& interf: this->m_rx_descriptor.interfaces)
@@ -951,6 +745,38 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
     m_impl->tx.thread = std::thread([this]() { tx_thread_proc(); });
     for (size_t i = 0; i < m_rx_descriptor.interfaces.size(); i++)
         m_impl->rx.threads.push_back(std::thread([this, i]() { rx_thread_proc(i); }));
+
+    FecBlockDecoder::Descriptor decoder_descriptor = {};
+    decoder_descriptor.coding_k = m_rx_descriptor.coding_k;
+    decoder_descriptor.coding_n = m_rx_descriptor.coding_n;
+    decoder_descriptor.mtu = static_cast<uint16_t>(m_rx_descriptor.mtu);
+    decoder_descriptor.reset_duration =
+        std::chrono::duration_cast<std::chrono::milliseconds>(m_rx_descriptor.reset_duration);
+    decoder_descriptor.restart_backjump_blocks = RX_RESTART_BACKJUMP_BLOCKS;
+    decoder_descriptor.max_block_queue_size = 3;
+    decoder_descriptor.duplicate_window = 100;
+    decoder_descriptor.interface_count = this->m_rx_descriptor.interfaces.size();
+    if (!m_impl->rx.decoder.init(decoder_descriptor))
+    {
+        LOGE("Failed to initialize RX FEC block decoder");
+        return false;
+    }
+
+    FecBlockDecoder::Callbacks callbacks = {};
+    callbacks.on_packet_received = [](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data, bool old)
+    {
+        g_framePacketsDebug.onPacketReceived(block_index, packet_index, packet_data, old);
+    };
+    callbacks.on_packet_restored = [](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data)
+    {
+        g_framePacketsDebug.onPacketRestored(block_index, packet_index, packet_data);
+    };
+    callbacks.on_stream_restart_detected = [](uint32_t previous_block, uint32_t new_block, uint32_t delta)
+    {
+        LOGW("Detected TX stream restart: block jump back {} -> {} (delta {})", previous_block, new_block, delta);
+    };
+    m_impl->rx.decoder.setCallbacks(std::move(callbacks));
+    sync_rx_decoder_stats();
 
 #if defined RASPBERRY_PI_XXX
     {
@@ -1241,39 +1067,22 @@ void Comms::reset_rx_state()
     if (!m_impl)
         return;
 
-    RX& rx = m_impl->rx;
     Clock::time_point now = Clock::now();
-
-    {
-        std::lock_guard<std::mutex> lg(rx.received_packet_ids_mutex);
-        rx.received_packet_ids.clear();
-        std::fill(std::begin(rx.lastPacketIdByInterface), std::end(rx.lastPacketIdByInterface), 0u);
-    }
-
-    {
-        std::lock_guard<std::mutex> lg(rx.block_queue_mutex);
-        rx.block_queue.clear();
-        std::fill(rx.pcal_last_block_index.begin(), rx.pcal_last_block_index.end(), 0u);
-        rx.next_block_index = 0;
-        rx.last_block_tp = now;
-        rx.last_packet_tp = now;
-    }
-
-    {
-        std::lock_guard<std::mutex> lg(rx.ready_packet_queue_mutex);
-        rx.ready_packet_queue.clear();
-    }
+    m_impl->rx.decoder.reset(now);
+    sync_rx_decoder_stats();
 
     m_data_stats_data_accumulated = 0;
     m_data_stats_last_tp = now;
+    m_last_rx_decoded_bytes_total = 0;
 }
 
 //===================================================================================
 //===================================================================================
 void Comms::process_rx_packets()
 {
-    RX& rx = m_impl->rx;
-    uint32_t coding_k = m_rx_descriptor.coding_k;
+    m_impl->rx.decoder.process(Clock::now());
+    sync_rx_decoder_stats();
+#if 0
 
     std::unique_lock<std::mutex> lg(rx.block_queue_mutex);
 
@@ -1438,27 +1247,14 @@ void Comms::process_rx_packets()
         if (!skipped_blocks)
             break;
     }
+#endif
 }
 
 //===================================================================================
 //===================================================================================
 bool Comms::receive(void* data, size_t& size, bool& restoredByFEC)
 {
-    RX& rx = m_impl->rx;
-    
-    std::lock_guard<std::mutex> lg2(rx.ready_packet_queue_mutex);
-
-    if (rx.ready_packet_queue.empty())
-        return false;
-
-    auto d = rx.ready_packet_queue.front();
-    size = d->data.size();
-    if (size > 0)
-        memcpy(data, d->data.data(), d->data.size());
-    restoredByFEC = d->restoredByFEC;
-
-    rx.ready_packet_queue.pop_front();
-    return true;
+    return m_impl->rx.decoder.receive(data, size, restoredByFEC);
 }
 
 //===================================================================================
@@ -1476,8 +1272,7 @@ void Comms::process()
 
     Clock::time_point now = Clock::now();
 
-    RX& rx = m_impl->rx;
-    if (now - rx.last_block_tp > std::chrono::seconds(2))
+    if (now - m_impl->rx.decoder.lastBlockTime() > std::chrono::seconds(2))
         m_latched_input_dBm = 0;
 
     if (now - m_data_stats_last_tp >= std::chrono::seconds(1))
@@ -1487,6 +1282,22 @@ void Comms::process()
         m_data_stats_data_accumulated = 0;
         m_data_stats_last_tp = now;
     }
+}
+
+void Comms::sync_rx_decoder_stats()
+{
+    const FecBlockDecoder::Stats stats = m_impl->rx.decoder.getStats();
+    s_gs_stats.lastPacketIndex = stats.last_packet_index;
+    s_gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
+    s_gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
+    s_gs_stats.FECBlocksCounter = stats.fec_blocks_count;
+    s_gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
+
+    if (stats.decoded_bytes_total >= m_last_rx_decoded_bytes_total)
+    {
+        m_data_stats_data_accumulated += static_cast<size_t>(stats.decoded_bytes_total - m_last_rx_decoded_bytes_total);
+    }
+    m_last_rx_decoded_bytes_total = stats.decoded_bytes_total;
 }
 
 //===================================================================================
