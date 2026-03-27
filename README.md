@@ -1,6 +1,6 @@
 # hx-esp32-cam-fpv
 
-DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
+<img src="doc/images/esp32-cam-fpv-logo.png" alt="logo" title="logo" width="300">
 
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
@@ -35,6 +35,8 @@ Open source digital FPV system based on esp32cam.
 - [x] ESP32 C5 support
 - [x] ESP32 C5 5GHz wifi support
 - [x] **Release v0.5.3**
+- [ ] Android GS
+- [ ] apfpv firmware
 - [ ] adjust esp32c5 video modes
 - [ ] adjust esp32c5 air unit recording
 - [ ] design esp32c5 air unit PCB
@@ -49,11 +51,11 @@ Open source digital FPV system based on esp32cam.
 - [ ] digital pan, zoom
 - [ ] fisheye correction shader, vignetting correction shader
 - [ ] EIS
-- [ ] Android GS
 - [ ] Meta Quest 2 GS
 - [ ] lost frames inpainting using neural network ?
 - [ ] JPEG artefacts removal using neural network?
 
+DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
