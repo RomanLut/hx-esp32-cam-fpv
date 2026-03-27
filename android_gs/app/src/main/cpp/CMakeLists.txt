@@ -54,6 +54,7 @@ add_library(android_gs_core SHARED
     ../../../../../gs/src/core/gs_session_core.cpp
     ../../../../../gs/src/core/osd_menu_common.cpp
     ../../../../../gs/src/core/osd_menu_controller.cpp
+    ../../../../../gs/src/core/jpeg_decoder_core.cpp
     ../../../../../gs/src/core/osd_menu_imgui_shared.cpp
     ../../../../../gs/src/core/stats_panel_shared.cpp
     ../../../../../gs/src/core/video_frame_assembler.cpp
@@ -63,6 +64,12 @@ add_library(android_gs_core SHARED
     ../../../../../components/common/packet_filter.cpp
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
+)
+
+set_source_files_properties(
+    android_jpeg_decoder.cpp
+    ../../../../../gs/src/core/jpeg_decoder_core.cpp
+    PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math;-funroll-loops"
 )
 
 target_include_directories(android_gs_core PRIVATE

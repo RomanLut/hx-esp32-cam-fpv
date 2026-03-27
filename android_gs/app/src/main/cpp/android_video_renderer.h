@@ -10,7 +10,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-
+#include <deque>
 #include "core/stats_panel_shared.h"
 
 class AndroidVideoRenderer
@@ -76,6 +76,7 @@ public:
     void setSurface(ANativeWindow* window);
     void clearSurface();
     void submitFrame(const uint8_t* rgba, size_t size, int width, int height, int stride);
+    void submitFrame(std::vector<uint8_t>&& rgba, int width, int height, int stride);
     void setScreenMode(int screen_mode);
     void setOverlayState(const std::vector<OverlayChip>& chips,
                          const OverlayMenuState& menu_state,
@@ -84,6 +85,14 @@ public:
     MenuAction dispatchTap(float x, float y);
 
 private:
+    struct PendingFrame
+    {
+        std::vector<uint8_t> rgba;
+        int width = 0;
+        int height = 0;
+        int stride = 0;
+    };
+
     void run();
     void applyPendingSurfaceLocked();
     bool initEglLocked();
@@ -113,6 +122,7 @@ private:
                                 const std::array<float, 4>& color);
 
     std::mutex m_mutex;
+    std::mutex m_frame_mutex;
     std::condition_variable m_cv;
     std::thread m_thread;
     bool m_exit = false;
@@ -121,7 +131,8 @@ private:
     ANativeWindow* m_pending_window = nullptr;
     bool m_surface_dirty = false;
 
-    std::vector<uint8_t> m_pending_frame;
+    std::deque<PendingFrame> m_frame_queue;
+    PendingFrame m_locked_frame;
     int m_frame_width = 0;
     int m_frame_height = 0;
     int m_frame_stride = 0;

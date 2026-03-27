@@ -1,50 +1,33 @@
 #include "android_jpeg_decoder.h"
 
-#include <android/log.h>
 #include <turbojpeg.h>
 
-#include <algorithm>
-#include <chrono>
-
-namespace
-{
-constexpr const char* kLogTag = "AndroidGSJpeg";
-}
-
 AndroidJpegDecoder::AndroidJpegDecoder(AndroidVideoRenderer& renderer)
-    : m_renderer(renderer), m_thread(&AndroidJpegDecoder::run, this)
+    : m_renderer(renderer),
+      m_core([&renderer] {
+          gs::core::JpegDecoderCore::Config config;
+          config.worker_count = 2;
+          config.pixel_format = TJPF_RGBA;
+          config.bytes_per_pixel = 4;
+          config.tj_flags = TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE;
+          return config;
+      }()),
+      m_output_thread(&AndroidJpegDecoder::outputThreadProc, this)
 {
 }
 
 AndroidJpegDecoder::~AndroidJpegDecoder()
 {
+    m_core.shutdown();
+    if (m_output_thread.joinable())
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_exit = true;
-    }
-    m_cv.notify_all();
-    if (m_thread.joinable())
-    {
-        m_thread.join();
+        m_output_thread.join();
     }
 }
 
 void AndroidJpegDecoder::submitJpeg(const uint8_t* jpeg_data, size_t jpeg_size)
 {
-    if (jpeg_data == nullptr || jpeg_size == 0)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_input_submitted_count.fetch_add(1);
-    if (m_has_next_jpeg)
-    {
-        m_overwritten_pending_count.fetch_add(1);
-    }
-    m_next_jpeg.assign(jpeg_data, jpeg_data + jpeg_size);
-    m_has_next_jpeg = true;
-    m_cv.notify_all();
+    m_core.submitJpeg(jpeg_data, jpeg_size);
 }
 
 uint64_t AndroidJpegDecoder::submittedFrameCount() const
@@ -54,118 +37,38 @@ uint64_t AndroidJpegDecoder::submittedFrameCount() const
 
 AndroidJpegDecoder::DecodeStats AndroidJpegDecoder::statsSnapshot() const
 {
+    const gs::core::JpegDecoderCore::Stats core_stats = m_core.statsSnapshot();
     DecodeStats stats;
-    stats.broken_frames = m_broken_frames.load();
-    stats.input_submitted_count = m_input_submitted_count.load();
-    stats.overwritten_pending_count = m_overwritten_pending_count.load();
-    stats.decoded_count = m_decoded_count.load();
-    stats.decoded_total_ms = m_decoded_total_ms.load();
-    stats.decoded_min_ms = m_decoded_min_ms.load();
-    stats.decoded_max_ms = m_decoded_max_ms.load();
+    stats.broken_frames = core_stats.broken_frames;
+    stats.input_submitted_count = core_stats.input_submitted_count;
+    stats.overwritten_pending_count = core_stats.dropped_input_count;
+    stats.decoded_count = core_stats.decoded_count;
+    stats.decoded_total_ms = core_stats.decoded_total_ms;
+    stats.decoded_min_ms = core_stats.decoded_min_ms;
+    stats.decoded_max_ms = core_stats.decoded_max_ms;
     return stats;
+}
+
+void AndroidJpegDecoder::outputThreadProc()
+{
+    gs::core::JpegDecoderCore::DecodedFrame frame;
+    while (m_core.waitPopLatestFrame(frame))
+    {
+        m_renderer.submitFrame(std::move(frame.pixels), frame.width, frame.height, frame.stride);
+        m_submitted_frames.fetch_add(1);
+    }
 }
 
 AndroidJpegDecoder::DecodeStats AndroidJpegDecoder::consumeStats()
 {
+    const gs::core::JpegDecoderCore::Stats core_stats = m_core.consumeStats();
     DecodeStats stats;
-    stats.broken_frames = m_broken_frames.exchange(0);
-    stats.input_submitted_count = m_input_submitted_count.exchange(0);
-    stats.overwritten_pending_count = m_overwritten_pending_count.exchange(0);
-    stats.decoded_count = m_decoded_count.exchange(0);
-    stats.decoded_total_ms = m_decoded_total_ms.exchange(0);
-    stats.decoded_min_ms = m_decoded_min_ms.exchange(99);
-    stats.decoded_max_ms = m_decoded_max_ms.exchange(0);
-    if (stats.decoded_count == 0)
-    {
-        stats.decoded_min_ms = 99;
-    }
+    stats.broken_frames = core_stats.broken_frames;
+    stats.input_submitted_count = core_stats.input_submitted_count;
+    stats.overwritten_pending_count = core_stats.dropped_input_count;
+    stats.decoded_count = core_stats.decoded_count;
+    stats.decoded_total_ms = core_stats.decoded_total_ms;
+    stats.decoded_min_ms = core_stats.decoded_min_ms;
+    stats.decoded_max_ms = core_stats.decoded_max_ms;
     return stats;
-}
-
-void AndroidJpegDecoder::run()
-{
-    tjhandle tj_instance = tjInitDecompress();
-    if (tj_instance == nullptr)
-    {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "tjInitDecompress failed: %s", tjGetErrorStr());
-        return;
-    }
-
-    std::vector<uint8_t> current_decode_jpeg;
-    std::vector<uint8_t> rgba;
-
-    while (true)
-    {
-        {
-            std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] { return m_exit || m_has_next_jpeg; });
-            if (m_exit)
-            {
-                break;
-            }
-            // Transfer the next queued JPEG into the decode-owned slot.
-            current_decode_jpeg.swap(m_next_jpeg);
-            m_next_jpeg.clear();
-            m_has_next_jpeg = false;
-        }
-
-        const auto decode_begin = std::chrono::steady_clock::now();
-        int width = 0;
-        int height = 0;
-        int subsamp = 0;
-        int colorspace = 0;
-        if (tjDecompressHeader3(tj_instance,
-                                current_decode_jpeg.data(),
-                                static_cast<unsigned long>(current_decode_jpeg.size()),
-                                &width,
-                                &height,
-                                &subsamp,
-                                &colorspace) != 0)
-        {
-            __android_log_print(ANDROID_LOG_WARN, kLogTag, "tjDecompressHeader3 failed: %s", tjGetErrorStr());
-            m_broken_frames.fetch_add(1);
-            continue;
-        }
-        if (width <= 0 || height <= 0)
-        {
-            m_broken_frames.fetch_add(1);
-            continue;
-        }
-
-        const int stride = width * 4;
-        const size_t required_size = static_cast<size_t>(stride) * static_cast<size_t>(height);
-        rgba.resize(required_size);
-
-        if (tjDecompress2(tj_instance,
-                          current_decode_jpeg.data(),
-                          static_cast<unsigned long>(current_decode_jpeg.size()),
-                          rgba.data(),
-                          width,
-                          stride,
-                          height,
-                          TJPF_RGBA,
-                          TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) != 0)
-        {
-            __android_log_print(ANDROID_LOG_WARN, kLogTag, "tjDecompress2 failed: %s", tjGetErrorStr());
-            m_broken_frames.fetch_add(1);
-            continue;
-        }
-
-        const uint32_t duration_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - decode_begin).count());
-        m_renderer.submitFrame(rgba.data(), rgba.size(), width, height, stride);
-        m_submitted_frames.fetch_add(1);
-        m_decoded_count.fetch_add(1);
-        m_decoded_total_ms.fetch_add(duration_ms);
-        uint32_t current_min = m_decoded_min_ms.load();
-        while (duration_ms < current_min && !m_decoded_min_ms.compare_exchange_weak(current_min, duration_ms))
-        {
-        }
-        uint32_t current_max = m_decoded_max_ms.load();
-        while (duration_ms > current_max && !m_decoded_max_ms.compare_exchange_weak(current_max, duration_ms))
-        {
-        }
-    }
-
-    tjDestroy(tj_instance);
 }

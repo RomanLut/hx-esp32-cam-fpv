@@ -1,14 +1,11 @@
 #pragma once
 
 #include "android_video_renderer.h"
+#include "core/jpeg_decoder_core.h"
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
-#include <mutex>
 #include <thread>
-#include <vector>
-#include <limits>
 
 class AndroidJpegDecoder
 {
@@ -33,22 +30,10 @@ public:
     DecodeStats consumeStats();
 
 private:
-    void run();
+    void outputThreadProc();
 
     AndroidVideoRenderer& m_renderer;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::thread m_thread;
-    bool m_exit = false;
-
-    std::vector<uint8_t> m_next_jpeg;
-    bool m_has_next_jpeg = false;
-    std::atomic<uint32_t> m_input_submitted_count = 0;
-    std::atomic<uint32_t> m_overwritten_pending_count = 0;
+    gs::core::JpegDecoderCore m_core;
+    std::thread m_output_thread;
     std::atomic<uint64_t> m_submitted_frames = 0;
-    std::atomic<uint32_t> m_broken_frames = 0;
-    std::atomic<uint32_t> m_decoded_count = 0;
-    std::atomic<uint32_t> m_decoded_total_ms = 0;
-    std::atomic<uint32_t> m_decoded_min_ms = 99;
-    std::atomic<uint32_t> m_decoded_max_ms = 0;
 };

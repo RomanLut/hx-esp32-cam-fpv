@@ -213,12 +213,36 @@ void AndroidVideoRenderer::submitFrame(const uint8_t* rgba, size_t size, int wid
         return;
     }
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_pending_frame.assign(rgba, rgba + size);
-    m_frame_width = width;
-    m_frame_height = height;
-    m_frame_stride = stride;
-    m_frame_dirty = true;
+    PendingFrame frame;
+    frame.rgba.assign(rgba, rgba + size);
+    frame.width = width;
+    frame.height = height;
+    frame.stride = stride;
+    {
+        std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
+        m_frame_queue.push_back(std::move(frame));
+        m_frame_dirty = true;
+    }
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& rgba, int width, int height, int stride)
+{
+    if (rgba.empty() || width <= 0 || height <= 0 || stride < width * 4)
+    {
+        return;
+    }
+
+    PendingFrame frame;
+    frame.rgba = std::move(rgba);
+    frame.width = width;
+    frame.height = height;
+    frame.stride = stride;
+    {
+        std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
+        m_frame_queue.push_back(std::move(frame));
+        m_frame_dirty = true;
+    }
     m_cv.notify_all();
 }
 
@@ -321,8 +345,28 @@ void AndroidVideoRenderer::run()
 
         if (m_frame_dirty)
         {
-            uploadFrameLocked();
-            m_frame_dirty = false;
+            bool have_new_frame = false;
+            bool queue_has_more_frames = false;
+            {
+                std::lock_guard<std::mutex> frame_lock(m_frame_mutex);
+                if (!m_frame_queue.empty())
+                {
+                    m_locked_frame = std::move(m_frame_queue.back());
+                    m_frame_queue.clear();
+                    m_frame_width = m_locked_frame.width;
+                    m_frame_height = m_locked_frame.height;
+                    m_frame_stride = m_locked_frame.stride;
+                    have_new_frame = true;
+                }
+                queue_has_more_frames = !m_frame_queue.empty();
+            }
+
+            if (have_new_frame && !m_locked_frame.rgba.empty())
+            {
+                uploadFrameLocked();
+            }
+
+            m_frame_dirty = queue_has_more_frames;
         }
         else if (m_mode_dirty || m_overlay_dirty)
         {
@@ -560,6 +604,11 @@ void AndroidVideoRenderer::destroyImGuiLocked()
 
 void AndroidVideoRenderer::uploadFrameLocked()
 {
+    if (m_locked_frame.rgba.empty())
+    {
+        return;
+    }
+
     ensureTextureLocked();
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -572,7 +621,7 @@ void AndroidVideoRenderer::uploadFrameLocked()
         m_frame_height,
         GL_RGBA,
         GL_UNSIGNED_BYTE,
-        m_pending_frame.data());
+        m_locked_frame.rgba.data());
     m_has_uploaded_frame = true;
     drawFrameLocked();
 }
