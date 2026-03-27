@@ -16,6 +16,8 @@ public:
     struct DecodeStats
     {
         uint32_t broken_frames = 0;
+        uint32_t input_submitted_count = 0;
+        uint32_t overwritten_pending_count = 0;
         uint32_t decoded_count = 0;
         uint32_t decoded_total_ms = 0;
         uint32_t decoded_min_ms = 99;
@@ -28,6 +30,7 @@ public:
     void submitJpeg(const uint8_t* jpeg_data, size_t jpeg_size);
     uint64_t submittedFrameCount() const;
     DecodeStats statsSnapshot() const;
+    DecodeStats consumeStats();
 
 private:
     void run();
@@ -38,8 +41,10 @@ private:
     std::thread m_thread;
     bool m_exit = false;
 
-    std::vector<uint8_t> m_pending_jpeg;
-    bool m_has_pending_jpeg = false;
+    std::vector<uint8_t> m_next_jpeg;
+    bool m_has_next_jpeg = false;
+    std::atomic<uint32_t> m_input_submitted_count = 0;
+    std::atomic<uint32_t> m_overwritten_pending_count = 0;
     std::atomic<uint64_t> m_submitted_frames = 0;
     std::atomic<uint32_t> m_broken_frames = 0;
     std::atomic<uint32_t> m_decoded_count = 0;

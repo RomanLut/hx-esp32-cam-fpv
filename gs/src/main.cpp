@@ -516,6 +516,8 @@ static void comms_thread_proc()
             s_noPing = link_status.no_ping;
             s_gs_stats.pingMinMS = link_status.ping_min_ms;
             s_gs_stats.pingMaxMS = link_status.ping_max_ms;
+            s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
+            s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
@@ -1722,6 +1724,8 @@ static void drawFullscreenStatsPanel(const Ground2Air_Config_Packet& config)
     snapshot.ground_stats.decoded_jpeg_time_total_ms = s_last_gs_stats.decodedJpegTimeTotalMS;
     snapshot.ground_stats.decoded_jpeg_time_min_ms = s_last_gs_stats.decodedJpegTimeMinMS;
     snapshot.ground_stats.decoded_jpeg_time_max_ms = s_last_gs_stats.decodedJpegTimeMaxMS;
+    snapshot.ground_stats.received_completed_frames = s_last_gs_stats.receivedCompletedFrames;
+    snapshot.ground_stats.restored_completed_frames = s_last_gs_stats.restoredCompletedFrames;
     gs::stats::drawFullscreenStatsPanel(snapshot);
 }
 

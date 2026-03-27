@@ -122,6 +122,8 @@ struct PeriodicStatsSnapshot
     size_t in_tlm_size = 0;
     size_t out_tlm_size = 0;
     size_t total_data = 0;
+    int received_completed_frames = 0;
+    int restored_completed_frames = 0;
 };
 
 struct FrameStatsState

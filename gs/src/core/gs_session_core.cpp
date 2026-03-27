@@ -577,6 +577,15 @@ void GsSessionCore::onCompletedFrame(bool restored_by_fec,
                                      uint8_t queue_usage,
                                      Clock::time_point now)
 {
+    if (restored_by_fec)
+    {
+        m_periodic_stats.restored_completed_frames++;
+    }
+    else
+    {
+        m_periodic_stats.received_completed_frames++;
+    }
+
     m_frame_stats.frame_stats.add(restored_by_fec ? 2 : 4);
     m_frame_stats.frame_parts_stats.add(completed_part_index);
     m_frame_stats.frame_quality_stats.add(quality);

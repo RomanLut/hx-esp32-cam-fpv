@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/log.h>
 #include <android/native_window_jni.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -37,6 +38,8 @@
 
 namespace
 {
+
+constexpr const char* kNativeLogTag = "AndroidGSNative";
 
 constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
@@ -571,8 +574,6 @@ struct NativeHandle
     AndroidGsStats gs_stats = {};
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
-    int restored_completed_frames = 0;
-    int abandoned_new_frame_waiting_next_part = 0;
     Stats data_size_stats = {};
     Clock::time_point last_periodic_stats_tp = Clock::now();
     Clock::time_point last_data_rate_sample_tp = Clock::now();
@@ -1185,10 +1186,6 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
 
                 if (result.lostPartialFrame)
                 {
-                    if (result.abandonedOnNewFrameWhileWaitingNextPart)
-                    {
-                        handle.abandoned_new_frame_waiting_next_part++;
-                    }
                     handle.session.onLostPartialFrame(result.lostPartialParts,
                                                       static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
                 }
@@ -1201,10 +1198,6 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                 if (result.completedFrame && result.frameData != nullptr)
                 {
                     handle.jpeg_decoder.submitJpeg(result.frameData->data(), result.frameData->size());
-                    if (result.completedRestoredByFec)
-                    {
-                        handle.restored_completed_frames++;
-                    }
                     handle.session.onCompletedFrame(result.completedRestoredByFec,
                                                     result.completedPartIndex,
                                                     handle.session.airStatus().curr_quality,
@@ -1308,7 +1301,7 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.gs_stats.pingMinMS = link_status.ping_min_ms;
         handle.gs_stats.pingMaxMS = link_status.ping_max_ms;
 
-        const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.statsSnapshot();
+        const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.consumeStats();
         handle.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
 
         handle.last_ground_stats.out_packet_counter = handle.gs_stats.outPacketCounter;
@@ -1333,16 +1326,25 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(jpeg_stats.decoded_max_ms);
         handle.last_ground_stats.restored_transport_packets = handle.restored_transport_packets;
         handle.last_ground_stats.restored_video_parts = handle.restored_video_parts;
-        handle.last_ground_stats.restored_completed_frames = handle.restored_completed_frames;
-        handle.last_ground_stats.abandoned_new_frame_waiting_next_part = handle.abandoned_new_frame_waiting_next_part;
+        handle.last_ground_stats.received_completed_frames = periodic_stats.received_completed_frames;
+        handle.last_ground_stats.restored_completed_frames = periodic_stats.restored_completed_frames;
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kNativeLogTag,
+            "frame_audit completed=%d+%d submitted=%u rendered=%u overwritten=%u broken=%u udp_fps=%.2f",
+            periodic_stats.received_completed_frames,
+            periodic_stats.restored_completed_frames,
+            jpeg_stats.input_submitted_count,
+            jpeg_stats.decoded_count,
+            jpeg_stats.overwritten_pending_count,
+            jpeg_stats.broken_frames,
+            handle.udp_video_fps);
 
         AndroidGsStats next_stats = {};
         next_stats.statsPacketIndex = handle.last_ground_stats.last_packet_index;
         handle.gs_stats = next_stats;
         handle.restored_transport_packets = 0;
         handle.restored_video_parts = 0;
-        handle.restored_completed_frames = 0;
-        handle.abandoned_new_frame_waiting_next_part = 0;
         handle.last_udp_packets_sample = handle.udp_packets_received;
         handle.last_periodic_stats_tp = now;
     }

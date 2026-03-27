@@ -29,8 +29,8 @@ struct GroundStatsSnapshot
     int decoded_jpeg_time_max_ms = 0;
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
+    int received_completed_frames = 0;
     int restored_completed_frames = 0;
-    int abandoned_new_frame_waiting_next_part = 0;
 };
 
 struct FullscreenStatsSnapshot

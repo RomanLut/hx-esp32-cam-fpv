@@ -1,5 +1,6 @@
 #include "core/stats_panel_shared.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace gs::stats
@@ -27,11 +28,25 @@ float calcLossRatio(int out_count, int in_count)
 void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
 {
     char overlay[64];
+    const int restored_parts = snapshot.ground_stats.restored_video_parts;
+    const int received_parts = std::max(
+        0,
+        static_cast<int>(snapshot.ground_stats.in_unique_packet_counter) -
+            snapshot.ground_stats.restored_transport_packets);
+    const int received_frames = snapshot.ground_stats.received_completed_frames;
+    const int restored_frames = snapshot.ground_stats.restored_completed_frames;
 
     ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
-    ImGui::PlotHistogram("Frames", Stats::getter, const_cast<Stats*>(&snapshot.frame_stats), snapshot.frame_stats.count(), 0, nullptr, 0, 4.0f, ImVec2(0, 24));
+    std::snprintf(overlay, sizeof(overlay), "Frames %d+%d", received_frames, restored_frames);
+    ImGui::PlotHistogram(overlay, Stats::getter, const_cast<Stats*>(&snapshot.frame_stats), snapshot.frame_stats.count(), 0, nullptr, 0, 4.0f, ImVec2(0, 24));
 
-    std::snprintf(overlay, sizeof(overlay), "max: %d", static_cast<int>(snapshot.frame_parts_stats.max()));
+    std::snprintf(
+        overlay,
+        sizeof(overlay),
+        "Max: %d, %d+%d",
+        static_cast<int>(snapshot.frame_parts_stats.max()),
+        received_parts,
+        restored_parts);
     ImGui::PlotHistogram("Parts", Stats::getter, const_cast<Stats*>(&snapshot.frame_parts_stats), snapshot.frame_parts_stats.count(), 0, overlay, 0, snapshot.frame_parts_stats.average() * 2 + 1.0f, ImVec2(0, 60));
     ImGui::PlotHistogram("Period", Stats::getter, const_cast<Stats*>(&snapshot.frame_time_stats), snapshot.frame_time_stats.count(), 0, nullptr, 0, 100.0f, ImVec2(0, 60));
 
@@ -148,11 +163,6 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         snapshot.ground_stats.decoded_jpeg_time_max_ms);
         });
-        row("Restored Transport", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_transport_packets); });
-        row("Restored Video Parts", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_video_parts); });
-        row("Restored Frames", [&] { ImGui::Text("%d", snapshot.ground_stats.restored_completed_frames); });
-        row("Abandoned On New Frame", [&] { ImGui::Text("%d", snapshot.ground_stats.abandoned_new_frame_waiting_next_part); });
-
         ImGui::EndTable();
     }
 }

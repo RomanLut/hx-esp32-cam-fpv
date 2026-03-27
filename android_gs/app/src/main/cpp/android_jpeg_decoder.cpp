@@ -37,8 +37,13 @@ void AndroidJpegDecoder::submitJpeg(const uint8_t* jpeg_data, size_t jpeg_size)
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_pending_jpeg.assign(jpeg_data, jpeg_data + jpeg_size);
-    m_has_pending_jpeg = true;
+    m_input_submitted_count.fetch_add(1);
+    if (m_has_next_jpeg)
+    {
+        m_overwritten_pending_count.fetch_add(1);
+    }
+    m_next_jpeg.assign(jpeg_data, jpeg_data + jpeg_size);
+    m_has_next_jpeg = true;
     m_cv.notify_all();
 }
 
@@ -51,10 +56,29 @@ AndroidJpegDecoder::DecodeStats AndroidJpegDecoder::statsSnapshot() const
 {
     DecodeStats stats;
     stats.broken_frames = m_broken_frames.load();
+    stats.input_submitted_count = m_input_submitted_count.load();
+    stats.overwritten_pending_count = m_overwritten_pending_count.load();
     stats.decoded_count = m_decoded_count.load();
     stats.decoded_total_ms = m_decoded_total_ms.load();
     stats.decoded_min_ms = m_decoded_min_ms.load();
     stats.decoded_max_ms = m_decoded_max_ms.load();
+    return stats;
+}
+
+AndroidJpegDecoder::DecodeStats AndroidJpegDecoder::consumeStats()
+{
+    DecodeStats stats;
+    stats.broken_frames = m_broken_frames.exchange(0);
+    stats.input_submitted_count = m_input_submitted_count.exchange(0);
+    stats.overwritten_pending_count = m_overwritten_pending_count.exchange(0);
+    stats.decoded_count = m_decoded_count.exchange(0);
+    stats.decoded_total_ms = m_decoded_total_ms.exchange(0);
+    stats.decoded_min_ms = m_decoded_min_ms.exchange(99);
+    stats.decoded_max_ms = m_decoded_max_ms.exchange(0);
+    if (stats.decoded_count == 0)
+    {
+        stats.decoded_min_ms = 99;
+    }
     return stats;
 }
 
@@ -67,21 +91,22 @@ void AndroidJpegDecoder::run()
         return;
     }
 
-    std::vector<uint8_t> jpeg_data;
+    std::vector<uint8_t> current_decode_jpeg;
     std::vector<uint8_t> rgba;
 
     while (true)
     {
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] { return m_exit || m_has_pending_jpeg; });
+            m_cv.wait(lock, [this] { return m_exit || m_has_next_jpeg; });
             if (m_exit)
             {
                 break;
             }
-            jpeg_data.swap(m_pending_jpeg);
-            m_pending_jpeg.clear();
-            m_has_pending_jpeg = false;
+            // Transfer the next queued JPEG into the decode-owned slot.
+            current_decode_jpeg.swap(m_next_jpeg);
+            m_next_jpeg.clear();
+            m_has_next_jpeg = false;
         }
 
         const auto decode_begin = std::chrono::steady_clock::now();
@@ -90,8 +115,8 @@ void AndroidJpegDecoder::run()
         int subsamp = 0;
         int colorspace = 0;
         if (tjDecompressHeader3(tj_instance,
-                                jpeg_data.data(),
-                                static_cast<unsigned long>(jpeg_data.size()),
+                                current_decode_jpeg.data(),
+                                static_cast<unsigned long>(current_decode_jpeg.size()),
                                 &width,
                                 &height,
                                 &subsamp,
@@ -112,8 +137,8 @@ void AndroidJpegDecoder::run()
         rgba.resize(required_size);
 
         if (tjDecompress2(tj_instance,
-                          jpeg_data.data(),
-                          static_cast<unsigned long>(jpeg_data.size()),
+                          current_decode_jpeg.data(),
+                          static_cast<unsigned long>(current_decode_jpeg.size()),
                           rgba.data(),
                           width,
                           stride,

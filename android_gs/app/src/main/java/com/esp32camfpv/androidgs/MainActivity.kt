@@ -33,22 +33,27 @@ class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        enableEdgeToEdge()
+    private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).let { controller ->
             controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        enableEdgeToEdge()
+        applyImmersiveFullscreen()
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AndroidGsApp(
                         onHandleChanged = { inputNativeHandle = it },
+                        onUserInteraction = { applyImmersiveFullscreen() },
                         onExitApp = { finishAffinity() }
                     )
                 }
@@ -56,9 +61,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        applyImmersiveFullscreen()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            applyImmersiveFullscreen()
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val nativeHandle = inputNativeHandle
         if (nativeHandle != 0L && event.action == KeyEvent.ACTION_DOWN) {
+            applyImmersiveFullscreen()
             if (NativeCore.handleKey(nativeHandle, event.keyCode)) {
                 NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
                 NativeCore.syncRendererOverlay(nativeHandle, inputBuildInfo)
@@ -75,6 +93,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AndroidGsApp(
     onHandleChanged: (Long) -> Unit,
+    onUserInteraction: () -> Unit,
     onExitApp: () -> Unit
 ) {
     val nativeHandle = remember { NativeCore.createHandle(1) }
@@ -115,6 +134,7 @@ private fun AndroidGsApp(
             .background(VideoBackgroundColor)
             .pointerInput(nativeHandle) {
                 detectTapGestures { offset ->
+                    onUserInteraction()
                     NativeCore.handleTap(
                         nativeHandle,
                         offset.x,

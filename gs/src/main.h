@@ -124,6 +124,8 @@ struct GSStats
     
     int decodedJpegTimeMinMS = 99;
     int decodedJpegTimeMaxMS = 0;
+    int receivedCompletedFrames = 0;
+    int restoredCompletedFrames = 0;
 };
 
 //===================================================================================
