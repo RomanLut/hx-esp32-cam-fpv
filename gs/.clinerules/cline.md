@@ -16,5 +16,4 @@ building and launching on radxa:
 - build on the radxa:
   - `\"C:\\Program Files\\putty\\plink.exe\" -ssh -pw radxa radxa@192.168.3.148 \"cd /home/radxa/esp32-cam-fpv/gs && make -j4\"`
 - to launch on the radxa:
-  - first kill previous GS processes on the radxa: `\"C:\\Program Files\\putty\\plink.exe\" -ssh -pw radxa radxa@192.168.3.148 \"pkill -x gs || true\"`
   - `\"C:\\Program Files\\putty\\plink.exe\" -ssh -pw radxa radxa@192.168.3.148 \"cd /home/radxa/esp32-cam-fpv/gs && ./launch.sh\"`

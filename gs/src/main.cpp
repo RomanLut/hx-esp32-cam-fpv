@@ -2,6 +2,9 @@
 
 #include <sys/statvfs.h>
 #include <csignal>
+#include <cerrno>
+#include <cstdlib>
+#include <fstream>
 
 #include "Comms.h"
 #include "core/transport.h"
@@ -258,6 +261,81 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 }
 
 static std::thread s_comms_thread;
+static const char* GS_PID_FILE = "/tmp/esp32_cam_fpv_gs.pid";
+
+//===================================================================================
+//===================================================================================
+static void cleanupSingleInstancePidFile()
+{
+    unlink(GS_PID_FILE);
+}
+
+//===================================================================================
+//===================================================================================
+static pid_t readRunningInstancePid()
+{
+    std::ifstream pid_file(GS_PID_FILE);
+    pid_t pid = 0;
+    pid_file >> pid;
+    return pid;
+}
+
+//===================================================================================
+//===================================================================================
+static bool waitForProcessExit(pid_t pid, std::chrono::milliseconds timeout)
+{
+    const auto deadline = Clock::now() + timeout;
+
+    while (Clock::now() < deadline)
+    {
+        if (kill(pid, 0) != 0)
+        {
+            return errno == ESRCH;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return kill(pid, 0) != 0 && errno == ESRCH;
+}
+
+//===================================================================================
+//===================================================================================
+static bool ensureSingleInstance()
+{
+    const pid_t current_pid = getpid();
+    const pid_t existing_pid = readRunningInstancePid();
+
+    if (existing_pid > 0 && existing_pid != current_pid)
+    {
+        if (kill(existing_pid, 0) == 0 || errno == EPERM)
+        {
+            printf("Existing gs instance detected with pid %d. Sending SIGTERM...\n", (int)existing_pid);
+            kill(existing_pid, SIGTERM);
+
+            if (!waitForProcessExit(existing_pid, std::chrono::seconds(5)))
+            {
+                printf("Existing gs instance did not exit after SIGTERM.\n");
+                return false;
+            }
+        }
+        else if (errno == ESRCH)
+        {
+            cleanupSingleInstancePidFile();
+        }
+    }
+
+    std::ofstream pid_file(GS_PID_FILE, std::ios::trunc);
+    if (!pid_file.is_open())
+    {
+        printf("Can not open pid file %s\n", GS_PID_FILE);
+        return false;
+    }
+
+    pid_file << current_pid;
+    pid_file.close();
+    return true;
+}
 
 static gs::core::GsSessionCore s_session_core;
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
@@ -1009,6 +1087,7 @@ void signalHandler(int signal)
     if (signal == SIGTERM || signal == SIGINT) 
     {
         std::cout << "Received termination signal. Exiting gracefully..." << std::endl;
+        cleanupSingleInstancePidFile();
         exitApp();
     }
 }
@@ -2126,6 +2205,13 @@ void airUnpair()
 //===================================================================================
 int main(int argc, const char* argv[])
 {
+    if (!ensureSingleInstance())
+    {
+        return EXIT_FAILURE;
+    }
+
+    std::atexit(cleanupSingleInstancePidFile);
+
     init_crc8_table();
 
     std::srand(static_cast<unsigned int>(std::time(0)));
