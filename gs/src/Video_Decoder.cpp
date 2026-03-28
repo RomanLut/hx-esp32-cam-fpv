@@ -177,7 +177,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
         if (!m_impl->input_queue.empty())
         {
-            s_gs_stats.discardedFrames += static_cast<int>(m_impl->input_queue.size());
+            s_gs_stats.discardedFramesDecoderInput += static_cast<int>(m_impl->input_queue.size());
             m_impl->input_queue.clear();
         }
         m_impl->input_queue.push_back(input);
@@ -231,7 +231,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
                 input = m_impl->input_queue.back();
                 if (m_impl->input_queue.size() > 1)
                 {
-                    s_gs_stats.discardedFrames += static_cast<int>(m_impl->input_queue.size() - 1);
+                    s_gs_stats.discardedFramesDecoderInput += static_cast<int>(m_impl->input_queue.size() - 1);
                 }
                 m_impl->input_queue.clear();
             }
@@ -340,11 +340,11 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             {
                 if (!shouldReplaceDecodedFrame(output->frame_id, m_impl->pending_output->frame_id))
                 {
-                    s_gs_stats.discardedFrames++;
+                    s_gs_stats.discardedFramesDecodedOutput++;
                     continue;
                 }
 
-                s_gs_stats.discardedFrames++;
+                s_gs_stats.discardedFramesDecodedOutput++;
             }
 
             m_impl->pending_output = std::move(output);

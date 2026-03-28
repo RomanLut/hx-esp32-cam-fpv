@@ -172,7 +172,13 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         snapshot.ground_stats.texture_upload_time_max_ms);
         });
-        row("Discarded frames", [&] { ImGui::Text("%d", snapshot.ground_stats.discarded_frames); });
+        row("Discarded frames", [&]
+        {
+            ImGui::Text("%d/%d/%d",
+                        snapshot.ground_stats.discarded_frames_assembler_pool_overflow,
+                        snapshot.ground_stats.discarded_frames_decoder_input,
+                        snapshot.ground_stats.discarded_frames_decoded_output);
+        });
         ImGui::EndTable();
     }
 }

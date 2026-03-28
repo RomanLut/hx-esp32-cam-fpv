@@ -1344,10 +1344,12 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.last_ground_stats.texture_upload_time_total_ms = static_cast<int>(renderer_stats.upload_total_ms);
         handle.last_ground_stats.texture_upload_time_min_ms = static_cast<int>(renderer_stats.upload_min_ms);
         handle.last_ground_stats.texture_upload_time_max_ms = static_cast<int>(renderer_stats.upload_max_ms);
-        handle.last_ground_stats.discarded_frames = static_cast<int>(
-            assembler_stats.discarded_frames +
-            jpeg_stats.overwritten_pending_count +
-            renderer_stats.discarded_pending_count);
+        handle.last_ground_stats.discarded_frames_assembler_pool_overflow =
+            static_cast<int>(assembler_stats.discarded_frames);
+        handle.last_ground_stats.discarded_frames_decoder_input =
+            static_cast<int>(jpeg_stats.overwritten_pending_count);
+        handle.last_ground_stats.discarded_frames_decoded_output =
+            static_cast<int>(renderer_stats.discarded_pending_count);
         handle.last_ground_stats.restored_transport_packets = handle.restored_transport_packets;
         handle.last_ground_stats.restored_video_parts = handle.restored_video_parts;
         handle.last_ground_stats.received_completed_frames = periodic_stats.received_completed_frames;

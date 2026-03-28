@@ -31,7 +31,9 @@ struct GroundStatsSnapshot
     int texture_upload_time_total_ms = 0;
     int texture_upload_time_min_ms = 99;
     int texture_upload_time_max_ms = 0;
-    int discarded_frames = 0;
+    int discarded_frames_assembler_pool_overflow = 0;
+    int discarded_frames_decoder_input = 0;
+    int discarded_frames_decoded_output = 0;
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
     int received_completed_frames = 0;

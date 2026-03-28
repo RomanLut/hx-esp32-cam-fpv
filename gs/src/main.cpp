@@ -597,7 +597,7 @@ static void comms_thread_proc()
             s_gs_stats.pingMaxMS = link_status.ping_max_ms;
             s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
             s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
-            s_gs_stats.discardedFrames += static_cast<int>(assembler_stats.discarded_frames);
+            s_gs_stats.discardedFramesAssemblerPoolOverflow += static_cast<int>(assembler_stats.discarded_frames);
 
             s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
             s_last_gs_stats = s_gs_stats;
@@ -1810,7 +1810,9 @@ static void drawFullscreenStatsPanel(const Ground2Air_Config_Packet& config)
     snapshot.ground_stats.texture_upload_time_total_ms = s_last_gs_stats.textureUploadTimeTotalMS;
     snapshot.ground_stats.texture_upload_time_min_ms = s_last_gs_stats.textureUploadTimeMinMS;
     snapshot.ground_stats.texture_upload_time_max_ms = s_last_gs_stats.textureUploadTimeMaxMS;
-    snapshot.ground_stats.discarded_frames = s_last_gs_stats.discardedFrames;
+    snapshot.ground_stats.discarded_frames_assembler_pool_overflow = s_last_gs_stats.discardedFramesAssemblerPoolOverflow;
+    snapshot.ground_stats.discarded_frames_decoder_input = s_last_gs_stats.discardedFramesDecoderInput;
+    snapshot.ground_stats.discarded_frames_decoded_output = s_last_gs_stats.discardedFramesDecodedOutput;
     snapshot.ground_stats.received_completed_frames = s_last_gs_stats.receivedCompletedFrames;
     snapshot.ground_stats.restored_completed_frames = s_last_gs_stats.restoredCompletedFrames;
     gs::stats::drawFullscreenStatsPanel(snapshot);
