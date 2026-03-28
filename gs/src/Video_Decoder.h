@@ -12,7 +12,7 @@ public:
     Video_Decoder();
     ~Video_Decoder();
 
-    bool decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer);
+    bool decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id);
     void inject_test_data(uint32_t value);
 
     bool init(IHAL& hal);

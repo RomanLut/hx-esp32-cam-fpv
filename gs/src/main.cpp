@@ -808,7 +808,7 @@ static void comms_thread_proc()
                     auto video_frame = frameResult.frameData;
                     uint8_t* video_frame_data =
                         video_frame->data.empty() ? nullptr : video_frame->data.data();
-                    s_decoder.decode_data(video_frame);
+                    s_decoder.decode_data(video_frame, frameResult.completedFrameIndex);
                     if(s_groundstation_config.record)
                     {
 #ifdef WRITE_RAW_MJPEG_STREAM                            

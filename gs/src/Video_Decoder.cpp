@@ -31,6 +31,7 @@ struct Input
 {
     int32_t test_value = -1;
     gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer;
+    uint32_t frame_id = 0;
 };
 using Input_ptr = Pool<Input>::Ptr;
 
@@ -43,6 +44,7 @@ struct Output
     uint32_t texture=0;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t frame_id = 0;
     std::vector<uint8_t> rgb_data;
 
     ~Output(){
@@ -76,10 +78,17 @@ struct Video_Decoder::Impl
     Pool<Output> output_pool;
 
     std::mutex output_queue_mutex;
-    std::deque<Output_ptr> output_queue;
+    Output_ptr pending_output;
+    bool has_pending_output = false;
 
     std::deque<Output_ptr> locked_outputs;
 };
+
+static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_id)
+{
+    return new_frame_id > old_frame_id ||
+           (old_frame_id >= 10u && new_frame_id < old_frame_id - 10u);
+}
 
 
 //===================================================================================
@@ -150,7 +159,7 @@ ImVec2 Video_Decoder::get_video_resolution() const
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer)
+bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id)
 {
     if (!jpeg_buffer || jpeg_buffer->data.empty())
     {
@@ -161,6 +170,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
     Input_ptr input = m_impl->input_pool.acquire();
     input->test_value = -1;
     input->jpeg_buffer = std::move(jpeg_buffer);
+    input->frame_id = frame_id;
 
     {
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
@@ -296,6 +306,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         output->width = width;
         output->height = height;
+        output->frame_id = input->frame_id;
 
         Clock::time_point t1 = Clock::now();
 
@@ -324,7 +335,19 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-            m_impl->output_queue.push_back(std::move(output));
+            if (m_impl->has_pending_output)
+            {
+                if (!shouldReplaceDecodedFrame(output->frame_id, m_impl->pending_output->frame_id))
+                {
+                    s_gs_stats.discardedFrames++;
+                    continue;
+                }
+
+                s_gs_stats.discardedFrames++;
+            }
+
+            m_impl->pending_output = std::move(output);
+            m_impl->has_pending_output = true;
         }
 
         //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->jpeg_buffer->data.size() - size);
@@ -339,16 +362,13 @@ size_t Video_Decoder::lock_output()
     size_t count = 0;
     {
         std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-        count = m_impl->output_queue.size();
-        if (count == 0)
+        if (!m_impl->has_pending_output)
             return 0;
 
-        m_impl->locked_outputs.push_back(m_impl->output_queue.back());
-        if (count > 1)
-        {
-            s_gs_stats.discardedFrames += static_cast<int>(count - 1);
-        }
-        m_impl->output_queue.clear();
+        m_impl->locked_outputs.push_back(std::move(m_impl->pending_output));
+        m_impl->pending_output.reset();
+        m_impl->has_pending_output = false;
+        count = 1;
     }
 
     Output& output = *m_impl->locked_outputs.back();
