@@ -568,6 +568,7 @@ void AndroidVideoRenderer::applyPendingSurfaceLocked()
     m_pending_window = nullptr;
     m_surface_dirty = false;
     m_has_uploaded_frame = false;
+    m_uploaded_pixel_format = PixelFormat::RGB24;
 
     if (m_window != nullptr)
     {
@@ -724,6 +725,7 @@ void AndroidVideoRenderer::destroyEglLocked()
     m_egl_context = nullptr;
     m_uploaded_width = 0;
     m_uploaded_height = 0;
+    m_uploaded_pixel_format = PixelFormat::RGB24;
 }
 
 void AndroidVideoRenderer::releaseFrameRefLocked(PendingFrame& frame)
@@ -804,22 +806,9 @@ void AndroidVideoRenderer::uploadFrameLocked()
         const void* upload_pixels = m_locked_frame.direct_pixels != nullptr
             ? static_cast<const void*>(m_locked_frame.direct_pixels)
             : static_cast<const void*>(m_locked_frame.pixels.data());
-        if (m_locked_frame.pixel_format == PixelFormat::RGB565)
-        {
-            const size_t pixel_count =
-                static_cast<size_t>(m_frame_width) * static_cast<size_t>(m_frame_height);
-            m_rgb_upload_buffer.resize(pixel_count * 3u);
-            const auto* src_words = static_cast<const uint16_t*>(upload_pixels);
-            uint8_t* dst = m_rgb_upload_buffer.data();
-            for (size_t index = 0; index < pixel_count; ++index)
-            {
-                const uint16_t pixel = src_words[index];
-                *dst++ = static_cast<uint8_t>(((pixel >> 11) & 0x1fu) * 255u / 31u);
-                *dst++ = static_cast<uint8_t>(((pixel >> 5) & 0x3fu) * 255u / 63u);
-                *dst++ = static_cast<uint8_t>((pixel & 0x1fu) * 255u / 31u);
-            }
-            upload_pixels = m_rgb_upload_buffer.data();
-        }
+        const GLenum upload_type = m_locked_frame.pixel_format == PixelFormat::RGB565
+            ? GL_UNSIGNED_SHORT_5_6_5
+            : GL_UNSIGNED_BYTE;
         glTexSubImage2D(
             GL_TEXTURE_2D,
             0,
@@ -828,7 +817,7 @@ void AndroidVideoRenderer::uploadFrameLocked()
             m_frame_width,
             m_frame_height,
             GL_RGB,
-            GL_UNSIGNED_BYTE,
+            upload_type,
             upload_pixels);
         logGlError("glTexSubImage2D");
         const uint32_t duration_ms = static_cast<uint32_t>(
@@ -854,12 +843,17 @@ void AndroidVideoRenderer::ensureTextureLocked()
     {
         return;
     }
-    if (m_uploaded_width == m_frame_width && m_uploaded_height == m_frame_height)
+    if (m_uploaded_width == m_frame_width &&
+        m_uploaded_height == m_frame_height &&
+        m_uploaded_pixel_format == m_locked_frame.pixel_format)
     {
         return;
     }
 
     glBindTexture(GL_TEXTURE_2D, m_texture);
+    const GLenum texture_type = m_locked_frame.pixel_format == PixelFormat::RGB565
+        ? GL_UNSIGNED_SHORT_5_6_5
+        : GL_UNSIGNED_BYTE;
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
@@ -868,11 +862,12 @@ void AndroidVideoRenderer::ensureTextureLocked()
         m_frame_height,
         0,
         GL_RGB,
-        GL_UNSIGNED_BYTE,
+        texture_type,
         nullptr);
     logGlError("glTexImage2D");
     m_uploaded_width = m_frame_width;
     m_uploaded_height = m_frame_height;
+    m_uploaded_pixel_format = m_locked_frame.pixel_format;
 }
 
 void AndroidVideoRenderer::drawTexturedQuadLocked(float x,

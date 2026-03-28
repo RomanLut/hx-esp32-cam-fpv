@@ -209,8 +209,8 @@ private:
     int m_surface_height = 0;
     int m_uploaded_width = 0;
     int m_uploaded_height = 0;
+    PixelFormat m_uploaded_pixel_format = PixelFormat::RGB24;
     bool m_has_uploaded_frame = false;
-    std::vector<uint8_t> m_rgb_upload_buffer;
     std::vector<uint8_t> m_pending_font_png;
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
