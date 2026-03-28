@@ -29,7 +29,7 @@ public:
     explicit AndroidJpegDecoder(AndroidVideoRenderer& renderer);
     ~AndroidJpegDecoder();
 
-    void submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer);
+    void submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id);
     uint64_t submittedFrameCount() const;
     DecodeStats statsSnapshot() const;
     DecodeStats consumeStats();
@@ -38,6 +38,7 @@ private:
     struct InputFrame
     {
         gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer;
+        uint32_t frame_id = 0;
     };
 
     void workerThreadProc();

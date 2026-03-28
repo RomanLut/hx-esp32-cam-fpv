@@ -155,6 +155,12 @@ std::array<float, 4> whiteColor()
     return {1.0f, 1.0f, 1.0f, 1.0f};
 }
 
+bool shouldReplacePendingFrame(uint32_t new_frame_id, uint32_t old_frame_id)
+{
+    return new_frame_id > old_frame_id ||
+           (old_frame_id >= 10u && new_frame_id < old_frame_id - 10u);
+}
+
 ImVec4 toImGuiColor(const std::array<float, 4>& color)
 {
     return ImVec4(color[0], color[1], color[2], color[3]);
@@ -267,6 +273,7 @@ void AndroidVideoRenderer::submitFrame(const uint8_t* pixels,
                                        int width,
                                        int height,
                                        int stride,
+                                       uint32_t frame_id,
                                        PixelFormat pixel_format)
 {
     const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
@@ -280,11 +287,17 @@ void AndroidVideoRenderer::submitFrame(const uint8_t* pixels,
     frame.width = width;
     frame.height = height;
     frame.stride = stride;
+    frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
         {
+            if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
+            {
+                m_discarded_pending_count.fetch_add(1);
+                return;
+            }
             m_discarded_pending_count.fetch_add(1);
         }
         releaseFrameRefLocked(m_pending_frame);
@@ -301,6 +314,7 @@ void AndroidVideoRenderer::submitFrame(jobject direct_buffer_global_ref,
                                        int width,
                                        int height,
                                        int stride,
+                                       uint32_t frame_id,
                                        PixelFormat pixel_format)
 {
     const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
@@ -321,11 +335,18 @@ void AndroidVideoRenderer::submitFrame(jobject direct_buffer_global_ref,
     frame.width = width;
     frame.height = height;
     frame.stride = stride;
+    frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
         {
+            if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
+            {
+                m_discarded_pending_count.fetch_add(1);
+                releaseFrameRefLocked(frame);
+                return;
+            }
             m_discarded_pending_count.fetch_add(1);
         }
         releaseFrameRefLocked(m_pending_frame);
@@ -340,6 +361,7 @@ void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
                                        int width,
                                        int height,
                                        int stride,
+                                       uint32_t frame_id,
                                        PixelFormat pixel_format)
 {
     const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
@@ -353,11 +375,17 @@ void AndroidVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
     frame.width = width;
     frame.height = height;
     frame.stride = stride;
+    frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
         {
+            if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
+            {
+                m_discarded_pending_count.fetch_add(1);
+                return;
+            }
             m_discarded_pending_count.fetch_add(1);
         }
         releaseFrameRefLocked(m_pending_frame);

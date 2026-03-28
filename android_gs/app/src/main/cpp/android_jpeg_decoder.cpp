@@ -173,7 +173,7 @@ AndroidJpegDecoder::~AndroidJpegDecoder()
     }
 }
 
-void AndroidJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer)
+void AndroidJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id)
 {
     if (!jpeg_buffer || jpeg_buffer->data.empty())
     {
@@ -182,6 +182,7 @@ void AndroidJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPt
 
     InputFrame input;
     input.jpeg_buffer = std::move(jpeg_buffer);
+    input.frame_id = frame_id;
 
     {
         std::lock_guard<std::mutex> lock(m_input_mutex);
@@ -351,6 +352,7 @@ void AndroidJpegDecoder::workerThreadProc()
             static_cast<int>(width),
             static_cast<int>(height),
             static_cast<int>(stride),
+            input.frame_id,
             AndroidVideoRenderer::PixelFormat::RGB565);
         m_submitted_frames.fetch_add(1);
     }

@@ -936,7 +936,7 @@ int processVideoPacket(NativeHandle& handle,
 
     if (result.completedFrame && result.frameData)
     {
-        handle.jpeg_decoder.submitJpeg(result.frameData);
+        handle.jpeg_decoder.submitJpeg(result.frameData, result.completedFrameIndex);
     }
 
     return static_cast<int>(session_event.kind);
@@ -1211,7 +1211,7 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
 
                 if (result.completedFrame && result.frameData)
                 {
-                    handle.jpeg_decoder.submitJpeg(result.frameData);
+                    handle.jpeg_decoder.submitJpeg(result.frameData, result.completedFrameIndex);
                     handle.session.onCompletedFrame(result.completedRestoredByFec,
                                                     result.completedPartIndex,
                                                     handle.session.airStatus().curr_quality,
@@ -2048,7 +2048,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_submitVideoFrame(JNIEnv* env,
         static_cast<size_t>(capacity),
         static_cast<int>(width),
         static_cast<int>(height),
-        static_cast<int>(stride));
+        static_cast<int>(stride),
+        0);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

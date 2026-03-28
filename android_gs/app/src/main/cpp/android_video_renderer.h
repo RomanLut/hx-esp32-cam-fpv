@@ -110,6 +110,7 @@ public:
                      int width,
                      int height,
                      int stride,
+                     uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
     void submitFrame(jobject direct_buffer_global_ref,
                      const uint8_t* pixels,
@@ -117,11 +118,13 @@ public:
                      int width,
                      int height,
                      int stride,
+                     uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
     void submitFrame(std::vector<uint8_t>&& pixels,
                      int width,
                      int height,
                      int stride,
+                     uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
     void setScreenMode(int screen_mode);
     void setOverlayState(const std::vector<OverlayChip>& chips,
@@ -141,6 +144,7 @@ private:
         int width = 0;
         int height = 0;
         int stride = 0;
+        uint32_t frame_id = 0;
         PixelFormat pixel_format = PixelFormat::RGB24;
     };
 
