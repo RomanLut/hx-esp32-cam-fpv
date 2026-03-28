@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <chrono>
 #include "imgui.h"
 #include "core/video_frame_assembler.h"
 
@@ -18,6 +19,7 @@ public:
     bool init(IHAL& hal);
 
     size_t lock_output();
+    void wait_for_output(std::chrono::milliseconds timeout);
     uint32_t get_video_texture_id() const;
     ImVec2 get_video_resolution() const;
     bool unlock_output();

@@ -78,6 +78,7 @@ struct Video_Decoder::Impl
     Pool<Output> output_pool;
 
     std::mutex output_queue_mutex;
+    std::condition_variable output_ready_cv;
     Output_ptr pending_output;
     bool has_pending_output = false;
 
@@ -349,6 +350,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             m_impl->pending_output = std::move(output);
             m_impl->has_pending_output = true;
         }
+        m_impl->output_ready_cv.notify_one();
 
         //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->jpeg_buffer->data.size() - size);
 #endif
@@ -428,6 +430,25 @@ size_t Video_Decoder::lock_output()
     m_resolution = ImVec2((float)output.width, (float)output.height);
 
     return count;
+}
+
+//===================================================================================
+//===================================================================================
+void Video_Decoder::wait_for_output(std::chrono::milliseconds timeout)
+{
+    std::unique_lock<std::mutex> lg(m_impl->output_queue_mutex);
+    if (m_impl->has_pending_output || m_exit)
+    {
+        return;
+    }
+
+    m_impl->output_ready_cv.wait_for(
+        lg,
+        timeout,
+        [this]
+        {
+            return m_impl->has_pending_output || m_exit;
+        });
 }
 
 

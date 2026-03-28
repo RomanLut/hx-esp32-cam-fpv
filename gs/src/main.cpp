@@ -1900,7 +1900,8 @@ int run(char* argv[])
         size_t count = s_decoder.lock_output();
         if ( count == 0)
         {
-            //std::this_thread::yield();
+            s_decoder.wait_for_output(std::chrono::milliseconds(8));
+            count = s_decoder.lock_output();
         }
 
         video_frame_count += count;
