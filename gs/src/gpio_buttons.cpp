@@ -156,6 +156,7 @@ static BOOL debug = DEBUG;
 static BOOL quit = FALSE;
 
 static int uinput_fd = -1;
+static BOOL gpio_buttons_enabled = FALSE;
 
 static struct pollfd fdset[MAX_PINS];
 static struct pollfd fdset_base[MAX_PINS];
@@ -195,19 +196,20 @@ void quit_signal(int dummy)
     this function calls exit() on any failure. This isn't normally a
     very elegant thing to do, but it's OK here.
 ======================================================================*/
-static void write_to_file(const char *file, const char *text)
+static bool write_to_file(const char *file, const char *text)
 {
   FILE *f = fopen(file, "w");
   if (f)
   {
     fprintf(f, text);
     fclose(f);
+    return true;
   }
   else
   {
     fprintf(stderr, "Can't write to %s: %s\n", file,
             strerror(errno));
-    exit(-1);
+    return false;
   }
 }
 
@@ -231,7 +233,7 @@ static void unexport_pins(int *pins, int npins)
   Prepare GPIO pins as inputs and generate interrupts on both transitions.
   Debounce and press/release interpretation are handled in the polling loop.
 ======================================================================*/
-static void export_pins(int *pins, int npins)
+static bool export_pins(int *pins, int npins)
 {
   int i;
   for (i = 0; i < npins; i++)
@@ -239,12 +241,16 @@ static void export_pins(int *pins, int npins)
     int pin = pins[i];
     char s[50];
     snprintf(s, sizeof(s), "%d", pin);
-    write_to_file("/sys/class/gpio/export", s);
+    if (!write_to_file("/sys/class/gpio/export", s))
+      return false;
     snprintf(s, sizeof(s), "/sys/class/gpio/gpio%d/direction", pin);
-    write_to_file(s, "in");
+    if (!write_to_file(s, "in"))
+      return false;
     snprintf(s, sizeof(s), "/sys/class/gpio/gpio%d/edge", pin);
-    write_to_file(s, "both");
+    if (!write_to_file(s, "both"))
+      return false;
   }
+  return true;
 }
 
 /*======================================================================
@@ -324,7 +330,6 @@ static int open_uinput(void)
   else
   {
     fprintf(stderr, "Can't open /dev/uinput: %s\n", strerror(errno));
-    exit(-1);
     return -1;
   }
 }
@@ -521,9 +526,11 @@ void polling_thread_func()
 void gpio_buttons_start()
 {
   int pin = 0;
+  struct stat st;
 
   quit = FALSE;
   npins = 0;
+  gpio_buttons_enabled = FALSE;
 
   if ( isRadxaZero3() )
   {
@@ -546,7 +553,24 @@ void gpio_buttons_start()
     m = &mappings[pin];
   }
 
-  export_pins(pins, npins);
+  if (stat("/sys/class/gpio/export", &st) != 0)
+  {
+    std::cerr << "GPIO buttons disabled: /sys/class/gpio/export is unavailable" << std::endl;
+    return;
+  }
+
+  if (stat("/dev/uinput", &st) != 0)
+  {
+    std::cerr << "GPIO buttons disabled: /dev/uinput is unavailable" << std::endl;
+    return;
+  }
+
+  if (!export_pins(pins, npins))
+  {
+    unexport_pins(pins, npins);
+    std::cerr << "GPIO buttons disabled: failed to export GPIO pins" << std::endl;
+    return;
+  }
 
   std::signal(SIGQUIT, quit_signal);
   std::signal(SIGTERM, quit_signal);
@@ -554,6 +578,12 @@ void gpio_buttons_start()
   std::signal(SIGINT, quit_signal);
 
   uinput_fd = open_uinput();
+  if (uinput_fd < 0)
+  {
+    unexport_pins(pins, npins);
+    std::cerr << "GPIO buttons disabled: failed to initialize uinput" << std::endl;
+    return;
+  }
 
   for (int i = 0; i < npins; i++)
   {
@@ -563,13 +593,26 @@ void gpio_buttons_start()
     if (gpio_fd < 0)
     {
       std::cerr << "Can't open GPIO device " << s << std::endl;
-      exit(-1);
+      for (int j = 0; j < i; j++)
+      {
+        if (fdset_base[j].fd >= 0)
+        {
+          close(fdset_base[j].fd);
+          fdset_base[j].fd = -1;
+        }
+      }
+      close_uinput(uinput_fd);
+      uinput_fd = -1;
+      unexport_pins(pins, npins);
+      std::cerr << "GPIO buttons disabled: failed to open GPIO value device" << std::endl;
+      return;
     }
     fdset_base[i].fd = gpio_fd;
     fdset_base[i].events = POLLPRI;
   }
 
   dbglog("Creating GPIO polling thread\n");
+  gpio_buttons_enabled = TRUE;
   polling_thread = std::thread(polling_thread_func);
 }
 
@@ -577,6 +620,9 @@ void gpio_buttons_start()
 //======================================================================
 void gpio_buttons_stop()
 {
+  if (!gpio_buttons_enabled)
+    return;
+
   quit = TRUE;
   if (polling_thread.joinable())
   {
@@ -597,4 +643,5 @@ void gpio_buttons_stop()
     close_uinput(uinput_fd);
     uinput_fd = -1;
   }
+  gpio_buttons_enabled = FALSE;
 }
