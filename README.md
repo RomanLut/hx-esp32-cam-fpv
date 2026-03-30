@@ -78,7 +78,7 @@ DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
 - **Radxa Zero 3W/3E** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
 - **Runcam WiFiLink VRX** - 5.8GHz only (experimental)
-- GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
+- GS software also can be run on x86_64 notebook on Ubuntu or Fedora Linux, but it still requires a Wi-Fi adapter that supports monitor mode and packet injection
 
 # Recommended hardware
 
@@ -103,7 +103,7 @@ The air unit can also record video directly to an SD card. To compensate for the
 
 JPEG image sizes vary depending on scene complexity. Adaptive JPEG compression dynamically adjusts the quality level to match the available bandwidth and maintain smooth streaming.
 
-The Ground Station can be a **Radxa Zero 3W**, **Raspberry Pi Zero 2W, up to Raspberry Pi 4**, equipped with Wi-Fi cards in monitor mode such as **Realtek 8812AU** (recommended) or **AR9271**. Dual Wi-Fi cards can be used for diversity reception.
+The Ground Station can be a **Radxa Zero 3W**, **Raspberry Pi Zero 2W, up to Raspberry Pi 4**, equipped with Wi-Fi cards in monitor mode such as **Realtek 8812AU** (recommended) or **AR9271**. Packet injection support is also required. Dual Wi-Fi cards can be used for diversity reception.
 
 **8812au** with a low-noise amplifier (LNA) is preferred; however, a high-power amplifier (PA) is not critical since the range is primarily limited by the **ESP32's** maximum transmit power of 100 mW (20 dBm).
 

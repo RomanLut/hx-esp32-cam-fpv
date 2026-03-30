@@ -4,7 +4,7 @@ This instruction describes steps for running Ground Station on Windows through W
 
 This setup is more complicated than native Linux, because external USB Wifi adapter must be passed from Windows into WSL, and some adapters require an out-of-tree Linux driver.
 
-External Wifi card which supports monitor mode and injection is still required. The procedure below was tested with Realtek `RTL8812AU`.
+Ground Station software still requires a Wi-Fi adapter that supports monitor mode and packet injection. The procedure below was tested with Realtek `RTL8812AU`.
 
 ## 1. Install WSL2 Ubuntu
 
@@ -163,4 +163,3 @@ Current script still assumes:
 * adapter family: `RTL8812AU` / USB ID `0BDA:8812`
 
 Edit the script if your setup is different.
-

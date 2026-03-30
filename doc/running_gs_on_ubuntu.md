@@ -5,7 +5,7 @@ This instruction describes steps for running Ground Station software on Ubuntu d
 
 ## Notebook 
 
-External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
+Ground Station software still requires a Wi-Fi adapter that supports monitor mode and packet injection (rtl8812ua, ar9271).
 
 Internal wifi card may work or may not. It works for me with **Intel 6300 AGN card**.
 
