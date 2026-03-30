@@ -15,15 +15,6 @@
 #include <vector>
 #include "core/stats_panel_shared.h"
 
-enum class AndroidPerfMode
-{
-    Baseline,
-    SkipDecodeSynthetic,
-    SkipUpload,
-};
-
-inline constexpr AndroidPerfMode kAndroidPerfMode = AndroidPerfMode::Baseline;
-
 class AndroidVideoRenderer
 {
 public:

@@ -797,43 +797,40 @@ void AndroidVideoRenderer::uploadFrameLocked()
         return;
     }
 
-    if (kAndroidPerfMode != AndroidPerfMode::SkipUpload)
+    const auto upload_begin = std::chrono::steady_clock::now();
+    ensureTextureLocked();
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    const void* upload_pixels = m_locked_frame.direct_pixels != nullptr
+        ? static_cast<const void*>(m_locked_frame.direct_pixels)
+        : static_cast<const void*>(m_locked_frame.pixels.data());
+    const GLenum upload_type = m_locked_frame.pixel_format == PixelFormat::RGB565
+        ? GL_UNSIGNED_SHORT_5_6_5
+        : GL_UNSIGNED_BYTE;
+    glTexSubImage2D(
+        GL_TEXTURE_2D,
+        0,
+        0,
+        0,
+        m_frame_width,
+        m_frame_height,
+        GL_RGB,
+        upload_type,
+        upload_pixels);
+    logGlError("glTexSubImage2D");
+    const uint32_t duration_ms = static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - upload_begin).count());
+    m_upload_count.fetch_add(1);
+    m_upload_total_ms.fetch_add(duration_ms);
+    uint32_t current_min = m_upload_min_ms.load();
+    while (duration_ms < current_min && !m_upload_min_ms.compare_exchange_weak(current_min, duration_ms))
     {
-        const auto upload_begin = std::chrono::steady_clock::now();
-        ensureTextureLocked();
-        glBindTexture(GL_TEXTURE_2D, m_texture);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        const void* upload_pixels = m_locked_frame.direct_pixels != nullptr
-            ? static_cast<const void*>(m_locked_frame.direct_pixels)
-            : static_cast<const void*>(m_locked_frame.pixels.data());
-        const GLenum upload_type = m_locked_frame.pixel_format == PixelFormat::RGB565
-            ? GL_UNSIGNED_SHORT_5_6_5
-            : GL_UNSIGNED_BYTE;
-        glTexSubImage2D(
-            GL_TEXTURE_2D,
-            0,
-            0,
-            0,
-            m_frame_width,
-            m_frame_height,
-            GL_RGB,
-            upload_type,
-            upload_pixels);
-        logGlError("glTexSubImage2D");
-        const uint32_t duration_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - upload_begin).count());
-        m_upload_count.fetch_add(1);
-        m_upload_total_ms.fetch_add(duration_ms);
-        uint32_t current_min = m_upload_min_ms.load();
-        while (duration_ms < current_min && !m_upload_min_ms.compare_exchange_weak(current_min, duration_ms))
-        {
-        }
-        uint32_t current_max = m_upload_max_ms.load();
-        while (duration_ms > current_max && !m_upload_max_ms.compare_exchange_weak(current_max, duration_ms))
-        {
-        }
-        m_has_uploaded_frame = true;
     }
+    uint32_t current_max = m_upload_max_ms.load();
+    while (duration_ms > current_max && !m_upload_max_ms.compare_exchange_weak(current_max, duration_ms))
+    {
+    }
+    m_has_uploaded_frame = true;
     drawFrameLocked();
 }
 

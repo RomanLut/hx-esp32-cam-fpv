@@ -41,20 +41,6 @@ namespace
 
 constexpr const char* kNativeLogTag = "AndroidGSNative";
 
-const char* androidPerfModeName()
-{
-    switch (kAndroidPerfMode)
-    {
-    case AndroidPerfMode::SkipDecodeSynthetic:
-        return "skip_decode";
-    case AndroidPerfMode::SkipUpload:
-        return "skip_upload";
-    case AndroidPerfMode::Baseline:
-    default:
-        return "baseline";
-    }
-}
-
 constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
@@ -1357,8 +1343,7 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         __android_log_print(
             ANDROID_LOG_INFO,
             kNativeLogTag,
-            "frame_audit mode=%s completed=%d+%d submitted=%u rendered=%u overwritten=%u upload=%u swap=%u decode_ms=%u/%u/%u upload_ms=%u/%u/%u swap_ms=%u/%u/%u broken=%u udp_fps=%.2f",
-            androidPerfModeName(),
+            "frame_audit completed=%d+%d submitted=%u rendered=%u overwritten=%u upload=%u swap=%u decode_ms=%u/%u/%u upload_ms=%u/%u/%u swap_ms=%u/%u/%u broken=%u udp_fps=%.2f",
             periodic_stats.received_completed_frames,
             periodic_stats.restored_completed_frames,
             jpeg_stats.input_submitted_count,
