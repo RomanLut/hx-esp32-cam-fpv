@@ -12,7 +12,7 @@
 #include "IHAL.h"
 #include "PI_HAL.h"
 #include "imgui.h"
-#include "osd.h"
+#include "desktop_osd.h"
 #include "osd_menu.h"
 #include "Video_Decoder.h" 
 #include "crc.h"

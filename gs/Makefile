@@ -14,7 +14,7 @@ SRCS := src/main.cpp \
 	src/core/frame_packets_debug_core.cpp \
 	src/core/video_frame_assembler.cpp \
 	src/droid_sans_font.cpp \
-	src/osd.cpp \
+	src/desktop_osd.cpp \
 	src/utils/lodepng.cpp \
 	src/utils/utils.cpp \
 	../components/common/util.cpp \

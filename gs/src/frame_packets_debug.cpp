@@ -2,7 +2,7 @@
 
 #include "frame_packets_debug.h"
 
-#include "osd.h"
+#include "desktop_osd.h"
 
 FramePacketsDebug g_framePacketsDebug;
 

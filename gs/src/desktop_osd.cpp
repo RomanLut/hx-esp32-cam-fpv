@@ -4,7 +4,7 @@
 #include <string>
 
 
-#include "osd.h"
+#include "desktop_osd.h"
 #include "imgui.h"
 #include "main.h"
 #include "Video_Decoder.h"

@@ -9,7 +9,7 @@
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
 #include "lodepng.h"
-#include "osd.h"
+#include "desktop_osd.h"
 
 namespace
 {
