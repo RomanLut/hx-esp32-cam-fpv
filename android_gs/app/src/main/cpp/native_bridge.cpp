@@ -4,7 +4,9 @@
 #include <android/native_window_jni.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <net/if.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <cstdint>
 #include <cstring>
 #include <cerrno>
@@ -211,6 +213,8 @@ private:
     NativeHandle& m_handle;
     std::vector<std::string> m_osd_fonts = {"INAV_default_24.png"};
     std::string m_current_osd_font = "INAV_default_24.png";
+    mutable std::string m_cached_ipv4 = "0.0.0.0";
+    mutable Clock::time_point m_next_ipv4_refresh_tp = Clock::time_point::min();
 };
 
 struct NativeHandle
@@ -401,6 +405,59 @@ std::string buildGsSdStatus()
         free_bytes >= kGsSdMinFreeSpaceBytes ? "" : " Low space");
 }
 
+std::string detectSystemIPv4()
+{
+    const int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (socket_fd < 0)
+    {
+        return "0.0.0.0";
+    }
+
+    std::string result = "0.0.0.0";
+    std::array<char, 8192> buffer = {};
+    struct ifconf ifc = {};
+    ifc.ifc_len = static_cast<int>(buffer.size());
+    ifc.ifc_buf = buffer.data();
+    if (ioctl(socket_fd, SIOCGIFCONF, &ifc) != 0)
+    {
+        close(socket_fd);
+        return result;
+    }
+
+    const int interface_count = ifc.ifc_len / static_cast<int>(sizeof(struct ifreq));
+    struct ifreq* interfaces = ifc.ifc_req;
+    for (int index = 0; index < interface_count; ++index)
+    {
+        struct ifreq flags_request = {};
+        std::strncpy(flags_request.ifr_name, interfaces[index].ifr_name, IFNAMSIZ - 1);
+        if (ioctl(socket_fd, SIOCGIFFLAGS, &flags_request) != 0)
+        {
+            continue;
+        }
+        if ((flags_request.ifr_flags & IFF_UP) == 0 || (flags_request.ifr_flags & IFF_LOOPBACK) != 0)
+        {
+            continue;
+        }
+
+        const sockaddr_in* addr_in = reinterpret_cast<const sockaddr_in*>(&interfaces[index].ifr_addr);
+        if (addr_in->sin_family != AF_INET)
+        {
+            continue;
+        }
+
+        char addr[INET_ADDRSTRLEN] = {0};
+        if (inet_ntop(AF_INET, &addr_in->sin_addr, addr, sizeof(addr)) != nullptr &&
+            std::strcmp(addr, "0.0.0.0") != 0)
+        {
+            result = addr;
+            break;
+        }
+    }
+
+    close(socket_fd);
+    return result;
+}
+
 TGroundstationConfig& AndroidMenuPlatform::groundstationConfig()
 {
     return m_handle.groundstation_config;
@@ -522,7 +579,13 @@ bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
 
 std::string AndroidMenuPlatform::systemIPv4() const
 {
-    return "0.0.0.0";
+    const Clock::time_point now = Clock::now();
+    if (m_cached_ipv4.empty() || now >= m_next_ipv4_refresh_tp)
+    {
+        m_cached_ipv4 = detectSystemIPv4();
+        m_next_ipv4_refresh_tp = now + std::chrono::seconds(1);
+    }
+    return m_cached_ipv4;
 }
 
 Clock::time_point AndroidMenuPlatform::lastPacketTime() const
