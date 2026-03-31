@@ -61,6 +61,7 @@ public:
     virtual void exitApp() = 0;
     virtual void restartGPIOButtons() = 0;
     virtual void setVsync(bool enabled) = 0;
+    virtual bool supportsCustomScreenAspectModes() const { return true; }
 
     virtual std::string systemIPv4() const = 0;
     virtual Clock::time_point lastPacketTime() const = 0;

@@ -404,6 +404,16 @@ void AndroidVideoRenderer::setScreenMode(int screen_mode)
     m_cv.notify_all();
 }
 
+void AndroidVideoRenderer::setVsync(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_vsync = enabled;
+    if (m_egl_display != nullptr && m_egl_display != EGL_NO_DISPLAY)
+    {
+        eglSwapInterval(static_cast<EGLDisplay>(m_egl_display), m_vsync ? 1 : 0);
+    }
+}
+
 void AndroidVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
 {
     if (data == nullptr || size == 0)
@@ -684,6 +694,8 @@ bool AndroidVideoRenderer::initEglLocked()
         eglTerminate(display);
         return false;
     }
+
+    eglSwapInterval(display, m_vsync ? 1 : 0);
 
     m_program = createProgram();
     if (m_program == 0)

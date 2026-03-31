@@ -21,6 +21,26 @@ std::string stripImGuiIdSuffix(const char* caption)
     return std::string(text, static_cast<size_t>(marker - text));
 }
 
+int getVisibleScreenAspectSelection(const gs::menu::IOSDMenuPlatform& platform, ScreenAspectRatio ratio)
+{
+    if (!platform.supportsCustomScreenAspectModes())
+    {
+        return ratio == ScreenAspectRatio::STRETCH ? 0 : 1;
+    }
+    return clamp(static_cast<int>(ratio), 0, 5);
+}
+
+const char* getVisibleScreenAspectLabel(const gs::menu::IOSDMenuPlatform& platform, ScreenAspectRatio ratio)
+{
+    if (!platform.supportsCustomScreenAspectModes())
+    {
+        return ratio == ScreenAspectRatio::STRETCH ? "Stretch" : "Letterbox";
+    }
+
+    const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
+    return modes[clamp(static_cast<int>(ratio), 0, 5)];
+}
+
 }
 
 //=======================================================
@@ -999,29 +1019,31 @@ void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( "Letterbox, Screen is 5:4", 2) )
+    if (m_platform.supportsCustomScreenAspectModes())
     {
-        gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT5X4;
-        saveAndExit = true;
-    }
+        if ( this->drawMenuItem( "Letterbox, Screen is 5:4", 2) )
+        {
+            gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT5X4;
+            saveAndExit = true;
+        }
 
-    if ( this->drawMenuItem( "Letterbox, Screen is 4:3", 3) )
-    {
-        gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT4X3;
-        saveAndExit = true;
-    }
+        if ( this->drawMenuItem( "Letterbox, Screen is 4:3", 3) )
+        {
+            gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT4X3;
+            saveAndExit = true;
+        }
 
+        if ( this->drawMenuItem( "Letterbox, Screen is 16:9", 4) )
+        {
+            gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X9;
+            saveAndExit = true;
+        }
 
-    if ( this->drawMenuItem( "Letterbox, Screen is 16:9", 4) )
-    {
-        gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X9;
-        saveAndExit = true;
-    }
-
-    if ( this->drawMenuItem( "Letterbox, Screen is 16:10", 5) )
-    {
-        gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X10;
-        saveAndExit = true;
+        if ( this->drawMenuItem( "Letterbox, Screen is 16:10", 5) )
+        {
+            gs_config.screenAspectRatio = ScreenAspectRatio::ASPECT16X10;
+            saveAndExit = true;
+        }
     }
 
     if ( saveAndExit )
@@ -1373,11 +1395,10 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        const char* modes[] = {"Stretch", "Letterbox", "Screen is 5:4", "Screen is 4:3", "Screen is 16:9", "Screen is 16:10"};
-        sprintf(buf, "Letterbox: %s##1", modes[clamp((int)gs_config.screenAspectRatio,0,5)]);
+        sprintf(buf, "Letterbox: %s##1", getVisibleScreenAspectLabel(m_platform, gs_config.screenAspectRatio));
         if ( this->drawMenuItem( buf, 0) )
         {
-            this->goForward( OSDMenuId::Letterbox, (int)gs_config.screenAspectRatio );
+            this->goForward( OSDMenuId::Letterbox, getVisibleScreenAspectSelection(m_platform, gs_config.screenAspectRatio) );
         }
     }
 

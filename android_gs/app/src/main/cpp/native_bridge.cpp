@@ -201,6 +201,7 @@ public:
     void exitApp() override;
     void restartGPIOButtons() override;
     void setVsync(bool enabled) override;
+    bool supportsCustomScreenAspectModes() const override;
     std::string systemIPv4() const override;
     Clock::time_point lastPacketTime() const override;
     void captureFrameDebug(bool until_loss) override;
@@ -511,6 +512,12 @@ void AndroidMenuPlatform::restartGPIOButtons()
 void AndroidMenuPlatform::setVsync(bool enabled)
 {
     m_handle.groundstation_config.vsync = enabled;
+    m_handle.renderer.setVsync(enabled);
+}
+
+bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
+{
+    return false;
 }
 
 std::string AndroidMenuPlatform::systemIPv4() const

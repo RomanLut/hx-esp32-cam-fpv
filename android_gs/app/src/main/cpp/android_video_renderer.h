@@ -112,6 +112,7 @@ public:
                      int stride,
                      uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
+    void setVsync(bool enabled);
     void setScreenMode(int screen_mode);
     void updateFlightOsd(const uint8_t* data, uint16_t size);
     void clearFlightOsd();
@@ -183,6 +184,7 @@ private:
     std::atomic<bool> m_frame_dirty = false;
 
     int m_screen_mode = 1;
+    bool m_vsync = true;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
 
