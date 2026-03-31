@@ -7,8 +7,40 @@
 #include "osd.h"
 #include "imgui.h"
 #include "main.h"
+#include "Video_Decoder.h"
 
 namespace fs = std::filesystem;
+
+namespace
+{
+
+float targetAspectRatio()
+{
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    if (display_size.x <= 0.0f || display_size.y <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    switch (s_groundstation_config.screenAspectRatio)
+    {
+    case ScreenAspectRatio::STRETCH:
+        return 0.0f;
+    case ScreenAspectRatio::ASPECT5X4:
+        return 5.0f / 4.0f;
+    case ScreenAspectRatio::ASPECT4X3:
+        return 4.0f / 3.0f;
+    case ScreenAspectRatio::ASPECT16X9:
+        return 16.0f / 9.0f;
+    case ScreenAspectRatio::ASPECT16X10:
+        return 16.0f / 10.0f;
+    case ScreenAspectRatio::LETTERBOX:
+    default:
+        return display_size.x / display_size.y;
+    }
+}
+
+}
 
 DesktopOSD g_osd;
 
@@ -72,10 +104,12 @@ std::vector<std::string> DesktopOSD::getFontsList()
 //======================================================
 void DesktopOSD::draw()
 {
-    ImVec2 displaySize = ImGui::GetIO().DisplaySize;
-    int x1, y1, x2, y2;
-    calculateLetterBoxAndBorder(displaySize.x, displaySize.y, x1, y1, x2, y2);
-    OSDBase::draw(x1, y1, x2, y2);
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
+    OSDBase::drawFitted(static_cast<int>(display_size.x),
+                        static_cast<int>(display_size.y),
+                        video_aspect,
+                        targetAspectRatio());
 }
 
 //======================================================

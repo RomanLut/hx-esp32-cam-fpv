@@ -1,7 +1,8 @@
 #pragma once
 
 #include <stdint.h>
-#include "fec.h"
+
+#include "core/frame_packets_debug_core.h"
 
 #define FPD_PACKETS_PER_BLOCK       12
 #define FPD_BLOCKS_PER_ROW          4
@@ -13,16 +14,8 @@
 class FramePacketsDebug
 {
 private:
-    uint8_t buffer[FPD_ROWS][FPD_BLOCKS_PER_ROW][FPD_PACKETS_PER_BLOCK];
-
-    uint8_t state;
-    uint32_t first_block;
-    bool needBroken;
-    int retryCount;
-
-    bool copyToOSD(); //return true if dump contains lost block
-    uint8_t getPacketTypeChar(uint32_t block_index, uint32_t packet_index, const uint8_t* data);
-    void onPacketReceivedEx(uint32_t block_index, uint32_t packet_index, const uint8_t* data, bool old, bool recovered);
+    gs::core::FramePacketsDebugCore m_core;
+    void copyToOSD();
 
 public:
 

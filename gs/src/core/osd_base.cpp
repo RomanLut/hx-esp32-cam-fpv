@@ -121,6 +121,44 @@ void OSDBase::draw(int x1, int y1, int x2, int y2)
     }
 }
 
+void OSDBase::drawFitted(int viewport_width, int viewport_height, float content_aspect, float target_aspect)
+{
+    if (viewport_width <= 0 || viewport_height <= 0)
+    {
+        return;
+    }
+
+    int x1 = 0;
+    int y1 = 0;
+    int x2 = viewport_width;
+    int y2 = viewport_height;
+
+    if (content_aspect > 0.0f && target_aspect > 0.0f)
+    {
+        const int content_scaled = static_cast<int>(content_aspect * 100.0f + 0.5f);
+        const int target_scaled = static_cast<int>(target_aspect * 100.0f + 0.5f);
+        if (content_scaled != target_scaled)
+        {
+            if (content_aspect > target_aspect)
+            {
+                const int fitted_height = static_cast<int>(static_cast<float>(viewport_width) / content_aspect);
+                const int margin_y = (viewport_height - fitted_height) / 2;
+                y1 = margin_y;
+                y2 = margin_y + fitted_height;
+            }
+            else
+            {
+                const int fitted_width = static_cast<int>(static_cast<float>(viewport_height) * content_aspect);
+                const int margin_x = (viewport_width - fitted_width) / 2;
+                x1 = margin_x;
+                x2 = margin_x + fitted_width;
+            }
+        }
+    }
+
+    draw(x1, y1, x2, y2);
+}
+
 const OSDBuffer& OSDBase::buffer() const
 {
     return m_buffer;

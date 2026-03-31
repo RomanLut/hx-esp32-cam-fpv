@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include "Clock.h"
 #include "IHAL.h"
+#include "Video_Decoder.h"
 
 #include "Log.h"
 #include "ini.h"
@@ -189,6 +190,7 @@ extern mINI::INIStructure ini;
 extern mINI::INIFile s_iniFile;
 
 extern std::unique_ptr<IHAL> s_hal;
+extern Video_Decoder s_decoder;
 
 extern Clock::time_point s_incompatibleFirmwareTime;
 

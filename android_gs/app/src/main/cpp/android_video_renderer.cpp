@@ -404,16 +404,62 @@ void AndroidVideoRenderer::setScreenMode(int screen_mode)
     m_cv.notify_all();
 }
 
+void AndroidVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
+{
+    if (data == nullptr || size == 0)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_flight_osd.update(data, size);
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::clearFlightOsd()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_flight_osd.clear();
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::setFlightOsdFont(const std::string& font_name)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_flight_osd.setFontName(font_name);
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_flight_osd.clear();
+    for (int row = 0; row < OSD_ROWS; ++row)
+    {
+        for (int col = 0; col < OSD_COLS; ++col)
+        {
+            const uint8_t c = chars[row][col];
+            if (c != 0)
+            {
+                m_flight_osd.setLowChar(row, col, c);
+            }
+        }
+    }
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
 void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips,
                                            const OverlayMenuState& menu_state,
-                                           const OverlayStatsState& stats_state,
-                                           const OverlayPacketDebugState& packet_debug_state)
+                                           const OverlayStatsState& stats_state)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_overlay_chips = chips;
     m_overlay_menu = menu_state;
     m_overlay_stats = stats_state;
-    m_overlay_packet_debug = packet_debug_state;
     m_overlay_dirty = true;
     m_cv.notify_all();
 }
@@ -962,29 +1008,6 @@ void AndroidVideoRenderer::drawStatsLocked()
     gs::stats::drawFullscreenStatsPanel(m_overlay_stats.snapshot);
 }
 
-void AndroidVideoRenderer::drawPacketDebugLocked()
-{
-    if (!m_overlay_packet_debug.visible || m_imgui_context == nullptr || m_overlay_packet_debug.lines.empty())
-    {
-        return;
-    }
-
-    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    ImGui::SetCursorPos(ImVec2(10.0f, 80.0f));
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.65f));
-    ImGui::BeginChild("PACKET_DEBUG",
-                      ImVec2(std::min(760.0f, ImGui::GetIO().DisplaySize.x - 20.0f),
-                             std::min(520.0f, ImGui::GetIO().DisplaySize.y - 90.0f)),
-                      true,
-                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoNav);
-    for (const auto& line : m_overlay_packet_debug.lines)
-    {
-        ImGui::TextUnformatted(line.c_str());
-    }
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
-}
-
 void AndroidVideoRenderer::drawMenuLocked()
 {
     if (!m_overlay_menu.visible)
@@ -1127,9 +1150,9 @@ void AndroidVideoRenderer::drawOverlayLocked()
                          ImGuiWindowFlags_NoFocusOnAppearing);
     }
 
+    m_flight_osd.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode);
     drawHudLocked();
     drawStatsLocked();
-    drawPacketDebugLocked();
     drawMenuLocked();
 
     if (m_touch_pending)

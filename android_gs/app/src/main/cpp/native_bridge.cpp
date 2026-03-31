@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <android/log.h>
+#include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -23,12 +24,14 @@
 #include <unistd.h>
 
 #include "android_jpeg_decoder.h"
+#include "android_jni_shared.h"
 #include "android_video_renderer.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
 #include "crc.h"
 #include "lodepng.h"
 #include "core/gs_session_core.h"
+#include "core/frame_packets_debug_core.h"
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
@@ -166,238 +169,6 @@ struct AndroidGsStats
     int pingMinMS = 0;
     int pingMaxMS = 0;
     int RCPeriodMax = -1;
-};
-
-class AndroidFramePacketsDebug
-{
-public:
-    void off()
-    {
-        m_state = State::Off;
-        m_lines.clear();
-    }
-
-    void captureFrame(bool until_loss)
-    {
-        clear();
-        m_state = State::SyncBlockStart;
-        m_need_broken = until_loss;
-        m_retry_count = 0;
-    }
-
-    bool isVisible() const
-    {
-        return m_state == State::Showing && !m_lines.empty();
-    }
-
-    const std::vector<std::string>& lines() const
-    {
-        return m_lines;
-    }
-
-    void onPacketReceived(uint32_t block_index,
-                          uint32_t packet_index,
-                          const uint8_t* data,
-                          bool old,
-                          uint8_t fec_k,
-                          uint8_t fec_n)
-    {
-        if (m_state == State::Off)
-        {
-            return;
-        }
-
-        if (m_state == State::SyncBlockStart)
-        {
-            if (old)
-            {
-                return;
-            }
-            m_first_block = block_index + 1;
-            m_state = State::Capture;
-        }
-
-        if (m_state != State::Capture)
-        {
-            return;
-        }
-
-        if (block_index < m_first_block)
-        {
-            return;
-        }
-
-        const uint32_t relative_block = block_index - m_first_block;
-        const uint32_t row = relative_block / kBlocksPerRow;
-        const uint32_t col = relative_block % kBlocksPerRow;
-        if (row >= kRows)
-        {
-            const bool has_lost_block = buildLines(fec_k, fec_n);
-            m_state = State::Showing;
-            if (!has_lost_block && m_need_broken && m_retry_count < 100)
-            {
-                const int retry_count = m_retry_count + 1;
-                captureFrame(true);
-                m_retry_count = retry_count;
-            }
-            return;
-        }
-
-        if (packet_index >= kPacketsPerBlock)
-        {
-            return;
-        }
-
-        const uint8_t c = old ? kCharOldRejected : getPacketTypeChar(packet_index, data, fec_k);
-        uint8_t& cell = m_buffer[row][col][packet_index];
-        if (cell == kCharEmpty)
-        {
-            cell = c;
-        }
-    }
-
-    void onPacketRestored(uint32_t block_index,
-                          uint32_t packet_index,
-                          const uint8_t* data,
-                          uint8_t fec_k)
-    {
-        if (m_state != State::Capture || block_index < m_first_block || packet_index >= kPacketsPerBlock)
-        {
-            return;
-        }
-
-        const uint32_t relative_block = block_index - m_first_block;
-        const uint32_t row = relative_block / kBlocksPerRow;
-        const uint32_t col = relative_block % kBlocksPerRow;
-        if (row >= kRows)
-        {
-            return;
-        }
-
-        m_buffer[row][col][packet_index] = getPacketTypeChar(packet_index, data, fec_k);
-    }
-
-private:
-    static constexpr int kPacketsPerBlock = 12;
-    static constexpr int kBlocksPerRow = 4;
-    static constexpr int kRows = 20;
-    static constexpr uint8_t kCharEmpty = '-';
-    static constexpr uint8_t kCharFrameStart = 'F';
-    static constexpr uint8_t kCharFramePart = 'P';
-    static constexpr uint8_t kCharFrameEnd = 'E';
-    static constexpr uint8_t kCharFrameSingle = 'B';
-    static constexpr uint8_t kCharTelemetry = 'T';
-    static constexpr uint8_t kCharConfig = 'C';
-    static constexpr uint8_t kCharOsd = 'O';
-    static constexpr uint8_t kCharUnknown = '?';
-    static constexpr uint8_t kCharFec = '*';
-    static constexpr uint8_t kCharOldRejected = 'J';
-    static constexpr uint8_t kCharBlockLost = '!';
-
-    enum class State : uint8_t
-    {
-        Off = 0,
-        SyncBlockStart = 1,
-        Capture = 2,
-        Showing = 3,
-    };
-
-    void clear()
-    {
-        for (auto& row : m_buffer)
-        {
-            for (auto& block : row)
-            {
-                block.fill(kCharEmpty);
-            }
-        }
-        m_lines.clear();
-    }
-
-    bool buildLines(uint8_t fec_k, uint8_t fec_n)
-    {
-        m_lines.clear();
-        bool has_lost_block = false;
-        const int packet_columns = std::min<int>(fec_n > 0 ? fec_n : kPacketsPerBlock, kPacketsPerBlock);
-
-        for (int row = 0; row < kRows; ++row)
-        {
-            std::string line;
-            line.reserve(kBlocksPerRow * (kPacketsPerBlock + 2));
-            for (int block = 0; block < kBlocksPerRow; ++block)
-            {
-                int block_count = 0;
-                for (int packet = 0; packet < packet_columns; ++packet)
-                {
-                    const char c = static_cast<char>(m_buffer[row][block][packet]);
-                    if (c != static_cast<char>(kCharEmpty) &&
-                        c != static_cast<char>(kCharOldRejected) &&
-                        c != static_cast<char>(kCharUnknown))
-                    {
-                        block_count++;
-                    }
-                    line.push_back(c);
-                }
-                if (block_count < fec_k)
-                {
-                    has_lost_block = true;
-                    line.push_back(static_cast<char>(kCharBlockLost));
-                }
-                else
-                {
-                    line.push_back(' ');
-                }
-                line.push_back(' ');
-            }
-            m_lines.push_back(std::move(line));
-        }
-
-        return has_lost_block;
-    }
-
-    uint8_t getPacketTypeChar(uint32_t packet_index, const uint8_t* data, uint8_t fec_k) const
-    {
-        if (packet_index >= fec_k)
-        {
-            return kCharFec;
-        }
-
-        if (data == nullptr)
-        {
-            return kCharUnknown;
-        }
-
-        const auto* header = reinterpret_cast<const Air2Ground_Header*>(data);
-        if (header->type == Air2Ground_Header::Type::Video)
-        {
-            const auto* video = reinterpret_cast<const Air2Ground_Video_Packet*>(data);
-            if (video->part_index == 0)
-            {
-                return video->last_part == 1 ? kCharFrameSingle : kCharFrameStart;
-            }
-            return video->last_part == 1 ? kCharFrameEnd : kCharFramePart;
-        }
-        if (header->type == Air2Ground_Header::Type::Telemetry)
-        {
-            return kCharTelemetry;
-        }
-        if (header->type == Air2Ground_Header::Type::OSD)
-        {
-            return kCharOsd;
-        }
-        if (header->type == Air2Ground_Header::Type::Config)
-        {
-            return kCharConfig;
-        }
-        return kCharUnknown;
-    }
-
-    std::array<std::array<std::array<uint8_t, kPacketsPerBlock>, kBlocksPerRow>, kRows> m_buffer = {};
-    State m_state = State::Off;
-    uint32_t m_first_block = 0;
-    bool m_need_broken = false;
-    int m_retry_count = 0;
-    std::vector<std::string> m_lines;
 };
 
 struct NativeHandle;
@@ -569,7 +340,7 @@ struct NativeHandle
     std::unique_ptr<gs::menu::OSDMenuController> menu_controller;
     AndroidVideoRenderer renderer;
     AndroidJpegDecoder jpeg_decoder;
-    AndroidFramePacketsDebug frame_packets_debug;
+    gs::core::FramePacketsDebugCore frame_packets_debug;
     gs::stats::GroundStatsSnapshot last_ground_stats = {};
     AndroidGsStats gs_stats = {};
     int restored_transport_packets = 0;
@@ -1210,6 +981,15 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
         {
             handle.session.addInboundTelemetryBytes(session_event.telemetry.payload_size);
         }
+        else if (session_event.kind == gs::core::SessionEventKind::OsdUpdate)
+        {
+            const gs::core::OsdPacketView& osd_view = session_event.osd;
+            handle.renderer.setFlightOsdFont(handle.menu_platform->currentOSDFontName());
+            if (!handle.frame_packets_debug.isOn())
+            {
+                handle.renderer.updateFlightOsd(&osd_view.packet->osd_enc_start, osd_view.osd_data_size);
+            }
+        }
 
         handle.session.addReceivedBytes(packet_size);
         handle.session.syncConfigPacket(handle.config_packet);
@@ -1393,7 +1173,6 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
 
     AndroidVideoRenderer::OverlayMenuState menu_state;
     AndroidVideoRenderer::OverlayStatsState stats_state;
-    AndroidVideoRenderer::OverlayPacketDebugState packet_debug_state;
     if (handle.menu_controller->isVisible())
     {
         const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
@@ -1422,13 +1201,13 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         stats_state.snapshot.data_size_stats = handle.data_size_stats;
         stats_state.snapshot.ground_stats = handle.last_ground_stats;
     }
+    handle.renderer.setFlightOsdFont(handle.menu_platform->currentOSDFontName());
     if (handle.frame_packets_debug.isVisible())
     {
-        packet_debug_state.visible = true;
-        packet_debug_state.lines = handle.frame_packets_debug.lines();
+        handle.renderer.setFlightOsdChars(handle.frame_packets_debug.osdChars());
     }
 
-    handle.renderer.setOverlayState(chips, menu_state, stats_state, packet_debug_state);
+    handle.renderer.setOverlayState(chips, menu_state, stats_state);
 }
 
 void handleTapLocked(NativeHandle& handle,
@@ -1691,6 +1470,14 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_getBuildInfo(JNIEnv* env, jobject /* thiz */)
 {
     return newJavaString(env, buildInfoString());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setAssetManager(JNIEnv* env,
+                                                          jobject /* thiz */,
+                                                          jobject asset_manager)
+{
+    androidSetAssetManager(asset_manager == nullptr ? nullptr : AAssetManager_fromJava(env, asset_manager));
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -2079,6 +1866,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     native_handle->last_video_part_index = 0;
     native_handle->last_video_last_part = 0;
     native_handle->last_video_payload_size = 0;
+    native_handle->renderer.clearFlightOsd();
     native_handle->menu_controller->close();
 }
 

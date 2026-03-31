@@ -3,8 +3,10 @@ project(android_gs_core)
 
 add_library(android_gs_core SHARED
     android_jpeg_decoder.cpp
+    android_osd.cpp
     android_video_renderer.cpp
     native_bridge.cpp
+    ../../../../../gs/src/fontwalksnail.cpp
     ../../../../../gs/src/imgui/imgui.cpp
     ../../../../../gs/src/imgui/imgui_draw.cpp
     ../../../../../gs/src/imgui/imgui_tables.cpp
@@ -13,6 +15,8 @@ add_library(android_gs_core SHARED
     ../../../../../gs/src/utils/lodepng.cpp
     ../../../../../gs/src/core/gs_protocol.cpp
     ../../../../../gs/src/core/gs_session_core.cpp
+    ../../../../../gs/src/core/osd_base.cpp
+    ../../../../../gs/src/core/frame_packets_debug_core.cpp
     ../../../../../gs/src/core/osd_menu_common.cpp
     ../../../../../gs/src/core/osd_menu_controller.cpp
     ../../../../../gs/src/core/osd_menu_imgui_shared.cpp

@@ -1,6 +1,7 @@
 #include "android_jpeg_decoder.h"
 
 #include <jni.h>
+#include <android/asset_manager.h>
 #include <android/log.h>
 
 #include <algorithm>
@@ -17,6 +18,7 @@ constexpr uint32_t kDefaultMinDecodeMs = 99;
 constexpr size_t kWorkerCount = 2;
 
 JavaVM* g_java_vm = nullptr;
+AAssetManager* g_asset_manager = nullptr;
 jclass g_bitmap_decode_bridge_class = nullptr;
 jmethodID g_decode_rgb565_method = nullptr;
 jclass g_decode_result_class = nullptr;
@@ -87,6 +89,16 @@ AndroidJpegDecoder::DecodeStats makeStats(uint32_t broken_frames,
 JavaVM* androidGetJavaVm()
 {
     return g_java_vm;
+}
+
+AAssetManager* androidGetAssetManager()
+{
+    return g_asset_manager;
+}
+
+void androidSetAssetManager(AAssetManager* asset_manager)
+{
+    g_asset_manager = asset_manager;
 }
 
 jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)

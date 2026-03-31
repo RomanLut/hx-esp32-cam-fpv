@@ -1,18 +1,13 @@
-#include "main.h"
-
-#include "lodepng.h"
-
 #include "fontwalksnail.h"
-#include "Log.h"
-#include "util.h"
 
 #include "imgui.h"
+#include "lodepng.h"
+#include "util.h"
 
-extern "C"
-{
-#include <GLES3/gl3.h>
-#include <GLES3/gl3ext.h>
-}
+#include <cstdio>
+#include <GLES2/gl2.h>
+
+#include <cstring>
 
 #define OSD_CHAR_WIDTH_24 24
 #define OSD_CHAR_HEIGHT_24 36
@@ -22,11 +17,27 @@ extern "C"
 
 #define CHARS_PER_TEXTURE_ROW 14
 
+namespace
+{
+
+void reportFontError(const char* message, const char* detail)
+{
+  std::fprintf(stderr, "FontWalksnail: %s (%s)\n", message, detail != nullptr ? detail : "");
+}
+
+void reportFontError(const char* message, unsigned int detail)
+{
+  std::fprintf(stderr, "FontWalksnail: %s (%u)\n", message, detail);
+}
+
+}
+
 //======================================================
 //======================================================
 FontWalksnail::FontWalksnail(const char* fileName)
 {
-  this->loaded = false;
+  fontTextureId = 0;
+  loaded = false;
 
   unsigned char* image = 0;
   unsigned width, height;
@@ -34,86 +45,34 @@ FontWalksnail::FontWalksnail(const char* fileName)
   unsigned int error = lodepng_decode32_file(&image, &width, &height, fileName);
   if (error)
   {
-    LOGE("error {}: {}\n", error, lodepng_error_text(error));
+    reportFontError(lodepng_error_text(error), error);
     return;
   }
 
-  if ((width != OSD_CHAR_WIDTH_24) && (width != OSD_CHAR_WIDTH_36))
+  initFromDecodedImage(image, width, height, fileName);
+  free(image);
+}
+
+FontWalksnail::FontWalksnail(const void* pngData, size_t pngSize)
+{
+  fontTextureId = 0;
+  loaded = false;
+
+  unsigned char* image = 0;
+  unsigned width = 0;
+  unsigned height = 0;
+  unsigned int error = lodepng_decode32(&image,
+                                        &width,
+                                        &height,
+                                        static_cast<const unsigned char*>(pngData),
+                                        pngSize);
+  if (error)
   {
-    LOGE("Unexpected image size: {}\n", fileName);
+    reportFontError(lodepng_error_text(error), error);
     return;
   }
 
-  this->charWidth = width;
-  this->charHeight = height / 512;
-
-  int charsCount = 512;
-
-  if ( this->charHeight != OSD_CHAR_HEIGHT_24 )
-  {
-    this->charHeight = height / 256;
-    charsCount = 256;
-  }
-
-  if ((this->charWidth == OSD_CHAR_WIDTH_24) && (this->charHeight != OSD_CHAR_HEIGHT_24))
-  {
-    LOGE("Unexpected image size: {}\n", fileName);
-    return;
-  }
-
-  this->calculateTextureHeight(this->charWidth * CHARS_PER_TEXTURE_ROW, this->charHeight * (512 + CHARS_PER_TEXTURE_ROW - 1) / CHARS_PER_TEXTURE_ROW);
-
-  uint8_t* buffer = new uint8_t[this->fontTextureWidth * this->fontTextureHeight * 4];
-
-  memset((void*)buffer, 0, this->fontTextureWidth * this->fontTextureHeight * 4);
-
-  for (int charIndex = 0; charIndex < charsCount; charIndex++)
-  {
-    int ix = 0;
-    int iy = charIndex * this->charHeight;
-
-    int tx = (charIndex % CHARS_PER_TEXTURE_ROW) * this->charWidth;
-    int ty = (charIndex / CHARS_PER_TEXTURE_ROW) * this->charHeight;
-
-    for (unsigned int y = 0; y < this->charHeight; y++)
-    {
-      const uint8_t* pi = image + (iy+y) * width * 4 + ix * 4;
-      uint8_t* pt = buffer + (ty+y) * this->fontTextureWidth * 4 + tx * 4;
-
-      for (unsigned int x = 0; x < this->charWidth; x++)
-      {
-        pt[0] = pi[0];
-        pt[1] = pi[1];
-        pt[2] = pi[2];
-        pt[3] = pi[3];
-
-        pi += 4;
-        pt += 4;
-      }
-    }
-    this->loaded = true;
-  }
-
-/*  
-  char fname[1000];
-  strcpy(fname, fileName);
-  strcpy(fname + strlen(fname)-4 , "_texture.png");
-  lodepng_encode_file(fname, buffer, this->fontTextureWidth, this->fontTextureHeight, LCT_RGBA, 8);
-*/ 
-
-  GLCHK(glGenTextures(1, &this->fontTextureId));
-  GLCHK(glBindTexture(GL_TEXTURE_2D, this->fontTextureId));
-  GLCHK(glPixelStorei(GL_UNPACK_ALIGNMENT, 1));
-  GLCHK(glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
-  GLCHK(glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
-  GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
-  GLCHK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
-  LOGI("Texture: {}", this->fontTextureId);
-
-  GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, this->fontTextureWidth, this->fontTextureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer));
-
-  delete[] buffer;
-
+  initFromDecodedImage(image, width, height, "<memory>");
   free(image);
 }
 
@@ -122,8 +81,7 @@ FontWalksnail::FontWalksnail(const char* fileName)
 //======================================================
 FontWalksnail::~FontWalksnail()
 {
-  GLCHK(glBindTexture(GL_TEXTURE_2D, 0)); 
-  GLCHK(glDeleteTextures(1, &this->fontTextureId));
+  destroy();
 }
 
 //======================================================
@@ -177,8 +135,86 @@ void FontWalksnail::destroy()
 {
     if(this->fontTextureId != 0)
     {
+        glBindTexture(GL_TEXTURE_2D, 0);
         glDeleteTextures(1,&this->fontTextureId);
+        this->fontTextureId = 0;
     }
+}
+
+void FontWalksnail::initFromDecodedImage(unsigned char* image,
+                                         unsigned width,
+                                         unsigned height,
+                                         const char* sourceName)
+{
+  if ((width != OSD_CHAR_WIDTH_24) && (width != OSD_CHAR_WIDTH_36))
+  {
+    reportFontError("Unexpected image size", sourceName);
+    return;
+  }
+
+  this->charWidth = width;
+  this->charHeight = height / 512;
+
+  int charsCount = 512;
+  if (this->charHeight != OSD_CHAR_HEIGHT_24)
+  {
+    this->charHeight = height / 256;
+    charsCount = 256;
+  }
+
+  if ((this->charWidth == OSD_CHAR_WIDTH_24 && this->charHeight != OSD_CHAR_HEIGHT_24) ||
+      (this->charWidth == OSD_CHAR_WIDTH_36 && this->charHeight != OSD_CHAR_HEIGHT_36))
+  {
+    reportFontError("Unexpected image size", sourceName);
+    return;
+  }
+
+  this->calculateTextureHeight(this->charWidth * CHARS_PER_TEXTURE_ROW,
+                               this->charHeight * (charsCount + CHARS_PER_TEXTURE_ROW - 1) / CHARS_PER_TEXTURE_ROW);
+
+  std::vector<uint8_t> buffer(static_cast<size_t>(this->fontTextureWidth) * this->fontTextureHeight * 4u, 0);
+
+  for (int charIndex = 0; charIndex < charsCount; charIndex++)
+  {
+    const int iy = charIndex * this->charHeight;
+    const int tx = (charIndex % CHARS_PER_TEXTURE_ROW) * this->charWidth;
+    const int ty = (charIndex / CHARS_PER_TEXTURE_ROW) * this->charHeight;
+
+    for (unsigned int y = 0; y < this->charHeight; y++)
+    {
+      const uint8_t* pi = image + (iy + y) * width * 4u;
+      uint8_t* pt = buffer.data() + (static_cast<size_t>(ty) + y) * this->fontTextureWidth * 4u + static_cast<size_t>(tx) * 4u;
+
+      for (unsigned int x = 0; x < this->charWidth; x++)
+      {
+        const uint8_t* src = pi + x * 4u;
+        uint8_t* dst = pt + x * 4u;
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = src[3];
+      }
+    }
+  }
+
+  glGenTextures(1, &this->fontTextureId);
+  glBindTexture(GL_TEXTURE_2D, this->fontTextureId);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexImage2D(GL_TEXTURE_2D,
+               0,
+               GL_RGBA,
+               this->fontTextureWidth,
+               this->fontTextureHeight,
+               0,
+               GL_RGBA,
+               GL_UNSIGNED_BYTE,
+               buffer.data());
+
+  loaded = (this->fontTextureId != 0);
 }
 
 

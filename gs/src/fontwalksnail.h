@@ -1,6 +1,8 @@
 #pragma once
-
+ 
+#include <cstddef>
  #include <stdint.h>
+#include <vector>
 
 //======================================================
 //======================================================
@@ -21,6 +23,7 @@ private:
 
 public:
 	FontWalksnail(const char* fileName);
+	FontWalksnail(const void* pngData, size_t pngSize);
 	~FontWalksnail();
 
   bool loaded;
@@ -30,4 +33,10 @@ public:
   void drawTest();
 
   void destroy();
+
+private:
+  void initFromDecodedImage(unsigned char* image,
+                            unsigned width,
+                            unsigned height,
+                            const char* sourceName);
 };

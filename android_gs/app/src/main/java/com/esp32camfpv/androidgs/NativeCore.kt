@@ -1,5 +1,6 @@
 package com.esp32camfpv.androidgs
 
+import android.content.res.AssetManager
 import android.view.Surface
 
 object NativeCore {
@@ -19,6 +20,7 @@ object NativeCore {
     }
 
     external fun getBuildInfo(): String
+    external fun setAssetManager(assetManager: AssetManager)
     external fun createHandle(gsDeviceId: Int = 1): Long
     external fun describeHandle(handle: Long): String
     external fun startUdpClient(

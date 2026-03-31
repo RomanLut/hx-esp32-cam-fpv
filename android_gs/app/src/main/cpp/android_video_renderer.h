@@ -1,6 +1,7 @@
 #pragma once
 
 #include "android_jni_shared.h"
+#include "android_osd.h"
 
 #include <android/native_window.h>
 
@@ -72,12 +73,6 @@ public:
         gs::stats::FullscreenStatsSnapshot snapshot = {};
     };
 
-    struct OverlayPacketDebugState
-    {
-        bool visible = false;
-        std::vector<std::string> lines;
-    };
-
     struct RendererStats
     {
         uint32_t upload_count = 0;
@@ -118,10 +113,13 @@ public:
                      uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
     void setScreenMode(int screen_mode);
+    void updateFlightOsd(const uint8_t* data, uint16_t size);
+    void clearFlightOsd();
+    void setFlightOsdFont(const std::string& font_name);
+    void setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars);
     void setOverlayState(const std::vector<OverlayChip>& chips,
                          const OverlayMenuState& menu_state,
-                         const OverlayStatsState& stats_state,
-                         const OverlayPacketDebugState& packet_debug_state);
+                         const OverlayStatsState& stats_state);
     MenuAction dispatchTap(float x, float y);
     RendererStats consumeStats();
 
@@ -152,7 +150,6 @@ private:
     void drawHudLocked();
     void drawHudImGuiLocked();
     void drawStatsLocked();
-    void drawPacketDebugLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
@@ -203,10 +200,10 @@ private:
     PixelFormat m_uploaded_pixel_format = PixelFormat::RGB24;
     bool m_has_uploaded_frame = false;
     std::vector<uint8_t> m_pending_font_png;
+    AndroidOSD m_flight_osd;
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
     OverlayStatsState m_overlay_stats;
-    OverlayPacketDebugState m_overlay_packet_debug;
     Rect m_menu_bounds;
     std::vector<Rect> m_menu_item_bounds;
     Rect m_nav_up_bounds;
