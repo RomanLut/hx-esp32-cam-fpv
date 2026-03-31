@@ -1245,12 +1245,12 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
     AndroidVideoRenderer::OverlayStatsState stats_state;
     if (handle.menu_controller->isVisible())
     {
-        const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
+        const gs::menu::OSDMenuViewState view_state = handle.menu_controller->buildViewState(handle.config_packet);
         menu_state.visible = true;
-        menu_state.title = snapshot.title;
-        menu_state.items = snapshot.items;
-        menu_state.status_lines = snapshot.statuses;
-        menu_state.selected_index = snapshot.selected_item;
+        menu_state.title = view_state.title;
+        menu_state.items = view_state.items;
+        menu_state.status_lines = view_state.statuses;
+        menu_state.selected_index = view_state.selected_item;
         menu_state.footer = build_info;
     }
 
@@ -1297,54 +1297,32 @@ void handleTapLocked(NativeHandle& handle,
         return;
     }
 
-    const gs::menu::OSDMenuSnapshot snapshot = handle.menu_controller->buildSnapshot(handle.config_packet);
-    const auto menu_layout = gs::menu::imgui::buildMenuFrameLayout(view_width, view_height, true, 29.0f);
-    const auto nav_layout = buildNavPadLayout(view_width, view_height);
-
-    if (pointInRect(x, y, nav_layout.center_x, nav_layout.up_y, nav_layout.size, nav_layout.size))
+    const AndroidVideoRenderer::MenuAction action = handle.renderer.dispatchTap(x, y);
+    switch (action.kind)
     {
+    case AndroidVideoRenderer::MenuActionKind::Up:
         handle.menu_controller->moveSelection(-1);
         return;
-    }
-
-    if (pointInRect(x, y, nav_layout.center_x, nav_layout.down_y, nav_layout.size, nav_layout.size))
-    {
+    case AndroidVideoRenderer::MenuActionKind::Down:
         handle.menu_controller->moveSelection(1);
         return;
-    }
-
-    if (pointInRect(x, y, nav_layout.left_x, nav_layout.mid_y, nav_layout.size, nav_layout.size))
-    {
+    case AndroidVideoRenderer::MenuActionKind::Back:
         handle.menu_controller->goBackPublic();
         return;
-    }
-
-    if (pointInRect(x, y, nav_layout.right_x, nav_layout.mid_y, nav_layout.size, nav_layout.size))
-    {
+    case AndroidVideoRenderer::MenuActionKind::Activate:
         handle.menu_controller->activateSelected(handle.config_packet);
         return;
-    }
-
-    const float menu_x = menu_layout.window_x;
-    const float menu_y = menu_layout.window_y;
-    const float menu_w = menu_layout.window_width;
-    const float menu_h = menu_layout.window_height;
-    const float item_x = menu_x + menu_layout.item_indent;
-    float item_y = menu_y + menu_layout.button_height + menu_layout.large_gap;
-
-    for (size_t index = 0; index < snapshot.items.size(); ++index)
-    {
-        if (pointInRect(x, y, item_x, item_y, menu_layout.item_width, menu_layout.button_height))
+    case AndroidVideoRenderer::MenuActionKind::SelectItem:
+        if (action.item_index >= 0)
         {
-            handle.menu_controller->activateItemByVisibleIndex(handle.config_packet, static_cast<int>(index));
-            return;
+            handle.menu_controller->activateItemByVisibleIndex(handle.config_packet, action.item_index);
         }
-        item_y += menu_layout.button_height + menu_layout.item_gap_y;
-    }
-
-    if (!pointInRect(x, y, menu_x, menu_y, menu_w, menu_h))
-    {
+        return;
+    case AndroidVideoRenderer::MenuActionKind::Outside:
         handle.menu_controller->goBackPublic();
+        return;
+    case AndroidVideoRenderer::MenuActionKind::None:
+    default:
         return;
     }
 }
@@ -1763,6 +1741,20 @@ Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */
     return native_handle->groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH ? 0 : 1;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_isVrModeEnabled(JNIEnv* /* env */,
+                                                          jobject /* thiz */,
+                                                          jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    return native_handle->groundstation_config.vrMode ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env */,
                                                                 jobject /* thiz */,
@@ -1776,6 +1768,21 @@ Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env *
     }
 
     native_handle->renderer.setScreenMode(std::clamp(static_cast<int>(screen_mode), 0, 2));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setRendererVrMode(JNIEnv* /* env */,
+                                                            jobject /* thiz */,
+                                                            jlong handle,
+                                                            jboolean enabled)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->renderer.setVrMode(enabled == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL

@@ -110,6 +110,7 @@ private fun AndroidGsApp(
     val buildInfo = remember { NativeCore.getBuildInfo() }
     fun refreshNativeState() {
         NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
+        NativeCore.setRendererVrMode(nativeHandle, NativeCore.isVrModeEnabled(nativeHandle))
         NativeCore.syncRendererOverlay(nativeHandle, buildInfo)
     }
 

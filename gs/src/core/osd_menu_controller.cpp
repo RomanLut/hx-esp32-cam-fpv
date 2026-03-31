@@ -10,15 +10,11 @@ using OSDMenuController = gs::menu::OSDMenuController;
 namespace
 {
 
-std::string stripImGuiIdSuffix(const char* caption)
+gs::menu::imgui::MenuFrameLayout offsetMenuLayout(const gs::menu::imgui::MenuFrameLayout& layout, float origin_x)
 {
-    const char* text = caption != nullptr ? caption : "";
-    const char* marker = std::strstr(text, "##");
-    if (marker == nullptr)
-    {
-        return text;
-    }
-    return std::string(text, static_cast<size_t>(marker - text));
+    gs::menu::imgui::MenuFrameLayout shifted = layout;
+    shifted.window_x += origin_x;
+    return shifted;
 }
 
 int getVisibleScreenAspectSelection(const gs::menu::IOSDMenuPlatform& platform, ScreenAspectRatio ratio)
@@ -100,16 +96,7 @@ void OSDMenuController::activateSelected(Ground2Air_Config_Packet& config)
     {
         return;
     }
-
-    const OSDMenuSnapshot snapshot = buildSnapshot(config);
-    for (size_t i = 0; i < snapshot.item_indices.size(); ++i)
-    {
-        if (snapshot.item_indices[i] == this->selectedItem)
-        {
-            activateItemByVisibleIndex(config, static_cast<int>(i));
-            return;
-        }
-    }
+    replayItemActivation(config, this->selectedItem);
 }
 
 void OSDMenuController::activateItemByVisibleIndex(Ground2Air_Config_Packet& config, int visible_index)
@@ -119,56 +106,61 @@ void OSDMenuController::activateItemByVisibleIndex(Ground2Air_Config_Packet& con
         return;
     }
 
-    const OSDMenuSnapshot snapshot = buildSnapshot(config);
-    if (visible_index < 0 || visible_index >= static_cast<int>(snapshot.item_indices.size()))
+    const OSDMenuViewState view_state = buildViewState(config);
+    if (visible_index < 0 || visible_index >= static_cast<int>(view_state.item_indices.size()))
     {
         return;
     }
 
-    this->selectedItem = snapshot.item_indices[visible_index];
+    this->selectedItem = view_state.item_indices[visible_index];
     replayItemActivation(config, this->selectedItem);
 }
 
-gs::menu::OSDMenuSnapshot OSDMenuController::buildSnapshot(Ground2Air_Config_Packet& config)
+gs::menu::OSDMenuViewState OSDMenuController::buildViewState(Ground2Air_Config_Packet& config)
 {
-    OSDMenuSnapshot snapshot;
-    snapshot.visible = this->visible;
+    OSDMenuViewState view_state;
+    view_state.visible = this->visible;
     if (!this->visible)
     {
-        return snapshot;
+        return view_state;
     }
 
-    this->m_capture_snapshot = true;
-    this->m_replay_activation = false;
-    this->m_replay_item_index = -1;
-    this->m_snapshot = {};
-    this->m_snapshot.visible = true;
+    this->m_draw_mode = DrawMode::CaptureViewState;
+    this->m_activate_item_index = -1;
+    this->m_view_state = {};
+    this->m_view_state.visible = true;
     this->itemsCount = 0;
     this->keyHandled = false;
     drawCurrentMenu(config);
-    this->m_snapshot.selected_item = 0;
-    for (size_t i = 0; i < this->m_snapshot.item_indices.size(); ++i)
+    this->m_view_state.selected_item = 0;
+    for (size_t i = 0; i < this->m_view_state.item_indices.size(); ++i)
     {
-        if (this->m_snapshot.item_indices[i] == this->selectedItem)
+        if (this->m_view_state.item_indices[i] == this->selectedItem)
         {
-            this->m_snapshot.selected_item = static_cast<int>(i);
+            this->m_view_state.selected_item = static_cast<int>(i);
             break;
         }
     }
-    snapshot = this->m_snapshot;
-    this->m_capture_snapshot = false;
-    this->m_replay_activation = false;
-    this->m_replay_item_index = -1;
-    return snapshot;
+    view_state = this->m_view_state;
+    this->m_draw_mode = DrawMode::Interactive;
+    this->m_activate_item_index = -1;
+    return view_state;
 }
 
 //=======================================================
 //=======================================================
 void OSDMenuController::drawMenuTitle( const char* caption )
 {
-    if (m_capture_snapshot)
+    if (m_draw_mode == DrawMode::CaptureViewState)
     {
-        m_snapshot.title = stripImGuiIdSuffix(caption);
+        m_view_state.title = caption != nullptr ? caption : "";
+        this->itemsCount = 0;
+        this->keyHandled = false;
+        return;
+    }
+
+    if (m_draw_mode == DrawMode::ActivateItem)
+    {
         this->itemsCount = 0;
         this->keyHandled = false;
         return;
@@ -184,9 +176,14 @@ void OSDMenuController::drawMenuTitle( const char* caption )
 //=======================================================
 void OSDMenuController::drawStatus( const char* caption )
 {
-    if (m_capture_snapshot)
+    if (m_draw_mode == DrawMode::CaptureViewState)
     {
-        m_snapshot.statuses.emplace_back(stripImGuiIdSuffix(caption));
+        m_view_state.statuses.emplace_back(caption != nullptr ? caption : "");
+        return;
+    }
+
+    if (m_draw_mode == DrawMode::ActivateItem)
+    {
         return;
     }
 
@@ -195,7 +192,7 @@ void OSDMenuController::drawStatus( const char* caption )
 
 void OSDMenuController::drawSpacing()
 {
-    if (!m_capture_snapshot)
+    if (m_draw_mode != DrawMode::CaptureViewState && m_draw_mode != DrawMode::ActivateItem)
     {
         gs::menu::imgui::drawSmallGap(m_imgui_layout);
     }
@@ -203,7 +200,7 @@ void OSDMenuController::drawSpacing()
 
 void OSDMenuController::drawLargeGapIfTallScreen()
 {
-    if (!m_capture_snapshot)
+    if (m_draw_mode != DrawMode::CaptureViewState && m_draw_mode != DrawMode::ActivateItem)
     {
         gs::menu::imgui::drawLargeGap(m_imgui_layout);
     }
@@ -223,32 +220,32 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
         return false;
     }
 
-    if (m_capture_snapshot)
+    if (m_draw_mode == DrawMode::CaptureViewState)
     {
-        if (!m_replay_activation)
-        {
-            m_snapshot.items.emplace_back(stripImGuiIdSuffix(caption));
-            m_snapshot.item_indices.push_back(itemIndex);
-        }
+        m_view_state.items.emplace_back(caption != nullptr ? caption : "");
+        m_view_state.item_indices.push_back(itemIndex);
         this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
-        const bool res = m_replay_activation && itemIndex == m_replay_item_index && !this->keyHandled;
-        this->keyHandled |= res;
-        if (res)
-        {
-            this->selectedItem = itemIndex;
-        }
-        return res;
+        return false;
     }
 
     bool focused = this->selectedItem == itemIndex;
-    bool res = focused && ( ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && !this->keyHandled;
+    bool res = false;
 
-    if ( gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused) )
+    if (m_draw_mode == DrawMode::ActivateItem)
+    {
+        res = itemIndex == m_activate_item_index && !this->keyHandled;
+    }
+    else if (m_draw_mode == DrawMode::Interactive)
+    {
+        res = focused && ( ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && !this->keyHandled;
+    }
+
+    if (m_draw_mode != DrawMode::ActivateItem && gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused))
     {
         res = true;
     }
 
-    this->itemsCount = itemIndex + 1;
+    this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
 
     this->keyHandled |= res;
 
@@ -264,13 +261,35 @@ void OSDMenuController::replayItemActivation(Ground2Air_Config_Packet& config, i
 {
     this->keyHandled = false;
     this->itemsCount = 0;
-    this->m_capture_snapshot = true;
-    this->m_replay_activation = true;
-    this->m_replay_item_index = item_index;
+    this->m_draw_mode = DrawMode::ActivateItem;
+    this->m_activate_item_index = item_index;
     drawCurrentMenu(config);
-    this->m_replay_item_index = -1;
-    this->m_replay_activation = false;
-    this->m_capture_snapshot = false;
+    this->m_activate_item_index = -1;
+    this->m_draw_mode = DrawMode::Interactive;
+}
+
+void OSDMenuController::drawMenuWindow(const char* window_name,
+                                       const gs::menu::imgui::MenuFrameLayout& layout,
+                                       Ground2Air_Config_Packet& config,
+                                       DrawMode mode,
+                                       ImGuiWindowFlags extra_flags)
+{
+    m_imgui_layout = layout;
+
+    const int windowWidth = static_cast<int>(m_imgui_layout.window_width);
+    this->bWidth = windowWidth - 58;
+    this->sWidth = windowWidth;
+    this->bHeight = static_cast<int>(m_imgui_layout.button_height);
+
+    this->itemsCount = 0;
+    this->keyHandled = false;
+    this->m_draw_mode = mode;
+
+    gs::menu::imgui::beginMenuWindow(window_name, m_imgui_layout, extra_flags);
+    drawCurrentMenu(config);
+    gs::menu::imgui::endMenuWindow();
+
+    this->m_draw_mode = DrawMode::Interactive;
 }
 
 //=======================================================
@@ -292,17 +311,14 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
         }
     }
 
-    int windowWidth = 500;
-
-    this->bWidth = windowWidth - 58;
-    this->sWidth = windowWidth;
-    this->bHeight = 35;
-
     ImVec2 screenSize = ImGui::GetIO().DisplaySize;
-    m_imgui_layout = gs::menu::imgui::buildMenuFrameLayout(screenSize.x, screenSize.y, false, 29.0f);
-    gs::menu::imgui::beginMenuWindow("OSD_MENU", m_imgui_layout);
+    const bool vr_mode = m_platform.groundstationConfig().vrMode;
+    const float primary_width = vr_mode ? (screenSize.x * 0.5f) : screenSize.x;
+    const auto primary_layout = offsetMenuLayout(
+        gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, false, 29.0f),
+        0.0f);
 
-    drawCurrentMenu(config);
+    drawMenuWindow("OSD_MENU", primary_layout, config, DrawMode::Interactive);
 
     if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
     {
@@ -314,7 +330,19 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
         this->selectedItem++;
     }
 
-    gs::menu::imgui::endMenuWindow();
+    if (vr_mode)
+    {
+        const auto clone_layout = offsetMenuLayout(
+            gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, false, 29.0f),
+            primary_width);
+        drawMenuWindow("OSD_MENU_VR_CLONE",
+                       clone_layout,
+                       config,
+                       DrawMode::Passive,
+                       ImGuiWindowFlags_NoInputs |
+                           ImGuiWindowFlags_NoFocusOnAppearing |
+                           ImGuiWindowFlags_NoSavedSettings);
+    }
 }
 
 void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
@@ -713,7 +741,7 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 bool OSDMenuController::exitKeyPressed()
 {
-    if (m_capture_snapshot)
+    if (m_draw_mode != DrawMode::Interactive)
     {
         return false;
     }
@@ -1404,8 +1432,18 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Vertical Sync: %s##2", gs_config.vsync ? "Enabled" :"Disabled");
+        sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
         if ( this->drawMenuItem( buf, 1) )
+        {
+            gs_config.vrMode = !gs_config.vrMode;
+            m_platform.saveGroundStationConfig();
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
+        if ( this->drawMenuItem( buf, 2) )
         {
             gs_config.vsync = !gs_config.vsync;
             m_platform.setVsync(gs_config.vsync);

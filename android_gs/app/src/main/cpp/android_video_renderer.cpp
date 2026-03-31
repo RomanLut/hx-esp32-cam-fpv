@@ -414,6 +414,14 @@ void AndroidVideoRenderer::setVsync(bool enabled)
     }
 }
 
+void AndroidVideoRenderer::setVrMode(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_vr_mode = enabled;
+    m_mode_dirty = true;
+    m_cv.notify_all();
+}
+
 void AndroidVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
 {
     if (data == nullptr || size == 0)
@@ -1039,53 +1047,81 @@ void AndroidVideoRenderer::drawMenuImGuiLocked()
     }
 
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    const auto layout = gs::menu::imgui::buildMenuFrameLayout(static_cast<float>(m_surface_width),
-                                                              static_cast<float>(m_surface_height),
-                                                              true,
-                                                              29.0f);
     m_menu_item_bounds.clear();
-    gs::menu::imgui::beginMenuWindow("OSD_MENU_ANDROID", layout);
-    gs::menu::imgui::drawMenuTitle(m_overlay_menu.title.c_str(), layout);
-    m_menu_bounds = {
-        ImGui::GetWindowPos().x,
-        ImGui::GetWindowPos().y,
-        ImGui::GetWindowSize().x,
-        ImGui::GetWindowSize().y};
-
-    for (size_t index = 0; index < m_overlay_menu.items.size(); ++index)
+    const float layout_width = m_vr_mode ? (static_cast<float>(m_surface_width) * 0.5f) : static_cast<float>(m_surface_width);
+    const auto makeLayout = [this, layout_width](float origin_x)
     {
-        std::string item_text = m_overlay_menu.items[index];
-        if (index < m_overlay_menu.statuses.size() && !m_overlay_menu.statuses[index].empty())
-        {
-            item_text += " ";
-            item_text += m_overlay_menu.statuses[index];
-        }
-        if (gs::menu::imgui::drawMenuItem(item_text.c_str(), layout, static_cast<int>(index) == m_overlay_menu.selected_index))
-        {
-            m_touch_action = {MenuActionKind::SelectItem, static_cast<int>(index)};
-        }
-        const ImVec2 min = ImGui::GetItemRectMin();
-        const ImVec2 max = ImGui::GetItemRectMax();
-        m_menu_item_bounds.push_back({min.x, min.y, max.x - min.x, max.y - min.y});
-    }
+        auto layout = gs::menu::imgui::buildMenuFrameLayout(layout_width,
+                                                            static_cast<float>(m_surface_height),
+                                                            true,
+                                                            29.0f);
+        layout.window_x += origin_x;
+        return layout;
+    };
 
-    if (!m_overlay_menu.status_lines.empty())
+    const auto drawMenuWindow = [this](const gs::menu::imgui::MenuFrameLayout& layout,
+                                       const char* window_name,
+                                       bool interactive)
     {
-        gs::menu::imgui::drawLargeGap(layout);
-        for (size_t index = 0; index < std::min<size_t>(2, m_overlay_menu.status_lines.size()); ++index)
+        const ImGuiWindowFlags extra_flags = interactive
+            ? 0
+            : (ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
+        gs::menu::imgui::beginMenuWindow(window_name, layout, extra_flags);
+        gs::menu::imgui::drawMenuTitle(m_overlay_menu.title.c_str(), layout);
+        if (interactive)
         {
-            gs::menu::imgui::drawMenuStatus(m_overlay_menu.status_lines[index].c_str(), layout);
-            if (index + 1 < std::min<size_t>(2, m_overlay_menu.status_lines.size()))
+            m_menu_bounds = {
+                ImGui::GetWindowPos().x,
+                ImGui::GetWindowPos().y,
+                ImGui::GetWindowSize().x,
+                ImGui::GetWindowSize().y};
+        }
+
+        for (size_t index = 0; index < m_overlay_menu.items.size(); ++index)
+        {
+            std::string item_text = m_overlay_menu.items[index];
+            if (index < m_overlay_menu.statuses.size() && !m_overlay_menu.statuses[index].empty())
             {
-                gs::menu::imgui::drawSmallGap(layout);
+                item_text += " ";
+                item_text += m_overlay_menu.statuses[index];
+            }
+            if (gs::menu::imgui::drawMenuItem(item_text.c_str(), layout, static_cast<int>(index) == m_overlay_menu.selected_index) && interactive)
+            {
+                m_touch_action = {MenuActionKind::SelectItem, static_cast<int>(index)};
+            }
+            if (interactive)
+            {
+                const ImVec2 min = ImGui::GetItemRectMin();
+                const ImVec2 max = ImGui::GetItemRectMax();
+                m_menu_item_bounds.push_back({min.x, min.y, max.x - min.x, max.y - min.y});
             }
         }
+
+        if (!m_overlay_menu.status_lines.empty())
+        {
+            gs::menu::imgui::drawLargeGap(layout);
+            for (size_t index = 0; index < std::min<size_t>(2, m_overlay_menu.status_lines.size()); ++index)
+            {
+                gs::menu::imgui::drawMenuStatus(m_overlay_menu.status_lines[index].c_str(), layout);
+                if (index + 1 < std::min<size_t>(2, m_overlay_menu.status_lines.size()))
+                {
+                    gs::menu::imgui::drawSmallGap(layout);
+                }
+            }
+        }
+
+        gs::menu::imgui::drawMenuFooterRight(m_overlay_menu.footer.c_str(), layout);
+        gs::menu::imgui::endMenuWindow();
+    };
+
+    const auto primary_layout = makeLayout(0.0f);
+    drawMenuWindow(primary_layout, "OSD_MENU_ANDROID", true);
+    if (m_vr_mode)
+    {
+        drawMenuWindow(makeLayout(layout_width), "OSD_MENU_ANDROID_VR_CLONE", false);
     }
 
-    gs::menu::imgui::drawMenuFooterRight(m_overlay_menu.footer.c_str(), layout);
-    gs::menu::imgui::endMenuWindow();
-
-    const NavPadLayout nav = buildNavPadLayout(m_surface_width, m_surface_height);
+    const NavPadLayout nav = buildNavPadLayout(static_cast<int>(layout_width), m_surface_height);
     const ImVec2 nav_size(nav.size, nav.size);
     m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
     m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
@@ -1106,23 +1142,32 @@ void AndroidVideoRenderer::drawMenuImGuiLocked()
                      ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_NoBackground);
 
-    auto drawNavButton = [&](const char* label, float x, float y, const ImVec4& bg, MenuActionKind action)
+    auto drawNavPad = [&](float origin_x, bool interactive)
     {
-        ImGui::SetCursorPos(ImVec2(x, y));
-        ImGui::PushStyleColor(ImGuiCol_Button, bg);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
-        if (ImGui::Button(label, nav_size))
+        auto drawNavButton = [&](const char* label, float x, float y, const ImVec4& bg, MenuActionKind action)
         {
-            m_touch_action = {action, -1};
-        }
-        ImGui::PopStyleColor(3);
+            ImGui::SetCursorPos(ImVec2(origin_x + x, y));
+            ImGui::PushStyleColor(ImGuiCol_Button, bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
+            if (ImGui::Button(label, nav_size) && interactive)
+            {
+                m_touch_action = {action, -1};
+            }
+            ImGui::PopStyleColor(3);
+        };
+
+        drawNavButton("UP", nav.center_x, nav.up_y, active_bg, MenuActionKind::Up);
+        drawNavButton("LEFT", nav.left_x, nav.mid_y, back_bg, MenuActionKind::Back);
+        drawNavButton("RIGHT", nav.right_x, nav.mid_y, enter_bg, MenuActionKind::Activate);
+        drawNavButton("DOWN", nav.center_x, nav.down_y, active_bg, MenuActionKind::Down);
     };
 
-    drawNavButton("UP", nav.center_x, nav.up_y, active_bg, MenuActionKind::Up);
-    drawNavButton("LEFT", nav.left_x, nav.mid_y, back_bg, MenuActionKind::Back);
-    drawNavButton("RIGHT", nav.right_x, nav.mid_y, enter_bg, MenuActionKind::Activate);
-    drawNavButton("DOWN", nav.center_x, nav.down_y, active_bg, MenuActionKind::Down);
+    drawNavPad(0.0f, true);
+    if (m_vr_mode)
+    {
+        drawNavPad(layout_width, false);
+    }
 
     ImGui::End();
     ImGui::PopStyleVar(2);
@@ -1162,7 +1207,7 @@ void AndroidVideoRenderer::drawOverlayLocked()
                          ImGuiWindowFlags_NoFocusOnAppearing);
     }
 
-    m_flight_osd.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode);
+    m_flight_osd.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
     drawHudLocked();
     drawStatsLocked();
     drawMenuLocked();
@@ -1199,64 +1244,65 @@ void AndroidVideoRenderer::drawFrameLocked()
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    const float video_aspect = static_cast<float>(m_frame_width) / static_cast<float>(m_frame_height);
-    const float screen_aspect = static_cast<float>(m_surface_width) / static_cast<float>(m_surface_height);
-
-    float x_scale = 1.0f;
-    float y_scale = 1.0f;
-    float u0 = 0.0f;
-    float u1 = 1.0f;
-    float v0 = 1.0f;
-    float v1 = 0.0f;
-
-    if (m_screen_mode == 1)
-    {
-        if (video_aspect > screen_aspect)
-        {
-            y_scale = screen_aspect / video_aspect;
-        }
-        else
-        {
-            x_scale = video_aspect / screen_aspect;
-        }
-    }
-    else if (m_screen_mode == 2)
-    {
-        if (video_aspect > screen_aspect)
-        {
-            const float visible = screen_aspect / video_aspect;
-            const float margin = (1.0f - visible) * 0.5f;
-            u0 = margin;
-            u1 = 1.0f - margin;
-        }
-        else
-        {
-            const float visible = video_aspect / screen_aspect;
-            const float margin = (1.0f - visible) * 0.5f;
-            v1 = margin;
-            v0 = 1.0f - margin;
-        }
-    }
-
-    const GLfloat vertices[] = {
-        -x_scale, -y_scale, u0, v0,
-         x_scale, -y_scale, u1, v0,
-        -x_scale,  y_scale, u0, v1,
-         x_scale,  y_scale, u1, v1
-    };
-
     if (m_has_uploaded_frame)
     {
-        glUseProgram(m_program);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, m_texture);
-        glUniform1i(glGetUniformLocation(m_program, "uTexture"), 0);
-        glUniform4f(glGetUniformLocation(m_program, "uColor"), 1.0f, 1.0f, 1.0f, 1.0f);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        const auto drawVideoCopy = [this](float rect_x, float rect_y, float rect_width, float rect_height)
+        {
+            const float video_aspect = static_cast<float>(m_frame_width) / static_cast<float>(m_frame_height);
+            const float rect_aspect = rect_width / rect_height;
+            float draw_x = rect_x;
+            float draw_y = rect_y;
+            float draw_width = rect_width;
+            float draw_height = rect_height;
+            float u0 = 0.0f;
+            float u1 = 1.0f;
+            float v0 = 1.0f;
+            float v1 = 0.0f;
+
+            if (m_screen_mode == 1)
+            {
+                if (video_aspect > rect_aspect)
+                {
+                    draw_height = rect_width / video_aspect;
+                    draw_y = rect_y + (rect_height - draw_height) * 0.5f;
+                }
+                else
+                {
+                    draw_width = rect_height * video_aspect;
+                    draw_x = rect_x + (rect_width - draw_width) * 0.5f;
+                }
+            }
+            else if (m_screen_mode == 2)
+            {
+                if (video_aspect > rect_aspect)
+                {
+                    const float visible = rect_aspect / video_aspect;
+                    const float margin = (1.0f - visible) * 0.5f;
+                    u0 = margin;
+                    u1 = 1.0f - margin;
+                }
+                else
+                {
+                    const float visible = video_aspect / rect_aspect;
+                    const float margin = (1.0f - visible) * 0.5f;
+                    v1 = margin;
+                    v0 = 1.0f - margin;
+                }
+            }
+
+            drawTexturedQuadLocked(draw_x, draw_y, draw_width, draw_height, u0, v0, u1, v1, m_texture, whiteColor());
+        };
+
+        if (m_vr_mode)
+        {
+            const float half_width = static_cast<float>(m_surface_width) * 0.5f;
+            drawVideoCopy(0.0f, 0.0f, half_width, static_cast<float>(m_surface_height));
+            drawVideoCopy(half_width, 0.0f, static_cast<float>(m_surface_width) - half_width, static_cast<float>(m_surface_height));
+        }
+        else
+        {
+            drawVideoCopy(0.0f, 0.0f, static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
+        }
     }
 
     drawOverlayLocked();

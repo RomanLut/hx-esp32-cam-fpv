@@ -81,19 +81,45 @@ void AndroidOSD::setFontName(const std::string& font_name)
     m_font_failed = false;
 }
 
-void AndroidOSD::draw(int surface_width, int surface_height, int frame_width, int frame_height, int screen_mode)
+void AndroidOSD::draw(int surface_width,
+                      int surface_height,
+                      int frame_width,
+                      int frame_height,
+                      int screen_mode,
+                      bool vr_mode)
 {
     if (!ensureFont())
     {
         return;
     }
 
-    int x1 = 0;
-    int y1 = 0;
-    int x2 = surface_width;
-    int y2 = surface_height;
-    computeVideoBounds(surface_width, surface_height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
-    OSDBase::draw(x1, y1, x2, y2);
+    auto drawInRect = [this, frame_width, frame_height, screen_mode](int origin_x, int width, int height)
+    {
+        int x1 = origin_x;
+        int y1 = 0;
+        int x2 = origin_x + width;
+        int y2 = height;
+        computeVideoBounds(width, height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
+        x1 += origin_x;
+        x2 += origin_x;
+        OSDBase::draw(x1, y1, x2, y2);
+    };
+
+    if (vr_mode)
+    {
+        const int half_width = surface_width / 2;
+        drawInRect(0, half_width, surface_height);
+        drawInRect(half_width, surface_width - half_width, surface_height);
+    }
+    else
+    {
+        int x1 = 0;
+        int y1 = 0;
+        int x2 = surface_width;
+        int y2 = surface_height;
+        computeVideoBounds(surface_width, surface_height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
+        OSDBase::draw(x1, y1, x2, y2);
+    }
 }
 
 void AndroidOSD::drawChar(uint16_t code, int x, int y, int width, int height)

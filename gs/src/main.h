@@ -87,6 +87,7 @@ struct TGroundstationConfig
     ScreenAspectRatio screenAspectRatio;
     int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
+    bool vrMode = false;
     bool vsync = true;
     std::string txInterface = "";
     uint16_t deviceId;
@@ -149,6 +150,14 @@ extern GSStats s_gs_stats;
 extern GSStats s_last_gs_stats;
 
 extern void calculateLetterBoxAndBorder( int width, int height, int& x, int& y, int& w, int& h);
+extern void calculateLetterBoxAndBorderInRect(int origin_x,
+                                              int origin_y,
+                                              int width,
+                                              int height,
+                                              int& x1,
+                                              int& y1,
+                                              int& x2,
+                                              int& y2);
 extern void saveGroundStationConfig();
 extern void saveGround2AirConfig();
 extern void saveGround2AirConfig(const Ground2Air_Config_Packet& config);

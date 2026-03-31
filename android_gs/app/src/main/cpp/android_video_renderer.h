@@ -113,6 +113,7 @@ public:
                      uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
     void setVsync(bool enabled);
+    void setVrMode(bool enabled);
     void setScreenMode(int screen_mode);
     void updateFlightOsd(const uint8_t* data, uint16_t size);
     void clearFlightOsd();
@@ -185,6 +186,7 @@ private:
 
     int m_screen_mode = 1;
     bool m_vsync = true;
+    bool m_vr_mode = false;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
 

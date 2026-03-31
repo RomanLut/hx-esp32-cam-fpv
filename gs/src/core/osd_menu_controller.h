@@ -10,7 +10,7 @@
 namespace gs::menu
 {
 
-struct OSDMenuSnapshot
+struct OSDMenuViewState
 {
     bool visible = false;
     std::string title;
@@ -36,14 +36,21 @@ public:
     void goBackPublic();
     void activateSelected(Ground2Air_Config_Packet& config);
     void activateItemByVisibleIndex(Ground2Air_Config_Packet& config, int visible_index);
-    OSDMenuSnapshot buildSnapshot(Ground2Air_Config_Packet& config);
+    OSDMenuViewState buildViewState(Ground2Air_Config_Packet& config);
 
 private:
+    enum class DrawMode
+    {
+        Interactive,
+        Passive,
+        CaptureViewState,
+        ActivateItem,
+    };
+
     IOSDMenuPlatform& m_platform;
-    bool m_capture_snapshot = false;
-    bool m_replay_activation = false;
-    int m_replay_item_index = -1;
-    OSDMenuSnapshot m_snapshot;
+    DrawMode m_draw_mode = DrawMode::Interactive;
+    int m_activate_item_index = -1;
+    OSDMenuViewState m_view_state;
 
     OSDMenuId menuId;
     int selectedItem;
@@ -97,6 +104,11 @@ private:
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
     void drawDebugMenu(Ground2Air_Config_Packet& config);
     void drawCurrentMenu(Ground2Air_Config_Packet& config);
+    void drawMenuWindow(const char* window_name,
+                        const gs::menu::imgui::MenuFrameLayout& layout,
+                        Ground2Air_Config_Packet& config,
+                        DrawMode mode,
+                        ImGuiWindowFlags extra_flags = 0);
     void replayItemActivation(Ground2Air_Config_Packet& config, int item_index);
 };
 

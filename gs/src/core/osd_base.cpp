@@ -121,17 +121,22 @@ void OSDBase::draw(int x1, int y1, int x2, int y2)
     }
 }
 
-void OSDBase::drawFitted(int viewport_width, int viewport_height, float content_aspect, float target_aspect)
+void OSDBase::drawFittedInRect(int origin_x,
+                               int origin_y,
+                               int viewport_width,
+                               int viewport_height,
+                               float content_aspect,
+                               float target_aspect)
 {
     if (viewport_width <= 0 || viewport_height <= 0)
     {
         return;
     }
 
-    int x1 = 0;
-    int y1 = 0;
-    int x2 = viewport_width;
-    int y2 = viewport_height;
+    int x1 = origin_x;
+    int y1 = origin_y;
+    int x2 = origin_x + viewport_width;
+    int y2 = origin_y + viewport_height;
 
     if (content_aspect > 0.0f && target_aspect > 0.0f)
     {
@@ -143,15 +148,15 @@ void OSDBase::drawFitted(int viewport_width, int viewport_height, float content_
             {
                 const int fitted_height = static_cast<int>(static_cast<float>(viewport_width) / content_aspect);
                 const int margin_y = (viewport_height - fitted_height) / 2;
-                y1 = margin_y;
-                y2 = margin_y + fitted_height;
+                y1 = origin_y + margin_y;
+                y2 = y1 + fitted_height;
             }
             else
             {
                 const int fitted_width = static_cast<int>(static_cast<float>(viewport_height) * content_aspect);
                 const int margin_x = (viewport_width - fitted_width) / 2;
-                x1 = margin_x;
-                x2 = margin_x + fitted_width;
+                x1 = origin_x + margin_x;
+                x2 = x1 + fitted_width;
             }
         }
     }

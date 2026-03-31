@@ -539,10 +539,22 @@ bool PI_HAL::update_display()
         func();
     }
 
-    int x1, y1, x2, y2;
-    calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
+    if (s_groundstation_config.vrMode)
+    {
+        const int half_width = m_impl->width / 2;
+        int x1, y1, x2, y2;
+        calculateLetterBoxAndBorderInRect(0, 0, half_width, m_impl->height, x1, y1, x2, y2);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture), ImVec2(x1, y1), ImVec2(x2, y2));
 
-    ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),ImVec2(x1,y1),ImVec2(x2,y2));
+        calculateLetterBoxAndBorderInRect(half_width, 0, m_impl->width - half_width, m_impl->height, x1, y1, x2, y2);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture), ImVec2(x1, y1), ImVec2(x2, y2));
+    }
+    else
+    {
+        int x1, y1, x2, y2;
+        calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),ImVec2(x1,y1),ImVec2(x2,y2));
+    }
 
     ImGui::End();
     

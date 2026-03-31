@@ -927,7 +927,7 @@ static inline ImVec2 ImRotate(const ImVec2& v, float cos_a, float sin_a)
 
 //===================================================================================
 //===================================================================================
-void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& x2, int& y2)
+void calculateLetterBoxAndBorderInRect(int origin_x, int origin_y, int width, int height, int& x1, int& y1, int& x2, int& y2)
 {
     bool videoAspect16x9 = s_decoder.isAspect16x9();
 
@@ -956,20 +956,25 @@ void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& 
     if (  (s_groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH) ||  ((int)(videoAspect*100 + 0.5) == (int)(screenAspect*100 + 0.5f)) )
     {
         //no scale or stretch
-        x1 = 0; y1 = 0; x2 = width; y2 = height;
+        x1 = origin_x; y1 = origin_y; x2 = origin_x + width; y2 = origin_y + height;
     }
     else if ( videoAspect > screenAspect )
     {
         //fe.e 16x9 on 4x3
         int h1 = (int)(height * screenAspect / videoAspect + 0.5f);
-        x1 = 0; y1 = (height - h1) / 2; x2 = width; y2 = y1 + h1;
+        x1 = origin_x; y1 = origin_y + (height - h1) / 2; x2 = origin_x + width; y2 = y1 + h1;
     }
     else
     {
         //f.e. 4x3 on 16x9
         int w1 = (int)(width * videoAspect / screenAspect + 0.5f);
-        x1 = (width - w1) / 2; y1 = 0; x2 = x1 + w1; y2 = height;
+        x1 = origin_x + (width - w1) / 2; y1 = origin_y; x2 = x1 + w1; y2 = origin_y + height;
     }
+}
+
+void calculateLetterBoxAndBorder( int width, int height, int& x1, int& y1, int& x2, int& y2)
+{
+    calculateLetterBoxAndBorderInRect(0, 0, width, height, x1, y1, x2, y2);
 }
 
 //===================================================================================
@@ -1998,6 +2003,8 @@ void saveGroundStationConfig()
     ini["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
     ini["gs"]["wifi_band"] = std::to_string((int)s_groundstation_config.wifiBand);
     ini["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
+    ini["gs"]["vr_mode"] = std::to_string(s_groundstation_config.vrMode ? 1 : 0);
+    ini["gs"]["vsync"] = std::to_string(s_groundstation_config.vsync ? 1 : 0);
     ini["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     ini["gs"]["tx_interface"] = s_groundstation_config.txInterface;
     ini["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
@@ -2325,6 +2332,11 @@ int main(int argc, const char* argv[])
     {
         std::string& temp = ini["gs"]["vsync"];
         if (temp != "") s_groundstation_config.vsync = atoi(temp.c_str()) !=0 ;
+    }
+
+    {
+        std::string& temp = ini["gs"]["vr_mode"];
+        if (temp != "") s_groundstation_config.vrMode = atoi(temp.c_str()) != 0;
     }
 
     {

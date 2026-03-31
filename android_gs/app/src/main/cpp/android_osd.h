@@ -13,7 +13,12 @@ public:
     ~AndroidOSD() override;
 
     void setFontName(const std::string& font_name);
-    void draw(int surface_width, int surface_height, int frame_width, int frame_height, int screen_mode);
+    void draw(int surface_width,
+              int surface_height,
+              int frame_width,
+              int frame_height,
+              int screen_mode,
+              bool vr_mode);
 
 protected:
     void drawChar(uint16_t code, int x, int y, int width, int height) override;
