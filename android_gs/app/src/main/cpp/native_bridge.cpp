@@ -273,6 +273,7 @@ struct NativeHandle
                 config_packet.dataChannel.fec_codec_k);
         };
         rx_decoder.setCallbacks(std::move(callbacks));
+        renderer.setMenuBinding(menu_controller.get(), &config_packet, &mutex);
     }
 
     ~NativeHandle()
@@ -356,6 +357,25 @@ struct NativeHandle
     uint64_t last_udp_packets_sample = 0;
     int gs_packet_debug_mode = 0;
     bool exit_requested = false;
+    std::vector<uint8_t> pending_flight_osd;
+    bool pending_flight_osd_dirty = false;
+    bool pending_flight_osd_clear = false;
+};
+
+struct RendererSyncState
+{
+    std::vector<AndroidVideoRenderer::OverlayChip> chips;
+    AndroidVideoRenderer::OverlayStatsState stats_state;
+    std::string build_info;
+    std::string osd_font_name;
+    bool has_frame_debug_osd = false;
+    std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS> frame_debug_osd = {};
+    bool has_flight_osd_update = false;
+    bool clear_flight_osd = false;
+    std::vector<uint8_t> flight_osd_data;
+    int screen_mode = 1;
+    bool vsync = true;
+    bool vr_mode = false;
 };
 
 void commitMenuConfig(NativeHandle& handle)
@@ -569,7 +589,6 @@ void AndroidMenuPlatform::restartGPIOButtons()
 void AndroidMenuPlatform::setVsync(bool enabled)
 {
     m_handle.groundstation_config.vsync = enabled;
-    m_handle.renderer.setVsync(enabled);
 }
 
 bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
@@ -1054,10 +1073,12 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
         else if (session_event.kind == gs::core::SessionEventKind::OsdUpdate)
         {
             const gs::core::OsdPacketView& osd_view = session_event.osd;
-            handle.renderer.setFlightOsdFont(handle.menu_platform->currentOSDFontName());
             if (!handle.frame_packets_debug.isOn())
             {
-                handle.renderer.updateFlightOsd(&osd_view.packet->osd_enc_start, osd_view.osd_data_size);
+                handle.pending_flight_osd.assign(&osd_view.packet->osd_enc_start,
+                                                 &osd_view.packet->osd_enc_start + osd_view.osd_data_size);
+                handle.pending_flight_osd_dirty = true;
+                handle.pending_flight_osd_clear = false;
             }
         }
 
@@ -1134,8 +1155,9 @@ void updateUdpStatsLocked(NativeHandle& handle,
     handle.udp_video_fps = video_fps;
 }
 
-void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_info)
+RendererSyncState collectRendererSyncStateLocked(NativeHandle& handle, const std::string& build_info)
 {
+    RendererSyncState state;
     const Clock::time_point now = Clock::now();
     if (now - handle.last_data_rate_sample_tp >= std::chrono::milliseconds(100))
     {
@@ -1222,112 +1244,79 @@ void syncRendererOverlayLocked(NativeHandle& handle, const std::string& build_in
         handle.last_periodic_stats_tp = now;
     }
 
-    std::vector<AndroidVideoRenderer::OverlayChip> chips;
-    chips.push_back({"AIR:" + std::to_string(-static_cast<int>(handle.session.lastAirStats().rssiDbm)), false});
-    chips.push_back({"GS:UDP", false});
-    chips.push_back({std::to_string(handle.session.airStatus().wifi_queue_max) + "%", false});
+    state.chips.push_back({"AIR:" + std::to_string(-static_cast<int>(handle.session.lastAirStats().rssiDbm)), false});
+    state.chips.push_back({"GS:UDP", false});
+    state.chips.push_back({std::to_string(handle.session.airStatus().wifi_queue_max) + "%", false});
 
     std::ostringstream throughput_text;
     throughput_text << std::fixed << std::setprecision(1) << handle.udp_throughput_mbps << "Mb";
-    chips.push_back({throughput_text.str(), false});
-    chips.push_back({gs::menu::getResolutionSummary(handle.config_packet, handle.session.airStatus().is_ov5640), false});
-    chips.push_back({std::to_string(static_cast<int>(std::round(handle.udp_video_fps))), false});
+    state.chips.push_back({throughput_text.str(), false});
+    state.chips.push_back({gs::menu::getResolutionSummary(handle.config_packet, handle.session.airStatus().is_ov5640), false});
+    state.chips.push_back({std::to_string(static_cast<int>(std::round(handle.udp_video_fps))), false});
     if (handle.session.airStatus().wifi_ovf)
     {
-        chips.push_back({"OVF", true});
+        state.chips.push_back({"OVF", true});
     }
     if (handle.session.airStatus().air_record)
     {
-        chips.push_back({"AIR", true});
-    }
-
-    AndroidVideoRenderer::OverlayMenuState menu_state;
-    AndroidVideoRenderer::OverlayStatsState stats_state;
-    if (handle.menu_controller->isVisible())
-    {
-        const gs::menu::OSDMenuViewState view_state = handle.menu_controller->buildViewState(handle.config_packet);
-        menu_state.visible = true;
-        menu_state.title = view_state.title;
-        menu_state.items = view_state.items;
-        menu_state.status_lines = view_state.statuses;
-        menu_state.selected_index = view_state.selected_item;
-        menu_state.footer = build_info;
+        state.chips.push_back({"AIR", true});
     }
 
     if (handle.groundstation_config.stats)
     {
-        stats_state.visible = true;
-        stats_state.snapshot.fec_codec_n = handle.config_packet.dataChannel.fec_codec_n;
-        stats_state.snapshot.current_quality = handle.session.airStatus().curr_quality;
-        stats_state.snapshot.wifi_queue_max = handle.session.airStatus().wifi_queue_max;
-        stats_state.snapshot.cpu_temp_c = 0;
-        stats_state.snapshot.air_stats = handle.session.lastAirStats();
+        state.stats_state.visible = true;
+        state.stats_state.snapshot.fec_codec_n = handle.config_packet.dataChannel.fec_codec_n;
+        state.stats_state.snapshot.current_quality = handle.session.airStatus().curr_quality;
+        state.stats_state.snapshot.wifi_queue_max = handle.session.airStatus().wifi_queue_max;
+        state.stats_state.snapshot.cpu_temp_c = 0;
+        state.stats_state.snapshot.air_stats = handle.session.lastAirStats();
         const auto& frame_stats = handle.session.frameStats();
-        stats_state.snapshot.frame_stats = frame_stats.frame_stats;
-        stats_state.snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
-        stats_state.snapshot.frame_time_stats = frame_stats.frame_time_stats;
-        stats_state.snapshot.frame_quality_stats = frame_stats.frame_quality_stats;
-        stats_state.snapshot.queue_usage_stats = frame_stats.queue_usage_stats;
-        stats_state.snapshot.data_size_stats = handle.data_size_stats;
-        stats_state.snapshot.ground_stats = handle.last_ground_stats;
+        state.stats_state.snapshot.frame_stats = frame_stats.frame_stats;
+        state.stats_state.snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
+        state.stats_state.snapshot.frame_time_stats = frame_stats.frame_time_stats;
+        state.stats_state.snapshot.frame_quality_stats = frame_stats.frame_quality_stats;
+        state.stats_state.snapshot.queue_usage_stats = frame_stats.queue_usage_stats;
+        state.stats_state.snapshot.data_size_stats = handle.data_size_stats;
+        state.stats_state.snapshot.ground_stats = handle.last_ground_stats;
     }
-    handle.renderer.setFlightOsdFont(handle.menu_platform->currentOSDFontName());
+    state.build_info = build_info;
+    state.osd_font_name = handle.menu_platform->currentOSDFontName();
+    state.clear_flight_osd = handle.pending_flight_osd_clear;
+    state.has_flight_osd_update = handle.pending_flight_osd_dirty;
+    if (state.has_flight_osd_update)
+    {
+        state.flight_osd_data = handle.pending_flight_osd;
+    }
+    handle.pending_flight_osd_clear = false;
+    handle.pending_flight_osd_dirty = false;
     if (handle.frame_packets_debug.isVisible())
     {
-        handle.renderer.setFlightOsdChars(handle.frame_packets_debug.osdChars());
+        state.has_frame_debug_osd = true;
+        state.frame_debug_osd = handle.frame_packets_debug.osdChars();
     }
-
-    handle.renderer.setOverlayState(chips, menu_state, stats_state);
+    state.screen_mode = static_cast<int>(handle.groundstation_config.screenAspectRatio);
+    state.vsync = handle.groundstation_config.vsync;
+    state.vr_mode = handle.groundstation_config.vrMode;
+    return state;
 }
 
-void handleTapLocked(NativeHandle& handle,
-                     float x,
-                     float y,
+bool handleTapLocked(NativeHandle& handle,
                      float view_width,
                      float view_height)
 {
     if (view_width <= 0.0f || view_height <= 0.0f)
     {
-        return;
+        return false;
     }
 
     if (!handle.menu_controller->isVisible())
     {
-        handle.menu_controller->open();
-        return;
+        return false;
     }
-
-    const AndroidVideoRenderer::MenuAction action = handle.renderer.dispatchTap(x, y);
-    switch (action.kind)
-    {
-    case AndroidVideoRenderer::MenuActionKind::Up:
-        handle.menu_controller->moveSelection(-1);
-        return;
-    case AndroidVideoRenderer::MenuActionKind::Down:
-        handle.menu_controller->moveSelection(1);
-        return;
-    case AndroidVideoRenderer::MenuActionKind::Back:
-        handle.menu_controller->goBackPublic();
-        return;
-    case AndroidVideoRenderer::MenuActionKind::Activate:
-        handle.menu_controller->activateSelected(handle.config_packet);
-        return;
-    case AndroidVideoRenderer::MenuActionKind::SelectItem:
-        if (action.item_index >= 0)
-        {
-            handle.menu_controller->activateItemByVisibleIndex(handle.config_packet, action.item_index);
-        }
-        return;
-    case AndroidVideoRenderer::MenuActionKind::Outside:
-        handle.menu_controller->goBackPublic();
-        return;
-    case AndroidVideoRenderer::MenuActionKind::None:
-    default:
-        return;
-    }
+    return true;
 }
 
-bool handleKeyLocked(NativeHandle& handle, int key_code)
+bool handleKeyToImGui(bool menu_visible, int key_code, ImGuiKey* queued_key)
 {
     constexpr int kKeycodeBack = 4;
     constexpr int kKeycodeDpadUp = 19;
@@ -1338,42 +1327,29 @@ bool handleKeyLocked(NativeHandle& handle, int key_code)
     constexpr int kKeycodeEnter = 66;
     constexpr int kKeycodeMenu = 82;
 
-    if (!handle.menu_controller->isVisible())
+    if (!menu_visible)
     {
-        if (key_code == kKeycodeMenu || key_code == kKeycodeDpadCenter || key_code == kKeycodeEnter)
-        {
-            handle.menu_controller->open();
-            return true;
-        }
-        return false;
+        return key_code == kKeycodeMenu || key_code == kKeycodeDpadCenter || key_code == kKeycodeEnter;
     }
 
     switch (key_code)
     {
     case kKeycodeDpadUp:
-        handle.menu_controller->moveSelection(-1);
+        if (queued_key != nullptr) *queued_key = ImGuiKey_UpArrow;
         return true;
     case kKeycodeDpadDown:
-        handle.menu_controller->moveSelection(1);
+        if (queued_key != nullptr) *queued_key = ImGuiKey_DownArrow;
         return true;
     case kKeycodeDpadLeft:
     case kKeycodeBack:
-        handle.menu_controller->goBackPublic();
+        if (queued_key != nullptr) *queued_key = ImGuiKey_LeftArrow;
         return true;
     case kKeycodeDpadRight:
     case kKeycodeDpadCenter:
     case kKeycodeEnter:
-        handle.menu_controller->activateSelected(handle.config_packet);
+        if (queued_key != nullptr) *queued_key = ImGuiKey_RightArrow;
         return true;
     case kKeycodeMenu:
-        if (handle.menu_controller->isVisible())
-        {
-            handle.menu_controller->close();
-        }
-        else
-        {
-            handle.menu_controller->open();
-        }
         return true;
     default:
         return false;
@@ -1399,6 +1375,7 @@ void runUdpClient(NativeHandle& handle,
         std::lock_guard<std::mutex> lock(handle.mutex);
         handle.udp_running = false;
         handle.udp_last_error = "peer resolve failed";
+        __android_log_print(ANDROID_LOG_ERROR, kNativeLogTag, "udp_start failed: %s", handle.udp_last_error.c_str());
         return;
     }
 
@@ -1408,9 +1385,16 @@ void runUdpClient(NativeHandle& handle,
         freeaddrinfo(addrinfo_result);
         std::lock_guard<std::mutex> lock(handle.mutex);
         handle.udp_running = false;
-        handle.udp_last_error = "socket create failed";
+        handle.udp_last_error = std::string("socket create failed: ") + std::strerror(errno);
+        __android_log_print(ANDROID_LOG_ERROR, kNativeLogTag, "udp_start failed: %s", handle.udp_last_error.c_str());
         return;
     }
+
+    int reuse_opt = 1;
+    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse_opt, sizeof(reuse_opt));
+#ifdef SO_REUSEPORT
+    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &reuse_opt, sizeof(reuse_opt));
+#endif
 
     sockaddr_in local_address = {};
     local_address.sin_family = AF_INET;
@@ -1422,7 +1406,8 @@ void runUdpClient(NativeHandle& handle,
         freeaddrinfo(addrinfo_result);
         std::lock_guard<std::mutex> lock(handle.mutex);
         handle.udp_running = false;
-        handle.udp_last_error = "bind failed";
+        handle.udp_last_error = std::string("bind failed: ") + std::strerror(errno);
+        __android_log_print(ANDROID_LOG_ERROR, kNativeLogTag, "udp_start failed: %s", handle.udp_last_error.c_str());
         return;
     }
 
@@ -1436,6 +1421,12 @@ void runUdpClient(NativeHandle& handle,
         handle.udp_last_error.clear();
         updateUdpStatsLocked(handle, 0, 0.0f, 0.0f);
     }
+    __android_log_print(ANDROID_LOG_INFO,
+                        kNativeLogTag,
+                        "udp_start ok peer=%s:%d local=%d",
+                        peer_host.c_str(),
+                        peer_port,
+                        local_port);
 
     std::array<uint8_t, 2048> rx_buffer = {};
     uint64_t packets_received = 0;
@@ -1474,6 +1465,13 @@ void runUdpClient(NativeHandle& handle,
         {
             packets_received++;
             bytes_window += static_cast<uint64_t>(received);
+            if (packets_received == 1)
+            {
+                __android_log_print(ANDROID_LOG_INFO,
+                                    kNativeLogTag,
+                                    "udp_first_packet size=%zd",
+                                    received);
+            }
             std::lock_guard<std::mutex> lock(handle.mutex);
             processTransportPacket(handle, rx_buffer.data(), static_cast<size_t>(received), false, 0);
         }
@@ -1481,6 +1479,7 @@ void runUdpClient(NativeHandle& handle,
         {
             std::lock_guard<std::mutex> lock(handle.mutex);
             handle.udp_last_error = std::string("recv failed: ") + std::strerror(errno);
+            __android_log_print(ANDROID_LOG_ERROR, kNativeLogTag, "udp_recv failed: %s", handle.udp_last_error.c_str());
             break;
         }
 
@@ -1510,6 +1509,10 @@ void runUdpClient(NativeHandle& handle,
 
     std::lock_guard<std::mutex> lock(handle.mutex);
     handle.udp_running = false;
+    if (!handle.udp_last_error.empty())
+    {
+        __android_log_print(ANDROID_LOG_WARN, kNativeLogTag, "udp_stop error=%s", handle.udp_last_error.c_str());
+    }
 }
 
 } // namespace
@@ -1679,6 +1682,12 @@ Java_com_esp32camfpv_androidgs_NativeCore_startUdpClient(JNIEnv* env,
         peer,
         static_cast<int>(peer_port),
         static_cast<int>(local_port));
+    __android_log_print(ANDROID_LOG_INFO,
+                        kNativeLogTag,
+                        "startUdpClient requested peer=%s:%d local=%d",
+                        peer.c_str(),
+                        static_cast<int>(peer_port),
+                        static_cast<int>(local_port));
     return JNI_TRUE;
 }
 
@@ -1798,9 +1807,31 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     }
 
     const std::string info = fromJString(env, build_info);
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    processDecodedTransportPacketsLocked(*native_handle);
-    syncRendererOverlayLocked(*native_handle, info);
+    RendererSyncState sync_state;
+    {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
+        processDecodedTransportPacketsLocked(*native_handle);
+        sync_state = collectRendererSyncStateLocked(*native_handle, info);
+    }
+    native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
+    if (sync_state.clear_flight_osd)
+    {
+        native_handle->renderer.clearFlightOsd();
+    }
+    if (sync_state.has_flight_osd_update && !sync_state.flight_osd_data.empty())
+    {
+        native_handle->renderer.updateFlightOsd(sync_state.flight_osd_data.data(),
+                                                static_cast<uint16_t>(sync_state.flight_osd_data.size()));
+    }
+    if (sync_state.has_frame_debug_osd)
+    {
+        native_handle->renderer.setFlightOsdChars(sync_state.frame_debug_osd);
+    }
+    native_handle->renderer.setMenuFooter(sync_state.build_info);
+    native_handle->renderer.setScreenMode(sync_state.screen_mode);
+    native_handle->renderer.setVsync(sync_state.vsync);
+    native_handle->renderer.setVrMode(sync_state.vr_mode);
+    native_handle->renderer.setOverlayState(sync_state.chips, {}, sync_state.stats_state);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1818,12 +1849,23 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
         return;
     }
 
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    handleTapLocked(*native_handle,
-                    static_cast<float>(x),
-                    static_cast<float>(y),
-                    static_cast<float>(view_width),
-                    static_cast<float>(view_height));
+    const float tap_x = static_cast<float>(x);
+    const float tap_y = static_cast<float>(y);
+    if (static_cast<float>(view_width) <= 0.0f || static_cast<float>(view_height) <= 0.0f)
+    {
+        return;
+    }
+    if (!native_handle->renderer.isMenuVisible())
+    {
+        native_handle->renderer.queueMenuOpen();
+        return;
+    }
+    if (handleTapLocked(*native_handle,
+                        static_cast<float>(view_width),
+                        static_cast<float>(view_height)))
+    {
+        native_handle->renderer.queueMouseTap(tap_x, tap_y);
+    }
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1838,8 +1880,28 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleKey(JNIEnv* /* env */,
         return JNI_FALSE;
     }
 
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return handleKeyLocked(*native_handle, static_cast<int>(key_code)) ? JNI_TRUE : JNI_FALSE;
+    const bool menu_visible = native_handle->renderer.isMenuVisible();
+    ImGuiKey queued_key = ImGuiKey_None;
+    const bool handled = handleKeyToImGui(menu_visible, static_cast<int>(key_code), &queued_key);
+    if (!handled)
+    {
+        return JNI_FALSE;
+    }
+    if (!menu_visible)
+    {
+        native_handle->renderer.queueMenuOpen();
+        return JNI_TRUE;
+    }
+    if (static_cast<int>(key_code) == 82)
+    {
+        native_handle->renderer.queueMenuClose();
+        return JNI_TRUE;
+    }
+    if (queued_key != ImGuiKey_None)
+    {
+        native_handle->renderer.queueKeyPress(queued_key);
+    }
+    return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1943,7 +2005,9 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     native_handle->last_video_part_index = 0;
     native_handle->last_video_last_part = 0;
     native_handle->last_video_payload_size = 0;
-    native_handle->renderer.clearFlightOsd();
+    native_handle->pending_flight_osd.clear();
+    native_handle->pending_flight_osd_dirty = false;
+    native_handle->pending_flight_osd_clear = true;
     native_handle->menu_controller->close();
 }
 

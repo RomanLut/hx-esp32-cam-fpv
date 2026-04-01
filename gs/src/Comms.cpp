@@ -421,11 +421,17 @@ bool Comms::process_rx_packet(PCap& pcap)
 
             case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
                 prh.input_dBm = *(int8_t*)rti.this_arg;
-                s_gs_stats.rssiDbm[pcap.index] = *(int8_t*)rti.this_arg; 
+                {
+                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+                    s_gs_stats.rssiDbm[pcap.index] = *(int8_t*)rti.this_arg;
+                }
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
-                s_gs_stats.noiseFloorDbm = *(int8_t*)rti.this_arg; 
+                {
+                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+                    s_gs_stats.noiseFloorDbm = *(int8_t*)rti.this_arg;
+                }
                 break;
 
             /*
@@ -478,6 +484,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 */
         if ( pcap.index < 2 )
         {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
             s_gs_stats.inPacketCounter[pcap.index]++;
         }
 
@@ -1287,11 +1294,14 @@ void Comms::process()
 void Comms::sync_rx_decoder_stats()
 {
     const FecBlockDecoder::Stats stats = m_impl->rx.decoder.getStats();
-    s_gs_stats.lastPacketIndex = stats.last_packet_index;
-    s_gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
-    s_gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
-    s_gs_stats.FECBlocksCounter = stats.fec_blocks_count;
-    s_gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
+    {
+        std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+        s_gs_stats.lastPacketIndex = stats.last_packet_index;
+        s_gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
+        s_gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
+        s_gs_stats.FECBlocksCounter = stats.fec_blocks_count;
+        s_gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
+    }
 
     if (stats.decoded_bytes_total >= m_last_rx_decoded_bytes_total)
     {

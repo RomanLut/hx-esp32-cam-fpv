@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
@@ -25,7 +26,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val VideoBackgroundColor = Color(0xFF0A0D14)
 
@@ -79,8 +83,6 @@ class MainActivity : ComponentActivity() {
         if (nativeHandle != 0L && event.action == KeyEvent.ACTION_DOWN) {
             applyImmersiveFullscreen()
             if (NativeCore.handleKey(nativeHandle, event.keyCode)) {
-                NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
-                NativeCore.syncRendererOverlay(nativeHandle, inputBuildInfo)
                 if (NativeCore.consumeExitRequested(nativeHandle)) {
                     finishAffinity()
                 }
@@ -98,6 +100,7 @@ private fun AndroidGsApp(
     onExitApp: () -> Unit
 ) {
     val nativeHandle = remember { NativeCore.createHandle(1) }
+    val scope = rememberCoroutineScope()
     DisposableEffect(nativeHandle) {
         onHandleChanged(nativeHandle)
         onDispose {
@@ -115,18 +118,26 @@ private fun AndroidGsApp(
     }
 
     LaunchedEffect(nativeHandle) {
-        refreshNativeState()
-        NativeCore.startUdpClient(nativeHandle)
+        withContext(Dispatchers.Default) {
+            refreshNativeState()
+            NativeCore.startUdpClient(nativeHandle)
+        }
     }
 
     LaunchedEffect(nativeHandle) {
         while (true) {
-            refreshNativeState()
-            if (NativeCore.consumeExitRequested(nativeHandle)) {
+            val exitRequested = withContext(Dispatchers.Default) {
+                refreshNativeState()
+                NativeCore.consumeExitRequested(nativeHandle)
+            }
+            if (exitRequested) {
                 onExitApp()
                 return@LaunchedEffect
             }
-            delay(if (NativeCore.isUdpClientRunning(nativeHandle)) 16 else 250)
+            val isRunning = withContext(Dispatchers.Default) {
+                NativeCore.isUdpClientRunning(nativeHandle)
+            }
+            delay(if (isRunning) 16 else 250)
         }
     }
 
@@ -137,14 +148,15 @@ private fun AndroidGsApp(
             .pointerInput(nativeHandle) {
                 detectTapGestures { offset ->
                     onUserInteraction()
-                    NativeCore.handleTap(
-                        nativeHandle,
-                        offset.x,
-                        offset.y,
-                        size.width.toFloat(),
-                        size.height.toFloat()
-                    )
-                    refreshNativeState()
+                    scope.launch(Dispatchers.Default) {
+                        NativeCore.handleTap(
+                            nativeHandle,
+                            offset.x,
+                            offset.y,
+                            size.width.toFloat(),
+                            size.height.toFloat()
+                        )
+                    }
                 }
             }
     ) {

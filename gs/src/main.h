@@ -95,6 +95,7 @@ struct TGroundstationConfig
 };
 
 extern TGroundstationConfig s_groundstation_config;
+extern std::mutex s_gs_stats_mutex;
 
 //===================================================================================
 //===================================================================================
@@ -133,6 +134,8 @@ struct GSStats
     int discardedFramesAssemblerPoolOverflow = 0;
     int discardedFramesDecoderInput = 0;
     int discardedFramesDecodedOutput = 0;
+    int restoredTransportPackets = 0;
+    int restoredVideoParts = 0;
     int receivedCompletedFrames = 0;
     int restoredCompletedFrames = 0;
 };

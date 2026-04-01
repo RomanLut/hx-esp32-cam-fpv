@@ -553,6 +553,7 @@ uint8_t GsSessionCore::consumeDataRateSample()
 
 void GsSessionCore::onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue_usage)
 {
+    std::lock_guard<std::mutex> lg(m_state_mutex);
     m_frame_stats.lost_frame_count++;
     m_frame_stats.frame_stats.add(0);
     m_frame_stats.frame_time_stats.add(0);
@@ -563,6 +564,7 @@ void GsSessionCore::onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue
 
 void GsSessionCore::onLostWholeFrames(int lost_whole_frames)
 {
+    std::lock_guard<std::mutex> lg(m_state_mutex);
     m_frame_stats.lost_frame_count += lost_whole_frames;
     m_frame_stats.frame_stats.addMultiple(0, lost_whole_frames);
     m_frame_stats.frame_time_stats.addMultiple(0, lost_whole_frames);
@@ -577,6 +579,7 @@ void GsSessionCore::onCompletedFrame(bool restored_by_fec,
                                      uint8_t queue_usage,
                                      Clock::time_point now)
 {
+    std::lock_guard<std::mutex> lg(m_state_mutex);
     if (restored_by_fec)
     {
         m_periodic_stats.restored_completed_frames++;
@@ -598,6 +601,20 @@ void GsSessionCore::onCompletedFrame(bool restored_by_fec,
     }
     m_frame_stats.frame_time_stats.add(static_cast<uint8_t>(frame_period));
     m_last_frame_completed_tp = now;
+}
+
+FrameStatsState GsSessionCore::copyFrameStats() const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return m_frame_stats;
+}
+
+int GsSessionCore::consumeLostFrameCount()
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    const int lost = m_frame_stats.lost_frame_count;
+    m_frame_stats.lost_frame_count = 0;
+    return lost;
 }
 
 FrameStatsState& GsSessionCore::frameStats()

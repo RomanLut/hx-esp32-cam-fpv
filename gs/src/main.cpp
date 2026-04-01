@@ -340,7 +340,6 @@ static bool ensureSingleInstance()
 static gs::core::GsSessionCore s_session_core;
 static AirStats& s_last_airStats = s_session_core.lastAirStats();
 static gs::core::AirStatusState& s_air_status = s_session_core.airStatus();
-static gs::core::FrameStatsState& s_frame_state = s_session_core.frameStats();
 
 #ifdef TEST_LATENCY
 static uint32_t s_test_latency_gpio_value = 0;
@@ -348,6 +347,7 @@ static Clock::time_point s_test_latency_gpio_last_tp = Clock::now();
 #endif
 
 TGroundstationConfig s_groundstation_config;
+std::mutex s_gs_stats_mutex;
 
 mINI::INIStructure ini;
 mINI::INIFile s_iniFile("gs.ini");
@@ -355,7 +355,7 @@ mINI::INIFile s_iniFile("gs.ini");
 float video_fps = 0;
 bool had_loss = false;
 int s_total_data = 0;
-int& s_lost_frame_count = s_frame_state.lost_frame_count;
+int s_lost_frame_count = 0;
 WIFI_Rate s_curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
 int s_wifi_queue_min = 0;
 int s_wifi_queue_max = 0;
@@ -386,12 +386,7 @@ Clock::time_point s_last_stats_packet_tp = Clock::now();
 
 Clock::time_point s_last_rc_command = Clock::now();
 
-Stats& s_frame_stats = s_frame_state.frame_stats;
-Stats& s_frameParts_stats = s_frame_state.frame_parts_stats;
-Stats& s_frameTime_stats = s_frame_state.frame_time_stats;
-Stats& s_frameQuality_stats = s_frame_state.frame_quality_stats;
 Stats s_dataSize_stats;
-Stats& s_queueUsage_stats = s_frame_state.queue_usage_stats;
 
 GSStats s_gs_stats;
 GSStats s_last_gs_stats;
@@ -593,16 +588,25 @@ static void comms_thread_proc()
             s_total_data = periodic_stats.total_data;
 
             s_noPing = link_status.no_ping;
-            s_gs_stats.pingMinMS = link_status.ping_min_ms;
-            s_gs_stats.pingMaxMS = link_status.ping_max_ms;
-            s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
-            s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
-            s_gs_stats.discardedFramesAssemblerPoolOverflow += static_cast<int>(assembler_stats.discarded_frames);
+            {
+                std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+                const int8_t rssi0 = s_gs_stats.rssiDbm[0];
+                const int8_t rssi1 = s_gs_stats.rssiDbm[1];
+                const int8_t noise_floor = s_gs_stats.noiseFloorDbm;
+                s_gs_stats.pingMinMS = link_status.ping_min_ms;
+                s_gs_stats.pingMaxMS = link_status.ping_max_ms;
+                s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
+                s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
+                s_gs_stats.discardedFramesAssemblerPoolOverflow += static_cast<int>(assembler_stats.discarded_frames);
 
-            s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
-            s_last_gs_stats = s_gs_stats;
-            s_gs_stats = GSStats();
-            s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;  //effectively: = s_gs_stats.lastPacketIndex 
+                s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
+                s_last_gs_stats = s_gs_stats;
+                s_gs_stats = GSStats();
+                s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
+                s_gs_stats.rssiDbm[0] = rssi0;
+                s_gs_stats.rssiDbm[1] = rssi1;
+                s_gs_stats.noiseFloorDbm = noise_floor;
+            }
 
             last_stats_tp = now;
         }
@@ -656,6 +660,7 @@ static void comms_thread_proc()
                             Clock::time_point t = Clock::now();
                             int dt = std::chrono::duration_cast<std::chrono::milliseconds>(t - s_last_rc_command).count();
                             s_last_rc_command = t;
+                            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
                             s_gs_stats.RCPeriodMax = std::max(s_gs_stats.RCPeriodMax, dt);
                             gotRCPacket = true;
                         }
@@ -756,6 +761,11 @@ static void comms_thread_proc()
 */
             s_last_packet_tp = Clock::now();
             rx_data.rssi = (int16_t)s_transport.get_input_dBm();
+            if (restoredByFEC)
+            {
+                std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+                s_gs_stats.restoredTransportPackets++;
+            }
 
             if (session_event.kind == gs::core::SessionEventKind::InvalidVideoPacket)
             {
@@ -792,6 +802,12 @@ static void comms_thread_proc()
                     video_view.payload,
                     video_view.payload_size,
                     restoredByFEC);
+
+                if (restoredByFEC)
+                {
+                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+                    s_gs_stats.restoredVideoParts++;
+                }
 
                 if (frameResult.lostPartialFrame)
                 {
@@ -1780,46 +1796,54 @@ static void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
 static void drawFullscreenStatsPanel(const Ground2Air_Config_Packet& config)
 {
     gs::stats::FullscreenStatsSnapshot snapshot;
+    const gs::core::FrameStatsState frame_stats = s_session_core.copyFrameStats();
+    GSStats last_gs_stats;
+    {
+        std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+        last_gs_stats = s_last_gs_stats;
+    }
     snapshot.fec_codec_n = config.dataChannel.fec_codec_n;
     snapshot.current_quality = s_curr_quality;
     snapshot.wifi_queue_max = s_wifi_queue_max;
     snapshot.cpu_temp_c = static_cast<int>(g_CPUTemp.getTemperature() + 0.5f);
     snapshot.air_stats = s_last_airStats;
-    snapshot.frame_stats = s_frame_stats;
-    snapshot.frame_parts_stats = s_frameParts_stats;
-    snapshot.frame_time_stats = s_frameTime_stats;
-    snapshot.frame_quality_stats = s_frameQuality_stats;
+    snapshot.frame_stats = frame_stats.frame_stats;
+    snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
+    snapshot.frame_time_stats = frame_stats.frame_time_stats;
+    snapshot.frame_quality_stats = frame_stats.frame_quality_stats;
     snapshot.data_size_stats = s_dataSize_stats;
-    snapshot.queue_usage_stats = s_queueUsage_stats;
-    snapshot.ground_stats.out_packet_counter = s_last_gs_stats.outPacketCounter;
-    snapshot.ground_stats.in_packet_counter[0] = s_last_gs_stats.inPacketCounter[0];
-    snapshot.ground_stats.in_packet_counter[1] = s_last_gs_stats.inPacketCounter[1];
-    snapshot.ground_stats.last_packet_index = s_last_gs_stats.lastPacketIndex;
-    snapshot.ground_stats.stats_packet_index = s_last_gs_stats.statsPacketIndex;
-    snapshot.ground_stats.in_duplicated_packet_counter = s_last_gs_stats.inDublicatedPacketCounter;
-    snapshot.ground_stats.in_unique_packet_counter = s_last_gs_stats.inUniquePacketCounter;
-    snapshot.ground_stats.fec_succ_packet_index_counter = s_last_gs_stats.FECSuccPacketIndexCounter;
-    snapshot.ground_stats.fec_blocks_counter = s_last_gs_stats.FECBlocksCounter;
-    snapshot.ground_stats.rssi_dbm[0] = s_last_gs_stats.rssiDbm[0];
-    snapshot.ground_stats.rssi_dbm[1] = s_last_gs_stats.rssiDbm[1];
-    snapshot.ground_stats.noise_floor_dbm = s_last_gs_stats.noiseFloorDbm;
-    snapshot.ground_stats.broken_frames = s_last_gs_stats.brokenFrames;
-    snapshot.ground_stats.ping_min_ms = s_last_gs_stats.pingMinMS;
-    snapshot.ground_stats.ping_max_ms = s_last_gs_stats.pingMaxMS;
-    snapshot.ground_stats.rc_period_max = s_last_gs_stats.RCPeriodMax;
-    snapshot.ground_stats.decoded_jpeg_count = s_last_gs_stats.decodedJpegCount;
-    snapshot.ground_stats.decoded_jpeg_time_total_ms = s_last_gs_stats.decodedJpegTimeTotalMS;
-    snapshot.ground_stats.decoded_jpeg_time_min_ms = s_last_gs_stats.decodedJpegTimeMinMS;
-    snapshot.ground_stats.decoded_jpeg_time_max_ms = s_last_gs_stats.decodedJpegTimeMaxMS;
-    snapshot.ground_stats.texture_upload_count = s_last_gs_stats.textureUploadCount;
-    snapshot.ground_stats.texture_upload_time_total_ms = s_last_gs_stats.textureUploadTimeTotalMS;
-    snapshot.ground_stats.texture_upload_time_min_ms = s_last_gs_stats.textureUploadTimeMinMS;
-    snapshot.ground_stats.texture_upload_time_max_ms = s_last_gs_stats.textureUploadTimeMaxMS;
-    snapshot.ground_stats.discarded_frames_assembler_pool_overflow = s_last_gs_stats.discardedFramesAssemblerPoolOverflow;
-    snapshot.ground_stats.discarded_frames_decoder_input = s_last_gs_stats.discardedFramesDecoderInput;
-    snapshot.ground_stats.discarded_frames_decoded_output = s_last_gs_stats.discardedFramesDecodedOutput;
-    snapshot.ground_stats.received_completed_frames = s_last_gs_stats.receivedCompletedFrames;
-    snapshot.ground_stats.restored_completed_frames = s_last_gs_stats.restoredCompletedFrames;
+    snapshot.queue_usage_stats = frame_stats.queue_usage_stats;
+    snapshot.ground_stats.out_packet_counter = last_gs_stats.outPacketCounter;
+    snapshot.ground_stats.in_packet_counter[0] = last_gs_stats.inPacketCounter[0];
+    snapshot.ground_stats.in_packet_counter[1] = last_gs_stats.inPacketCounter[1];
+    snapshot.ground_stats.last_packet_index = last_gs_stats.lastPacketIndex;
+    snapshot.ground_stats.stats_packet_index = last_gs_stats.statsPacketIndex;
+    snapshot.ground_stats.in_duplicated_packet_counter = last_gs_stats.inDublicatedPacketCounter;
+    snapshot.ground_stats.in_unique_packet_counter = last_gs_stats.inUniquePacketCounter;
+    snapshot.ground_stats.fec_succ_packet_index_counter = last_gs_stats.FECSuccPacketIndexCounter;
+    snapshot.ground_stats.fec_blocks_counter = last_gs_stats.FECBlocksCounter;
+    snapshot.ground_stats.rssi_dbm[0] = last_gs_stats.rssiDbm[0];
+    snapshot.ground_stats.rssi_dbm[1] = last_gs_stats.rssiDbm[1];
+    snapshot.ground_stats.noise_floor_dbm = last_gs_stats.noiseFloorDbm;
+    snapshot.ground_stats.broken_frames = last_gs_stats.brokenFrames;
+    snapshot.ground_stats.ping_min_ms = last_gs_stats.pingMinMS;
+    snapshot.ground_stats.ping_max_ms = last_gs_stats.pingMaxMS;
+    snapshot.ground_stats.rc_period_max = last_gs_stats.RCPeriodMax;
+    snapshot.ground_stats.decoded_jpeg_count = last_gs_stats.decodedJpegCount;
+    snapshot.ground_stats.decoded_jpeg_time_total_ms = last_gs_stats.decodedJpegTimeTotalMS;
+    snapshot.ground_stats.decoded_jpeg_time_min_ms = last_gs_stats.decodedJpegTimeMinMS;
+    snapshot.ground_stats.decoded_jpeg_time_max_ms = last_gs_stats.decodedJpegTimeMaxMS;
+    snapshot.ground_stats.texture_upload_count = last_gs_stats.textureUploadCount;
+    snapshot.ground_stats.texture_upload_time_total_ms = last_gs_stats.textureUploadTimeTotalMS;
+    snapshot.ground_stats.texture_upload_time_min_ms = last_gs_stats.textureUploadTimeMinMS;
+    snapshot.ground_stats.texture_upload_time_max_ms = last_gs_stats.textureUploadTimeMaxMS;
+    snapshot.ground_stats.discarded_frames_assembler_pool_overflow = last_gs_stats.discardedFramesAssemblerPoolOverflow;
+    snapshot.ground_stats.discarded_frames_decoder_input = last_gs_stats.discardedFramesDecoderInput;
+    snapshot.ground_stats.discarded_frames_decoded_output = last_gs_stats.discardedFramesDecodedOutput;
+    snapshot.ground_stats.restored_transport_packets = last_gs_stats.restoredTransportPackets;
+    snapshot.ground_stats.restored_video_parts = last_gs_stats.restoredVideoParts;
+    snapshot.ground_stats.received_completed_frames = last_gs_stats.receivedCompletedFrames;
+    snapshot.ground_stats.restored_completed_frames = last_gs_stats.restoredCompletedFrames;
     gs::stats::drawFullscreenStatsPanel(snapshot);
 }
 
@@ -1920,9 +1944,9 @@ int run(char* argv[])
         {
             last_stats_tp = Clock::now();
             video_fps = video_frame_count;
+            s_lost_frame_count = s_session_core.consumeLostFrameCount();
             had_loss = s_lost_frame_count != 0;
             video_frame_count = 0;
-            s_lost_frame_count = 0;
         }
 
         Clock::time_point now = Clock::now();

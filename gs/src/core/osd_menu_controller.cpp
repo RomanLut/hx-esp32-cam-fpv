@@ -66,106 +66,10 @@ bool OSDMenuController::isVisible() const
     return this->visible;
 }
 
-void OSDMenuController::moveSelection(int delta)
-{
-    if (!this->visible || this->itemsCount <= 0 || delta == 0)
-    {
-        return;
-    }
-
-    this->selectedItem = std::clamp(this->selectedItem + delta, 0, this->itemsCount - 1);
-}
-
-void OSDMenuController::goBackPublic()
-{
-    if (!this->visible)
-    {
-        return;
-    }
-    if (this->backMenuIds.empty())
-    {
-        this->visible = false;
-        return;
-    }
-    this->goBack();
-}
-
-void OSDMenuController::activateSelected(Ground2Air_Config_Packet& config)
-{
-    if (!this->visible)
-    {
-        return;
-    }
-    replayItemActivation(config, this->selectedItem);
-}
-
-void OSDMenuController::activateItemByVisibleIndex(Ground2Air_Config_Packet& config, int visible_index)
-{
-    if (!this->visible)
-    {
-        return;
-    }
-
-    const OSDMenuViewState view_state = buildViewState(config);
-    if (visible_index < 0 || visible_index >= static_cast<int>(view_state.item_indices.size()))
-    {
-        return;
-    }
-
-    this->selectedItem = view_state.item_indices[visible_index];
-    replayItemActivation(config, this->selectedItem);
-}
-
-gs::menu::OSDMenuViewState OSDMenuController::buildViewState(Ground2Air_Config_Packet& config)
-{
-    OSDMenuViewState view_state;
-    view_state.visible = this->visible;
-    if (!this->visible)
-    {
-        return view_state;
-    }
-
-    this->m_draw_mode = DrawMode::CaptureViewState;
-    this->m_activate_item_index = -1;
-    this->m_view_state = {};
-    this->m_view_state.visible = true;
-    this->itemsCount = 0;
-    this->keyHandled = false;
-    drawCurrentMenu(config);
-    this->m_view_state.selected_item = 0;
-    for (size_t i = 0; i < this->m_view_state.item_indices.size(); ++i)
-    {
-        if (this->m_view_state.item_indices[i] == this->selectedItem)
-        {
-            this->m_view_state.selected_item = static_cast<int>(i);
-            break;
-        }
-    }
-    view_state = this->m_view_state;
-    this->m_draw_mode = DrawMode::Interactive;
-    this->m_activate_item_index = -1;
-    return view_state;
-}
-
 //=======================================================
 //=======================================================
 void OSDMenuController::drawMenuTitle( const char* caption )
 {
-    if (m_draw_mode == DrawMode::CaptureViewState)
-    {
-        m_view_state.title = caption != nullptr ? caption : "";
-        this->itemsCount = 0;
-        this->keyHandled = false;
-        return;
-    }
-
-    if (m_draw_mode == DrawMode::ActivateItem)
-    {
-        this->itemsCount = 0;
-        this->keyHandled = false;
-        return;
-    }
-
     gs::menu::imgui::drawMenuTitle(caption, m_imgui_layout);
     this->itemsCount = 0;
     this->keyHandled = false;
@@ -176,34 +80,17 @@ void OSDMenuController::drawMenuTitle( const char* caption )
 //=======================================================
 void OSDMenuController::drawStatus( const char* caption )
 {
-    if (m_draw_mode == DrawMode::CaptureViewState)
-    {
-        m_view_state.statuses.emplace_back(caption != nullptr ? caption : "");
-        return;
-    }
-
-    if (m_draw_mode == DrawMode::ActivateItem)
-    {
-        return;
-    }
-
     gs::menu::imgui::drawMenuStatus(caption, m_imgui_layout);
 }
 
 void OSDMenuController::drawSpacing()
 {
-    if (m_draw_mode != DrawMode::CaptureViewState && m_draw_mode != DrawMode::ActivateItem)
-    {
-        gs::menu::imgui::drawSmallGap(m_imgui_layout);
-    }
+    gs::menu::imgui::drawSmallGap(m_imgui_layout);
 }
 
 void OSDMenuController::drawLargeGapIfTallScreen()
 {
-    if (m_draw_mode != DrawMode::CaptureViewState && m_draw_mode != DrawMode::ActivateItem)
-    {
-        gs::menu::imgui::drawLargeGap(m_imgui_layout);
-    }
+    gs::menu::imgui::drawLargeGap(m_imgui_layout);
 }
 
 //=======================================================
@@ -220,27 +107,15 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
         return false;
     }
 
-    if (m_draw_mode == DrawMode::CaptureViewState)
-    {
-        m_view_state.items.emplace_back(caption != nullptr ? caption : "");
-        m_view_state.item_indices.push_back(itemIndex);
-        this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
-        return false;
-    }
-
     bool focused = this->selectedItem == itemIndex;
     bool res = false;
 
-    if (m_draw_mode == DrawMode::ActivateItem)
-    {
-        res = itemIndex == m_activate_item_index && !this->keyHandled;
-    }
-    else if (m_draw_mode == DrawMode::Interactive)
+    if (m_draw_mode == DrawMode::Interactive)
     {
         res = focused && ( ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && !this->keyHandled;
     }
 
-    if (m_draw_mode != DrawMode::ActivateItem && gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused))
+    if (gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused))
     {
         res = true;
     }
@@ -257,17 +132,6 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     return res;
 }
 
-void OSDMenuController::replayItemActivation(Ground2Air_Config_Packet& config, int item_index)
-{
-    this->keyHandled = false;
-    this->itemsCount = 0;
-    this->m_draw_mode = DrawMode::ActivateItem;
-    this->m_activate_item_index = item_index;
-    drawCurrentMenu(config);
-    this->m_activate_item_index = -1;
-    this->m_draw_mode = DrawMode::Interactive;
-}
-
 void OSDMenuController::drawMenuWindow(const char* window_name,
                                        const gs::menu::imgui::MenuFrameLayout& layout,
                                        Ground2Air_Config_Packet& config,
@@ -275,11 +139,6 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
                                        ImGuiWindowFlags extra_flags)
 {
     m_imgui_layout = layout;
-
-    const int windowWidth = static_cast<int>(m_imgui_layout.window_width);
-    this->bWidth = windowWidth - 58;
-    this->sWidth = windowWidth;
-    this->bHeight = static_cast<int>(m_imgui_layout.button_height);
 
     this->itemsCount = 0;
     this->keyHandled = false;

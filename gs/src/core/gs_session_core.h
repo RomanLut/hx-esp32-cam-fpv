@@ -217,6 +217,8 @@ public:
                           uint8_t quality,
                           uint8_t queue_usage,
                           Clock::time_point now);
+    FrameStatsState copyFrameStats() const;
+    int consumeLostFrameCount();
     FrameStatsState& frameStats();
     const FrameStatsState& frameStats() const;
 

@@ -164,6 +164,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
 {
     if (!jpeg_buffer || jpeg_buffer->data.empty())
     {
+        std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
         s_gs_stats.brokenFrames++;
         return false;
     }
@@ -177,6 +178,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
         if (!m_impl->input_queue.empty())
         {
+            std::lock_guard<std::mutex> stats_lg(s_gs_stats_mutex);
             s_gs_stats.discardedFramesDecoderInput += static_cast<int>(m_impl->input_queue.size());
             m_impl->input_queue.clear();
         }
@@ -231,6 +233,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
                 input = m_impl->input_queue.back();
                 if (m_impl->input_queue.size() > 1)
                 {
+                    std::lock_guard<std::mutex> stats_lg(s_gs_stats_mutex);
                     s_gs_stats.discardedFramesDecoderInput += static_cast<int>(m_impl->input_queue.size() - 1);
                 }
                 m_impl->input_queue.clear();
@@ -295,6 +298,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         if (tjDecompressHeader3(tjInstance, data, size, &width, &height, &inSubsamp, &inColorspace) < 0)
         {
             input->jpeg_buffer.reset();
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
             s_gs_stats.brokenFrames++;
             tjDestroy(tjInstance);
             LOGE("Jpeg header error: {}", tjGetErrorStr());
@@ -318,6 +322,7 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         //if (tjDecompressToYUVPlanes(tjInstance, data, size, planesPtr.data(), 0, nullptr, 0, flags) < 0)
         if(tjDecompress2(tjInstance, data, size,output->rgb_data.data(),width,0,height,TJPF_RGB,flags))
         {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
             s_gs_stats.brokenFrames++;
             //tjDestroy(m_impl->tjInstance);
             LOGE("decompressing JPEG image: {}", tjGetErrorStr());
@@ -329,10 +334,13 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
 
         Clock::time_point t2 = Clock::now();
         int duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
-        s_gs_stats.decodedJpegCount++;
-        s_gs_stats.decodedJpegTimeTotalMS += duration;
-        s_gs_stats.decodedJpegTimeMinMS = std::min( s_gs_stats.decodedJpegTimeMinMS, duration );
-        s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
+        {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+            s_gs_stats.decodedJpegCount++;
+            s_gs_stats.decodedJpegTimeTotalMS += duration;
+            s_gs_stats.decodedJpegTimeMinMS = std::min( s_gs_stats.decodedJpegTimeMinMS, duration );
+            s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
+        }
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
@@ -340,10 +348,12 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             {
                 if (!shouldReplaceDecodedFrame(output->frame_id, m_impl->pending_output->frame_id))
                 {
+                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
                     s_gs_stats.discardedFramesDecodedOutput++;
                     continue;
                 }
 
+                std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
                 s_gs_stats.discardedFramesDecodedOutput++;
             }
 
@@ -421,10 +431,13 @@ size_t Video_Decoder::lock_output()
 #endif
 
     int upload_duration = std::chrono::duration_cast<std::chrono::milliseconds>(upload_t2 - upload_t1).count();
-    s_gs_stats.textureUploadCount++;
-    s_gs_stats.textureUploadTimeTotalMS += upload_duration;
-    s_gs_stats.textureUploadTimeMinMS = std::min(s_gs_stats.textureUploadTimeMinMS, upload_duration);
-    s_gs_stats.textureUploadTimeMaxMS = std::max(s_gs_stats.textureUploadTimeMaxMS, upload_duration);
+    {
+        std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+        s_gs_stats.textureUploadCount++;
+        s_gs_stats.textureUploadTimeTotalMS += upload_duration;
+        s_gs_stats.textureUploadTimeMinMS = std::min(s_gs_stats.textureUploadTimeMinMS, upload_duration);
+        s_gs_stats.textureUploadTimeMaxMS = std::max(s_gs_stats.textureUploadTimeMaxMS, upload_duration);
+    }
 
     m_texture = output.texture;
     m_resolution = ImVec2((float)output.width, (float)output.height);

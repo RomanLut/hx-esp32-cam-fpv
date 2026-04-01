@@ -4,6 +4,7 @@
 #include <GLES2/gl2.h>
 #include <android/log.h>
 
+#include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -482,6 +483,63 @@ void AndroidVideoRenderer::setOverlayState(const std::vector<OverlayChip>& chips
     m_cv.notify_all();
 }
 
+void AndroidVideoRenderer::setMenuBinding(gs::menu::OSDMenuController* menu_controller,
+                                          Ground2Air_Config_Packet* config_packet,
+                                          std::mutex* menu_mutex)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_menu_controller = menu_controller;
+    m_menu_config = config_packet;
+    m_menu_mutex = menu_mutex;
+}
+
+void AndroidVideoRenderer::setMenuFooter(const std::string& footer)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_menu_footer = footer;
+}
+
+bool AndroidVideoRenderer::isMenuVisible()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_menu_visible;
+}
+
+void AndroidVideoRenderer::queueMenuOpen()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_open_menu_requested = true;
+    m_close_menu_requested = false;
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::queueMenuClose()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_close_menu_requested = true;
+    m_open_menu_requested = false;
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::queueMouseTap(float x, float y)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_touch_pending = true;
+    m_touch_x = x;
+    m_touch_y = y;
+    ++m_touch_sequence;
+    m_cv.notify_all();
+}
+
+void AndroidVideoRenderer::queueKeyPress(ImGuiKey key)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_pending_key_presses.push_back(key);
+    m_cv.notify_all();
+}
+
 AndroidVideoRenderer::MenuAction AndroidVideoRenderer::dispatchTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -552,7 +610,13 @@ void AndroidVideoRenderer::run()
     while (!m_exit)
     {
         m_cv.wait(lock, [this] {
-            return m_exit || m_surface_dirty || m_frame_dirty.load() || m_mode_dirty || m_overlay_dirty || m_touch_pending;
+            return m_exit ||
+                   m_surface_dirty ||
+                   m_frame_dirty.load() ||
+                   m_mode_dirty ||
+                   m_overlay_dirty ||
+                   m_touch_pending ||
+                   !m_pending_key_presses.empty();
         });
 
         if (m_exit)
@@ -602,7 +666,7 @@ void AndroidVideoRenderer::run()
 
             m_frame_dirty.store(m_has_pending_frame);
         }
-        else if (m_mode_dirty || m_overlay_dirty)
+        else if (m_mode_dirty || m_overlay_dirty || m_touch_pending || !m_pending_key_presses.empty())
         {
             drawFrameLocked();
         }
@@ -1030,7 +1094,28 @@ void AndroidVideoRenderer::drawStatsLocked()
 
 void AndroidVideoRenderer::drawMenuLocked()
 {
-    if (!m_overlay_menu.visible)
+    if (m_menu_controller == nullptr || m_menu_config == nullptr)
+    {
+        return;
+    }
+
+    if (m_menu_mutex != nullptr)
+    {
+        std::lock_guard<std::mutex> menu_lock(*m_menu_mutex);
+        if (m_open_menu_requested)
+        {
+            m_menu_controller->open();
+        }
+        if (m_close_menu_requested)
+        {
+            m_menu_controller->close();
+        }
+        m_open_menu_requested = false;
+        m_close_menu_requested = false;
+        m_menu_visible = m_menu_controller->isVisible();
+    }
+
+    if (!m_menu_visible)
     {
         return;
     }
@@ -1041,92 +1126,15 @@ void AndroidVideoRenderer::drawMenuLocked()
 
 void AndroidVideoRenderer::drawMenuImGuiLocked()
 {
-    if (m_imgui_context == nullptr)
+    if (m_imgui_context == nullptr || m_menu_controller == nullptr || m_menu_config == nullptr)
     {
         return;
     }
 
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    m_menu_item_bounds.clear();
     const float layout_width = m_vr_mode ? (static_cast<float>(m_surface_width) * 0.5f) : static_cast<float>(m_surface_width);
-    const auto makeLayout = [this, layout_width](float origin_x)
-    {
-        auto layout = gs::menu::imgui::buildMenuFrameLayout(layout_width,
-                                                            static_cast<float>(m_surface_height),
-                                                            true,
-                                                            29.0f);
-        layout.window_x += origin_x;
-        return layout;
-    };
-
-    const auto drawMenuWindow = [this](const gs::menu::imgui::MenuFrameLayout& layout,
-                                       const char* window_name,
-                                       bool interactive)
-    {
-        const ImGuiWindowFlags extra_flags = interactive
-            ? 0
-            : (ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
-        gs::menu::imgui::beginMenuWindow(window_name, layout, extra_flags);
-        gs::menu::imgui::drawMenuTitle(m_overlay_menu.title.c_str(), layout);
-        if (interactive)
-        {
-            m_menu_bounds = {
-                ImGui::GetWindowPos().x,
-                ImGui::GetWindowPos().y,
-                ImGui::GetWindowSize().x,
-                ImGui::GetWindowSize().y};
-        }
-
-        for (size_t index = 0; index < m_overlay_menu.items.size(); ++index)
-        {
-            std::string item_text = m_overlay_menu.items[index];
-            if (index < m_overlay_menu.statuses.size() && !m_overlay_menu.statuses[index].empty())
-            {
-                item_text += " ";
-                item_text += m_overlay_menu.statuses[index];
-            }
-            if (gs::menu::imgui::drawMenuItem(item_text.c_str(), layout, static_cast<int>(index) == m_overlay_menu.selected_index) && interactive)
-            {
-                m_touch_action = {MenuActionKind::SelectItem, static_cast<int>(index)};
-            }
-            if (interactive)
-            {
-                const ImVec2 min = ImGui::GetItemRectMin();
-                const ImVec2 max = ImGui::GetItemRectMax();
-                m_menu_item_bounds.push_back({min.x, min.y, max.x - min.x, max.y - min.y});
-            }
-        }
-
-        if (!m_overlay_menu.status_lines.empty())
-        {
-            gs::menu::imgui::drawLargeGap(layout);
-            for (size_t index = 0; index < std::min<size_t>(2, m_overlay_menu.status_lines.size()); ++index)
-            {
-                gs::menu::imgui::drawMenuStatus(m_overlay_menu.status_lines[index].c_str(), layout);
-                if (index + 1 < std::min<size_t>(2, m_overlay_menu.status_lines.size()))
-                {
-                    gs::menu::imgui::drawSmallGap(layout);
-                }
-            }
-        }
-
-        gs::menu::imgui::drawMenuFooterRight(m_overlay_menu.footer.c_str(), layout);
-        gs::menu::imgui::endMenuWindow();
-    };
-
-    const auto primary_layout = makeLayout(0.0f);
-    drawMenuWindow(primary_layout, "OSD_MENU_ANDROID", true);
-    if (m_vr_mode)
-    {
-        drawMenuWindow(makeLayout(layout_width), "OSD_MENU_ANDROID_VR_CLONE", false);
-    }
-
     const NavPadLayout nav = buildNavPadLayout(static_cast<int>(layout_width), m_surface_height);
     const ImVec2 nav_size(nav.size, nav.size);
-    m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
-    m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
-    m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
-    m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
     const ImVec4 active_bg = toImGuiColor({0.16f, 0.20f, 0.26f, 0.92f});
     const ImVec4 back_bg = toImGuiColor({0.22f, 0.18f, 0.18f, 0.92f});
     const ImVec4 enter_bg = toImGuiColor({0.18f, 0.27f, 0.18f, 0.92f});
@@ -1144,7 +1152,7 @@ void AndroidVideoRenderer::drawMenuImGuiLocked()
 
     auto drawNavPad = [&](float origin_x, bool interactive)
     {
-        auto drawNavButton = [&](const char* label, float x, float y, const ImVec4& bg, MenuActionKind action)
+        auto drawNavButton = [&](const char* label, float x, float y, const ImVec4& bg, ImGuiKey key)
         {
             ImGui::SetCursorPos(ImVec2(origin_x + x, y));
             ImGui::PushStyleColor(ImGuiCol_Button, bg);
@@ -1152,15 +1160,16 @@ void AndroidVideoRenderer::drawMenuImGuiLocked()
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
             if (ImGui::Button(label, nav_size) && interactive)
             {
-                m_touch_action = {action, -1};
+                ImGui::GetIO().AddKeyEvent(key, true);
+                ImGui::GetIO().AddKeyEvent(key, false);
             }
             ImGui::PopStyleColor(3);
         };
 
-        drawNavButton("UP", nav.center_x, nav.up_y, active_bg, MenuActionKind::Up);
-        drawNavButton("LEFT", nav.left_x, nav.mid_y, back_bg, MenuActionKind::Back);
-        drawNavButton("RIGHT", nav.right_x, nav.mid_y, enter_bg, MenuActionKind::Activate);
-        drawNavButton("DOWN", nav.center_x, nav.down_y, active_bg, MenuActionKind::Down);
+        drawNavButton("UP", nav.center_x, nav.up_y, active_bg, ImGuiKey_UpArrow);
+        drawNavButton("LEFT", nav.left_x, nav.mid_y, back_bg, ImGuiKey_LeftArrow);
+        drawNavButton("RIGHT", nav.right_x, nav.mid_y, enter_bg, ImGuiKey_RightArrow);
+        drawNavButton("DOWN", nav.center_x, nav.down_y, active_bg, ImGuiKey_DownArrow);
     };
 
     drawNavPad(0.0f, true);
@@ -1171,6 +1180,13 @@ void AndroidVideoRenderer::drawMenuImGuiLocked()
 
     ImGui::End();
     ImGui::PopStyleVar(2);
+
+    if (m_menu_mutex != nullptr)
+    {
+        std::lock_guard<std::mutex> menu_lock(*m_menu_mutex);
+        m_menu_controller->draw(*m_menu_config);
+        m_menu_visible = m_menu_controller->isVisible();
+    }
 }
 
 void AndroidVideoRenderer::drawOverlayLocked()
@@ -1188,6 +1204,12 @@ void AndroidVideoRenderer::drawOverlayLocked()
             io.AddMouseButtonEvent(0, true);
             io.AddMouseButtonEvent(0, false);
         }
+        for (const ImGuiKey key : m_pending_key_presses)
+        {
+            io.AddKeyEvent(key, true);
+            io.AddKeyEvent(key, false);
+        }
+        m_pending_key_presses.clear();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui::NewFrame();
 
@@ -1214,10 +1236,6 @@ void AndroidVideoRenderer::drawOverlayLocked()
 
     if (m_touch_pending)
     {
-        if (m_touch_action.kind == MenuActionKind::None && !pointInRect(m_touch_x, m_touch_y, m_menu_bounds))
-        {
-            m_touch_action = {MenuActionKind::Outside, -1};
-        }
         m_touch_pending = false;
         m_touch_processed_sequence = m_touch_sequence;
         m_cv.notify_all();

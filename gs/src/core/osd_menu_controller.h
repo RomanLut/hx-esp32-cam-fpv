@@ -10,16 +10,6 @@
 namespace gs::menu
 {
 
-struct OSDMenuViewState
-{
-    bool visible = false;
-    std::string title;
-    std::vector<std::string> items;
-    std::vector<int> item_indices;
-    std::vector<std::string> statuses;
-    int selected_item = 0;
-};
-
 class OSDMenuController
 {
 public:
@@ -32,25 +22,16 @@ public:
     void open();
     void close();
     bool isVisible() const;
-    void moveSelection(int delta);
-    void goBackPublic();
-    void activateSelected(Ground2Air_Config_Packet& config);
-    void activateItemByVisibleIndex(Ground2Air_Config_Packet& config, int visible_index);
-    OSDMenuViewState buildViewState(Ground2Air_Config_Packet& config);
 
 private:
     enum class DrawMode
     {
         Interactive,
         Passive,
-        CaptureViewState,
-        ActivateItem,
     };
 
     IOSDMenuPlatform& m_platform;
     DrawMode m_draw_mode = DrawMode::Interactive;
-    int m_activate_item_index = -1;
-    OSDMenuViewState m_view_state;
 
     OSDMenuId menuId;
     int selectedItem;
@@ -63,9 +44,6 @@ private:
     Clock::time_point search_tp = Clock::now();
     bool searchDone;
 
-    int bWidth;
-    int sWidth;
-    int bHeight;
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
     void drawMenuTitle( const char* caption );
     bool drawMenuItem( const char* caption, int itemIndex, bool clip = false);
@@ -109,7 +87,6 @@ private:
                         Ground2Air_Config_Packet& config,
                         DrawMode mode,
                         ImGuiWindowFlags extra_flags = 0);
-    void replayItemActivation(Ground2Air_Config_Packet& config, int item_index);
 };
 
 } // namespace gs::menu

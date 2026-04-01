@@ -67,8 +67,6 @@ struct MenuActionContext
 void resetMenuState(MenuState& state);
 void goForward(MenuState& state, OSDMenuId new_menu_id, int new_item);
 bool goBack(MenuState& state);
-void moveSelection(MenuState& state, int item_count, int delta);
 MenuScreen buildMenuScreen(const MenuState& state, const MenuViewContext& context);
-void activateSelection(MenuState& state, MenuActionContext& context, int item_index);
 
 }

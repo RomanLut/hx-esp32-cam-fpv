@@ -14,7 +14,13 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "packets.h"
 #include "core/stats_panel_shared.h"
+
+namespace gs::menu
+{
+class OSDMenuController;
+}
 
 class AndroidVideoRenderer
 {
@@ -122,6 +128,15 @@ public:
     void setOverlayState(const std::vector<OverlayChip>& chips,
                          const OverlayMenuState& menu_state,
                          const OverlayStatsState& stats_state);
+    void setMenuBinding(gs::menu::OSDMenuController* menu_controller,
+                        Ground2Air_Config_Packet* config_packet,
+                        std::mutex* menu_mutex);
+    void setMenuFooter(const std::string& footer);
+    bool isMenuVisible();
+    void queueMenuOpen();
+    void queueMenuClose();
+    void queueMouseTap(float x, float y);
+    void queueKeyPress(ImGuiKey key);
     MenuAction dispatchTap(float x, float y);
     RendererStats consumeStats();
 
@@ -208,17 +223,25 @@ private:
     std::vector<OverlayChip> m_overlay_chips;
     OverlayMenuState m_overlay_menu;
     OverlayStatsState m_overlay_stats;
+    gs::menu::OSDMenuController* m_menu_controller = nullptr;
+    Ground2Air_Config_Packet* m_menu_config = nullptr;
+    std::mutex* m_menu_mutex = nullptr;
+    std::string m_menu_footer;
     Rect m_menu_bounds;
     std::vector<Rect> m_menu_item_bounds;
     Rect m_nav_up_bounds;
     Rect m_nav_down_bounds;
     Rect m_nav_left_bounds;
     Rect m_nav_right_bounds;
+    bool m_menu_visible = false;
+    bool m_open_menu_requested = false;
+    bool m_close_menu_requested = false;
     bool m_touch_pending = false;
     uint64_t m_touch_sequence = 0;
     uint64_t m_touch_processed_sequence = 0;
     float m_touch_x = 0.0f;
     float m_touch_y = 0.0f;
+    std::vector<ImGuiKey> m_pending_key_presses;
     MenuAction m_touch_action;
 
     std::atomic<uint32_t> m_upload_count = 0;
