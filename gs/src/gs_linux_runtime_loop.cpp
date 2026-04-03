@@ -254,7 +254,7 @@ int runLinuxRuntimeLoop(char* argv[])
 
     s_comms_thread = std::thread(&comms_thread_proc);
 
-    Ground2Air_Config_Packet config = beginRenderConfigFrame();
+    Ground2Air_Config_Packet config = s_runtimeCore.session.copyConfigPacket();
     size_t video_frame_count = 0;
 
     initializeLinuxOsd();

@@ -33,4 +33,3 @@ struct TGroundstationConfig
 
 extern TGroundstationConfig s_groundstation_config;
 extern Clock::time_point& s_last_packet_tp;
-extern bool s_reload_osd_font;

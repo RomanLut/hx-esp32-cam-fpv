@@ -8,6 +8,7 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
+#include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
 #include "gs_storage_status_shared.h"
@@ -1442,7 +1443,7 @@ void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
                 s_settingsStorage.save();
                 config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(fonts[i].c_str()),
                                                          fonts[i].length());
-                s_reload_osd_font = true;
+                pendingOsdFontReload();
             }
             bExit = true;
         }

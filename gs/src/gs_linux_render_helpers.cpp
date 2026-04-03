@@ -10,18 +10,9 @@
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_core.h"
+#include "gs_runtime_core.h"
 #include "core/osd_menu_common.h"
 #include "osd_menu.h"
-
-Ground2Air_Config_Packet beginRenderConfigFrame()
-{
-    return s_runtimeCore.session.copyConfigPacket();
-}
-
-bool finishRenderConfigFrame(Ground2Air_Config_Packet& config)
-{
-    return s_runtimeCore.session.syncConfigPacket(config);
-}
 
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
@@ -124,23 +115,3 @@ void processPendingWifiChannelChange()
     }
 }
 
-void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
-{
-    if (s_reload_osd_font == true)
-    {
-        s_reload_osd_font = false;
-        const std::vector<std::string>& font_names = s_OSDFontStorage->osdFontsList();
-        const std::optional<std::string> font_name =
-            s_flightOSD.findFontNameByCrc(font_names, config.misc.osdFontCRC32);
-        if (!font_name.has_value())
-        {
-            s_flightOSD.loadFont(s_flightOSD.defaultFontName().c_str());
-            return;
-        }
-
-        if (s_flightOSD.currentFontName() != *font_name)
-        {
-            s_flightOSD.loadFont(font_name->c_str());
-        }
-    }
-}

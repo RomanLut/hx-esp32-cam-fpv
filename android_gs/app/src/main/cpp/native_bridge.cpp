@@ -62,6 +62,7 @@
 #include "settings_storage.h"
 #include "ISerialTelemetry.h"
 #include "android_serial_telemetry.h"
+#include "gs_runtime_core.h"
 
 static AndroidSerialTelemetry s_androidSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
@@ -685,7 +686,10 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                                        dispatch);
 
         s_runtimeCore.session.addReceivedBytes(packet_size);
-        s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet);
+        if (s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet))
+        {
+            pendingOsdFontReload();
+        }
         ensureRxDecoderConfigLocked(handle);
     }
 }
@@ -1300,6 +1304,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
+    processPendingOsdFontReload(s_runtimeCore.config_packet);
     if (sync_state.clear_flight_osd)
     {
         native_handle->renderer.clearFlightOsd();

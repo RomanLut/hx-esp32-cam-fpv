@@ -1,5 +1,9 @@
 #include "gs_runtime_core.h"
 
+#include <optional>
+#include <string>
+#include <vector>
+
 GsRuntimeCore::GsRuntimeCore(uint16_t gs_device_id_value,
                              TGroundstationConfig& groundstation_config_ref,
                              Ground2Air_Config_Packet& config_packet_ref)
@@ -102,10 +106,39 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
     pending_flight_osd.clear();
     pending_flight_osd_dirty = false;
     pending_flight_osd_clear = false;
+    osd_font_reload_pending = false;
 }
 
 void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_point now)
 {
     session.resetPairing(gs_device_id, transport, now);
     transport.getPacketFilter().set_packet_filtering(0, 0);
+}
+
+//===================================================================================
+//===================================================================================
+void pendingOsdFontReload()
+{
+    s_runtimeCore.osd_font_reload_pending = true;
+}
+
+void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
+{
+    if (!s_runtimeCore.osd_font_reload_pending)
+    {
+        return;
+    }
+    s_runtimeCore.osd_font_reload_pending = false;
+    const std::vector<std::string>& font_names = s_OSDFontStorage->osdFontsList();
+    const std::optional<std::string> font_name =
+        s_flightOSD.findFontNameByCrc(font_names, config.misc.osdFontCRC32);
+    if (!font_name.has_value())
+    {
+        s_flightOSD.loadFont(s_flightOSD.defaultFontName().c_str());
+        return;
+    }
+    if (s_flightOSD.currentFontName() != *font_name)
+    {
+        s_flightOSD.loadFont(font_name->c_str());
+    }
 }

@@ -6,6 +6,7 @@
 #include "flight_osd.h"
 #include "gs_recordings_storage.h"
 #include "gs_linux_render_helpers.h"
+#include "gs_runtime_core.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_menu_ui.h"
@@ -150,9 +151,9 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         processPendingRestart(argv);
         processPendingWifiChannelChange();
 
-        if (finishRenderConfigFrame(config))
+        if (s_runtimeCore.session.syncConfigPacket(config))
         {
-            s_reload_osd_font = true;
+            pendingOsdFontReload();
         }
 
         processPendingOsdFontReload(config);

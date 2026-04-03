@@ -12,6 +12,8 @@
 #include "core/video_frame_assembler.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
+#include "flight_osd.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_state.h"
 #include "gs_stats.h"
 #include "packets.h"
@@ -75,6 +77,10 @@ struct GsRuntimeCore
     std::vector<uint8_t> pending_flight_osd;
     bool pending_flight_osd_dirty = false;
     bool pending_flight_osd_clear = false;
+    bool osd_font_reload_pending = false;
 };
+
+void pendingOsdFontReload();
+void processPendingOsdFontReload(const Ground2Air_Config_Packet& config);
 
 extern GsRuntimeCore s_runtimeCore;
