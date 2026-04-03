@@ -35,7 +35,8 @@ void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                              ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoSavedSettings |
-                             ImGuiWindowFlags_NoBackground;
+                             ImGuiWindowFlags_NoBackground |
+                             ImGuiWindowFlags_NoBringToFrontOnFocus;
     if (!state.touch_nav_enabled)
     {
         flags |= ImGuiWindowFlags_NoInputs;
@@ -50,6 +51,14 @@ void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void
                              ImVec2(surface_width, surface_height),
                              ImGui::ColorConvertFloat4ToU32(toImGuiColor(0.0f, 0.0f, 0.0f, 0.40f)));
 
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+
+    if (draw_menu)
+    {
+        draw_menu();
+    }
+
     if (state.touch_nav_enabled)
     {
         const float layout_width = state.vr_mode ? (surface_width * 0.5f) : surface_width;
@@ -59,6 +68,17 @@ void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void
         const ImVec4 active_bg = toImGuiColor(0.16f, 0.20f, 0.26f, 0.92f);
         const ImVec4 back_bg = toImGuiColor(0.22f, 0.18f, 0.18f, 0.92f);
         const ImVec4 enter_bg = toImGuiColor(0.18f, 0.27f, 0.18f, 0.92f);
+
+        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(surface_width, surface_height), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+        ImGui::Begin("RUNTIME_MENU_NAV_PAD",
+                     nullptr,
+                     ImGuiWindowFlags_NoDecoration |
+                         ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoBackground);
 
         auto draw_nav_pad = [&](float origin_x, bool interactive)
         {
@@ -86,13 +106,8 @@ void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void
         {
             draw_nav_pad(layout_width, false);
         }
-    }
 
-    ImGui::End();
-    ImGui::PopStyleVar(2);
-
-    if (draw_menu)
-    {
-        draw_menu();
+        ImGui::End();
+        ImGui::PopStyleVar(2);
     }
 }

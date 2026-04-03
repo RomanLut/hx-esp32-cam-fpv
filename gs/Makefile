@@ -63,6 +63,7 @@ SRCS := src/main.cpp \
 	src/gs_linux_socket.cpp \
 	src/gs_linux_runtime_platform_services.cpp \
 	src/gs_linux_osd_font_storage.cpp \
+	src/linux_serial_telemetry.cpp \
 	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \

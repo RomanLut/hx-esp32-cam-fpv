@@ -751,6 +751,8 @@ void updateUdpStatsLocked(NativeHandle& handle,
 }
 
 bool handleTapLocked(NativeHandle& handle,
+                     float tap_x,
+                     float tap_y,
                      float view_width,
                      float view_height)
 {
@@ -761,9 +763,41 @@ bool handleTapLocked(NativeHandle& handle,
 
     if (!handle.menu_controller->isVisible())
     {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kNativeLogTag,
+                            "handleTapLocked menu not visible tap=(%.1f,%.1f) view=(%.1f,%.1f)",
+                            tap_x,
+                            tap_y,
+                            view_width,
+                            view_height);
         return false;
     }
-    return true;
+
+    const GsVideoRenderer::MenuAction action = handle.renderer.dispatchTap(tap_x, tap_y);
+    __android_log_print(ANDROID_LOG_INFO,
+                        kNativeLogTag,
+                        "handleTapLocked tap=(%.1f,%.1f) action=%d item=%d",
+                        tap_x,
+                        tap_y,
+                        static_cast<int>(action.kind),
+                        action.item_index);
+    switch (action.kind)
+    {
+    case GsVideoRenderer::MenuActionKind::Up:
+        handle.renderer.queueKeyPress(ImGuiKey_UpArrow);
+        return false;
+    case GsVideoRenderer::MenuActionKind::Down:
+        handle.renderer.queueKeyPress(ImGuiKey_DownArrow);
+        return false;
+    case GsVideoRenderer::MenuActionKind::Back:
+        handle.renderer.queueKeyPress(ImGuiKey_LeftArrow);
+        return false;
+    case GsVideoRenderer::MenuActionKind::Activate:
+        handle.renderer.queueKeyPress(ImGuiKey_RightArrow);
+        return false;
+    default:
+        return true;
+    }
 }
 
 bool handleKeyToImGui(bool menu_visible, int key_code, ImGuiKey* queued_key)
@@ -1350,6 +1384,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
         return;
     }
     if (handleTapLocked(*native_handle,
+                        tap_x,
+                        tap_y,
                         static_cast<float>(view_width),
                         static_cast<float>(view_height)))
     {

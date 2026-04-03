@@ -485,25 +485,57 @@ void GsVideoRenderer::queueKeyPress(ImGuiKey key)
 GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_overlay_menu.visible || m_imgui_context == nullptr)
+    if (m_imgui_context == nullptr)
     {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kLogTag,
+                            "dispatchTap ignored imgui=%p tap=(%.1f,%.1f)",
+                            m_imgui_context,
+                            x,
+                            y);
         return {};
     }
 
+    __android_log_print(ANDROID_LOG_INFO,
+                        kLogTag,
+                        "dispatchTap tap=(%.1f,%.1f) up=(%.1f,%.1f %.1fx%.1f) down=(%.1f,%.1f %.1fx%.1f) left=(%.1f,%.1f %.1fx%.1f) right=(%.1f,%.1f %.1fx%.1f)",
+                        x,
+                        y,
+                        m_nav_up_bounds.x,
+                        m_nav_up_bounds.y,
+                        m_nav_up_bounds.width,
+                        m_nav_up_bounds.height,
+                        m_nav_down_bounds.x,
+                        m_nav_down_bounds.y,
+                        m_nav_down_bounds.width,
+                        m_nav_down_bounds.height,
+                        m_nav_left_bounds.x,
+                        m_nav_left_bounds.y,
+                        m_nav_left_bounds.width,
+                        m_nav_left_bounds.height,
+                        m_nav_right_bounds.x,
+                        m_nav_right_bounds.y,
+                        m_nav_right_bounds.width,
+                        m_nav_right_bounds.height);
+
     if (pointInRect(x, y, m_nav_up_bounds))
     {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Up");
         return {MenuActionKind::Up, -1};
     }
     if (pointInRect(x, y, m_nav_down_bounds))
     {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Down");
         return {MenuActionKind::Down, -1};
     }
     if (pointInRect(x, y, m_nav_left_bounds))
     {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Back");
         return {MenuActionKind::Back, -1};
     }
     if (pointInRect(x, y, m_nav_right_bounds))
     {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Activate");
         return {MenuActionKind::Activate, -1};
     }
 
@@ -511,15 +543,18 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     {
         if (pointInRect(x, y, m_menu_item_bounds[index]))
         {
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> SelectItem %d", static_cast<int>(index));
             return {MenuActionKind::SelectItem, static_cast<int>(index)};
         }
     }
 
     if (!pointInRect(x, y, m_menu_bounds))
     {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Outside");
         return {MenuActionKind::Outside, -1};
     }
 
+    __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> None");
     return {};
 }
 
@@ -898,7 +933,6 @@ void GsVideoRenderer::drawMenuLocked()
         return;
     }
 
-    drawRectLocked(0.0f, 0.0f, static_cast<float>(m_surface_width), static_cast<float>(m_surface_height), {0.0f, 0.0f, 0.0f, 0.40f});
     drawMenuImGuiLocked();
 }
 
@@ -916,6 +950,13 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     menu_ui.touch_nav_enabled = true;
     menu_ui.surface_width = static_cast<float>(m_surface_width);
     menu_ui.surface_height = static_cast<float>(m_surface_height);
+    const float layout_width = m_vr_mode ? (menu_ui.surface_width * 0.5f) : menu_ui.surface_width;
+    const gs::render::NavPadLayout nav =
+        gs::render::buildTouchNavPadLayout(static_cast<int>(layout_width), static_cast<int>(menu_ui.surface_height));
+    m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
+    m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
+    m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
+    m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
     drawRuntimeMenuUi(menu_ui, [this]
     {
         if (m_menu_mutex != nullptr)

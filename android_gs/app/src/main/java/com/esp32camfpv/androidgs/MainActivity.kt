@@ -2,6 +2,7 @@ package com.esp32camfpv.androidgs
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -18,10 +19,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -146,23 +145,10 @@ private fun AndroidGsApp(
         modifier = Modifier
             .fillMaxSize()
             .background(VideoBackgroundColor)
-            .pointerInput(nativeHandle) {
-                detectTapGestures { offset ->
-                    onUserInteraction()
-                    scope.launch(Dispatchers.Default) {
-                        NativeCore.handleTap(
-                            nativeHandle,
-                            offset.x,
-                            offset.y,
-                            size.width.toFloat(),
-                            size.height.toFloat()
-                        )
-                    }
-                }
-            }
     ) {
         NativeVideoSurface(
             nativeHandle = nativeHandle,
+            onUserInteraction = onUserInteraction,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -171,12 +157,33 @@ private fun AndroidGsApp(
 @Composable
 private fun NativeVideoSurface(
     nativeHandle: Long,
+    onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     AndroidView(
         modifier = modifier,
         factory = { context ->
             SurfaceView(context).apply {
+                isClickable = true
+                isFocusable = true
+                setOnTouchListener { _, event ->
+                    if (event.action == MotionEvent.ACTION_UP) {
+                        onUserInteraction()
+                        scope.launch(Dispatchers.Default) {
+                            NativeCore.handleTap(
+                                nativeHandle,
+                                event.x,
+                                event.y,
+                                width.toFloat(),
+                                height.toFloat()
+                            )
+                        }
+                        true
+                    } else {
+                        true
+                    }
+                }
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) {
                         NativeCore.setRenderSurface(nativeHandle, holder.surface)

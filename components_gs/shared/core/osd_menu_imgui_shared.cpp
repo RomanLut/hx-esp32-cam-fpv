@@ -74,6 +74,7 @@ void beginMenuWindow(const char* window_name, const MenuFrameLayout& layout, ImG
 {
     ImGui::SetNextWindowPos(ImVec2(layout.window_x, layout.window_y), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(layout.window_width, layout.window_height), ImGuiCond_Always);
+    ImGui::SetNextWindowFocus();
     ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, layout.item_indent);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, layout.item_gap_y));
     ImGui::Begin(window_name,
