@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "core/osd_menu_platform.h"
+#include "gs_runtime_platform_services.h"
 
 struct AirStorageStatusView
 {
@@ -19,4 +19,4 @@ std::string formatAirStorageStatusLine(const AirStorageStatusView& status,
                                        const char* missing_label = "?",
                                        const char* trailing_suffix = "");
 
-std::string formatGroundStorageStatusLine(const gs::menu::GroundStorageStatus& status);
+std::string formatGroundStorageStatusLine(const GroundStorageStatus& status);

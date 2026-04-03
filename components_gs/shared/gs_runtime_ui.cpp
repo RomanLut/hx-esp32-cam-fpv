@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 
+#include "gs_runtime_platform_services.h"
 #include "gs_runtime_core.h"
 #include "gs_storage_status_shared.h"
 #include "gs_runtime_state.h"
@@ -237,10 +238,7 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
         ImGui::SameLine();
         if (ImGui::Checkbox("VSync", &s_groundstation_config.vsync))
         {
-            if (context.setVsync)
-            {
-                context.setVsync(s_groundstation_config.vsync, true);
-            }
+            s_RuntimePlatformServices->setVsync(s_groundstation_config.vsync);
             s_settingsStorage.saveGroundStationConfig();
         }
         ImGui::SameLine();
@@ -272,10 +270,7 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
         ImGui::SameLine();
         if (ImGui::Button("Exit"))
         {
-            if (context.requestExit)
-            {
-                context.requestExit();
-            }
+            s_RuntimePlatformServices->exitApp();
         }
 
         ImGui::Text("%.3f ms/frame (%.1f FPS) %.1f VFPS", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate, video_fps);
@@ -286,10 +281,7 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
             s_SDFreeSpaceGB16,
             s_SDTotalSpaceGB16,
         };
-        const gs::menu::GroundStorageStatus ground_storage = {
-            context.gs_sd_free_space_bytes,
-            context.gs_sd_total_space_bytes,
-        };
+        const GroundStorageStatus ground_storage = s_RuntimePlatformServices->getGroundStorageStatus();
         ImGui::Text("%s",
                     formatAirStorageStatusLine(
                         air_storage,
@@ -322,7 +314,7 @@ RuntimeFrameUiState buildLinuxRuntimeFrameUiState(const Ground2Air_Config_Packet
     input.air_record = s_air_record;
     input.gs_record = s_groundstation_config.record;
     input.hq_dvr = isHQDVRMode();
-    input.gs_temp_celsius = context.gs_temp_celsius;
+    input.gs_temp_celsius = s_RuntimePlatformServices->getCpuTemperatureCelsius();
     input.osd_font_error = context.osd_font_error;
     input.incompatible_firmware_time = s_incompatibleFirmwareTime;
     input.now = Clock::now();
@@ -340,7 +332,7 @@ RuntimeFrameUiState buildLinuxRuntimeFrameUiState(const Ground2Air_Config_Packet
         stats_input.fec_codec_n = config.dataChannel.fec_codec_n;
         stats_input.current_quality = s_curr_quality;
         stats_input.wifi_queue_max = s_wifi_queue_max;
-        stats_input.cpu_temp_c = static_cast<int>(context.gs_temp_celsius + 0.5f);
+        stats_input.cpu_temp_c = static_cast<int>(s_RuntimePlatformServices->getCpuTemperatureCelsius() + 0.5f);
         stats_input.air_stats = s_last_airStats;
         stats_input.ground_stats = gs::stats::buildGroundStatsSnapshot(last_gs_stats);
         stats_input.frame_stats = frame_stats.frame_stats;

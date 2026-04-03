@@ -6,6 +6,7 @@ add_library(android_gs_core SHARED
     android_bitmap_jpeg_decoder.cpp
     android_asset_flight_osd.cpp
     android_osd_font_storage.cpp
+    android_runtime_platform_services.cpp
     native_bridge.cpp
     ../../../../../components_gs/shared/gs_runtime_aux_flow.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
@@ -24,7 +25,6 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_state.cpp
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
-    ../../../../../components_gs/shared/gs_runtime_osd_font_storage.cpp
     ../../../../../components_gs/shared/gs_osd_font_shared.cpp
     ../../../../../components_gs/shared/gs_storage_status_shared.cpp
     ../../../../../components_gs/shared/settings_storage.cpp

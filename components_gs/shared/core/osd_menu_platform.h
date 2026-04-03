@@ -1,8 +1,6 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "gs_shared_state.h"
 #include "core/transport.h"
@@ -14,12 +12,6 @@ constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
 
-struct GroundStorageStatus
-{
-    uint64_t free_space_bytes = 0;
-    uint64_t total_space_bytes = 0;
-};
-
 class IOSDMenuPlatform
 {
 public:
@@ -27,8 +19,6 @@ public:
 
     virtual gs::core::ITransport& transport() = 0;
     virtual const gs::core::ITransport& transport() const = 0;
-
-    virtual GroundStorageStatus groundStorageStatus() const = 0;
 
     virtual const char* currentOSDFontName() const = 0;
     virtual void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) = 0;
@@ -38,12 +28,7 @@ public:
     virtual void applyGSTxPower(Ground2Air_Config_Packet& config) = 0;
 
     virtual void airUnpair() = 0;
-    virtual void exitApp() = 0;
-    virtual void restartGPIOButtons() = 0;
-    virtual void setVsync(bool enabled) = 0;
     virtual bool supportsCustomScreenAspectModes() const { return true; }
-
-    virtual std::string systemIPv4() const = 0;
 
     virtual void captureFrameDebug(bool until_loss) = 0;
     virtual void disableFrameDebug() = 0;

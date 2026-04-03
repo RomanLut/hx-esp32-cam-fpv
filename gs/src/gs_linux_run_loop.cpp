@@ -3,7 +3,6 @@
 #include <chrono>
 #include <string>
 
-#include "cpu_temp.h"
 #include "linux_osd.h"
 #include "gs_linux_recording.h"
 #include "gs_linux_render_helpers.h"
@@ -30,16 +29,9 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         runtime_ui.wifi_channel_apply_pending = s_change_channel < Clock::now() + std::chrono::hours(1);
         runtime_ui.restart_required = bRestartRequired;
         runtime_ui.osd_font_error = g_osd.isFontError();
-        runtime_ui.gs_temp_celsius = g_CPUTemp.getTemperature();
-        runtime_ui.gs_sd_free_space_bytes = s_GSSDFreeSpaceBytes;
-        runtime_ui.gs_sd_total_space_bytes = s_GSSDTotalSpaceBytes;
         runtime_ui.drawFlightOsd = []
         {
             g_osd.draw();
-        };
-        runtime_ui.setVsync = [](bool enabled, bool apply)
-        {
-            s_hal->set_vsync(enabled, apply);
         };
         runtime_ui.toggleGsRecording = []
         {
@@ -49,10 +41,6 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         {
             restart_tp = Clock::now();
             bRestart = true;
-        };
-        runtime_ui.requestExit = []
-        {
-            exitApp();
         };
         const RuntimeFrameUiState frame_ui = buildLinuxRuntimeFrameUiState(config, runtime_ui);
 

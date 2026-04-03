@@ -1,13 +1,7 @@
 #include "osd_menu.h"
 
-#include <arpa/inet.h>
-#include <cstring>
-#include <ifaddrs.h>
-#include <net/if.h>
-
 #include "Comms.h"
 #include "frame_packets_debug.h"
-#include "gpio_buttons.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "lodepng.h"
 #include "linux_osd.h"
@@ -29,14 +23,6 @@ public:
     const gs::core::ITransport& transport() const override
     {
         return s_transport;
-    }
-
-    gs::menu::GroundStorageStatus groundStorageStatus() const override
-    {
-        return {
-            s_GSSDFreeSpaceBytes,
-            s_GSSDTotalSpaceBytes,
-        };
     }
 
     const char* currentOSDFontName() const override
@@ -73,55 +59,6 @@ public:
     void airUnpair() override
     {
         ::airUnpair();
-    }
-
-    void exitApp() override
-    {
-        ::exitApp();
-    }
-
-    void restartGPIOButtons() override
-    {
-        gpio_buttons_stop();
-        gpio_buttons_start();
-    }
-
-    void setVsync(bool enabled) override
-    {
-        s_hal->set_vsync(enabled, true);
-    }
-
-    std::string systemIPv4() const override
-    {
-        struct ifaddrs* ifaddr = nullptr;
-        if (getifaddrs(&ifaddr) != 0 || ifaddr == nullptr)
-        {
-            return "0.0.0.0";
-        }
-
-        std::string result = "0.0.0.0";
-        for (struct ifaddrs* ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
-        {
-            if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET)
-            {
-                continue;
-            }
-            if ((ifa->ifa_flags & IFF_UP) == 0 || (ifa->ifa_flags & IFF_LOOPBACK) != 0)
-            {
-                continue;
-            }
-
-            char addr[INET_ADDRSTRLEN] = {0};
-            const void* src = &reinterpret_cast<sockaddr_in*>(ifa->ifa_addr)->sin_addr;
-            if (inet_ntop(AF_INET, src, addr, sizeof(addr)) != nullptr && strcmp(addr, "0.0.0.0") != 0)
-            {
-                result = addr;
-                break;
-            }
-        }
-
-        freeifaddrs(ifaddr);
-        return result;
     }
 
     void captureFrameDebug(bool until_loss) override

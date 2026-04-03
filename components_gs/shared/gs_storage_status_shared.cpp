@@ -42,7 +42,7 @@ std::string formatAirStorageStatusLine(const AirStorageStatusView& status,
     return line;
 }
 
-std::string formatGroundStorageStatusLine(const gs::menu::GroundStorageStatus& status)
+std::string formatGroundStorageStatusLine(const GroundStorageStatus& status)
 {
     return formatStorageLine(
         "GS SD",

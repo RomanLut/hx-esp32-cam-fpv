@@ -28,6 +28,7 @@
 #include "android_jni_shared.h"
 #include "android_asset_flight_osd.h"
 #include "android_osd_font_storage.h"
+#include "android_runtime_platform_services.h"
 #include "gs_video_renderer.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
@@ -60,6 +61,9 @@
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
 #include "settings_storage.h"
+
+IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
+IOSDFontStorage* s_OSDFontStorage = nullptr;
 
 namespace
 {
@@ -141,25 +145,18 @@ public:
 
     gs::core::ITransport& transport() override;
     const gs::core::ITransport& transport() const override;
-    gs::menu::GroundStorageStatus groundStorageStatus() const override;
     const char* currentOSDFontName() const override;
     void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override;
     void applyWifiChannel(Ground2Air_Config_Packet& config) override;
     void applyWifiChannelInstant(Ground2Air_Config_Packet& config) override;
     void applyGSTxPower(Ground2Air_Config_Packet& config) override;
     void airUnpair() override;
-    void exitApp() override;
-    void restartGPIOButtons() override;
-    void setVsync(bool enabled) override;
     bool supportsCustomScreenAspectModes() const override;
-    std::string systemIPv4() const override;
     void captureFrameDebug(bool until_loss) override;
     void disableFrameDebug() override;
 
 private:
     NativeHandle& m_handle;
-    mutable std::string m_cached_ipv4 = "0.0.0.0";
-    mutable Clock::time_point m_next_ipv4_refresh_tp = Clock::time_point::min();
 };
 
 struct NativeHandle
@@ -170,6 +167,7 @@ struct NativeHandle
           renderer(std::make_unique<AndroidAssetFlightOsd>()),
           jpeg_decoder(renderer)
     {
+        s_RuntimePlatformServices = &getAndroidRuntimePlatformServices();
         s_OSDFontStorage = &getAndroidOsdFontStorage();
         menu_platform = std::make_unique<AndroidMenuPlatform>(*this);
         menu_controller = std::make_unique<gs::menu::OSDMenuController>(*menu_platform);
@@ -212,59 +210,6 @@ struct NativeHandle
     AndroidBitmapJpegDecoder jpeg_decoder;
 };
 
-std::string detectSystemIPv4()
-{
-    const int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (socket_fd < 0)
-    {
-        return "0.0.0.0";
-    }
-
-    std::string result = "0.0.0.0";
-    std::array<char, 8192> buffer = {};
-    struct ifconf ifc = {};
-    ifc.ifc_len = static_cast<int>(buffer.size());
-    ifc.ifc_buf = buffer.data();
-    if (ioctl(socket_fd, SIOCGIFCONF, &ifc) != 0)
-    {
-        close(socket_fd);
-        return result;
-    }
-
-    const int interface_count = ifc.ifc_len / static_cast<int>(sizeof(struct ifreq));
-    struct ifreq* interfaces = ifc.ifc_req;
-    for (int index = 0; index < interface_count; ++index)
-    {
-        struct ifreq flags_request = {};
-        std::strncpy(flags_request.ifr_name, interfaces[index].ifr_name, IFNAMSIZ - 1);
-        if (ioctl(socket_fd, SIOCGIFFLAGS, &flags_request) != 0)
-        {
-            continue;
-        }
-        if ((flags_request.ifr_flags & IFF_UP) == 0 || (flags_request.ifr_flags & IFF_LOOPBACK) != 0)
-        {
-            continue;
-        }
-
-        const sockaddr_in* addr_in = reinterpret_cast<const sockaddr_in*>(&interfaces[index].ifr_addr);
-        if (addr_in->sin_family != AF_INET)
-        {
-            continue;
-        }
-
-        char addr[INET_ADDRSTRLEN] = {0};
-        if (inet_ntop(AF_INET, &addr_in->sin_addr, addr, sizeof(addr)) != nullptr &&
-            std::strcmp(addr, "0.0.0.0") != 0)
-        {
-            result = addr;
-            break;
-        }
-    }
-
-    close(socket_fd);
-    return result;
-}
-
 gs::core::ITransport& AndroidMenuPlatform::transport()
 {
     return m_handle.transport;
@@ -273,20 +218,6 @@ gs::core::ITransport& AndroidMenuPlatform::transport()
 const gs::core::ITransport& AndroidMenuPlatform::transport() const
 {
     return m_handle.transport;
-}
-
-gs::menu::GroundStorageStatus AndroidMenuPlatform::groundStorageStatus() const
-{
-    struct statvfs fs = {};
-    if (statvfs("/data", &fs) != 0)
-    {
-        return {};
-    }
-
-    return {
-        static_cast<uint64_t>(fs.f_bavail) * static_cast<uint64_t>(fs.f_frsize),
-        static_cast<uint64_t>(fs.f_blocks) * static_cast<uint64_t>(fs.f_frsize),
-    };
 }
 
 const char* AndroidMenuPlatform::currentOSDFontName() const
@@ -328,34 +259,9 @@ void AndroidMenuPlatform::airUnpair()
     resetAirPairing(s_runtimeCore.gs_device_id, m_handle.transport);
 }
 
-void AndroidMenuPlatform::exitApp()
-{
-    s_runtimeCore.exit_requested = true;
-}
-
-void AndroidMenuPlatform::restartGPIOButtons()
-{
-}
-
-void AndroidMenuPlatform::setVsync(bool enabled)
-{
-    s_groundstation_config.vsync = enabled;
-}
-
 bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
 {
     return false;
-}
-
-std::string AndroidMenuPlatform::systemIPv4() const
-{
-    const Clock::time_point now = Clock::now();
-    if (m_cached_ipv4.empty() || now >= m_next_ipv4_refresh_tp)
-    {
-        m_cached_ipv4 = detectSystemIPv4();
-        m_next_ipv4_refresh_tp = now + std::chrono::seconds(1);
-    }
-    return m_cached_ipv4;
 }
 
 void AndroidMenuPlatform::captureFrameDebug(bool until_loss)

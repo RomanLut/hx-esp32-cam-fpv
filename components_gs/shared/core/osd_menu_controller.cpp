@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstring>
 #include "util.h"
+#include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_osd_font_storage.h"
@@ -361,7 +362,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        const auto gs_storage = m_platform.groundStorageStatus();
+        const auto gs_storage = s_RuntimePlatformServices->getGroundStorageStatus();
         std::string line = formatGroundStorageStatusLine(gs_storage);
         line += "##status1";
         this->drawStatus(line.c_str());
@@ -875,7 +876,7 @@ void OSDMenuController::drawExitToShellMenu(Ground2Air_Config_Packet& config)
 
     if ( this->drawMenuItem( "Exit", 0) )
     {
-        m_platform.exitApp();
+        s_RuntimePlatformServices->exitApp();
     }
 
     bool b = false;
@@ -1255,7 +1256,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         {
             gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
             s_settingsStorage.saveGroundStationConfig();
-            m_platform.restartGPIOButtons();
+            s_RuntimePlatformServices->restartGPIOButtons();
         }
     }
 
@@ -1268,7 +1269,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "IP: %s##status_ip", m_platform.systemIPv4().c_str());
+        sprintf(buf, "IP: %s##status_ip", s_RuntimePlatformServices->getSystemIPv4().c_str());
         this->drawStatus( buf );
     }
 
@@ -1311,7 +1312,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 2) )
         {
             gs_config.vsync = !gs_config.vsync;
-            m_platform.setVsync(gs_config.vsync);
+            s_RuntimePlatformServices->setVsync(gs_config.vsync);
             s_settingsStorage.saveGroundStationConfig();
         }
     }

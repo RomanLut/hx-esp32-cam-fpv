@@ -10,6 +10,7 @@
 #include "Clock.h"
 #include "IHAL.h"
 #include "PI_HAL.h"
+#include "gs_linux_runtime_platform_services.h"
 #include "imgui.h"
 #include "gs_linux_osd_font_storage.h"
 #include "linux_osd.h"
@@ -60,9 +61,12 @@ uint16_t s_avi_frameHeight;
 uint32_t s_avi_frameCnt;
 bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
+IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
+IOSDFontStorage* s_OSDFontStorage = nullptr;
 
 int main(int argc, const char* argv[])
 {
+    s_RuntimePlatformServices = &getLinuxRuntimePlatformServices();
     s_OSDFontStorage = &getLinuxOsdFontStorage();
     return runLinuxBootstrap(argc, argv);
 }
