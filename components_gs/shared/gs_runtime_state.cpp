@@ -31,19 +31,19 @@ bool s_noPing = false;
 
 void syncAirStatusGlobals()
 {
-    const gs::core::AirStatusState& air_status = s_runtimeCore.session.airStatus();
-    s_curr_wifi_rate = air_status.curr_wifi_rate;
-    s_wifi_queue_min = air_status.wifi_queue_min;
-    s_wifi_queue_max = air_status.wifi_queue_max;
-    s_curr_quality = air_status.curr_quality;
-    s_SDTotalSpaceGB16 = air_status.sd_total_space_gb16;
-    s_SDFreeSpaceGB16 = air_status.sd_free_space_gb16;
-    s_air_record = air_status.air_record;
-    s_wifi_ovf = air_status.wifi_ovf;
-    s_SDDetected = air_status.sd_detected;
-    s_SDSlow = air_status.sd_slow;
-    s_SDError = air_status.sd_error;
-    s_isOV5640 = air_status.is_ov5640;
+    const AirStats& air_stats = s_runtimeCore.session.lastAirStats();
+    s_curr_wifi_rate = static_cast<WIFI_Rate>(air_stats.curr_wifi_rate);
+    s_wifi_queue_min = air_stats.wifi_queue_min;
+    s_wifi_queue_max = air_stats.wifi_queue_max;
+    s_curr_quality = air_stats.curr_quality;
+    s_SDTotalSpaceGB16 = air_stats.SDTotalSpaceGB16;
+    s_SDFreeSpaceGB16 = air_stats.SDFreeSpaceGB16;
+    s_air_record = air_stats.air_record_state != 0;
+    s_wifi_ovf = air_stats.wifi_ovf != 0;
+    s_SDDetected = air_stats.SDDetected != 0;
+    s_SDSlow = air_stats.SDSlow != 0;
+    s_SDError = air_stats.SDError != 0;
+    s_isOV5640 = air_stats.isOV5640 != 0;
 }
 
 bool isHQDVRMode()

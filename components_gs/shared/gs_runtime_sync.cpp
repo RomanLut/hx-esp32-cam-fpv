@@ -58,7 +58,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_periodic_stats_tp = now;
     }
 
-    s_isOV5640 = core.session.airStatus().is_ov5640;
+    s_isOV5640 = core.session.lastAirStats().isOV5640 != 0;
     s_isDual = params.is_dual;
     overlay_input.config = core.config_packet;
     overlay_input.air_rssi_dbm = core.session.lastAirStats().rssiDbm;
@@ -68,13 +68,13 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.has_gs_stats = true;
     overlay_input.gs_rssi_dbm0 = 0;
     overlay_input.gs_rssi_dbm1 = 0;
-    overlay_input.is_ov5640 = core.session.airStatus().is_ov5640;
+    overlay_input.is_ov5640 = core.session.lastAirStats().isOV5640 != 0;
     overlay_input.is_dual = params.is_dual;
-    overlay_input.wifi_queue_percent = core.session.airStatus().wifi_queue_max;
-    overlay_input.wifi_queue_alert = core.session.airStatus().wifi_ovf;
+    overlay_input.wifi_queue_percent = core.session.lastAirStats().wifi_queue_max;
+    overlay_input.wifi_queue_alert = core.session.lastAirStats().wifi_ovf != 0;
     overlay_input.throughput_mbps = params.throughput_mbps;
     overlay_input.video_fps = static_cast<int>(std::round(params.udp_video_fps));
-    overlay_input.air_record = core.session.airStatus().air_record;
+    overlay_input.air_record = core.session.lastAirStats().air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();
     overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;
     overlay_input.osd_font_error = params.osd_font_error;
@@ -87,8 +87,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         const auto& frame_stats = core.session.frameStats();
         gs::stats::FullscreenStatsSnapshot stats_snapshot = {};
         stats_snapshot.fec_codec_n = core.config_packet.dataChannel.fec_codec_n;
-        stats_snapshot.current_quality = core.session.airStatus().curr_quality;
-        stats_snapshot.wifi_queue_max = core.session.airStatus().wifi_queue_max;
+        stats_snapshot.current_quality = core.session.lastAirStats().curr_quality;
+        stats_snapshot.wifi_queue_max = core.session.lastAirStats().wifi_queue_max;
         stats_snapshot.cpu_temp_c = 0;
         stats_snapshot.air_stats = core.session.lastAirStats();
         stats_snapshot.ground_stats = core.last_ground_stats;

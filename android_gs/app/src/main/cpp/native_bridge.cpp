@@ -399,10 +399,10 @@ std::string describeHandleString(const NativeHandle& handle)
         << " | udp_fps=" << std::fixed << std::setprecision(2) << handle.udp_video_fps
         << " | udp_error=" << sanitizeStatusValue(handle.udp_last_error)
         << " | air_rssi=" << -static_cast<int>(s_runtimeCore.session.lastAirStats().rssiDbm)
-        << " | queue_max=" << s_runtimeCore.session.airStatus().wifi_queue_max
-        << " | wifi_ovf=" << (s_runtimeCore.session.airStatus().wifi_ovf ? 1 : 0)
-        << " | air_record=" << (s_runtimeCore.session.airStatus().air_record ? 1 : 0)
-        << " | resolution=" << gs::menu::getResolutionSummary(s_runtimeCore.config_packet, s_runtimeCore.session.airStatus().is_ov5640);
+        << " | queue_max=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_queue_max)
+        << " | wifi_ovf=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_ovf)
+        << " | air_record=" << static_cast<int>(s_runtimeCore.session.lastAirStats().air_record_state)
+        << " | resolution=" << gs::menu::getResolutionSummary(s_runtimeCore.config_packet, s_runtimeCore.session.lastAirStats().isOV5640 != 0);
     return out.str();
 }
 

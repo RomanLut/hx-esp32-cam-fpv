@@ -83,21 +83,6 @@ struct OsdPacketView
     uint16_t osd_data_size = 0;
 };
 
-struct AirStatusState
-{
-    WIFI_Rate curr_wifi_rate = WIFI_Rate::RATE_B_2M_CCK;
-    int wifi_queue_min = 0;
-    int wifi_queue_max = 0;
-    uint8_t curr_quality = 0;
-    uint16_t sd_total_space_gb16 = 0;
-    uint16_t sd_free_space_gb16 = 0;
-    bool air_record = false;
-    bool wifi_ovf = false;
-    bool sd_detected = false;
-    bool sd_slow = false;
-    bool sd_error = false;
-    bool is_ov5640 = false;
-};
 
 struct PingSnapshot
 {
@@ -197,8 +182,6 @@ public:
 
     AirStats& lastAirStats();
     const AirStats& lastAirStats() const;
-    AirStatusState& airStatus();
-    const AirStatusState& airStatus() const;
     uint8_t currentPingToken() const;
     void onPingSent(Clock::time_point now);
     void onVideoPong(uint8_t pong, Clock::time_point now);
@@ -235,7 +218,6 @@ private:
     Ground2Air_Data_Packet m_data_packet = {};
 
     AirStats m_last_air_stats = {};
-    AirStatusState m_air_status = {};
     PingSnapshot m_ping_snapshot = {};
     PeriodicStatsSnapshot m_periodic_stats = {};
     FrameStatsState m_frame_stats = {};
