@@ -13,6 +13,7 @@ struct RuntimeUiContext
     bool restart_required = false;
     bool osd_font_error = false;
     std::function<void()> drawFlightOsd;
+    std::function<void(Ground2Air_Config_Packet&)> applyWifiChannel;
     std::function<void()> toggleGsRecording;
     std::function<void()> requestRestart;
 };

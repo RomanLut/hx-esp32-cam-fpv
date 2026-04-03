@@ -1,7 +1,7 @@
 #include "gs_linux_runtime_sink.h"
 
 #include "avi.h"
-#include "linux_osd.h"
+#include "flight_osd.h"
 #include "frame_packets_debug.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_core.h"
@@ -110,7 +110,7 @@ void handleLinuxOsdDispatch(const OsdDispatchDecision& osd_decision)
 
     if (osd_decision.should_apply && !g_framePacketsDebug.isOn())
     {
-        g_osd.update(osd_decision.payload, osd_decision.payload_size);
+        s_flightOSD.update(osd_decision.payload, osd_decision.payload_size);
     }
 
     s_last_stats_packet_tp = Clock::now();

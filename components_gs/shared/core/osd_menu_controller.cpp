@@ -2,6 +2,8 @@
 #include <cmath>
 #include <cstring>
 #include "util.h"
+#include "flight_osd.h"
+#include "lodepng.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
@@ -471,7 +473,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[512];
-        sprintf(buf, "OSD Font: %s", m_platform.currentOSDFontName());
+        sprintf(buf, "OSD Font: %s", s_flightOSD.currentFontName().c_str());
         if (strlen(buf) > 30 )
         {
             buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
@@ -480,7 +482,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 1) )
         {
             const auto& fonts = s_OSDFontStorage->osdFontsList();
-            auto it = std::find(fonts.begin(), fonts.end(), m_platform.currentOSDFontName());
+            auto it = std::find(fonts.begin(), fonts.end(), s_flightOSD.currentFontName());
             this->goForward( OSDMenuId::OSDFont, it != fonts.end() ? static_cast<int>(std::distance(fonts.begin(), it)) : 0 );
         }
     }
@@ -1433,9 +1435,13 @@ void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
-            if ( strcmp( m_platform.currentOSDFontName(), fonts[i].c_str())!= 0)
+            if (s_flightOSD.currentFontName() != fonts[i])
             {
-                m_platform.selectOSDFont(config, fonts[i]);
+                s_flightOSD.setSelectedFontName(fonts[i]);
+                s_settingsStorage.save();
+                config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(fonts[i].c_str()),
+                                                         fonts[i].length());
+                s_reload_osd_font = true;
             }
             bExit = true;
         }

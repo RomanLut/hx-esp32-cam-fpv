@@ -3,12 +3,12 @@
 #include <chrono>
 #include <string>
 
-#include "linux_osd.h"
+#include "flight_osd.h"
 #include "gs_linux_recording.h"
 #include "gs_linux_render_helpers.h"
+#include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_menu_ui.h"
-#include "gs_osd_font_shared.h"
 #include "gs_runtime_ui.h"
 #include "imgui.h"
 #include "osd_menu.h"
@@ -16,9 +16,8 @@
 
 void initializeLinuxOsd()
 {
-    g_osd.init();
-    const std::string font_name = getSelectedOsdFontName();
-    g_osd.loadFont(font_name.c_str());
+    const std::string font_name = s_flightOSD.selectedFontName();
+    s_flightOSD.loadFont(font_name.c_str());
 }
 
 void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
@@ -28,10 +27,23 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         RuntimeUiContext runtime_ui = {};
         runtime_ui.wifi_channel_apply_pending = s_change_channel < Clock::now() + std::chrono::hours(1);
         runtime_ui.restart_required = bRestartRequired;
-        runtime_ui.osd_font_error = g_osd.isFontError();
+        runtime_ui.osd_font_error = s_flightOSD.isFontError();
+        runtime_ui.applyWifiChannel = []
+        (Ground2Air_Config_Packet& config)
+        {
+            applyWifiChannelToSession(config);
+            s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+        };
         runtime_ui.drawFlightOsd = []
         {
-            g_osd.draw();
+            const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+            const bool is_16x9 = s_decoder.isAspect16x9();
+            s_flightOSD.draw(static_cast<int>(display_size.x),
+                             static_cast<int>(display_size.y),
+                             is_16x9 ? 16 : 4,
+                             is_16x9 ? 9 : 3,
+                             static_cast<int>(s_groundstation_config.screenAspectRatio),
+                             s_groundstation_config.vrMode);
         };
         runtime_ui.toggleGsRecording = []
         {

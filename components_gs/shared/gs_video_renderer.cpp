@@ -157,9 +157,8 @@ void logGlError(const char* stage)
 
 } // namespace
 
-GsVideoRenderer::GsVideoRenderer(std::unique_ptr<GsFlightOsd> flight_osd)
-    : m_flight_osd(std::move(flight_osd))
-    , m_thread(&GsVideoRenderer::run, this)
+GsVideoRenderer::GsVideoRenderer()
+    : m_thread(&GsVideoRenderer::run, this)
 {
 }
 
@@ -351,10 +350,7 @@ void GsVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_flight_osd != nullptr)
-    {
-        m_flight_osd->update(data, size);
-    }
+    s_flightOSD.update(data, size);
     m_overlay_dirty = true;
     m_cv.notify_all();
 }
@@ -362,10 +358,7 @@ void GsVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
 void GsVideoRenderer::clearFlightOsd()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_flight_osd != nullptr)
-    {
-        m_flight_osd->clear();
-    }
+    s_flightOSD.clear();
     m_overlay_dirty = true;
     m_cv.notify_all();
 }
@@ -373,10 +366,7 @@ void GsVideoRenderer::clearFlightOsd()
 void GsVideoRenderer::setFlightOsdFont(const std::string& font_name)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_flight_osd != nullptr)
-    {
-        m_flight_osd->setFontName(font_name);
-    }
+    s_flightOSD.setFontName(font_name);
     m_overlay_dirty = true;
     m_cv.notify_all();
 }
@@ -384,18 +374,15 @@ void GsVideoRenderer::setFlightOsdFont(const std::string& font_name)
 void GsVideoRenderer::setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_flight_osd != nullptr)
-    {
-        m_flight_osd->clear();
-    }
+    s_flightOSD.clear();
     for (int row = 0; row < OSD_ROWS; ++row)
     {
         for (int col = 0; col < OSD_COLS; ++col)
         {
             const uint8_t c = chars[row][col];
-            if (c != 0 && m_flight_osd != nullptr)
+            if (c != 0)
             {
-                m_flight_osd->setLowChar(row, col, c);
+                s_flightOSD.setLowChar(row, col, c);
             }
         }
     }
@@ -976,10 +963,7 @@ void GsVideoRenderer::drawOverlayLocked()
                          ImGuiWindowFlags_NoFocusOnAppearing);
     }
 
-    if (m_flight_osd != nullptr)
-    {
-        m_flight_osd->draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
-    }
+    s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
     drawHudLocked();
     drawStatsLocked();
     drawMenuLocked();

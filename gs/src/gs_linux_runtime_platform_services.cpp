@@ -1,13 +1,14 @@
 #include "gs_linux_runtime_platform_services.h"
 
 #include <arpa/inet.h>
+#include <cstdlib>
 #include <ifaddrs.h>
 #include <net/if.h>
 
 #include "cpu_temp.h"
 #include "gpio_buttons.h"
+#include "gs_linux_recording.h"
 #include "gs_linux_runtime.h"
-#include "gs_shared_runtime.h"
 
 namespace
 {
@@ -92,10 +93,14 @@ void LinuxRuntimePlatformServices::setVsync(bool enabled)
 
 //===================================================================================
 //===================================================================================
-// Exits the Linux application using the existing shared runtime action.
+// Exits the Linux application, stopping recording first when needed.
 void LinuxRuntimePlatformServices::exitApp()
 {
-    ::exitApp();
+    if (s_groundstation_config.record)
+    {
+        toggleGSRecording(0, 0, "exit_app");
+    }
+    std::abort();
 }
 
 //===================================================================================

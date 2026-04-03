@@ -4,11 +4,11 @@
 #include <unistd.h>
 
 #include "imgui.h"
-#include "linux_osd.h"
+#include "flight_osd.h"
 #include "gs_linux_recording.h"
 #include "gs_linux_runtime.h"
-#include "gs_osd_font_shared.h"
 #include "gs_runtime_osd_font_storage.h"
+#include "gs_runtime_platform_services.h"
 #include "gs_runtime_core.h"
 #include "core/osd_menu_common.h"
 #include "osd_menu.h"
@@ -92,7 +92,7 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 
     if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
     {
-        exitApp();
+        s_RuntimePlatformServices->exitApp();
     }
 }
 
@@ -131,16 +131,16 @@ void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
         s_reload_osd_font = false;
         const std::vector<std::string>& font_names = s_OSDFontStorage->osdFontsList();
         const std::optional<std::string> font_name =
-            findOsdFontNameByCrc(font_names, config.misc.osdFontCRC32);
+            s_flightOSD.findFontNameByCrc(font_names, config.misc.osdFontCRC32);
         if (!font_name.has_value())
         {
-            g_osd.loadFont(getDefaultOsdFontName().c_str());
+            s_flightOSD.loadFont(s_flightOSD.defaultFontName().c_str());
             return;
         }
 
-        if (g_osd.currentFontName() != *font_name)
+        if (s_flightOSD.currentFontName() != *font_name)
         {
-            g_osd.loadFont(font_name->c_str());
+            s_flightOSD.loadFont(font_name->c_str());
         }
     }
 }

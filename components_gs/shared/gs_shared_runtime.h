@@ -18,12 +18,3 @@ constexpr uint64_t kGSMinFreeSpaceBytes = 20ull * 1024 * 1024;
 
 extern SettingsStorage s_settingsStorage;
 extern Ground2Air_Config_Packet s_ground2air_config_packet;
-void exitApp();
-
-void applyWifiChannel();
-void applyWifiChannel(Ground2Air_Config_Packet& config);
-void applyWifiChannelInstant();
-void applyWifiChannelInstant(Ground2Air_Config_Packet& config);
-void applyGSTxPower();
-void applyGSTxPower(Ground2Air_Config_Packet& config);
-void airUnpair();

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gs_flight_osd.h"
+#include "flight_osd.h"
 #include "android_surface_backend.h"
 #include "gs_runtime_frame_ui.h"
 #include "gs_runtime_overlay_state.h"
@@ -81,7 +81,7 @@ public:
         uint32_t swap_max_ms = 0;
     };
 
-    explicit GsVideoRenderer(std::unique_ptr<GsFlightOsd> flight_osd);
+    GsVideoRenderer();
     ~GsVideoRenderer();
 
     void setSurface(void* surface_handle);
@@ -200,7 +200,6 @@ private:
     PixelFormat m_uploaded_pixel_format = PixelFormat::RGB24;
     bool m_has_uploaded_frame = false;
     std::vector<uint8_t> m_pending_font_png;
-    std::unique_ptr<GsFlightOsd> m_flight_osd;
     RuntimeFrameUiState m_frame_ui_state;
     OverlayMenuState m_overlay_menu;
     gs::menu::OSDMenuController* m_menu_controller = nullptr;

@@ -9,7 +9,7 @@
 #include "Comms.h"
 #include "PI_HAL.h"
 #include "cpu_temp.h"
-#include "linux_osd.h"
+#include "flight_osd.h"
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
 #include "gs_linux_recording.h"
@@ -20,6 +20,7 @@
 #include "gs_linux_startup.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_event_pipeline.h"
+#include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
 #include "hx_mavlink_parser.h"
 #include "imgui.h"
@@ -238,7 +239,7 @@ void signalHandler(int signal)
     {
         std::cout << "Received termination signal. Exiting gracefully..." << std::endl;
         cleanupLinuxSingleInstancePidFile();
-        exitApp();
+        s_RuntimePlatformServices->exitApp();
     }
 }
 

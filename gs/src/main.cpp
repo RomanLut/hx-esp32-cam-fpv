@@ -8,16 +8,15 @@
 #include "Comms.h"
 #include "core/transport.h"
 #include "Clock.h"
+#include "flight_osd.h"
 #include "IHAL.h"
 #include "PI_HAL.h"
 #include "gs_linux_runtime_platform_services.h"
 #include "imgui.h"
 #include "gs_linux_osd_font_storage.h"
-#include "linux_osd.h"
 #include "gs_linux_bootstrap.h"
 #include "Video_Decoder.h" 
 #include "gs_runtime_state.h"
-#include "linux_osd.h"
 
 /*
 
@@ -63,6 +62,7 @@ bool s_avi_ov2640HighFPS;
 bool s_avi_ov5640HighFPS;
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;
+FlightOSD s_flightOSD;
 
 int main(int argc, const char* argv[])
 {

@@ -2,7 +2,7 @@
 
 #include "frame_packets_debug.h"
 
-#include "linux_osd.h"
+#include "flight_osd.h"
 
 FramePacketsDebug g_framePacketsDebug;
 
@@ -21,7 +21,7 @@ FramePacketsDebug::FramePacketsDebug()
 //======================================================
 void FramePacketsDebug::clear()
 {
-    g_osd.clear();
+    s_flightOSD.clear();
 }
 
 //======================================================
@@ -50,7 +50,7 @@ void FramePacketsDebug::onPacketRestored(uint32_t block_index, uint32_t packet_i
 //======================================================
 void FramePacketsDebug::copyToOSD()
 {
-    g_osd.clear();
+    s_flightOSD.clear();
     const auto& chars = m_core.osdChars();
     for (int row = 0; row < OSD_ROWS; row++)
     {
@@ -59,7 +59,7 @@ void FramePacketsDebug::copyToOSD()
             const uint8_t c = chars[row][col];
             if (c != 0)
             {
-                g_osd.setLowChar(row, col, c);
+                s_flightOSD.setLowChar(row, col, c);
             }
         }
     }

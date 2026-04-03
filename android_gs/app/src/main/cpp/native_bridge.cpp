@@ -26,7 +26,6 @@
 
 #include "android_bitmap_jpeg_decoder.h"
 #include "android_jni_shared.h"
-#include "android_asset_flight_osd.h"
 #include "android_osd_font_storage.h"
 #include "android_runtime_platform_services.h"
 #include "gs_video_renderer.h"
@@ -40,6 +39,7 @@
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/transport.h"
+#include "flight_osd.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_aux_flow.h"
@@ -52,7 +52,6 @@
 #include "gs_runtime_session.h"
 #include "gs_runtime_sync.h"
 #include "gs_runtime_video_flow.h"
-#include "gs_osd_font_shared.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_state.h"
@@ -64,6 +63,7 @@
 
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;
+FlightOSD s_flightOSD;
 
 namespace
 {
@@ -145,8 +145,6 @@ public:
 
     gs::core::ITransport& transport() override;
     const gs::core::ITransport& transport() const override;
-    const char* currentOSDFontName() const override;
-    void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override;
     void applyWifiChannel(Ground2Air_Config_Packet& config) override;
     void applyWifiChannelInstant(Ground2Air_Config_Packet& config) override;
     void applyGSTxPower(Ground2Air_Config_Packet& config) override;
@@ -164,7 +162,7 @@ struct NativeHandle
     explicit NativeHandle(uint16_t gs_device_id_value)
         : menu_platform(),
           menu_controller(),
-          renderer(std::make_unique<AndroidAssetFlightOsd>()),
+          renderer(),
           jpeg_decoder(renderer)
     {
         s_RuntimePlatformServices = &getAndroidRuntimePlatformServices();
@@ -220,22 +218,6 @@ const gs::core::ITransport& AndroidMenuPlatform::transport() const
     return m_handle.transport;
 }
 
-const char* AndroidMenuPlatform::currentOSDFontName() const
-{
-    static thread_local std::string font_name;
-    font_name = getSelectedOsdFontName();
-    return font_name.c_str();
-}
-
-void AndroidMenuPlatform::selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name)
-{
-    setSelectedOsdFontName(font_name);
-    s_settingsStorage.save();
-    config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(font_name.c_str()),
-                                             font_name.length());
-    s_runtimeCore.session.setConfigPacket(s_runtimeCore.config_packet);
-}
-
 void AndroidMenuPlatform::applyWifiChannel(Ground2Air_Config_Packet& config)
 {
     s_runtimeCore.config_packet = config;
@@ -256,7 +238,7 @@ void AndroidMenuPlatform::applyGSTxPower(Ground2Air_Config_Packet& config)
 
 void AndroidMenuPlatform::airUnpair()
 {
-    resetAirPairing(s_runtimeCore.gs_device_id, m_handle.transport);
+    performAirUnpair(s_runtimeCore.gs_device_id, m_handle.transport);
 }
 
 bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
@@ -1301,7 +1283,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.renderer_stats.swap_max_ms = renderer_stats.swap_max_ms;
         sync_params.renderer_stats.discarded_pending_count = renderer_stats.discarded_pending_count;
         sync_params.build_info = info;
-        sync_params.osd_font_name = native_handle->menu_platform->currentOSDFontName();
+        sync_params.osd_font_name = s_flightOSD.currentFontName();
         sync_params.throughput_mbps = native_handle->udp_throughput_mbps;
         sync_params.udp_video_fps = native_handle->udp_video_fps;
         sync_params.is_dual = false;

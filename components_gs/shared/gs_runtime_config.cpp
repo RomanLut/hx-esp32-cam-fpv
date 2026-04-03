@@ -3,6 +3,7 @@
 #include "Clock.h"
 #include "core/osd_menu_platform.h"
 #include "gs_runtime_core.h"
+#include "gs_runtime_state.h"
 #include "gs_shared_runtime.h"
 #include "settings_storage.h"
 #include "wifi_channels.h"
@@ -53,6 +54,13 @@ void applyWifiChannelInstantToSession(Ground2Air_Config_Packet& config, gs::core
 void applyGSTxPowerToTransport(gs::core::ITransport& transport)
 {
     transport.setTxPower(s_groundstation_config.txPower);
+}
+
+void performAirUnpair(uint16_t gs_device_id, gs::core::ITransport& transport)
+{
+    s_last_packet_tp = Clock::now();
+    s_last_stats_packet_tp = Clock::now();
+    resetAirPairing(gs_device_id, transport);
 }
 
 void resetAirPairing(uint16_t gs_device_id, gs::core::ITransport& transport)

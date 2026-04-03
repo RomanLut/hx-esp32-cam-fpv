@@ -225,7 +225,7 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
         return -1;
     }
 
-    airUnpair();
+    performAirUnpair(s_groundstation_config.deviceId, s_transport);
     s_isDual = rx_descriptor.interfaces.size() > 1;
     s_transport.setChannel(s_groundstation_config.wifi_channel);
     s_transport.setTxPower(s_groundstation_config.txPower);

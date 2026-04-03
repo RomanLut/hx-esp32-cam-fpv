@@ -3,7 +3,7 @@
 #include <android/asset_manager.h>
 
 #include "android_jni_shared.h"
-#include "gs_osd_font_shared.h"
+#include "flight_osd.h"
 
 namespace
 {
@@ -12,6 +12,13 @@ namespace
 //===================================================================================
 // Owns the Android OSD font storage implementation for explicit runtime binding.
 AndroidOSDFontStorage s_android_osd_font_storage;
+
+//===================================================================================
+//===================================================================================
+// Lists the built-in Android OSD fonts packaged with the application assets.
+const std::vector<std::string> kAndroidBuiltinOsdFontNames = {
+    s_flightOSD.defaultFontName(),
+};
 } // namespace
 
 //===================================================================================
@@ -24,10 +31,10 @@ IOSDFontStorage& getAndroidOsdFontStorage()
 
 //===================================================================================
 //===================================================================================
-// Returns the shared Android OSD font list exposed through the common helper.
+// Returns the Android OSD font list exposed by the packaged APK assets.
 const std::vector<std::string>& AndroidOSDFontStorage::osdFontsList() const
 {
-    return getBuiltinOsdFontNames();
+    return kAndroidBuiltinOsdFontNames;
 }
 
 //===================================================================================

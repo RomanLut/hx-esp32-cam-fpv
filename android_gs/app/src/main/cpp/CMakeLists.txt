@@ -4,7 +4,6 @@ project(android_gs_core)
 add_library(android_gs_core SHARED
     android_surface_backend.cpp
     android_bitmap_jpeg_decoder.cpp
-    android_asset_flight_osd.cpp
     android_osd_font_storage.cpp
     android_runtime_platform_services.cpp
     native_bridge.cpp
@@ -25,14 +24,12 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_state.cpp
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
-    ../../../../../components_gs/shared/gs_osd_font_shared.cpp
     ../../../../../components_gs/shared/gs_storage_status_shared.cpp
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
-    ../../../../../components_gs/shared/gs_asset_flight_osd.cpp
+    ../../../../../components_gs/shared/flight_osd.cpp
     ../../../../../components_gs/shared/gs_imgui_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
-    ../../../../../components_gs/shared/gs_flight_osd_render_shared.cpp
     ../../../../../components_gs/shared/gs_video_layout_shared.cpp
     ../../../../../components_gs/shared/gs_video_renderer.cpp
     ../../../../../components_gs/imgui/imgui.cpp
@@ -43,7 +40,6 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/utils/lodepng.cpp
     ../../../../../components_gs/shared/core/gs_protocol.cpp
     ../../../../../components_gs/shared/core/gs_session_core.cpp
-    ../../../../../components_gs/shared/core/osd_base.cpp
     ../../../../../components_gs/shared/core/frame_packets_debug_core.cpp
     ../../../../../components_gs/shared/core/osd_menu_common.cpp
     ../../../../../components_gs/shared/core/osd_menu_controller.cpp

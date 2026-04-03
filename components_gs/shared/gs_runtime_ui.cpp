@@ -50,7 +50,7 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
             ImGui::BeginDisabled(pending);
             if (ImGui::Button("APPLY"))
             {
-                applyWifiChannel(config);
+                context.applyWifiChannel(config);
             }
             ImGui::EndDisabled();
 

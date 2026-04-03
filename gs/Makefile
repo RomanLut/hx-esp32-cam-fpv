@@ -10,17 +10,15 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/osd_menu_imgui_shared.cpp \
 	../components_gs/shared/core/stats_panel_shared.cpp \
 	../components_gs/shared/core/osd_menu_shared.cpp \
-	../components_gs/shared/core/osd_base.cpp \
 	../components_gs/shared/core/frame_packets_debug_core.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
-	src/linux_osd.cpp \
+	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_imgui_overlay_shared.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	src/gs_linux_bootstrap.cpp \
 	src/gs_linux_recording.cpp \
 	src/gs_linux_render_helpers.cpp \
-	src/gs_linux_runtime_actions.cpp \
 	src/gs_linux_runtime_loop.cpp \
 	src/gs_linux_run_loop.cpp \
 	src/gs_linux_startup.cpp \
@@ -43,8 +41,6 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_runtime_state.cpp \
 	../components_gs/shared/gs_runtime_sync.cpp \
 	../components_gs/shared/gs_runtime_video_flow.cpp \
-	../components_gs/shared/gs_osd_font_shared.cpp \
-	../components_gs/shared/gs_asset_flight_osd.cpp \
 	../components_gs/shared/gs_storage_status_shared.cpp \
 	../components_gs/shared/settings_storage.cpp \
 	../components_gs/utils/lodepng.cpp \
