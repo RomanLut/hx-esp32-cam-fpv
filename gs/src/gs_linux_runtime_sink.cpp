@@ -74,13 +74,9 @@ void handleLinuxOsdDispatch(const OsdDispatchDecision& osd_decision)
 
 void handleLinuxTelemetryDispatch(const TelemetryDispatchDecision& telemetry_decision)
 {
-#ifdef USE_MAVLINK
-    if (fdUART != -1 && telemetry_decision.has_payload)
+    if (g_serialTelemetry->isOpen() && telemetry_decision.has_payload)
     {
-        write(fdUART, telemetry_decision.payload, telemetry_decision.payload_size);
+        g_serialTelemetry->write(telemetry_decision.payload, telemetry_decision.payload_size);
         s_runtimeCore.session.addOutboundTelemetryBytes(telemetry_decision.payload_size);
     }
-#else
-    (void)telemetry_decision;
-#endif
 }

@@ -17,8 +17,10 @@
 #include "imgui.h"
 #include "gs_linux_osd_font_storage.h"
 #include "gs_linux_bootstrap.h"
-#include "Video_Decoder.h" 
+#include "Video_Decoder.h"
 #include "gs_runtime_state.h"
+#include "ISerialTelemetry.h"
+#include "linux_serial_telemetry.h"
 
 /*
 
@@ -32,10 +34,9 @@ Changes on the PI:
 std::unique_ptr<IHAL> s_hal;
 Video_Decoder s_decoder;
 
-#ifdef USE_MAVLINK
-int fdUART = -1;
+static LinuxSerialTelemetry s_linuxSerialTelemetry;
+ISerialTelemetry* g_serialTelemetry = &s_linuxSerialTelemetry;
 std::string serialPortName = "";
-#endif
 
 /* This prints an "Assertion failed" message and aborts.  */
 void __assert_fail(const char* __assertion, const char* __file, unsigned int __line, const char* __function)

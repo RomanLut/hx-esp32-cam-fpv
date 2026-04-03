@@ -35,11 +35,9 @@ int printLinuxHelp()
     printf("-fullscreen <1/0>, default: 1\n");
     printf("-vsync <1/0>, default: 1\n");
     printf("-sm <1/0>, skip setting monitor mode with pcap, default: 1\n");
-#ifdef USE_MAVLINK
     printf("-serial <serial_port>, serial port for telemetry, default:");
     printf(isRadxaZero3() ? "/dev/ttyUSB0(if exists), /dev/ttyS3" : "/dev/ttyUSB0(if exists), /dev/serial0");
     printf("\n");
-#endif
     printf("-help\n");
     return 0;
 }
@@ -90,14 +88,12 @@ void parseLinuxArgs(int argc,
             tx_descriptor.interface = next;
             i++;
         }
-#ifdef USE_MAVLINK
         else if (temp == "-serial")
         {
             check_argval("serial");
             serialPortName = next;
             i++;
         }
-#endif
         else if (temp == "-p")
         {
             check_argval_int("port");
@@ -204,9 +200,7 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
     tx_descriptor.coding_n = 3;
     tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
 
-#ifdef USE_MAVLINK
     init_uart();
-#endif
 
 #ifndef WRITE_RAW_MJPEG_STREAM
     prepAviBuffers();

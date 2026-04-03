@@ -60,6 +60,11 @@
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
 #include "settings_storage.h"
+#include "ISerialTelemetry.h"
+#include "android_serial_telemetry.h"
+
+static AndroidSerialTelemetry s_androidSerialTelemetry;
+ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
 
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;

@@ -3,7 +3,6 @@
 #include <cerrno>
 #include <csignal>
 #include <thread>
-#include <termios.h>
 #include <unistd.h>
 
 #include "Comms.h"
@@ -36,9 +35,7 @@ namespace
 std::thread s_comms_thread;
 Clock::time_point s_last_rc_command = Clock::now();
 
-#ifdef USE_MAVLINK
 HXMavlinkParser mavlinkParserIn(true);
-#endif
 
 void comms_thread_proc()
 {
@@ -122,12 +119,11 @@ void comms_thread_proc()
 
         g_CPUTemp.process();
 
-#ifdef USE_MAVLINK
-        if (fdUART != -1)
+        if (g_serialTelemetry->isOpen())
         {
             const int frb = static_cast<int>(s_runtimeCore.session.telemetryFreeBytes());
             uint8_t* payload_write_ptr = s_runtimeCore.session.telemetryPayloadWritePtr();
-            int n = read(fdUART, payload_write_ptr, frb);
+            int n = g_serialTelemetry->read(payload_write_ptr, frb);
 
             bool gotRCPacket = false;
 
@@ -161,7 +157,6 @@ void comms_thread_proc()
                 s_runtimeCore.session.addSentPackets(1);
             }
         }
-#endif
 
         do
         {
@@ -280,7 +275,6 @@ int runLinuxRuntimeLoop(char* argv[])
     return 0;
 }
 
-#ifdef USE_MAVLINK
 bool init_uart()
 {
     if (serialPortName.empty())
@@ -295,47 +289,5 @@ bool init_uart()
         }
     }
 
-    fdUART = open(serialPortName.c_str(), O_RDWR);
-    if (fdUART == -1)
-    {
-        printf("Warning: Can not open serial port %s. Telemetry will not be available.\n", serialPortName.c_str());
-        return false;
-    }
-
-    struct termios tty;
-    if (tcgetattr(fdUART, &tty) != 0)
-    {
-        printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
-        return false;
-    }
-
-    tty.c_cflag &= ~PARENB;
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;
-    tty.c_cflag &= ~CRTSCTS;
-    tty.c_cflag |= CREAD | CLOCAL;
-    tty.c_lflag &= ~ICANON;
-    tty.c_lflag &= ~ECHO;
-    tty.c_lflag &= ~ECHOE;
-    tty.c_lflag &= ~ECHONL;
-    tty.c_lflag &= ~ISIG;
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-    tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-    tty.c_oflag &= ~OPOST;
-    tty.c_oflag &= ~ONLCR;
-    tty.c_cc[VTIME] = 0;
-    tty.c_cc[VMIN] = 0;
-
-    cfsetispeed(&tty, B115200);
-    cfsetospeed(&tty, B115200);
-
-    if (tcsetattr(fdUART, TCSANOW, &tty) != 0)
-    {
-        printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
-        return false;
-    }
-
-    return true;
+    return g_serialTelemetry->init(serialPortName);
 }
-#endif

@@ -17,5 +17,4 @@
 #include "gs_shared_runtime.h"
 #include "gs_stats.h"
 
-#define USE_MAVLINK
 
