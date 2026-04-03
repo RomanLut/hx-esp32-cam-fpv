@@ -8,6 +8,7 @@
 #include "gs_linux_recording.h"
 #include "gs_linux_runtime.h"
 #include "gs_osd_font_shared.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_core.h"
 #include "core/osd_menu_common.h"
 #include "osd_menu.h"
@@ -128,15 +129,16 @@ void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
     if (s_reload_osd_font == true)
     {
         s_reload_osd_font = false;
+        const std::vector<std::string>& font_names = s_OSDFontStorage->osdFontsList();
         const std::optional<std::string> font_name =
-            findOsdFontNameByCrc(g_osd.fontsList, config.misc.osdFontCRC32);
+            findOsdFontNameByCrc(font_names, config.misc.osdFontCRC32);
         if (!font_name.has_value())
         {
             g_osd.loadFont(getDefaultOsdFontName().c_str());
             return;
         }
 
-        if (strcmp(g_osd.currentFontName, font_name->c_str()) != 0)
+        if (g_osd.currentFontName() != *font_name)
         {
             g_osd.loadFont(font_name->c_str());
         }

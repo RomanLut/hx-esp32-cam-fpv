@@ -1,5 +1,7 @@
 #include "gs_asset_flight_osd.h"
 
+#include <cstdio>
+
 GsAssetFlightOsd::GsAssetFlightOsd()
     : m_font_name("INAV_default_24.png")
 {
@@ -34,8 +36,9 @@ bool GsAssetFlightOsd::ensureFont()
     m_font_png.clear();
     m_font_dirty = false;
 
-    if (!loadFontBytes(m_font_name, m_font_png))
+    if (!s_OSDFontStorage->loadOSDFontBytes(m_font_name, m_font_png))
     {
+        std::fprintf(stderr, "Failed to load OSD font bytes: %s\n", m_font_name.c_str());
         m_font_failed = true;
         return false;
     }
@@ -43,7 +46,7 @@ bool GsAssetFlightOsd::ensureFont()
     m_font = new FontWalksnail(m_font_png.data(), m_font_png.size());
     if (m_font == nullptr || !m_font->loaded)
     {
-        onFontLoadError("Failed to create OSD font atlas", m_font_name);
+        std::fprintf(stderr, "Failed to create OSD font atlas: %s\n", m_font_name.c_str());
         delete m_font;
         m_font = nullptr;
         m_font_failed = true;

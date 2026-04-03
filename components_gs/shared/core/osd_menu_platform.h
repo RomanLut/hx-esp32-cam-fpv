@@ -31,7 +31,6 @@ public:
     virtual GroundStorageStatus groundStorageStatus() const = 0;
 
     virtual const char* currentOSDFontName() const = 0;
-    virtual const std::vector<std::string>& osdFontsList() const = 0;
     virtual void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) = 0;
 
     virtual void applyWifiChannel(Ground2Air_Config_Packet& config) = 0;

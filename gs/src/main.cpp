@@ -11,6 +11,7 @@
 #include "IHAL.h"
 #include "PI_HAL.h"
 #include "imgui.h"
+#include "gs_linux_osd_font_storage.h"
 #include "linux_osd.h"
 #include "gs_linux_bootstrap.h"
 #include "Video_Decoder.h" 
@@ -62,6 +63,7 @@ bool s_avi_ov5640HighFPS;
 
 int main(int argc, const char* argv[])
 {
+    s_OSDFontStorage = &getLinuxOsdFontStorage();
     return runLinuxBootstrap(argc, argv);
 }
 

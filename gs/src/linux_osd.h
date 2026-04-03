@@ -1,34 +1,29 @@
 #pragma once
 
+#include "gs_asset_flight_osd.h"
+
 #include <vector>
 #include <stdint.h>
 #include <string>
 
-#include "core/osd_base.h"
-#include "fontwalksnail.h"
 #include "packets.h"
 
 //======================================================
 //======================================================
-class LinuxOSD : public gs::core::OSDBase
+class LinuxOSD : public GsAssetFlightOsd
 {
-private:
-    FontWalksnail* font;
-
-    std::vector<std::string> getFontsList();
-
 public:
-    char currentFontName[256];
-    std::vector<std::string> fontsList;
-
     LinuxOSD();
     void init();
     void loadFont(const  char* fontName);
     void draw();
+    void draw(int surface_width,
+              int surface_height,
+              int frame_width,
+              int frame_height,
+              int screen_mode,
+              bool vr_mode) override;
     bool isFontError();
-
-protected:
-    void drawChar(uint16_t code, int x, int y, int width, int height) override;
 };
 
 extern LinuxOSD g_osd;

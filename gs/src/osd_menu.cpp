@@ -8,6 +8,7 @@
 #include "Comms.h"
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "lodepng.h"
 #include "linux_osd.h"
 #include "gs_linux_runtime.h"
@@ -43,11 +44,6 @@ public:
         static thread_local std::string font_name;
         font_name = getSelectedOsdFontName();
         return font_name.c_str();
-    }
-
-    const std::vector<std::string>& osdFontsList() const override
-    {
-        return g_osd.fontsList;
     }
 
     void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override

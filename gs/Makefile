@@ -43,7 +43,9 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_runtime_state.cpp \
 	../components_gs/shared/gs_runtime_sync.cpp \
 	../components_gs/shared/gs_runtime_video_flow.cpp \
+	../components_gs/shared/gs_runtime_osd_font_storage.cpp \
 	../components_gs/shared/gs_osd_font_shared.cpp \
+	../components_gs/shared/gs_asset_flight_osd.cpp \
 	../components_gs/shared/gs_storage_status_shared.cpp \
 	../components_gs/shared/settings_storage.cpp \
 	../components_gs/utils/lodepng.cpp \
@@ -66,6 +68,7 @@ SRCS := src/main.cpp \
 	../components_gs/fmt/format.cc \
 	../components_gs/fmt/os.cc \
 	src/gs_linux_socket.cpp \
+	src/gs_linux_osd_font_storage.cpp \
 	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \

@@ -16,8 +16,4 @@ public:
               int frame_height,
               int screen_mode,
               bool vr_mode) override;
-
-private:
-    bool loadFontBytes(const std::string& font_name, std::vector<unsigned char>& font_png) override;
-    void onFontLoadError(const std::string& message, const std::string& font_name) override;
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gs_flight_osd.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "core/osd_base.h"
 #include "fontwalksnail.h"
 
@@ -17,12 +18,12 @@ public:
     void clear() override { OSDBase::clear(); }
     void setLowChar(int row, int col, uint8_t value) override { OSDBase::setLowChar(row, col, value); }
     void setFontName(const std::string& font_name) override;
+    const std::string& currentFontName() const { return m_font_name; }
+    bool isFontError() const { return m_font_failed || m_font == nullptr || !m_font->loaded; }
 
 protected:
     bool ensureFont();
     void drawChar(uint16_t code, int x, int y, int width, int height) override;
-    virtual bool loadFontBytes(const std::string& font_name, std::vector<unsigned char>& font_png) = 0;
-    virtual void onFontLoadError(const std::string& message, const std::string& font_name) = 0;
 
 private:
     std::string m_font_name;

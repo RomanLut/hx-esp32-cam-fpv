@@ -27,6 +27,7 @@
 #include "android_bitmap_jpeg_decoder.h"
 #include "android_jni_shared.h"
 #include "android_asset_flight_osd.h"
+#include "android_osd_font_storage.h"
 #include "gs_video_renderer.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
@@ -51,6 +52,7 @@
 #include "gs_runtime_sync.h"
 #include "gs_runtime_video_flow.h"
 #include "gs_osd_font_shared.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_state.h"
 #include "gs_runtime_overlay_state.h"
@@ -141,7 +143,6 @@ public:
     const gs::core::ITransport& transport() const override;
     gs::menu::GroundStorageStatus groundStorageStatus() const override;
     const char* currentOSDFontName() const override;
-    const std::vector<std::string>& osdFontsList() const override;
     void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override;
     void applyWifiChannel(Ground2Air_Config_Packet& config) override;
     void applyWifiChannelInstant(Ground2Air_Config_Packet& config) override;
@@ -164,11 +165,14 @@ private:
 struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)
-        : menu_platform(std::make_unique<AndroidMenuPlatform>(*this)),
-          menu_controller(std::make_unique<gs::menu::OSDMenuController>(*menu_platform)),
+        : menu_platform(),
+          menu_controller(),
           renderer(std::make_unique<AndroidAssetFlightOsd>()),
           jpeg_decoder(renderer)
     {
+        s_OSDFontStorage = &getAndroidOsdFontStorage();
+        menu_platform = std::make_unique<AndroidMenuPlatform>(*this);
+        menu_controller = std::make_unique<gs::menu::OSDMenuController>(*menu_platform);
         s_runtimeCore.resetState(gs_device_id_value);
         loadSharedSettings(s_runtimeCore.gs_device_id);
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
@@ -290,11 +294,6 @@ const char* AndroidMenuPlatform::currentOSDFontName() const
     static thread_local std::string font_name;
     font_name = getSelectedOsdFontName();
     return font_name.c_str();
-}
-
-const std::vector<std::string>& AndroidMenuPlatform::osdFontsList() const
-{
-    return getBuiltinOsdFontNames();
 }
 
 void AndroidMenuPlatform::selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name)

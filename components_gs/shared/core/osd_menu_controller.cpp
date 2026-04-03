@@ -4,6 +4,7 @@
 #include "util.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
+#include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
 #include "gs_storage_status_shared.h"
 
@@ -477,7 +478,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         strcat(buf, "##1");
         if ( this->drawMenuItem( buf, 1) )
         {
-            const auto& fonts = m_platform.osdFontsList();
+            const auto& fonts = s_OSDFontStorage->osdFontsList();
             auto it = std::find(fonts.begin(), fonts.end(), m_platform.currentOSDFontName());
             this->goForward( OSDMenuId::OSDFont, it != fonts.end() ? static_cast<int>(std::distance(fonts.begin(), it)) : 0 );
         }
@@ -1420,7 +1421,7 @@ void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
 
     bool bExit = false;
 
-    const auto& fonts = m_platform.osdFontsList();
+    const auto& fonts = s_OSDFontStorage->osdFontsList();
     for ( unsigned int i = 0; i < fonts.size(); i++ )
     {
         char buf[512];
