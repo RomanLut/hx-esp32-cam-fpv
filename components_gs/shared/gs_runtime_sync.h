@@ -7,7 +7,7 @@
 #include "core/stats_panel_shared.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_frame_ui.h"
-#include "gs_runtime_overlay_state.h"
+#include "gs_top_overlay_shared.h"
 
 struct RuntimeDecodeStats
 {
@@ -48,6 +48,7 @@ struct RuntimeSyncParams
 struct RuntimeSyncState
 {
     RuntimeFrameUiState frame_ui_state;
+    gs::stats::FullscreenStatsSnapshot overlay_stats_snapshot;
     std::string build_info;
     std::string osd_font_name;
     bool has_frame_debug_osd = false;
@@ -57,4 +58,6 @@ struct RuntimeSyncState
     std::vector<uint8_t> flight_osd_data;
 };
 
-RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core, const RuntimeSyncParams& params);
+RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
+                                         const RuntimeSyncParams& params,
+                                         gs::imgui::TopOverlayData& overlay_input);

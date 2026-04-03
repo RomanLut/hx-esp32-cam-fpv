@@ -5,6 +5,7 @@ add_library(android_gs_core SHARED
     android_surface_backend.cpp
     android_bitmap_jpeg_decoder.cpp
     android_osd_font_storage.cpp
+    android_recordings_storage.cpp
     android_runtime_platform_services.cpp
     native_bridge.cpp
     ../../../../../components_gs/shared/gs_runtime_aux_flow.cpp
@@ -14,21 +15,19 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_event_pipeline.cpp
     ../../../../../components_gs/shared/gs_runtime_event_dispatch.cpp
     ../../../../../components_gs/shared/gs_runtime_event_flow.cpp
-    ../../../../../components_gs/shared/gs_runtime_frame_ui.cpp
     ../../../../../components_gs/shared/gs_runtime_globals.cpp
     ../../../../../components_gs/shared/gs_runtime_menu_ui.cpp
-    ../../../../../components_gs/shared/gs_runtime_overlay_state.cpp
     ../../../../../components_gs/shared/gs_runtime_packet_flow.cpp
     ../../../../../components_gs/shared/gs_runtime_protocol.cpp
     ../../../../../components_gs/shared/gs_runtime_session.cpp
     ../../../../../components_gs/shared/gs_runtime_state.cpp
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
+    ../../../../../components_gs/shared/gs_recordings_storage.cpp
     ../../../../../components_gs/shared/gs_storage_status_shared.cpp
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp
-    ../../../../../components_gs/shared/gs_imgui_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_video_layout_shared.cpp
     ../../../../../components_gs/shared/gs_video_renderer.cpp
@@ -37,7 +36,10 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/imgui/imgui_tables.cpp
     ../../../../../components_gs/imgui/imgui_widgets.cpp
     ../../../../../components_gs/imgui/backends/imgui_impl_opengl3.cpp
+    ../../../../../components_gs/fmt/format.cc
+    ../../../../../components_gs/fmt/os.cc
     ../../../../../components_gs/utils/lodepng.cpp
+    ../../../../../components_gs/utils/utils.cpp
     ../../../../../components_gs/shared/core/gs_protocol.cpp
     ../../../../../components_gs/shared/core/gs_session_core.cpp
     ../../../../../components_gs/shared/core/frame_packets_debug_core.cpp
@@ -47,9 +49,12 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/core/stats_panel_shared.cpp
     ../../../../../components_gs/shared/core/video_frame_assembler.cpp
     ../../../../../components/common/crc.cpp
+    ../../../../../components/common/avi.cpp
     ../../../../../components/common/fec.cpp
     ../../../../../components/common/fec_block_decoder.cpp
+    ../../../../../components/common/jpeg_parser.cpp
     ../../../../../components/common/packet_filter.cpp
+    ../../../../../components/common/packets.cpp
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
 )

@@ -4,6 +4,7 @@
 #include "util.h"
 #include "flight_osd.h"
 #include "lodepng.h"
+#include "gs_recordings_storage.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
@@ -364,7 +365,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        const auto gs_storage = s_RuntimePlatformServices->getGroundStorageStatus();
+        const auto gs_storage = s_recordingsStorage->groundStorageStatus();
         std::string line = formatGroundStorageStatusLine(gs_storage);
         line += "##status1";
         this->drawStatus(line.c_str());

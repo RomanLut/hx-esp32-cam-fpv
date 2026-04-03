@@ -11,6 +11,8 @@
 #include "flight_osd.h"
 #include "IHAL.h"
 #include "PI_HAL.h"
+#include "gs_recordings_storage.h"
+#include "gs_linux_recordings_storage.h"
 #include "gs_linux_runtime_platform_services.h"
 #include "imgui.h"
 #include "gs_linux_osd_font_storage.h"
@@ -47,27 +49,19 @@ bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
 
-uint64_t s_GSSDTotalSpaceBytes = 0;
-uint64_t s_GSSDFreeSpaceBytes = 0;
-
 bool s_debugWindowVisisble = false;
 
 Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
-
-uint8_t s_avi_fps;
-uint16_t s_avi_frameWidth;
-uint16_t s_avi_frameHeight;
-uint32_t s_avi_frameCnt;
-bool s_avi_ov2640HighFPS;
-bool s_avi_ov5640HighFPS;
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;
+RecordingsStorage* s_recordingsStorage = nullptr;
 FlightOSD s_flightOSD;
 
 int main(int argc, const char* argv[])
 {
     s_RuntimePlatformServices = &getLinuxRuntimePlatformServices();
     s_OSDFontStorage = &getLinuxOsdFontStorage();
+    s_recordingsStorage = &getLinuxRecordingsStorage();
     return runLinuxBootstrap(argc, argv);
 }
 

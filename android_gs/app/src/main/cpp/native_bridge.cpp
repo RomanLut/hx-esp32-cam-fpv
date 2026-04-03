@@ -27,6 +27,7 @@
 #include "android_bitmap_jpeg_decoder.h"
 #include "android_jni_shared.h"
 #include "android_osd_font_storage.h"
+#include "android_recordings_storage.h"
 #include "android_runtime_platform_services.h"
 #include "gs_video_renderer.h"
 #include "fec.h"
@@ -55,7 +56,6 @@
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_state.h"
-#include "gs_runtime_overlay_state.h"
 #include "gs_stats.h"
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
@@ -63,6 +63,7 @@
 
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;
+RecordingsStorage* s_recordingsStorage = nullptr;
 FlightOSD s_flightOSD;
 
 namespace
@@ -167,10 +168,12 @@ struct NativeHandle
     {
         s_RuntimePlatformServices = &getAndroidRuntimePlatformServices();
         s_OSDFontStorage = &getAndroidOsdFontStorage();
+        s_recordingsStorage = &getAndroidRecordingsStorage();
         menu_platform = std::make_unique<AndroidMenuPlatform>(*this);
         menu_controller = std::make_unique<gs::menu::OSDMenuController>(*menu_platform);
         s_runtimeCore.resetState(gs_device_id_value);
         loadSharedSettings(s_runtimeCore.gs_device_id);
+        s_recordingsStorage->refreshGroundStorageStatus();
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
         s_runtimeCore.gs_device_id = s_groundstation_config.deviceId;
         s_runtimeCore.resetPairing(transport, Clock::now());
@@ -1260,6 +1263,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
 
     const std::string info = fromJString(env, build_info);
     RuntimeSyncState sync_state;
+    gs::imgui::TopOverlayData overlay_input = {};
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
         processDecodedTransportPacketsLocked(*native_handle);
@@ -1288,7 +1292,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.udp_video_fps = native_handle->udp_video_fps;
         sync_params.is_dual = false;
         sync_params.osd_font_error = false;
-        sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params);
+        sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     if (sync_state.clear_flight_osd)
@@ -1304,7 +1308,9 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     {
         native_handle->renderer.setFlightOsdChars(sync_state.frame_debug_osd);
     }
+    native_handle->renderer.setOverlayInput(overlay_input);
     native_handle->renderer.setFrameUiState(sync_state.frame_ui_state);
+    native_handle->renderer.setOverlayStatsSnapshot(sync_state.overlay_stats_snapshot);
 }
 
 extern "C" JNIEXPORT void JNICALL

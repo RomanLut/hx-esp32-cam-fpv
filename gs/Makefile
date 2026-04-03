@@ -13,11 +13,11 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/frame_packets_debug_core.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
 	../components_gs/shared/flight_osd.cpp \
-	../components_gs/shared/gs_imgui_overlay_shared.cpp \
+	../components_gs/shared/gs_recordings_storage.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	src/gs_linux_bootstrap.cpp \
-	src/gs_linux_recording.cpp \
+	src/gs_linux_recordings_storage.cpp \
 	src/gs_linux_render_helpers.cpp \
 	src/gs_linux_runtime_loop.cpp \
 	src/gs_linux_run_loop.cpp \
@@ -31,10 +31,8 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_runtime_event_pipeline.cpp \
 	../components_gs/shared/gs_runtime_event_dispatch.cpp \
 	../components_gs/shared/gs_runtime_event_flow.cpp \
-	../components_gs/shared/gs_runtime_frame_ui.cpp \
 	../components_gs/shared/gs_runtime_globals.cpp \
 	../components_gs/shared/gs_runtime_menu_ui.cpp \
-	../components_gs/shared/gs_runtime_overlay_state.cpp \
 	../components_gs/shared/gs_runtime_packet_flow.cpp \
 	../components_gs/shared/gs_runtime_protocol.cpp \
 	../components_gs/shared/gs_runtime_session.cpp \

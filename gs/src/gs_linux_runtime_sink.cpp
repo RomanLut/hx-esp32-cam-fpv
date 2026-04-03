@@ -3,6 +3,7 @@
 #include "avi.h"
 #include "flight_osd.h"
 #include "frame_packets_debug.h"
+#include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_core.h"
 #include "gs_stats.h"
@@ -48,54 +49,9 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
     auto video_frame = completed_frame.frame_data;
     uint8_t* video_frame_data = completed_frame.data;
     s_decoder.decode_data(video_frame, completed_frame.frame_index);
-    if (s_groundstation_config.record)
+    if (s_recordingsStorage->isRecording())
     {
-#ifdef WRITE_RAW_MJPEG_STREAM
-        std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-        fwrite(video_frame_data, video_frame->data.size(), 1, s_groundstation_config.record_file);
-#else
-        int width, height;
-        if (getJPEGDimensions(video_frame_data, width, height, 2048))
-        {
-            if ((width != s_avi_frameWidth) ||
-                (height != s_avi_frameHeight) ||
-                (s_avi_ov2640HighFPS != s_runtimeCore.session.copyConfigPacket().camera.ov2640HighFPS) ||
-                (s_avi_ov5640HighFPS != s_runtimeCore.session.copyConfigPacket().camera.ov5640HighFPS))
-            {
-                toggleGSRecording(0, 0, "auto_restart_resolution_change_stop");
-                toggleGSRecording(width, height, "auto_restart_resolution_change_start");
-            }
-
-            {
-                std::lock_guard<std::mutex> lg(s_groundstation_config.record_mutex);
-                uint16_t jpegSize = video_frame->data.size();
-                uint16_t filler = (4 - (jpegSize & 0x3)) & 0x3;
-                size_t jpegSize1 = jpegSize + filler;
-                uint8_t buf[8];
-                memcpy(buf, dcBuf, 4);
-                memcpy(&buf[4], &jpegSize1, 4);
-
-                fwrite(buf, 8, 1, s_groundstation_config.record_file);
-                fwrite(video_frame_data, video_frame->data.size(), 1, s_groundstation_config.record_file);
-
-                memset(buf, 0, 4);
-                fwrite(buf, filler, 1, s_groundstation_config.record_file);
-
-                buildAviIdx(jpegSize1);
-                s_avi_frameCnt++;
-            }
-
-            if ((s_avi_frameCnt == (DVR_MAX_FRAMES - 1)) || (moviSize > 50 * 1024 * 1024))
-            {
-                toggleGSRecording(0, 0, "auto_split_stop");
-                toggleGSRecording(width, height, "auto_split_start");
-            }
-        }
-        else
-        {
-            LOGI("Received frame - unknown size!");
-        }
-#endif
+        s_recordingsStorage->writeVideoFrame(video_frame_data, video_frame->data.size());
     }
 
     if (s_groundstation_config.socket_fd > 0)

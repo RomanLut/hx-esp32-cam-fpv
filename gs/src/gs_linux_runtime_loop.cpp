@@ -12,7 +12,6 @@
 #include "flight_osd.h"
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
-#include "gs_linux_recording.h"
 #include "gs_linux_render_helpers.h"
 #include "gs_linux_run_loop.h"
 #include "gs_linux_runtime.h"

@@ -6,7 +6,9 @@
 
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
+#include "core/stats_panel_shared.h"
 #include "gs_runtime_menu_ui.h"
+#include "gs_top_overlay_shared.h"
 #include "gs_runtime_ui.h"
 #include "gs_video_layout_shared.h"
 #include "imgui.h"
@@ -390,17 +392,37 @@ void GsVideoRenderer::setFlightOsdChars(const std::array<std::array<uint8_t, OSD
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Stores the top overlay payload separately from the frame UI state.
+void GsVideoRenderer::setOverlayInput(const gs::imgui::TopOverlayData& overlay_input)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_overlay_input = overlay_input;
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+//===================================================================================
+//===================================================================================
+// Stores the shared frame UI state for the renderer thread.
 void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_frame_ui_state = frame_ui_state;
-    m_screen_mode = std::clamp(frame_ui_state.screen_mode, 0, 2);
+    m_screen_mode = std::clamp(static_cast<int>(frame_ui_state.screen_mode), 0, 2);
     m_vsync = frame_ui_state.vsync;
     m_vr_mode = frame_ui_state.vr_mode;
     m_menu_footer = frame_ui_state.menu_footer;
     m_surface_backend.setVsync(m_vsync);
     m_overlay_dirty = true;
     m_cv.notify_all();
+}
+
+void GsVideoRenderer::setOverlayStatsSnapshot(const gs::stats::FullscreenStatsSnapshot& snapshot)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_overlay_stats_snapshot = snapshot;
 }
 
 void GsVideoRenderer::setMenuBinding(gs::menu::OSDMenuController* menu_controller,
@@ -846,25 +868,7 @@ void GsVideoRenderer::drawRectLocked(float x, float y, float width, float height
     drawTexturedQuadLocked(x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, m_white_texture, color);
 }
 
-void GsVideoRenderer::drawHudLocked()
-{
-    drawHudImGuiLocked();
-}
 
-void GsVideoRenderer::drawHudImGuiLocked()
-{
-    if (m_imgui_context == nullptr)
-    {
-        return;
-    }
-
-    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    drawRuntimeFrameUiContent(m_frame_ui_state);
-}
-
-void GsVideoRenderer::drawStatsLocked()
-{
-}
 
 void GsVideoRenderer::drawMenuLocked()
 {
@@ -964,8 +968,17 @@ void GsVideoRenderer::drawOverlayLocked()
     }
 
     s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
-    drawHudLocked();
-    drawStatsLocked();
+    if (m_imgui_context == nullptr)
+    {
+        return;
+    }
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+    gs::imgui::drawTopOverlayStatus(m_overlay_input);
+    if (m_frame_ui_state.overlay_stats_visible)
+    {
+        gs::stats::drawFullscreenStatsPanel(m_overlay_stats_snapshot);
+    }
     drawMenuLocked();
 
     if (m_touch_pending)

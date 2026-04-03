@@ -33,6 +33,5 @@ extern uint8_t s_curr_quality;
 extern bool s_wifi_ovf;
 extern bool s_noPing;
 
-int formatGSRSSI(int8_t rssi);
 void syncAirStatusGlobals();
 bool isHQDVRMode();

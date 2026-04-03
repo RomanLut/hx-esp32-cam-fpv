@@ -5,7 +5,7 @@
 
 #include "imgui.h"
 #include "flight_osd.h"
-#include "gs_linux_recording.h"
+#include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_platform_services.h"
@@ -87,7 +87,7 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 
     if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_G, false))
     {
-        toggleGSRecording(0, 0, "keyboard_g");
+        s_recordingsStorage->toggleRecording(0, 0, "keyboard_g");
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape)))

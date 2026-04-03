@@ -6,7 +6,8 @@
 #include "wifi_channels.h"
 
 SettingsStorage::SettingsStorage(const std::string& filename)
-    : m_ini_file(filename)
+    : m_ini_file(filename),
+      m_path(filename)
 {
 }
 
@@ -22,7 +23,16 @@ bool SettingsStorage::read()
 
 void SettingsStorage::setPath(const std::string& filename)
 {
+    m_path = filename;
     m_ini_file = mINI::INIFile(filename);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the active settings file path used by the shared runtime.
+const std::string& SettingsStorage::path() const
+{
+    return m_path;
 }
 
 void SettingsStorage::loadGroundStationConfig()

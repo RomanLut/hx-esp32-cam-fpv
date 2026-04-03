@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdio>
-#include <mutex>
 #include <string>
 
 #include "Clock.h"
@@ -21,9 +19,6 @@ enum class ScreenAspectRatio : int
 struct TGroundstationConfig
 {
     int socket_fd;
-    bool record;
-    FILE* record_file = nullptr;
-    std::mutex record_mutex;
     int wifi_channel;  // 1...13
     uint8_t wifiBand = DEFAULT_GS_WIFI_BAND; // GS_WIFI_BAND_*
     ScreenAspectRatio screenAspectRatio;

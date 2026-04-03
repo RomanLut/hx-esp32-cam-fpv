@@ -62,37 +62,22 @@ GroundStatsSnapshot buildGroundStatsSnapshot(const GSStats& gs_stats)
     return ground_stats;
 }
 
-FullscreenStatsSnapshot buildFullscreenStatsSnapshot(const FullscreenStatsBuildInput& input)
-{
-    FullscreenStatsSnapshot snapshot = {};
-    snapshot.fec_codec_n = input.fec_codec_n;
-    snapshot.current_quality = input.current_quality;
-    snapshot.wifi_queue_max = input.wifi_queue_max;
-    snapshot.cpu_temp_c = input.cpu_temp_c;
-    snapshot.air_stats = input.air_stats;
-    snapshot.ground_stats = input.ground_stats;
-    snapshot.frame_stats = input.frame_stats;
-    snapshot.frame_parts_stats = input.frame_parts_stats;
-    snapshot.frame_time_stats = input.frame_time_stats;
-    snapshot.frame_quality_stats = input.frame_quality_stats;
-    snapshot.data_size_stats = input.data_size_stats;
-    snapshot.queue_usage_stats = input.queue_usage_stats;
-    return snapshot;
-}
 
-void drawFullscreenStatsPanel(int fec_codec_n,
-                              int current_quality,
-                              int wifi_queue_max,
-                              int cpu_temp_c,
-                              const AirStats& air_stats,
-                              const GroundStatsSnapshot& ground_stats,
-                              const Stats& frame_stats,
-                              const Stats& frame_parts_stats,
-                              const Stats& frame_time_stats,
-                              const Stats& frame_quality_stats,
-                              const Stats& data_size_stats,
-                              const Stats& queue_usage_stats)
+void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
 {
+    const int fec_codec_n = snapshot.fec_codec_n;
+    const int current_quality = snapshot.current_quality;
+    const int wifi_queue_max = snapshot.wifi_queue_max;
+    const int cpu_temp_c = snapshot.cpu_temp_c;
+    const AirStats& air_stats = snapshot.air_stats;
+    const GroundStatsSnapshot& ground_stats = snapshot.ground_stats;
+    const Stats& frame_stats = snapshot.frame_stats;
+    const Stats& frame_parts_stats = snapshot.frame_parts_stats;
+    const Stats& frame_time_stats = snapshot.frame_time_stats;
+    const Stats& frame_quality_stats = snapshot.frame_quality_stats;
+    const Stats& data_size_stats = snapshot.data_size_stats;
+    const Stats& queue_usage_stats = snapshot.queue_usage_stats;
+
     char overlay[64];
     const int restored_parts = ground_stats.restored_video_parts;
     const int received_parts = std::max(
@@ -249,20 +234,5 @@ void drawFullscreenStatsPanel(int fec_codec_n,
     }
 }
 
-void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
-{
-    drawFullscreenStatsPanel(snapshot.fec_codec_n,
-                             snapshot.current_quality,
-                             snapshot.wifi_queue_max,
-                             snapshot.cpu_temp_c,
-                             snapshot.air_stats,
-                             snapshot.ground_stats,
-                             snapshot.frame_stats,
-                             snapshot.frame_parts_stats,
-                             snapshot.frame_time_stats,
-                             snapshot.frame_quality_stats,
-                             snapshot.data_size_stats,
-                             snapshot.queue_usage_stats);
-}
 
 } // namespace gs::stats

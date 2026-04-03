@@ -37,3 +37,14 @@ bool isRadxaZero3()
     _isRadxaZero = false;
     return false;
 }
+
+//======================================================
+//======================================================
+int formatGSRSSI(int8_t rssi)
+{
+    if (rssi == 0)
+    {
+        return 0;
+    }
+    return std::max(-99, static_cast<int>(rssi));
+}

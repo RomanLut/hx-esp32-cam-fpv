@@ -9,7 +9,6 @@
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/statvfs.h>
 #include <unistd.h>
 
 #include "gs_runtime_core.h"
@@ -95,23 +94,6 @@ IRuntimePlatformServices& getAndroidRuntimePlatformServices()
 float AndroidRuntimePlatformServices::getCpuTemperatureCelsius() const
 {
     return 0.0f;
-}
-
-//===================================================================================
-//===================================================================================
-// Returns Android app storage capacity and free space for ground recording status.
-GroundStorageStatus AndroidRuntimePlatformServices::getGroundStorageStatus() const
-{
-    struct statvfs fs = {};
-    if (statvfs("/data", &fs) != 0)
-    {
-        return {};
-    }
-
-    return {
-        static_cast<uint64_t>(fs.f_bavail) * static_cast<uint64_t>(fs.f_frsize),
-        static_cast<uint64_t>(fs.f_blocks) * static_cast<uint64_t>(fs.f_frsize),
-    };
 }
 
 //===================================================================================

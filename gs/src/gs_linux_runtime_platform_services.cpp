@@ -7,7 +7,7 @@
 
 #include "cpu_temp.h"
 #include "gpio_buttons.h"
-#include "gs_linux_recording.h"
+#include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 
 namespace
@@ -34,17 +34,6 @@ IRuntimePlatformServices& getLinuxRuntimePlatformServices()
 float LinuxRuntimePlatformServices::getCpuTemperatureCelsius() const
 {
     return g_CPUTemp.getTemperature();
-}
-
-//===================================================================================
-//===================================================================================
-// Returns Linux ground storage capacity and free space tracked by the runtime.
-GroundStorageStatus LinuxRuntimePlatformServices::getGroundStorageStatus() const
-{
-    return {
-        s_GSSDFreeSpaceBytes,
-        s_GSSDTotalSpaceBytes,
-    };
 }
 
 //===================================================================================
@@ -96,9 +85,9 @@ void LinuxRuntimePlatformServices::setVsync(bool enabled)
 // Exits the Linux application, stopping recording first when needed.
 void LinuxRuntimePlatformServices::exitApp()
 {
-    if (s_groundstation_config.record)
+    if (s_recordingsStorage->isRecording())
     {
-        toggleGSRecording(0, 0, "exit_app");
+        s_recordingsStorage->toggleRecording(0, 0, "exit_app");
     }
     std::abort();
 }

@@ -3,11 +3,15 @@
 #include <chrono>
 #include <cstdio>
 
+#include "flight_osd.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_core.h"
+#include "gs_recordings_storage.h"
 #include "gs_storage_status_shared.h"
 #include "gs_runtime_state.h"
+#include "gs_top_overlay_shared.h"
 #include "core/osd_menu_common.h"
+#include "core/stats_panel_shared.h"
 #include "imgui.h"
 
 void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const RuntimeUiContext& context)
@@ -281,7 +285,7 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
             s_SDFreeSpaceGB16,
             s_SDTotalSpaceGB16,
         };
-        const GroundStorageStatus ground_storage = s_RuntimePlatformServices->getGroundStorageStatus();
+        const GroundStorageStatus ground_storage = s_recordingsStorage->groundStorageStatus();
         ImGui::Text("%s",
                     formatAirStorageStatusLine(
                         air_storage,
@@ -292,69 +296,4 @@ void drawRuntimeDebugSettingsWindow(Ground2Air_Config_Packet& config, const Runt
         ImGui::Text("%s", formatGroundStorageStatusLine(ground_storage).c_str());
     }
     ImGui::End();
-}
-
-RuntimeFrameUiState buildLinuxRuntimeFrameUiState(const Ground2Air_Config_Packet& config, const RuntimeUiContext& context)
-{
-    RuntimeFrameUiState state = {};
-    RuntimeOverlayBuildInput input = {};
-    input.config = &config;
-    input.air_stats = &s_last_airStats;
-    input.gs_stats = &s_last_gs_stats;
-    input.is_ov5640 = s_isOV5640;
-    input.is_dual = s_isDual;
-    input.wifi_queue_percent = s_wifi_queue_max;
-    input.wifi_queue_alert = s_wifi_ovf;
-    input.throughput_total_bytes = s_total_data;
-    input.use_megabit_total = true;
-    input.video_fps = static_cast<int>(video_fps);
-    input.video_fps_alert = had_loss;
-    input.no_ping = s_noPing;
-    input.sd_slow = s_SDSlow;
-    input.air_record = s_air_record;
-    input.gs_record = s_groundstation_config.record;
-    input.hq_dvr = isHQDVRMode();
-    input.gs_temp_celsius = s_RuntimePlatformServices->getCpuTemperatureCelsius();
-    input.osd_font_error = context.osd_font_error;
-    input.incompatible_firmware_time = s_incompatibleFirmwareTime;
-    input.now = Clock::now();
-    state.overlay = buildRuntimeOverlayState(input);
-    state.overlay.stats_visible = s_groundstation_config.stats;
-    if (state.overlay.stats_visible)
-    {
-        GSStats last_gs_stats;
-        {
-            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-            last_gs_stats = s_last_gs_stats;
-        }
-        const gs::core::FrameStatsState frame_stats = s_runtimeCore.session.copyFrameStats();
-        gs::stats::FullscreenStatsBuildInput stats_input = {};
-        stats_input.fec_codec_n = config.dataChannel.fec_codec_n;
-        stats_input.current_quality = s_curr_quality;
-        stats_input.wifi_queue_max = s_wifi_queue_max;
-        stats_input.cpu_temp_c = static_cast<int>(s_RuntimePlatformServices->getCpuTemperatureCelsius() + 0.5f);
-        stats_input.air_stats = s_last_airStats;
-        stats_input.ground_stats = gs::stats::buildGroundStatsSnapshot(last_gs_stats);
-        stats_input.frame_stats = frame_stats.frame_stats;
-        stats_input.frame_parts_stats = frame_stats.frame_parts_stats;
-        stats_input.frame_time_stats = frame_stats.frame_time_stats;
-        stats_input.frame_quality_stats = frame_stats.frame_quality_stats;
-        stats_input.data_size_stats = s_dataSize_stats;
-        stats_input.queue_usage_stats = frame_stats.queue_usage_stats;
-        state.overlay.stats_snapshot = gs::stats::buildFullscreenStatsSnapshot(stats_input);
-    }
-    state.menu_footer.clear();
-    state.screen_mode = static_cast<int>(s_groundstation_config.screenAspectRatio);
-    state.vsync = s_groundstation_config.vsync;
-    state.vr_mode = s_groundstation_config.vrMode;
-    return state;
-}
-
-void drawRuntimeFrameUi(const RuntimeFrameUiState& state, const RuntimeUiContext& context)
-{
-    if (context.drawFlightOsd)
-    {
-        context.drawFlightOsd();
-    }
-    drawRuntimeFrameUiContent(state);
 }

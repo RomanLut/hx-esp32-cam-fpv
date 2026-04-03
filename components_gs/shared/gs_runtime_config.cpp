@@ -11,8 +11,6 @@
 void initializeGroundStationConfigDefaults(uint16_t gs_device_id)
 {
     s_groundstation_config.socket_fd = 0;
-    s_groundstation_config.record = false;
-    s_groundstation_config.record_file = nullptr;
     s_groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
     s_groundstation_config.wifiBand = DEFAULT_GS_WIFI_BAND;
     s_groundstation_config.screenAspectRatio = ScreenAspectRatio::LETTERBOX;

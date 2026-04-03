@@ -9,7 +9,6 @@ class LinuxRuntimePlatformServices final : public IRuntimePlatformServices
 {
 public:
     float getCpuTemperatureCelsius() const override;
-    GroundStorageStatus getGroundStorageStatus() const override;
     std::string getSystemIPv4() const override;
     void setVsync(bool enabled) override;
     void exitApp() override;

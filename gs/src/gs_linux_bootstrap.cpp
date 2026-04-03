@@ -9,7 +9,7 @@
 #include "PI_HAL.h"
 #include "crc.h"
 #include "gpio_buttons.h"
-#include "gs_linux_recording.h"
+#include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "main.h"
 #include "gs_linux_runtime_loop.h"
@@ -212,7 +212,7 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
     prepAviBuffers();
 #endif
 
-    updateGSSdFreeSpace();
+    s_recordingsStorage->refreshGroundStorageStatus();
     s_hal->set_vsync(s_groundstation_config.vsync, false);
 
     if (!s_hal->init())

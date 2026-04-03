@@ -12,6 +12,7 @@ public:
     bool save(bool pretty = false);
     bool read();
     void setPath(const std::string& filename);
+    const std::string& path() const;
     void loadGroundStationConfig();
     void loadGround2AirConfig();
     void saveGroundStationConfig();
@@ -19,4 +20,5 @@ public:
 
 private:
     mINI::INIFile m_ini_file;
+    std::string m_path;
 };

@@ -3,7 +3,7 @@
 #include "flight_osd.h"
 #include "android_surface_backend.h"
 #include "gs_runtime_frame_ui.h"
-#include "gs_runtime_overlay_state.h"
+#include "gs_top_overlay_shared.h"
 
 #include <array>
 #include <condition_variable>
@@ -114,7 +114,9 @@ public:
     void clearFlightOsd();
     void setFlightOsdFont(const std::string& font_name);
     void setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars);
+    void setOverlayInput(const gs::imgui::TopOverlayData& overlay_input);
     void setFrameUiState(const RuntimeFrameUiState& frame_ui_state);
+    void setOverlayStatsSnapshot(const gs::stats::FullscreenStatsSnapshot& snapshot);
     void setMenuBinding(gs::menu::OSDMenuController* menu_controller,
                         Ground2Air_Config_Packet* config_packet,
                         std::mutex* menu_mutex);
@@ -149,9 +151,6 @@ private:
     void uploadFrameLocked();
     void ensureTextureLocked();
     void drawOverlayLocked();
-    void drawHudLocked();
-    void drawHudImGuiLocked();
-    void drawStatsLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
@@ -200,7 +199,9 @@ private:
     PixelFormat m_uploaded_pixel_format = PixelFormat::RGB24;
     bool m_has_uploaded_frame = false;
     std::vector<uint8_t> m_pending_font_png;
+    gs::imgui::TopOverlayData m_overlay_input;
     RuntimeFrameUiState m_frame_ui_state;
+    gs::stats::FullscreenStatsSnapshot m_overlay_stats_snapshot;
     OverlayMenuState m_overlay_menu;
     gs::menu::OSDMenuController* m_menu_controller = nullptr;
     Ground2Air_Config_Packet* m_menu_config = nullptr;

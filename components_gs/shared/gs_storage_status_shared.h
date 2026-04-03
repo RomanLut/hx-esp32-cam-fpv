@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "gs_runtime_platform_services.h"
+#include "gs_recordings_storage.h"
 
 struct AirStorageStatusView
 {
