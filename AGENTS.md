@@ -7,8 +7,8 @@ file reference formatting:
 - do not use `file://`
 - do not use plain inline code for clickable file references
 
-wsl desktop build rule:
-- always build the desktop `gs` target via `wsl.exe -d Ubuntu`, never via the default WSL distro
+wsl linux build rule:
+- always build the linux `gs` target via `wsl.exe -d Ubuntu`, never via the default WSL distro
 - exact command:
   `wsl.exe -d Ubuntu -e bash -lc "cd /mnt/d/Github/esp32-cam-fpv/esp32-cam-fpv/gs && make -j2"`
 - do not use plain `wsl ...` without `-d Ubuntu`, because the default distro may be `docker-desktop-data` and break path mounts/build execution

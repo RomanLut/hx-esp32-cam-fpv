@@ -6,48 +6,48 @@ add_library(android_gs_core SHARED
     android_bitmap_jpeg_decoder.cpp
     android_asset_flight_osd.cpp
     native_bridge.cpp
-    ../../../../../gs/src/gs_runtime_aux_flow.cpp
-    ../../../../../gs/src/gs_runtime_config.cpp
-    ../../../../../gs/src/gs_runtime_core.cpp
-    ../../../../../gs/src/gs_runtime_event_classify.cpp
-    ../../../../../gs/src/gs_runtime_event_pipeline.cpp
-    ../../../../../gs/src/gs_runtime_event_dispatch.cpp
-    ../../../../../gs/src/gs_runtime_event_flow.cpp
-    ../../../../../gs/src/gs_runtime_frame_ui.cpp
-    ../../../../../gs/src/gs_runtime_globals.cpp
-    ../../../../../gs/src/gs_runtime_menu_ui.cpp
-    ../../../../../gs/src/gs_runtime_overlay_state.cpp
-    ../../../../../gs/src/gs_runtime_packet_flow.cpp
-    ../../../../../gs/src/gs_runtime_protocol.cpp
-    ../../../../../gs/src/gs_runtime_session.cpp
-    ../../../../../gs/src/gs_runtime_state.cpp
-    ../../../../../gs/src/gs_runtime_sync.cpp
-    ../../../../../gs/src/gs_runtime_video_flow.cpp
-    ../../../../../gs/src/gs_osd_font_shared.cpp
-    ../../../../../gs/src/gs_storage_status_shared.cpp
-    ../../../../../gs/src/settings_storage.cpp
-    ../../../../../gs/src/fontwalksnail.cpp
-    ../../../../../gs/src/gs_asset_flight_osd.cpp
-    ../../../../../gs/src/gs_imgui_overlay_shared.cpp
-    ../../../../../gs/src/gs_top_overlay_shared.cpp
-    ../../../../../gs/src/gs_flight_osd_render_shared.cpp
-    ../../../../../gs/src/gs_video_layout_shared.cpp
-    ../../../../../gs/src/gs_video_renderer.cpp
-    ../../../../../gs/src/imgui/imgui.cpp
-    ../../../../../gs/src/imgui/imgui_draw.cpp
-    ../../../../../gs/src/imgui/imgui_tables.cpp
-    ../../../../../gs/src/imgui/imgui_widgets.cpp
-    ../../../../../gs/src/imgui/backends/imgui_impl_opengl3.cpp
-    ../../../../../gs/src/utils/lodepng.cpp
-    ../../../../../gs/src/core/gs_protocol.cpp
-    ../../../../../gs/src/core/gs_session_core.cpp
-    ../../../../../gs/src/core/osd_base.cpp
-    ../../../../../gs/src/core/frame_packets_debug_core.cpp
-    ../../../../../gs/src/core/osd_menu_common.cpp
-    ../../../../../gs/src/core/osd_menu_controller.cpp
-    ../../../../../gs/src/core/osd_menu_imgui_shared.cpp
-    ../../../../../gs/src/core/stats_panel_shared.cpp
-    ../../../../../gs/src/core/video_frame_assembler.cpp
+    ../../../../../components_gs/shared/gs_runtime_aux_flow.cpp
+    ../../../../../components_gs/shared/gs_runtime_config.cpp
+    ../../../../../components_gs/shared/gs_runtime_core.cpp
+    ../../../../../components_gs/shared/gs_runtime_event_classify.cpp
+    ../../../../../components_gs/shared/gs_runtime_event_pipeline.cpp
+    ../../../../../components_gs/shared/gs_runtime_event_dispatch.cpp
+    ../../../../../components_gs/shared/gs_runtime_event_flow.cpp
+    ../../../../../components_gs/shared/gs_runtime_frame_ui.cpp
+    ../../../../../components_gs/shared/gs_runtime_globals.cpp
+    ../../../../../components_gs/shared/gs_runtime_menu_ui.cpp
+    ../../../../../components_gs/shared/gs_runtime_overlay_state.cpp
+    ../../../../../components_gs/shared/gs_runtime_packet_flow.cpp
+    ../../../../../components_gs/shared/gs_runtime_protocol.cpp
+    ../../../../../components_gs/shared/gs_runtime_session.cpp
+    ../../../../../components_gs/shared/gs_runtime_state.cpp
+    ../../../../../components_gs/shared/gs_runtime_sync.cpp
+    ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
+    ../../../../../components_gs/shared/gs_osd_font_shared.cpp
+    ../../../../../components_gs/shared/gs_storage_status_shared.cpp
+    ../../../../../components_gs/shared/settings_storage.cpp
+    ../../../../../components_gs/shared/fontwalksnail.cpp
+    ../../../../../components_gs/shared/gs_asset_flight_osd.cpp
+    ../../../../../components_gs/shared/gs_imgui_overlay_shared.cpp
+    ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
+    ../../../../../components_gs/shared/gs_flight_osd_render_shared.cpp
+    ../../../../../components_gs/shared/gs_video_layout_shared.cpp
+    ../../../../../components_gs/shared/gs_video_renderer.cpp
+    ../../../../../components_gs/imgui/imgui.cpp
+    ../../../../../components_gs/imgui/imgui_draw.cpp
+    ../../../../../components_gs/imgui/imgui_tables.cpp
+    ../../../../../components_gs/imgui/imgui_widgets.cpp
+    ../../../../../components_gs/imgui/backends/imgui_impl_opengl3.cpp
+    ../../../../../components_gs/utils/lodepng.cpp
+    ../../../../../components_gs/shared/core/gs_protocol.cpp
+    ../../../../../components_gs/shared/core/gs_session_core.cpp
+    ../../../../../components_gs/shared/core/osd_base.cpp
+    ../../../../../components_gs/shared/core/frame_packets_debug_core.cpp
+    ../../../../../components_gs/shared/core/osd_menu_common.cpp
+    ../../../../../components_gs/shared/core/osd_menu_controller.cpp
+    ../../../../../components_gs/shared/core/osd_menu_imgui_shared.cpp
+    ../../../../../components_gs/shared/core/stats_panel_shared.cpp
+    ../../../../../components_gs/shared/core/video_frame_assembler.cpp
     ../../../../../components/common/crc.cpp
     ../../../../../components/common/fec.cpp
     ../../../../../components/common/fec_block_decoder.cpp
@@ -63,10 +63,11 @@ set_source_files_properties(
 
 target_include_directories(android_gs_core PRIVATE
     .
-    ../../../../../gs/src
-    ../../../../../gs/src/utils
-    ../../../../../gs/src/imgui
-    ../../../../../gs/src/imgui/backends
+    ../../../../../components_gs
+    ../../../../../components_gs/shared
+    ../../../../../components_gs/utils
+    ../../../../../components_gs/imgui
+    ../../../../../components_gs/imgui/backends
     ../../../../../components/common
 )
 

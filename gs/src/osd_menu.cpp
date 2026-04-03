@@ -9,8 +9,8 @@
 #include "frame_packets_debug.h"
 #include "gpio_buttons.h"
 #include "lodepng.h"
-#include "desktop_osd.h"
-#include "gs_desktop_runtime.h"
+#include "linux_osd.h"
+#include "gs_linux_runtime.h"
 #include "gs_osd_font_shared.h"
 #include "gs_shared_runtime.h"
 

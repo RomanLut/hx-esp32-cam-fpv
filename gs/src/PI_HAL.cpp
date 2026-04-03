@@ -39,8 +39,6 @@ extern "C"
 }
 #endif
 
-extern uint8_t s_font_droid_sans[];
-
 /* To install & compile SDL2 with DRM:
 
 --- Install dependencies
@@ -677,7 +675,6 @@ bool PI_HAL::init()
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
     io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
     io.Fonts->Build();
 
     return true;

@@ -13,7 +13,7 @@
 #include "Pool.h"
 #include "structures.h"
 #include <algorithm>
-#include "gs_desktop_runtime.h"
+#include "gs_linux_runtime.h"
 #include "gs_stats.h"
 #include "packets.h"
 #include "frame_packets_debug.h"

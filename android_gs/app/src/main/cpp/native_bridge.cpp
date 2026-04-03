@@ -2,6 +2,7 @@
 #include <android/log.h>
 #include <android/asset_manager_jni.h>
 #include <android/native_window_jni.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <net/if.h>

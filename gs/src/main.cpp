@@ -1,4 +1,4 @@
-﻿#include "main.h"
+#include "main.h"
 
 #include <sys/statvfs.h>
 #include <cerrno>
@@ -11,11 +11,11 @@
 #include "IHAL.h"
 #include "PI_HAL.h"
 #include "imgui.h"
-#include "desktop_osd.h"
-#include "gs_desktop_bootstrap.h"
+#include "linux_osd.h"
+#include "gs_linux_bootstrap.h"
 #include "Video_Decoder.h" 
 #include "gs_runtime_state.h"
-#include "desktop_osd.h"
+#include "linux_osd.h"
 
 /*
 
@@ -62,6 +62,6 @@ bool s_avi_ov5640HighFPS;
 
 int main(int argc, const char* argv[])
 {
-    return runDesktopBootstrap(argc, argv);
+    return runLinuxBootstrap(argc, argv);
 }
 

@@ -1,60 +1,59 @@
 # output binary
 BIN := gs
-IMGUI_DIR = src/imgui/
+IMGUI_DIR = ../components_gs/imgui/
 SRCS := src/main.cpp \
-	src/core/gs_protocol.cpp \
-	src/core/gs_session_core.cpp \
-	src/core/osd_menu_common.cpp \
-	src/core/osd_menu_controller.cpp \
-	src/core/jpeg_decoder_core.cpp \
-	src/core/osd_menu_imgui_shared.cpp \
-	src/core/stats_panel_shared.cpp \
-	src/core/osd_menu_shared.cpp \
-	src/core/osd_base.cpp \
-	src/core/frame_packets_debug_core.cpp \
-	src/core/video_frame_assembler.cpp \
-	src/droid_sans_font.cpp \
-	src/desktop_osd.cpp \
-	src/gs_imgui_overlay_shared.cpp \
-	src/gs_top_overlay_shared.cpp \
-	src/gs_video_layout_shared.cpp \
-	src/gs_desktop_bootstrap.cpp \
-	src/gs_desktop_recording.cpp \
-	src/gs_desktop_render_helpers.cpp \
-	src/gs_desktop_runtime_actions.cpp \
-	src/gs_desktop_runtime_loop.cpp \
-	src/gs_desktop_run_loop.cpp \
-	src/gs_desktop_startup.cpp \
-	src/gs_desktop_runtime_sink.cpp \
-	src/gs_runtime_ui.cpp \
-	src/gs_runtime_aux_flow.cpp \
-	src/gs_runtime_config.cpp \
-	src/gs_runtime_core.cpp \
-	src/gs_runtime_event_classify.cpp \
-	src/gs_runtime_event_pipeline.cpp \
-	src/gs_runtime_event_dispatch.cpp \
-	src/gs_runtime_event_flow.cpp \
-	src/gs_runtime_frame_ui.cpp \
-	src/gs_runtime_globals.cpp \
-	src/gs_runtime_menu_ui.cpp \
-	src/gs_runtime_overlay_state.cpp \
-	src/gs_runtime_packet_flow.cpp \
-	src/gs_runtime_protocol.cpp \
-	src/gs_runtime_session.cpp \
-	src/gs_runtime_state.cpp \
-	src/gs_runtime_sync.cpp \
-	src/gs_runtime_video_flow.cpp \
-	src/gs_osd_font_shared.cpp \
-	src/gs_storage_status_shared.cpp \
-	src/settings_storage.cpp \
-	src/utils/lodepng.cpp \
-	src/utils/utils.cpp \
+	../components_gs/shared/core/gs_protocol.cpp \
+	../components_gs/shared/core/gs_session_core.cpp \
+	../components_gs/shared/core/osd_menu_common.cpp \
+	../components_gs/shared/core/osd_menu_controller.cpp \
+	../components_gs/shared/core/jpeg_decoder_core.cpp \
+	../components_gs/shared/core/osd_menu_imgui_shared.cpp \
+	../components_gs/shared/core/stats_panel_shared.cpp \
+	../components_gs/shared/core/osd_menu_shared.cpp \
+	../components_gs/shared/core/osd_base.cpp \
+	../components_gs/shared/core/frame_packets_debug_core.cpp \
+	../components_gs/shared/core/video_frame_assembler.cpp \
+	src/linux_osd.cpp \
+	../components_gs/shared/gs_imgui_overlay_shared.cpp \
+	../components_gs/shared/gs_top_overlay_shared.cpp \
+	../components_gs/shared/gs_video_layout_shared.cpp \
+	src/gs_linux_bootstrap.cpp \
+	src/gs_linux_recording.cpp \
+	src/gs_linux_render_helpers.cpp \
+	src/gs_linux_runtime_actions.cpp \
+	src/gs_linux_runtime_loop.cpp \
+	src/gs_linux_run_loop.cpp \
+	src/gs_linux_startup.cpp \
+	src/gs_linux_runtime_sink.cpp \
+	../components_gs/shared/gs_runtime_ui.cpp \
+	../components_gs/shared/gs_runtime_aux_flow.cpp \
+	../components_gs/shared/gs_runtime_config.cpp \
+	../components_gs/shared/gs_runtime_core.cpp \
+	../components_gs/shared/gs_runtime_event_classify.cpp \
+	../components_gs/shared/gs_runtime_event_pipeline.cpp \
+	../components_gs/shared/gs_runtime_event_dispatch.cpp \
+	../components_gs/shared/gs_runtime_event_flow.cpp \
+	../components_gs/shared/gs_runtime_frame_ui.cpp \
+	../components_gs/shared/gs_runtime_globals.cpp \
+	../components_gs/shared/gs_runtime_menu_ui.cpp \
+	../components_gs/shared/gs_runtime_overlay_state.cpp \
+	../components_gs/shared/gs_runtime_packet_flow.cpp \
+	../components_gs/shared/gs_runtime_protocol.cpp \
+	../components_gs/shared/gs_runtime_session.cpp \
+	../components_gs/shared/gs_runtime_state.cpp \
+	../components_gs/shared/gs_runtime_sync.cpp \
+	../components_gs/shared/gs_runtime_video_flow.cpp \
+	../components_gs/shared/gs_osd_font_shared.cpp \
+	../components_gs/shared/gs_storage_status_shared.cpp \
+	../components_gs/shared/settings_storage.cpp \
+	../components_gs/utils/lodepng.cpp \
+	../components_gs/utils/utils.cpp \
 	../components/common/util.cpp \
-	src/fontwalksnail.cpp \
+	../components_gs/shared/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
 	src/Comms.cpp \
 	src/Video_Decoder.cpp \
-	src/utils/radiotap/radiotap.cpp \
+	../components_gs/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \
 	../components/common/fec_block_decoder.cpp \
@@ -64,9 +63,9 @@ SRCS := src/main.cpp \
 	../components/common/packet_filter.cpp \
 	../components/common/jpeg_parser.cpp \
 	../components/common/hx_mavlink_parser.cpp \
-	src/fmt/format.cc \
-	src/fmt/os.cc \
-	src/socket.cpp \
+	../components_gs/fmt/format.cc \
+	../components_gs/fmt/os.cc \
+	src/gs_linux_socket.cpp \
 	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \
@@ -84,9 +83,9 @@ DISTFILES := $(BIN)
 DISTOUTPUT := $(BIN).tar.gz
 
 # intermediate directory for generated object files
-OBJDIR := .o
+OBJDIR := build/.o
 # intermediate directory for generated dependency files
-DEPDIR := .d
+DEPDIR := build/.d
 
 # object files, auto generated from source files
 OBJS := $(patsubst %,$(OBJDIR)/%.o,$(basename $(SRCS)))
@@ -107,7 +106,9 @@ LD := g++
 TAR := tar
 
 INCLUDE  := -Isrc \
-	-Isrc/utils \
+	-I../components_gs \
+	-I../components_gs/shared \
+	-I../components_gs/utils \
 	-I../components/common \
 	-I/usr/include/ \
 	-I/usr/include/freetype2 \

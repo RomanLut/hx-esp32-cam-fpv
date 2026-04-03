@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "gs_gl_debug.h"
-#include "gs_desktop_runtime.h"
+#include "gs_linux_runtime.h"
 #include "gs_shared_state.h"
 #include "gs_shared_runtime.h"
 #include "gs_stats.h"

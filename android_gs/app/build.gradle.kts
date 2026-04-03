@@ -55,6 +55,15 @@ android {
         compose = true
     }
 
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs(
+                file("src/main/assets"),
+                file("../../assets_gs")
+            )
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
