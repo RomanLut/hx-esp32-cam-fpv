@@ -2,6 +2,10 @@
 #include <cmath>
 #include <cstring>
 #include "util.h"
+#include "gs_shared_runtime.h"
+#include "gs_runtime_config.h"
+#include "gs_runtime_state.h"
+#include "gs_storage_status_shared.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -171,7 +175,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
     }
 
     ImVec2 screenSize = ImGui::GetIO().DisplaySize;
-    const bool vr_mode = m_platform.groundstationConfig().vrMode;
+    const bool vr_mode = s_groundstation_config.vrMode;
     const float primary_width = vr_mode ? (screenSize.x * 0.5f) : screenSize.x;
     const auto primary_layout = offsetMenuLayout(
         gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, false, 29.0f),
@@ -239,7 +243,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::searchNextWifiChannel(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
     
     gs_config.wifi_channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
@@ -264,10 +268,10 @@ void OSDMenuController::searchNextWifiChannel(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 {
-    const auto& gs_config = m_platform.groundstationConfig();
+    const auto& gs_config = s_groundstation_config;
     {
         char buf[256];
-        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s%s##title0", FW_VERSION, PACKET_VERSION, m_platform.isDualCamera() ? "D " : "", m_platform.isOV5640() ? "OV5640" : "OV2640");
+        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s%s##title0", FW_VERSION, PACKET_VERSION, s_isDual ? "D " : "", s_isOV5640 ? "OV5640" : "OV2640");
         this->drawMenuTitle( buf );
     }
 
@@ -283,7 +287,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Resolution: %s##0", gs::menu::getResolutionSummary(config, m_platform.isOV5640()).c_str());
+        sprintf(buf, "Resolution: %s##0", gs::menu::getResolutionSummary(config, s_isOV5640).c_str());
         if ( this->drawMenuItem( buf, 1) )
         {
             int item = gs::menu::getResolutionMenuIndex(config.camera.resolution);
@@ -326,10 +330,10 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     {
         this->goForward( OSDMenuId::CameraSettings, 0 );
 
-        if ( m_platform.isOV5640() && config.camera.vflip )
+        if ( s_isOV5640 && config.camera.vflip )
         {
             config.camera.vflip = false;
-            m_platform.saveGround2AirConfig(config);
+            commitGround2AirConfig(config);
         }
     }
 
@@ -343,22 +347,23 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     drawLargeGapIfTallScreen();
 
     {
-        const auto air_storage = m_platform.airStorageStatus();
-        char buf[256];
-        sprintf( buf, "AIR SD: %s%s%s %.2fGB/%.2fGB##status0", 
-            air_storage.detected && !air_storage.error ? "Ok" : "?", air_storage.error ? " Error" :"",  air_storage.slow ? " Slow" : "",
-            air_storage.free_space_gb16 / 16.0f, air_storage.total_space_gb16 / 16.0f
-        );
-        this->drawStatus( buf );
+        const AirStorageStatusView air_storage = {
+            s_SDDetected,
+            s_SDError,
+            s_SDSlow,
+            s_SDFreeSpaceGB16,
+            s_SDTotalSpaceGB16,
+        };
+        std::string line = formatAirStorageStatusLine(air_storage);
+        line += "##status0";
+        this->drawStatus(line.c_str());
     }
 
     {
         const auto gs_storage = m_platform.groundStorageStatus();
-        char buf[256];
-        sprintf( buf, "GS SD: %s %.2fGB/%.2fGB##status1", 
-        gs_storage.free_space_bytes >= GS_SD_MIN_FREE_SPACE_BYTES ? "Ok" : "Low space",
-        gs_storage.free_space_bytes/(1024.0f*1024*1024), gs_storage.total_space_bytes/(1024.0f*1024*1024)); 
-        this->drawStatus( buf );
+        std::string line = formatGroundStorageStatusLine(gs_storage);
+        line += "##status1";
+        this->drawStatus(line.c_str());
     }
 
     if ( this->exitKeyPressed())
@@ -419,19 +424,19 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if (!m_platform.isOV5640())  //vertical flip drops framerate by half, useless
+    if (!s_isOV5640)  //vertical flip drops framerate by half, useless
     {
         if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical Flip: Disabled##5", 5) )
         {
             config.camera.vflip = !config.camera.vflip;
             config.camera.hmirror = config.camera.vflip;
-            m_platform.saveGround2AirConfig(config);
+            commitGround2AirConfig(config);
         }
 
         if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
         {
             config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
-            m_platform.saveGround2AirConfig(config);
+            commitGround2AirConfig(config);
         }
     }
     else
@@ -439,7 +444,7 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
         {
             config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
-            m_platform.saveGround2AirConfig(config);
+            commitGround2AirConfig(config);
         }
     }
 
@@ -548,38 +553,38 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 0, true), 0) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 0, true), 0) )
     {
         config.camera.resolution = Resolution::VGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 1, true), 1) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 1, true), 1) )
     {
         config.camera.resolution = Resolution::VGA;
         saveAndExit = true;
     }
     
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 2, true), 2) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 2, true), 2) )
     {
         config.camera.resolution = Resolution::SVGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 3, true), 3) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 3, true), 3) )
     {
         config.camera.resolution = Resolution::SVGA;
         saveAndExit = true;
     }
 
-    if (this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 4, true), 4) )
+    if (this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 4, true), 4) )
     {
         config.camera.resolution = Resolution::XGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, m_platform.isOV5640(), 5, true), 5) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 5, true), 5) )
     {
         config.camera.resolution = Resolution::HD;
         saveAndExit = true;
@@ -587,7 +592,7 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -650,7 +655,7 @@ void OSDMenuController::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -701,7 +706,7 @@ void OSDMenuController::drawContrastMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -751,7 +756,7 @@ void OSDMenuController::drawExposureMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -801,7 +806,7 @@ void OSDMenuController::drawSaturationMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -851,7 +856,7 @@ void OSDMenuController::drawSharpnessMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -888,7 +893,7 @@ void OSDMenuController::drawExitToShellMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "GS Settings -> Letterbox" );
     drawSpacing();
 
@@ -935,7 +940,7 @@ void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGroundStationConfig();
+        s_settingsStorage.saveGroundStationConfig();
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -991,7 +996,7 @@ void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1004,7 +1009,7 @@ void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> Wifi Channel" );
     drawSpacing();
 
@@ -1046,7 +1051,7 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
             if ( gs_config.wifi_channel != channel )
             {
                 gs_config.wifi_channel = channel;
-                m_platform.saveGroundStationConfig();
+                s_settingsStorage.saveGroundStationConfig();
                 m_platform.applyWifiChannel(config);
             }
             bExit = true;
@@ -1098,7 +1103,7 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> Tx Power" );
     drawSpacing();
 
@@ -1113,7 +1118,7 @@ void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
             if ( gs_config.txPower != (i + gs::menu::kMinTxPower) )  
             {
                 gs_config.txPower = ( i + gs::menu::kMinTxPower );
-                m_platform.saveGroundStationConfig();
+                s_settingsStorage.saveGroundStationConfig();
                 m_platform.applyGSTxPower(config);
             }
             bExit = true;
@@ -1131,7 +1136,7 @@ void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "GS Settings -> TX Interface" );
     drawSpacing();
 
@@ -1162,7 +1167,7 @@ void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGroundStationConfig();
+        s_settingsStorage.saveGroundStationConfig();
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1201,7 +1206,7 @@ void OSDMenuController::drawFECMenu(Ground2Air_Config_Packet& config)
 
     if ( saveAndExit )
     {
-        m_platform.saveGround2AirConfig(config);
+        commitGround2AirConfig(config);
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1214,7 +1219,7 @@ void OSDMenuController::drawFECMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> GS Settings" );
     drawSpacing();
 
@@ -1248,7 +1253,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 3) )
         {
             gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
-            m_platform.saveGroundStationConfig();
+            s_settingsStorage.saveGroundStationConfig();
             m_platform.restartGPIOButtons();
         }
     }
@@ -1276,7 +1281,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> GS Screen" );
     drawSpacing();
 
@@ -1295,7 +1300,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 1) )
         {
             gs_config.vrMode = !gs_config.vrMode;
-            m_platform.saveGroundStationConfig();
+            s_settingsStorage.saveGroundStationConfig();
         }
     }
 
@@ -1306,7 +1311,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         {
             gs_config.vsync = !gs_config.vsync;
             m_platform.setVsync(gs_config.vsync);
-            m_platform.saveGroundStationConfig();
+            s_settingsStorage.saveGroundStationConfig();
         }
     }
 
@@ -1320,7 +1325,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> GS Wifi Settings" );
     drawSpacing();
     auto rx_descriptor = m_platform.transport().getRXDescriptor();
@@ -1344,7 +1349,7 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 
             bool channelChanged = gs_config.wifi_channel != channel;
             gs_config.wifi_channel = channel;
-            m_platform.saveGroundStationConfig();
+            s_settingsStorage.saveGroundStationConfig();
             if ( channelChanged )
             {
                 m_platform.applyWifiChannel(config);
@@ -1444,7 +1449,7 @@ void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawSearchMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     char title[128];
     const char* band = gs_config.wifiBand == GS_WIFI_BAND_2_4_GHZ ? "2.4GHz" :
                        gs_config.wifiBand == GS_WIFI_BAND_5_8_GHZ ? "5.8GHz" :
@@ -1465,11 +1470,11 @@ void OSDMenuController::drawSearchMenu(Ground2Air_Config_Packet& config)
         {
             bExit = true;
         }
-        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - m_platform.lastPacketTime()).count() < SEARCH_TIME_STEP_MS/2 )
+        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < SEARCH_TIME_STEP_MS/2 )
         {
             this->searchDone = true;
             this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
-            m_platform.saveGroundStationConfig();  //save Wifi channel
+            s_settingsStorage.saveGroundStationConfig();  //save Wifi channel
         }
         else
         {
@@ -1479,7 +1484,7 @@ void OSDMenuController::drawSearchMenu(Ground2Air_Config_Packet& config)
 
     if ( bExit || this->exitKeyPressed() )
     {
-        m_platform.saveGroundStationConfig();
+        s_settingsStorage.saveGroundStationConfig();
         this->goBack();
     }
 }
@@ -1490,7 +1495,7 @@ void OSDMenuController::drawSearchMenu(Ground2Air_Config_Packet& config)
 //=======================================================
 void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
 {
-    auto& gs_config = m_platform.groundstationConfig();
+    auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> Debugging" );
     drawSpacing();
 

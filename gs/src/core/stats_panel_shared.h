@@ -1,6 +1,7 @@
 #pragma once
 
 #include "imgui.h"
+#include "gs_stats.h"
 #include "packets.h"
 #include "stats.h"
 
@@ -55,6 +56,38 @@ struct FullscreenStatsSnapshot
     Stats data_size_stats;
     Stats queue_usage_stats;
 };
+
+struct FullscreenStatsBuildInput
+{
+    int fec_codec_n = 0;
+    int current_quality = 0;
+    int wifi_queue_max = 0;
+    int cpu_temp_c = 0;
+    AirStats air_stats = {};
+    GroundStatsSnapshot ground_stats = {};
+    Stats frame_stats;
+    Stats frame_parts_stats;
+    Stats frame_time_stats;
+    Stats frame_quality_stats;
+    Stats data_size_stats;
+    Stats queue_usage_stats;
+};
+
+GroundStatsSnapshot buildGroundStatsSnapshot(const GSStats& gs_stats);
+FullscreenStatsSnapshot buildFullscreenStatsSnapshot(const FullscreenStatsBuildInput& input);
+
+void drawFullscreenStatsPanel(int fec_codec_n,
+                              int current_quality,
+                              int wifi_queue_max,
+                              int cpu_temp_c,
+                              const AirStats& air_stats,
+                              const GroundStatsSnapshot& ground_stats,
+                              const Stats& frame_stats,
+                              const Stats& frame_parts_stats,
+                              const Stats& frame_time_stats,
+                              const Stats& frame_quality_stats,
+                              const Stats& data_size_stats,
+                              const Stats& queue_usage_stats);
 
 void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot);
 

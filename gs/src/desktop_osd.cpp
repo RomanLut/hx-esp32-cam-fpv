@@ -6,8 +6,8 @@
 
 #include "desktop_osd.h"
 #include "imgui.h"
-#include "main.h"
-#include "Video_Decoder.h"
+#include "gs_desktop_runtime.h"
+#include "gs_shared_state.h"
 
 namespace fs = std::filesystem;
 

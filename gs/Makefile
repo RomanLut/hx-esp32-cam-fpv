@@ -15,6 +15,38 @@ SRCS := src/main.cpp \
 	src/core/video_frame_assembler.cpp \
 	src/droid_sans_font.cpp \
 	src/desktop_osd.cpp \
+	src/gs_imgui_overlay_shared.cpp \
+	src/gs_top_overlay_shared.cpp \
+	src/gs_video_layout_shared.cpp \
+	src/gs_desktop_bootstrap.cpp \
+	src/gs_desktop_recording.cpp \
+	src/gs_desktop_render_helpers.cpp \
+	src/gs_desktop_runtime_actions.cpp \
+	src/gs_desktop_runtime_loop.cpp \
+	src/gs_desktop_run_loop.cpp \
+	src/gs_desktop_startup.cpp \
+	src/gs_desktop_runtime_sink.cpp \
+	src/gs_runtime_ui.cpp \
+	src/gs_runtime_aux_flow.cpp \
+	src/gs_runtime_config.cpp \
+	src/gs_runtime_core.cpp \
+	src/gs_runtime_event_classify.cpp \
+	src/gs_runtime_event_pipeline.cpp \
+	src/gs_runtime_event_dispatch.cpp \
+	src/gs_runtime_event_flow.cpp \
+	src/gs_runtime_frame_ui.cpp \
+	src/gs_runtime_globals.cpp \
+	src/gs_runtime_menu_ui.cpp \
+	src/gs_runtime_overlay_state.cpp \
+	src/gs_runtime_packet_flow.cpp \
+	src/gs_runtime_protocol.cpp \
+	src/gs_runtime_session.cpp \
+	src/gs_runtime_state.cpp \
+	src/gs_runtime_sync.cpp \
+	src/gs_runtime_video_flow.cpp \
+	src/gs_osd_font_shared.cpp \
+	src/gs_storage_status_shared.cpp \
+	src/settings_storage.cpp \
 	src/utils/lodepng.cpp \
 	src/utils/utils.cpp \
 	../components/common/util.cpp \

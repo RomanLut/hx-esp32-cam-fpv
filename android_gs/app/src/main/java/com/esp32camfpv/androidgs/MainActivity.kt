@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NativeCore.setAssetManager(assets)
+        NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         enableEdgeToEdge()
         applyImmersiveFullscreen()

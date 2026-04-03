@@ -37,9 +37,6 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
-    bool init_pigpio();
-    void shutdown_pigpio();
-
     std::vector<std::function<void()>> render_callbacks;
 
     bool init_display_dispmanx();

@@ -41,6 +41,7 @@ int getResolutionMenuIndex(Resolution resolution);
 Resolution getResolutionForMenuIndex(int menu_index);
 
 std::string getWifiRateSummary(const Ground2Air_Config_Packet& config);
+const char* getWifiRateLabel(WIFI_Rate rate);
 const char* getWifiRateOptionLabel(int menu_index);
 int getWifiRateMenuIndex(WIFI_Rate rate);
 WIFI_Rate getWifiRateForMenuIndex(int menu_index);
@@ -49,5 +50,9 @@ std::string getFecSummary(const Ground2Air_Config_Packet& config);
 const char* getFecOptionLabel(int menu_index);
 int getFecMenuIndex(const Ground2Air_Config_Packet& config);
 uint8_t getFecNForMenuIndex(int menu_index);
+
+int getResolutionCycleSize();
+Resolution getResolutionCycleValue(int index);
+Resolution getDefaultCyclingResolution();
 
 }

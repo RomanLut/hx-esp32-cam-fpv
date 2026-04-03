@@ -14,9 +14,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <iomanip>
 #include <mutex>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <memory>
@@ -25,9 +23,10 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 
-#include "android_jpeg_decoder.h"
+#include "android_bitmap_jpeg_decoder.h"
 #include "android_jni_shared.h"
-#include "android_video_renderer.h"
+#include "android_asset_flight_osd.h"
+#include "gs_video_renderer.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
 #include "crc.h"
@@ -38,61 +37,33 @@
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/transport.h"
+#include "gs_runtime_config.h"
+#include "gs_runtime_core.h"
+#include "gs_runtime_aux_flow.h"
+#include "gs_runtime_event_classify.h"
+#include "gs_runtime_event_pipeline.h"
+#include "gs_runtime_event_dispatch.h"
+#include "gs_runtime_event_flow.h"
+#include "gs_runtime_packet_flow.h"
+#include "gs_runtime_protocol.h"
+#include "gs_runtime_session.h"
+#include "gs_runtime_sync.h"
+#include "gs_runtime_video_flow.h"
+#include "gs_osd_font_shared.h"
+#include "gs_shared_runtime.h"
+#include "gs_runtime_state.h"
+#include "gs_runtime_overlay_state.h"
+#include "gs_stats.h"
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
+#include "settings_storage.h"
 
 namespace
 {
 
-constexpr const char* kNativeLogTag = "AndroidGSNative";
+constexpr const char* kNativeLogTag = "AndroidNativeBridge";
 
-constexpr int kMinTxPower = 5;
-constexpr int kDefaultTxPower = 45;
-constexpr int kMaxTxPower = 63;
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
-constexpr float kAndroidNavButtonSize = 72.0f;
-constexpr float kAndroidNavGap = 10.0f;
-constexpr float kAndroidNavMargin = 18.0f;
-
-struct NavPadLayout
-{
-    float size = 0.0f;
-    float gap = 0.0f;
-    float margin = 0.0f;
-    float left_x = 0.0f;
-    float right_x = 0.0f;
-    float center_x = 0.0f;
-    float up_y = 0.0f;
-    float mid_y = 0.0f;
-    float down_y = 0.0f;
-};
-
-NavPadLayout buildNavPadLayout(float surface_width, float surface_height)
-{
-    NavPadLayout layout;
-    const float ui_scale = std::min(surface_width / 1280.0f, surface_height / 720.0f);
-    const float control_scale = std::max(0.85f, ui_scale);
-    layout.size = kAndroidNavButtonSize * control_scale;
-    layout.gap = kAndroidNavGap * control_scale;
-    layout.margin = kAndroidNavMargin * control_scale;
-    layout.right_x = surface_width - layout.margin - layout.size;
-    layout.left_x = layout.right_x - layout.size - layout.gap - layout.size;
-    layout.center_x = layout.left_x + layout.size + layout.gap;
-    layout.down_y = surface_height - layout.margin - layout.size;
-    layout.mid_y = layout.down_y - layout.gap - layout.size;
-    layout.up_y = layout.mid_y - layout.gap - layout.size;
-    return layout;
-}
-
-bool pointInRect(float x, float y, float rect_x, float rect_y, float rect_w, float rect_h)
-{
-    return rect_w > 0.0f &&
-           rect_h > 0.0f &&
-           x >= rect_x &&
-           x <= rect_x + rect_w &&
-           y >= rect_y &&
-           y <= rect_y + rect_h;
-}
 
 class AndroidTransport final : public gs::core::ITransport
 {
@@ -155,24 +126,6 @@ private:
     int m_input_dbm = 0;
 };
 
-struct AndroidGsStats
-{
-    uint16_t outPacketCounter = 0;
-    uint16_t inPacketCounter[2] = {0, 0};
-    uint32_t lastPacketIndex = 0;
-    uint32_t statsPacketIndex = 0;
-    uint16_t inDublicatedPacketCounter = 0;
-    uint16_t inUniquePacketCounter = 0;
-    uint32_t FECSuccPacketIndexCounter = 0;
-    uint32_t FECBlocksCounter = 0;
-    int8_t rssiDbm[2] = {0, 0};
-    int8_t noiseFloorDbm = 0;
-    uint8_t brokenFrames = 0;
-    int pingMinMS = 0;
-    int pingMaxMS = 0;
-    int RCPeriodMax = -1;
-};
-
 struct NativeHandle;
 
 class AndroidMenuPlatform final : public gs::menu::IOSDMenuPlatform
@@ -183,19 +136,12 @@ public:
     {
     }
 
-    TGroundstationConfig& groundstationConfig() override;
-    const TGroundstationConfig& groundstationConfig() const override;
     gs::core::ITransport& transport() override;
     const gs::core::ITransport& transport() const override;
-    bool isOV5640() const override;
-    bool isDualCamera() const override;
-    gs::menu::AirStorageStatus airStorageStatus() const override;
     gs::menu::GroundStorageStatus groundStorageStatus() const override;
     const char* currentOSDFontName() const override;
     const std::vector<std::string>& osdFontsList() const override;
     void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override;
-    void saveGroundStationConfig() override;
-    void saveGround2AirConfig(const Ground2Air_Config_Packet& config) override;
     void applyWifiChannel(Ground2Air_Config_Packet& config) override;
     void applyWifiChannelInstant(Ground2Air_Config_Packet& config) override;
     void applyGSTxPower(Ground2Air_Config_Packet& config) override;
@@ -205,14 +151,11 @@ public:
     void setVsync(bool enabled) override;
     bool supportsCustomScreenAspectModes() const override;
     std::string systemIPv4() const override;
-    Clock::time_point lastPacketTime() const override;
     void captureFrameDebug(bool until_loss) override;
     void disableFrameDebug() override;
 
 private:
     NativeHandle& m_handle;
-    std::vector<std::string> m_osd_fonts = {"INAV_default_24.png"};
-    std::string m_current_osd_font = "INAV_default_24.png";
     mutable std::string m_cached_ipv4 = "0.0.0.0";
     mutable Clock::time_point m_next_ipv4_refresh_tp = Clock::time_point::min();
 };
@@ -220,71 +163,20 @@ private:
 struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)
-        : gs_device_id(gs_device_id_value),
-          menu_platform(std::make_unique<AndroidMenuPlatform>(*this)),
+        : menu_platform(std::make_unique<AndroidMenuPlatform>(*this)),
           menu_controller(std::make_unique<gs::menu::OSDMenuController>(*menu_platform)),
+          renderer(std::make_unique<AndroidAssetFlightOsd>()),
           jpeg_decoder(renderer)
     {
-        init_crc8_table();
-        init_fec();
-        tx_fec = fec_new(2, 3);
-        FecBlockDecoder::Descriptor decoder_descriptor = {};
-        decoder_descriptor.coding_k = FEC_K;
-        decoder_descriptor.coding_n = 8;
-        decoder_descriptor.mtu = AIR2GROUND_MAX_MTU;
-        decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
-        decoder_descriptor.restart_backjump_blocks = 64;
-        decoder_descriptor.max_block_queue_size = 3;
-        decoder_descriptor.duplicate_window = 100;
-        decoder_descriptor.interface_count = 1;
-        rx_decoder_k = decoder_descriptor.coding_k;
-        rx_decoder_n = decoder_descriptor.coding_n;
-        rx_decoder_mtu = decoder_descriptor.mtu;
-        rx_decoder.init(decoder_descriptor);
-        session.resetPairing(gs_device_id, transport, Clock::now());
-        transport.getPacketFilter().set_packet_filtering(0, 0);
-        groundstation_config.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
-        groundstation_config.wifiBand = DEFAULT_GS_WIFI_BAND;
-        groundstation_config.screenAspectRatio = ScreenAspectRatio::LETTERBOX;
-        groundstation_config.txPower = gs::menu::kDefaultTxPower;
-        groundstation_config.vsync = true;
-        groundstation_config.txInterface = "auto";
-        groundstation_config.GPIOKeysLayout = 0;
-        groundstation_config.stats = false;
-        groundstation_config.deviceId = gs_device_id;
-
-        FecBlockDecoder::Callbacks callbacks = {};
-        callbacks.on_packet_received = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data, bool old)
-        {
-            frame_packets_debug.onPacketReceived(
-                block_index,
-                packet_index,
-                packet_data,
-                old,
-                config_packet.dataChannel.fec_codec_k,
-                config_packet.dataChannel.fec_codec_n);
-        };
-        callbacks.on_packet_restored = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data)
-        {
-            frame_packets_debug.onPacketRestored(
-                block_index,
-                packet_index,
-                packet_data,
-                config_packet.dataChannel.fec_codec_k);
-        };
-        rx_decoder.setCallbacks(std::move(callbacks));
-        renderer.setMenuBinding(menu_controller.get(), &config_packet, &mutex);
+        s_runtimeCore.resetState(gs_device_id_value);
+        loadSharedSettings(s_runtimeCore.gs_device_id);
+        s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
+        s_runtimeCore.gs_device_id = s_groundstation_config.deviceId;
+        s_runtimeCore.resetPairing(transport, Clock::now());
+        renderer.setMenuBinding(menu_controller.get(), &s_runtimeCore.config_packet, &mutex);
     }
 
-    ~NativeHandle()
-    {
-        stopUdpClient();
-        if (tx_fec)
-        {
-            fec_free(tx_fec);
-            tx_fec = nullptr;
-        }
-    }
+    ~NativeHandle() { stopUdpClient(); }
 
     void stopUdpClient()
     {
@@ -297,43 +189,11 @@ struct NativeHandle
         udp_running = false;
     }
 
-    uint16_t gs_device_id = 1;
     mutable std::mutex mutex;
-    gs::core::GsSessionCore session;
-    gs::core::VideoFrameAssembler assembler;
     AndroidTransport transport;
-    FecBlockDecoder rx_decoder;
-    uint8_t rx_decoder_k = FEC_K;
-    uint8_t rx_decoder_n = 8;
-    uint16_t rx_decoder_mtu = AIR2GROUND_MAX_MTU;
-    Ground2Air_Config_Packet config_packet = {};
-    gs::core::SessionEventKind last_event_kind = gs::core::SessionEventKind::Ignore;
-    std::vector<uint8_t> last_completed_frame;
-    uint32_t next_tx_block_index = 1;
-    fec_t* tx_fec = nullptr;
-    bool tx_block_has_first_packet = false;
-    std::array<uint8_t, GROUND2AIR_MAX_MTU> tx_first_packet_payload = {};
-    uint32_t transport_packets_seen = 0;
-    uint32_t transport_packets_passed_filter = 0;
-    uint32_t transport_packets_filtered = 0;
-    uint32_t decoded_packets_seen = 0;
-    uint32_t last_decoded_type = 0;
-    uint32_t last_decoded_size = 0;
-    uint32_t last_decoded_air = 0;
-    uint32_t last_decoded_gs = 0;
-    uint32_t last_transport_block = 0;
-    uint32_t last_transport_packet_index = 0;
-    uint32_t last_transport_payload_size = 0;
-    uint32_t last_transport_from = 0;
-    uint32_t last_transport_to = 0;
-    uint32_t last_video_frame_index = 0;
-    uint32_t last_video_part_index = 0;
-    uint32_t last_video_last_part = 0;
-    uint32_t last_video_payload_size = 0;
     uint64_t udp_packets_received = 0;
     float udp_throughput_mbps = 0.0f;
     float udp_video_fps = 0.0f;
-    Clock::time_point last_packet_tp = Clock::now();
     std::string udp_peer_host = "192.168.4.1";
     int udp_peer_port = 5600;
     int udp_local_port = 5600;
@@ -341,89 +201,11 @@ struct NativeHandle
     std::atomic<bool> udp_stop_requested = false;
     bool udp_running = false;
     std::thread udp_thread;
-    TGroundstationConfig groundstation_config = {};
     std::unique_ptr<AndroidMenuPlatform> menu_platform;
     std::unique_ptr<gs::menu::OSDMenuController> menu_controller;
-    AndroidVideoRenderer renderer;
-    AndroidJpegDecoder jpeg_decoder;
-    gs::core::FramePacketsDebugCore frame_packets_debug;
-    gs::stats::GroundStatsSnapshot last_ground_stats = {};
-    AndroidGsStats gs_stats = {};
-    int restored_transport_packets = 0;
-    int restored_video_parts = 0;
-    Stats data_size_stats = {};
-    Clock::time_point last_periodic_stats_tp = Clock::now();
-    Clock::time_point last_data_rate_sample_tp = Clock::now();
-    uint64_t last_udp_packets_sample = 0;
-    int gs_packet_debug_mode = 0;
-    bool exit_requested = false;
-    std::vector<uint8_t> pending_flight_osd;
-    bool pending_flight_osd_dirty = false;
-    bool pending_flight_osd_clear = false;
+    GsVideoRenderer renderer;
+    AndroidBitmapJpegDecoder jpeg_decoder;
 };
-
-struct RendererSyncState
-{
-    std::vector<AndroidVideoRenderer::OverlayChip> chips;
-    AndroidVideoRenderer::OverlayStatsState stats_state;
-    std::string build_info;
-    std::string osd_font_name;
-    bool has_frame_debug_osd = false;
-    std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS> frame_debug_osd = {};
-    bool has_flight_osd_update = false;
-    bool clear_flight_osd = false;
-    std::vector<uint8_t> flight_osd_data;
-    int screen_mode = 1;
-    bool vsync = true;
-    bool vr_mode = false;
-};
-
-void commitMenuConfig(NativeHandle& handle)
-{
-    handle.session.setConfigPacket(handle.config_packet);
-}
-
-std::string formatStorageLine(const char* label, bool ok, double free_gb, double total_gb, const char* suffix = "")
-{
-    std::ostringstream out;
-    out << label << ": " << (ok ? "Ok" : "?");
-    if (suffix != nullptr && suffix[0] != 0)
-    {
-        out << suffix;
-    }
-    out << ' ' << std::fixed << std::setprecision(2) << free_gb << "GB/" << total_gb << "GB";
-    return out.str();
-}
-
-std::string buildAirSdStatus(const NativeHandle& handle)
-{
-    const auto& air = handle.session.airStatus();
-    const char* suffix = air.sd_error ? " Error" : (air.sd_slow ? " Slow" : "");
-    return formatStorageLine(
-        "AIR SD",
-        air.sd_detected && !air.sd_error,
-        air.sd_free_space_gb16 / 16.0,
-        air.sd_total_space_gb16 / 16.0,
-        suffix);
-}
-
-std::string buildGsSdStatus()
-{
-    struct statvfs fs = {};
-    if (statvfs("/data", &fs) != 0)
-    {
-        return "GS SD: ?";
-    }
-
-    const uint64_t total_bytes = static_cast<uint64_t>(fs.f_blocks) * static_cast<uint64_t>(fs.f_frsize);
-    const uint64_t free_bytes = static_cast<uint64_t>(fs.f_bavail) * static_cast<uint64_t>(fs.f_frsize);
-    return formatStorageLine(
-        "GS SD",
-        free_bytes >= kGsSdMinFreeSpaceBytes,
-        static_cast<double>(free_bytes) / (1024.0 * 1024.0 * 1024.0),
-        static_cast<double>(total_bytes) / (1024.0 * 1024.0 * 1024.0),
-        free_bytes >= kGsSdMinFreeSpaceBytes ? "" : " Low space");
-}
 
 std::string detectSystemIPv4()
 {
@@ -478,16 +260,6 @@ std::string detectSystemIPv4()
     return result;
 }
 
-TGroundstationConfig& AndroidMenuPlatform::groundstationConfig()
-{
-    return m_handle.groundstation_config;
-}
-
-const TGroundstationConfig& AndroidMenuPlatform::groundstationConfig() const
-{
-    return m_handle.groundstation_config;
-}
-
 gs::core::ITransport& AndroidMenuPlatform::transport()
 {
     return m_handle.transport;
@@ -496,22 +268,6 @@ gs::core::ITransport& AndroidMenuPlatform::transport()
 const gs::core::ITransport& AndroidMenuPlatform::transport() const
 {
     return m_handle.transport;
-}
-
-bool AndroidMenuPlatform::isOV5640() const
-{
-    return m_handle.session.airStatus().is_ov5640;
-}
-
-bool AndroidMenuPlatform::isDualCamera() const
-{
-    return false;
-}
-
-gs::menu::AirStorageStatus AndroidMenuPlatform::airStorageStatus() const
-{
-    const auto& air = m_handle.session.airStatus();
-    return {air.sd_detected, air.sd_error, air.sd_slow, air.sd_free_space_gb16, air.sd_total_space_gb16};
 }
 
 gs::menu::GroundStorageStatus AndroidMenuPlatform::groundStorageStatus() const
@@ -530,56 +286,51 @@ gs::menu::GroundStorageStatus AndroidMenuPlatform::groundStorageStatus() const
 
 const char* AndroidMenuPlatform::currentOSDFontName() const
 {
-    return m_current_osd_font.c_str();
+    static thread_local std::string font_name;
+    font_name = getSelectedOsdFontName();
+    return font_name.c_str();
 }
 
 const std::vector<std::string>& AndroidMenuPlatform::osdFontsList() const
 {
-    return m_osd_fonts;
+    return getBuiltinOsdFontNames();
 }
 
 void AndroidMenuPlatform::selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name)
 {
-    m_current_osd_font = font_name;
+    setSelectedOsdFontName(font_name);
+    s_settingsStorage.save();
     config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(font_name.c_str()),
                                              font_name.length());
-    m_handle.session.setConfigPacket(m_handle.config_packet);
-}
-
-void AndroidMenuPlatform::saveGroundStationConfig()
-{
-}
-
-void AndroidMenuPlatform::saveGround2AirConfig(const Ground2Air_Config_Packet& config)
-{
-    m_handle.config_packet = config;
-    m_handle.session.setConfigPacket(m_handle.config_packet);
+    s_runtimeCore.session.setConfigPacket(s_runtimeCore.config_packet);
 }
 
 void AndroidMenuPlatform::applyWifiChannel(Ground2Air_Config_Packet& config)
 {
-    saveGround2AirConfig(config);
+    s_runtimeCore.config_packet = config;
+    commitGround2AirConfig(s_runtimeCore.config_packet);
 }
 
 void AndroidMenuPlatform::applyWifiChannelInstant(Ground2Air_Config_Packet& config)
 {
-    saveGround2AirConfig(config);
+    s_runtimeCore.config_packet = config;
+    commitGround2AirConfig(s_runtimeCore.config_packet);
 }
 
 void AndroidMenuPlatform::applyGSTxPower(Ground2Air_Config_Packet& config)
 {
-    saveGround2AirConfig(config);
+    s_runtimeCore.config_packet = config;
+    commitGround2AirConfig(s_runtimeCore.config_packet);
 }
 
 void AndroidMenuPlatform::airUnpair()
 {
-    m_handle.session.resetPairing(m_handle.gs_device_id, m_handle.transport, Clock::now());
-    m_handle.transport.getPacketFilter().set_packet_filtering(0, 0);
+    resetAirPairing(s_runtimeCore.gs_device_id, m_handle.transport);
 }
 
 void AndroidMenuPlatform::exitApp()
 {
-    m_handle.exit_requested = true;
+    s_runtimeCore.exit_requested = true;
 }
 
 void AndroidMenuPlatform::restartGPIOButtons()
@@ -588,7 +339,7 @@ void AndroidMenuPlatform::restartGPIOButtons()
 
 void AndroidMenuPlatform::setVsync(bool enabled)
 {
-    m_handle.groundstation_config.vsync = enabled;
+    s_groundstation_config.vsync = enabled;
 }
 
 bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
@@ -607,21 +358,16 @@ std::string AndroidMenuPlatform::systemIPv4() const
     return m_cached_ipv4;
 }
 
-Clock::time_point AndroidMenuPlatform::lastPacketTime() const
-{
-    return m_handle.last_packet_tp;
-}
-
 void AndroidMenuPlatform::captureFrameDebug(bool until_loss)
 {
-    m_handle.gs_packet_debug_mode = until_loss ? 2 : 1;
-    m_handle.frame_packets_debug.captureFrame(until_loss);
+    s_runtimeCore.gs_packet_debug_mode = until_loss ? 2 : 1;
+    s_runtimeCore.frame_packets_debug.captureFrame(until_loss);
 }
 
 void AndroidMenuPlatform::disableFrameDebug()
 {
-    m_handle.gs_packet_debug_mode = 0;
-    m_handle.frame_packets_debug.off();
+    s_runtimeCore.gs_packet_debug_mode = 0;
+    s_runtimeCore.frame_packets_debug.off();
 }
 
 jlong toJLong(NativeHandle* handle)
@@ -732,60 +478,41 @@ std::string describeHandleString(const NativeHandle& handle)
 {
     std::ostringstream out;
     out << "Session ready"
-        << " | gs_id=" << handle.gs_device_id
-        << " | connected_air=" << handle.session.connectedAirDeviceId()
-        << " | frame_index=" << handle.assembler.currentFrameIndex()
-        << " | got_config=" << (handle.session.gotConfigPacket() ? "yes" : "no")
-        << " | last_event=" << static_cast<int>(handle.last_event_kind)
-        << " | buffered_frame=" << handle.last_completed_frame.size()
-        << " | rx_transport=" << handle.transport_packets_seen
-        << " | rx_pass=" << handle.transport_packets_passed_filter
-        << " | rx_drop=" << handle.transport_packets_filtered
-        << " | rx_decoded=" << handle.decoded_packets_seen
-        << " | dec_type=" << handle.last_decoded_type
-        << " | dec_size=" << handle.last_decoded_size
-        << " | dec_air=" << handle.last_decoded_air
-        << " | dec_gs=" << handle.last_decoded_gs
-        << " | last_block=" << handle.last_transport_block
-        << " | last_pkt=" << handle.last_transport_packet_index
-        << " | last_payload=" << handle.last_transport_payload_size
-        << " | last_from=" << handle.last_transport_from
-        << " | last_to=" << handle.last_transport_to
-        << " | vid_frame=" << handle.last_video_frame_index
-        << " | vid_part=" << handle.last_video_part_index
-        << " | vid_last=" << handle.last_video_last_part
-        << " | vid_payload=" << handle.last_video_payload_size
+        << " | gs_id=" << s_runtimeCore.gs_device_id
+        << " | connected_air=" << s_runtimeCore.session.connectedAirDeviceId()
+        << " | frame_index=" << s_runtimeCore.assembler.currentFrameIndex()
+        << " | got_config=" << (s_runtimeCore.session.gotConfigPacket() ? "yes" : "no")
+        << " | last_event=" << static_cast<int>(s_runtimeCore.last_event_kind)
+        << " | buffered_frame=" << s_runtimeCore.last_completed_frame.size()
+        << " | rx_transport=" << s_runtimeCore.transport_packets_seen
+        << " | rx_pass=" << s_runtimeCore.transport_packets_passed_filter
+        << " | rx_drop=" << s_runtimeCore.transport_packets_filtered
+        << " | rx_decoded=" << s_runtimeCore.decoded_packets_seen
+        << " | dec_type=" << s_runtimeCore.last_decoded_type
+        << " | dec_size=" << s_runtimeCore.last_decoded_size
+        << " | dec_air=" << s_runtimeCore.last_decoded_air
+        << " | dec_gs=" << s_runtimeCore.last_decoded_gs
+        << " | last_block=" << s_runtimeCore.last_transport_block
+        << " | last_pkt=" << s_runtimeCore.last_transport_packet_index
+        << " | last_payload=" << s_runtimeCore.last_transport_payload_size
+        << " | last_from=" << s_runtimeCore.last_transport_from
+        << " | last_to=" << s_runtimeCore.last_transport_to
+        << " | vid_frame=" << s_runtimeCore.last_video_frame_index
+        << " | vid_part=" << s_runtimeCore.last_video_part_index
+        << " | vid_last=" << s_runtimeCore.last_video_last_part
+        << " | vid_payload=" << s_runtimeCore.last_video_payload_size
         << " | udp_running=" << (handle.udp_running ? 1 : 0)
         << " | udp_peer=" << sanitizeStatusValue(handle.udp_peer_host + ":" + std::to_string(handle.udp_peer_port))
         << " | udp_packets=" << handle.udp_packets_received
         << " | udp_mbps=" << std::fixed << std::setprecision(2) << handle.udp_throughput_mbps
         << " | udp_fps=" << std::fixed << std::setprecision(2) << handle.udp_video_fps
         << " | udp_error=" << sanitizeStatusValue(handle.udp_last_error)
-        << " | air_rssi=" << -static_cast<int>(handle.session.lastAirStats().rssiDbm)
-        << " | queue_max=" << handle.session.airStatus().wifi_queue_max
-        << " | wifi_ovf=" << (handle.session.airStatus().wifi_ovf ? 1 : 0)
-        << " | air_record=" << (handle.session.airStatus().air_record ? 1 : 0)
-        << " | resolution=" << gs::menu::getResolutionSummary(handle.config_packet, handle.session.airStatus().is_ov5640);
+        << " | air_rssi=" << -static_cast<int>(s_runtimeCore.session.lastAirStats().rssiDbm)
+        << " | queue_max=" << s_runtimeCore.session.airStatus().wifi_queue_max
+        << " | wifi_ovf=" << (s_runtimeCore.session.airStatus().wifi_ovf ? 1 : 0)
+        << " | air_record=" << (s_runtimeCore.session.airStatus().air_record ? 1 : 0)
+        << " | resolution=" << gs::menu::getResolutionSummary(s_runtimeCore.config_packet, s_runtimeCore.session.airStatus().is_ov5640);
     return out.str();
-}
-
-int processVideoPacket(NativeHandle& handle,
-                       const gs::core::SessionEvent& session_event,
-                       bool restored_by_fec)
-{
-    const auto& video_view = session_event.video;
-    auto result = handle.assembler.pushPacket(
-        *video_view.packet,
-        video_view.payload,
-        video_view.payload_size,
-        restored_by_fec);
-
-    if (result.completedFrame && result.frameData)
-    {
-        handle.jpeg_decoder.submitJpeg(result.frameData, result.completedFrameIndex);
-    }
-
-    return static_cast<int>(session_event.kind);
 }
 
 uint16_t readLe16(const uint8_t* data)
@@ -886,76 +613,76 @@ std::vector<std::vector<uint8_t>> buildTransportPacketsForControl(NativeHandle& 
     const size_t copy_size = std::min(payload_size, transport_payload_size);
     std::memcpy(current_payload.data(), payload, copy_size);
 
-    const uint16_t to_device_id = handle.session.connectedAirDeviceId();
+    const uint16_t to_device_id = s_runtimeCore.session.connectedAirDeviceId();
     std::vector<std::vector<uint8_t>> packets;
 
-    if (!handle.tx_block_has_first_packet)
+    if (!s_runtimeCore.tx_block_has_first_packet)
     {
-        handle.tx_first_packet_payload = current_payload;
-        handle.tx_block_has_first_packet = true;
-        packets.push_back(makeTransportPacket(handle.gs_device_id,
+        s_runtimeCore.tx_first_packet_payload = current_payload;
+        s_runtimeCore.tx_block_has_first_packet = true;
+        packets.push_back(makeTransportPacket(s_runtimeCore.gs_device_id,
                                               to_device_id,
-                                              handle.next_tx_block_index,
+                                              s_runtimeCore.next_tx_block_index,
                                               0,
                                               current_payload.data(),
                                               transport_payload_size));
         return packets;
     }
 
-    packets.push_back(makeTransportPacket(handle.gs_device_id,
+    packets.push_back(makeTransportPacket(s_runtimeCore.gs_device_id,
                                           to_device_id,
-                                          handle.next_tx_block_index,
+                                          s_runtimeCore.next_tx_block_index,
                                           1,
                                           current_payload.data(),
                                           transport_payload_size));
 
-    if (handle.tx_fec)
+    if (s_runtimeCore.tx_fec)
     {
         std::array<uint8_t, transport_payload_size> fec_payload = {};
         const gf* src_ptrs[2] = {
-            handle.tx_first_packet_payload.data(),
+            s_runtimeCore.tx_first_packet_payload.data(),
             current_payload.data()
         };
         gf* fec_ptrs[1] = { fec_payload.data() };
         const unsigned block_nums[1] = { 2 };
-        fec_encode(handle.tx_fec, src_ptrs, fec_ptrs, block_nums, 1, transport_payload_size);
+        fec_encode(s_runtimeCore.tx_fec, src_ptrs, fec_ptrs, block_nums, 1, transport_payload_size);
 
-        packets.push_back(makeTransportPacket(handle.gs_device_id,
+        packets.push_back(makeTransportPacket(s_runtimeCore.gs_device_id,
                                               to_device_id,
-                                              handle.next_tx_block_index,
+                                              s_runtimeCore.next_tx_block_index,
                                               2,
                                               fec_payload.data(),
                                               transport_payload_size));
     }
 
-    handle.tx_block_has_first_packet = false;
-    handle.next_tx_block_index++;
+    s_runtimeCore.tx_block_has_first_packet = false;
+    s_runtimeCore.next_tx_block_index++;
     return packets;
 }
 
 void syncRxDecoderStatsLocked(NativeHandle& handle)
 {
-    const FecBlockDecoder::Stats stats = handle.rx_decoder.getStats();
-    handle.gs_stats.lastPacketIndex = stats.last_packet_index;
-    handle.gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
-    handle.gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
-    handle.gs_stats.FECBlocksCounter = stats.fec_blocks_count;
-    handle.gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
+    const FecBlockDecoder::Stats stats = s_runtimeCore.rx_decoder.getStats();
+    s_runtimeCore.gs_stats.lastPacketIndex = stats.last_packet_index;
+    s_runtimeCore.gs_stats.inUniquePacketCounter = static_cast<uint16_t>(stats.unique_packet_count);
+    s_runtimeCore.gs_stats.inDublicatedPacketCounter = static_cast<uint16_t>(stats.duplicate_packet_count);
+    s_runtimeCore.gs_stats.FECBlocksCounter = stats.fec_blocks_count;
+    s_runtimeCore.gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
 }
 
 void ensureRxDecoderConfigLocked(NativeHandle& handle)
 {
-    const uint8_t config_k = handle.config_packet.dataChannel.fec_codec_k;
-    const uint8_t config_n = handle.config_packet.dataChannel.fec_codec_n;
-    const uint16_t config_mtu = handle.config_packet.dataChannel.fec_codec_mtu;
+    const uint8_t config_k = s_runtimeCore.config_packet.dataChannel.fec_codec_k;
+    const uint8_t config_n = s_runtimeCore.config_packet.dataChannel.fec_codec_n;
+    const uint16_t config_mtu = s_runtimeCore.config_packet.dataChannel.fec_codec_mtu;
 
     const uint8_t effective_k = config_k > 0 ? config_k : FEC_K;
     const uint8_t effective_n = config_n > 0 ? config_n : static_cast<uint8_t>(8);
     const uint16_t effective_mtu = config_mtu > 0 ? config_mtu : static_cast<uint16_t>(AIR2GROUND_MAX_MTU);
 
-    if (handle.rx_decoder_k == effective_k &&
-        handle.rx_decoder_n == effective_n &&
-        handle.rx_decoder_mtu == effective_mtu)
+    if (s_runtimeCore.rx_decoder_k == effective_k &&
+        s_runtimeCore.rx_decoder_n == effective_n &&
+        s_runtimeCore.rx_decoder_mtu == effective_mtu)
     {
         return;
     }
@@ -970,27 +697,27 @@ void ensureRxDecoderConfigLocked(NativeHandle& handle)
     decoder_descriptor.duplicate_window = 100;
     decoder_descriptor.interface_count = 1;
 
-    handle.rx_decoder_k = effective_k;
-    handle.rx_decoder_n = effective_n;
-    handle.rx_decoder_mtu = effective_mtu;
-    handle.rx_decoder.init(decoder_descriptor);
+    s_runtimeCore.rx_decoder_k = effective_k;
+    s_runtimeCore.rx_decoder_n = effective_n;
+    s_runtimeCore.rx_decoder_mtu = effective_mtu;
+    s_runtimeCore.rx_decoder.init(decoder_descriptor);
     syncRxDecoderStatsLocked(handle);
 }
 
 void processDecodedTransportPacketsLocked(NativeHandle& handle)
 {
-    handle.rx_decoder.process(Clock::now());
+    s_runtimeCore.rx_decoder.process(Clock::now());
     syncRxDecoderStatsLocked(handle);
 
     std::array<uint8_t, sizeof(Packet_Header) + AIR2GROUND_MAX_MTU> decoded_buffer = {};
     size_t decoded_size = 0;
     bool decoded_restored_by_fec = false;
-    while (handle.rx_decoder.receive(decoded_buffer.data(), decoded_size, decoded_restored_by_fec))
+    while (s_runtimeCore.rx_decoder.receive(decoded_buffer.data(), decoded_size, decoded_restored_by_fec))
     {
-        handle.decoded_packets_seen++;
+        s_runtimeCore.decoded_packets_seen++;
         if (decoded_restored_by_fec)
         {
-            handle.restored_transport_packets++;
+            s_runtimeCore.restored_transport_packets++;
         }
         const uint8_t* packet_data = decoded_buffer.data();
         const size_t packet_size = decoded_size;
@@ -998,92 +725,71 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
         if (packet_size >= sizeof(Air2Ground_Header))
         {
             const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
-            handle.last_decoded_type = static_cast<uint32_t>(header->type);
-            handle.last_decoded_size = header->size;
-            handle.last_decoded_air = header->airDeviceId;
-            handle.last_decoded_gs = header->gsDeviceId;
+            s_runtimeCore.last_decoded_type = static_cast<uint32_t>(header->type);
+            s_runtimeCore.last_decoded_size = header->size;
+            s_runtimeCore.last_decoded_air = header->airDeviceId;
+            s_runtimeCore.last_decoded_gs = header->gsDeviceId;
         }
 
-        const gs::core::SessionEvent session_event = handle.session.processReceivedPacket(
-            packet_data,
-            packet_size,
-            handle.gs_device_id,
-            Clock::now(),
-            handle.transport);
-
-        handle.last_event_kind = session_event.kind;
-        handle.last_packet_tp = Clock::now();
-
-        if (session_event.kind == gs::core::SessionEventKind::VideoPacket)
-        {
-            Air2Ground_Video_Packet video_packet = {};
-            const uint8_t* video_payload = nullptr;
-            size_t video_payload_size = 0;
-            if (!tryParseVideoPacketWire(packet_data,
+        const ProcessedSessionPacket processed_packet =
+            processIncomingSessionPacket(s_runtimeCore.session,
+                                         packet_data,
                                          packet_size,
-                                         video_packet,
-                                         video_payload,
-                                         video_payload_size))
+                                         s_runtimeCore.gs_device_id,
+                                         handle.transport);
+        const gs::core::SessionEvent& session_event = processed_packet.event;
+
+        s_runtimeCore.last_event_kind = session_event.kind;
+        s_runtimeCore.last_packet_tp = processed_packet.processed_tp;
+        s_last_packet_tp = processed_packet.processed_tp;
+        const SessionEventPipelineDispatch dispatch = {
+            {},
+            {},
+            {},
             {
-                handle.last_event_kind = gs::core::SessionEventKind::InvalidVideoPacket;
-            }
-            else
-            {
-                handle.last_video_frame_index = video_packet.frame_index;
-                handle.last_video_part_index = video_packet.part_index;
-                handle.last_video_last_part = video_packet.last_part;
-                handle.last_video_payload_size = static_cast<uint32_t>(video_payload_size);
-
-                auto result = handle.assembler.pushPacket(
-                    video_packet,
-                    video_payload,
-                    video_payload_size,
-                    decoded_restored_by_fec);
-                if (decoded_restored_by_fec)
+                [&](const ProcessedVideoEvent& video_event, const VideoDispatchDecision& video_decision)
                 {
-                    handle.restored_video_parts++;
-                }
+                    s_runtimeCore.last_video_frame_index = video_event.frame_index;
+                    s_runtimeCore.last_video_part_index = video_event.part_index;
+                    s_runtimeCore.last_video_last_part = video_event.last_part;
+                    s_runtimeCore.last_video_payload_size = static_cast<uint32_t>(video_event.payload_size);
 
-                if (result.lostPartialFrame)
-                {
-                    handle.session.onLostPartialFrame(result.lostPartialParts,
-                                                      static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max));
-                }
+                    if (video_decision.restored_video_part)
+                    {
+                        s_runtimeCore.restored_video_parts++;
+                    }
 
-                if (result.lostWholeFrames > 0)
+                    const CompletedVideoFrameView& completed_frame = video_decision.completed_frame;
+                    if (completed_frame.has_frame)
+                    {
+                        handle.jpeg_decoder.submitJpeg(completed_frame.frame_data,
+                                                       completed_frame.frame_index);
+                    }
+                },
+                [&](const ProcessedTelemetryEvent&, const TelemetryDispatchDecision& telemetry_decision)
                 {
-                    handle.session.onLostWholeFrames(result.lostWholeFrames);
-                }
-
-                if (result.completedFrame && result.frameData)
+                    s_runtimeCore.session.addInboundTelemetryBytes(telemetry_decision.inbound_bytes);
+                },
+                [&](const ProcessedOsdEvent&, const OsdDispatchDecision& osd_decision)
                 {
-                    handle.jpeg_decoder.submitJpeg(result.frameData, result.completedFrameIndex);
-                    handle.session.onCompletedFrame(result.completedRestoredByFec,
-                                                    result.completedPartIndex,
-                                                    handle.session.airStatus().curr_quality,
-                                                    static_cast<uint8_t>(handle.session.airStatus().wifi_queue_max),
-                                                    Clock::now());
+                    if (osd_decision.should_apply && !s_runtimeCore.frame_packets_debug.isOn())
+                    {
+                        s_runtimeCore.pending_flight_osd.assign(osd_decision.payload,
+                                                              osd_decision.payload + osd_decision.payload_size);
+                        s_runtimeCore.pending_flight_osd_dirty = true;
+                        s_runtimeCore.pending_flight_osd_clear = false;
+                    }
                 }
             }
-        }
-        else if (session_event.kind == gs::core::SessionEventKind::TelemetryPayload)
-        {
-            handle.session.addInboundTelemetryBytes(session_event.telemetry.payload_size);
-        }
-        else if (session_event.kind == gs::core::SessionEventKind::OsdUpdate)
-        {
-            const gs::core::OsdPacketView& osd_view = session_event.osd;
-            if (!handle.frame_packets_debug.isOn())
-            {
-                handle.pending_flight_osd.assign(&osd_view.packet->osd_enc_start,
-                                                 &osd_view.packet->osd_enc_start + osd_view.osd_data_size);
-                handle.pending_flight_osd_dirty = true;
-                handle.pending_flight_osd_clear = false;
-            }
-        }
+        };
+        processAndDispatchSessionEvent(processed_packet,
+                                       s_runtimeCore.assembler,
+                                       s_runtimeCore.session,
+                                       decoded_restored_by_fec,
+                                       dispatch);
 
-        handle.session.addReceivedBytes(packet_size);
-        handle.session.syncConfigPacket(handle.config_packet);
+        s_runtimeCore.session.addReceivedBytes(packet_size);
+        s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet);
         ensureRxDecoderConfigLocked(handle);
     }
 }
@@ -1096,52 +802,41 @@ int processTransportPacket(NativeHandle& handle,
 {
     if (data == nullptr || size == 0)
     {
-        handle.last_event_kind = gs::core::SessionEventKind::Ignore;
-        return static_cast<int>(handle.last_event_kind);
+        s_runtimeCore.last_event_kind = gs::core::SessionEventKind::Ignore;
+        return static_cast<int>(s_runtimeCore.last_event_kind);
     }
 
     handle.transport.setInputDbm(input_dbm);
-    handle.last_event_kind = gs::core::SessionEventKind::Ignore;
+    s_runtimeCore.last_event_kind = gs::core::SessionEventKind::Ignore;
 
     if (size >= sizeof(Packet_Header))
     {
         const auto* header = reinterpret_cast<const Packet_Header*>(data);
-        handle.transport_packets_seen++;
-        handle.gs_stats.inPacketCounter[0]++;
-        handle.last_transport_block = header->block_index;
-        handle.last_transport_packet_index = header->packet_index;
-        handle.last_transport_payload_size = header->size;
-        handle.last_transport_from = header->fromDeviceId;
-        handle.last_transport_to = header->toDeviceId;
+        s_runtimeCore.transport_packets_seen++;
+        s_runtimeCore.gs_stats.inPacketCounter[0]++;
+        s_runtimeCore.last_transport_block = header->block_index;
+        s_runtimeCore.last_transport_packet_index = header->packet_index;
+        s_runtimeCore.last_transport_payload_size = header->size;
+        s_runtimeCore.last_transport_from = header->fromDeviceId;
+        s_runtimeCore.last_transport_to = header->toDeviceId;
     }
 
-    handle.transport_packets_passed_filter++;
-    handle.rx_decoder.pushPacket(data, size, 0, Clock::now());
+    s_runtimeCore.transport_packets_passed_filter++;
+    s_runtimeCore.rx_decoder.pushPacket(data, size, 0, Clock::now());
     syncRxDecoderStatsLocked(handle);
-    return static_cast<int>(handle.last_event_kind);
+    return static_cast<int>(s_runtimeCore.last_event_kind);
 }
 
 std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandle& handle)
 {
-    const gs::core::ControlPacketView view = handle.session.buildControlPacket(handle.gs_device_id);
     std::vector<uint8_t> payload;
-    switch (view.type)
+    if (!tryBuildControlPacketPayload(s_runtimeCore.gs_device_id, payload))
     {
-    case gs::core::ControlPacketType::Connect:
-        payload.resize(sizeof(view.connect_packet));
-        std::memcpy(payload.data(), &view.connect_packet, sizeof(view.connect_packet));
-        break;
-    case gs::core::ControlPacketType::Config:
-        payload.resize(sizeof(view.config_packet));
-        std::memcpy(payload.data(), &view.config_packet, sizeof(view.config_packet));
-        break;
-    case gs::core::ControlPacketType::None:
-    default:
         return {};
     }
 
     auto packets = buildTransportPacketsForControl(handle, payload.data(), payload.size());
-    handle.session.addSentPackets(packets.size());
+    s_runtimeCore.session.addSentPackets(packets.size());
     return packets;
 }
 
@@ -1153,151 +848,6 @@ void updateUdpStatsLocked(NativeHandle& handle,
     handle.udp_packets_received = packets_received;
     handle.udp_throughput_mbps = throughput_mbps;
     handle.udp_video_fps = video_fps;
-}
-
-RendererSyncState collectRendererSyncStateLocked(NativeHandle& handle, const std::string& build_info)
-{
-    RendererSyncState state;
-    const Clock::time_point now = Clock::now();
-    if (now - handle.last_data_rate_sample_tp >= std::chrono::milliseconds(100))
-    {
-        handle.data_size_stats.add(handle.session.consumeDataRateSample());
-        handle.last_data_rate_sample_tp = now;
-    }
-
-    if (now - handle.last_periodic_stats_tp >= std::chrono::milliseconds(1000))
-    {
-        const gs::core::PeriodicStatsSnapshot periodic_stats = handle.session.consumePeriodicStats();
-        const gs::core::LinkStatusSnapshot link_status = handle.session.consumeLinkStatus(now);
-        handle.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
-        handle.gs_stats.pingMinMS = link_status.ping_min_ms;
-        handle.gs_stats.pingMaxMS = link_status.ping_max_ms;
-
-        const AndroidJpegDecoder::DecodeStats jpeg_stats = handle.jpeg_decoder.consumeStats();
-        const AndroidVideoRenderer::RendererStats renderer_stats = handle.renderer.consumeStats();
-        const gs::core::VideoFrameAssembler::Stats assembler_stats = handle.assembler.consumeStats();
-        handle.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(jpeg_stats.broken_frames, 255));
-
-        handle.last_ground_stats.out_packet_counter = handle.gs_stats.outPacketCounter;
-        handle.last_ground_stats.in_packet_counter[0] = handle.gs_stats.inPacketCounter[0];
-        handle.last_ground_stats.in_packet_counter[1] = handle.gs_stats.inPacketCounter[1];
-        handle.last_ground_stats.last_packet_index = handle.gs_stats.lastPacketIndex;
-        handle.last_ground_stats.stats_packet_index = handle.gs_stats.statsPacketIndex;
-        handle.last_ground_stats.in_duplicated_packet_counter = handle.gs_stats.inDublicatedPacketCounter;
-        handle.last_ground_stats.in_unique_packet_counter = handle.gs_stats.inUniquePacketCounter;
-        handle.last_ground_stats.fec_succ_packet_index_counter = handle.gs_stats.FECSuccPacketIndexCounter;
-        handle.last_ground_stats.fec_blocks_counter = handle.gs_stats.FECBlocksCounter;
-        handle.last_ground_stats.rssi_dbm[0] = handle.gs_stats.rssiDbm[0];
-        handle.last_ground_stats.rssi_dbm[1] = handle.gs_stats.rssiDbm[1];
-        handle.last_ground_stats.noise_floor_dbm = handle.gs_stats.noiseFloorDbm;
-        handle.last_ground_stats.broken_frames = handle.gs_stats.brokenFrames;
-        handle.last_ground_stats.ping_min_ms = handle.gs_stats.pingMinMS;
-        handle.last_ground_stats.ping_max_ms = handle.gs_stats.pingMaxMS;
-        handle.last_ground_stats.rc_period_max = handle.gs_stats.RCPeriodMax;
-        handle.last_ground_stats.decoded_jpeg_count = static_cast<int>(jpeg_stats.decoded_count);
-        handle.last_ground_stats.decoded_jpeg_time_total_ms = static_cast<int>(jpeg_stats.decoded_total_ms);
-        handle.last_ground_stats.decoded_jpeg_time_min_ms = static_cast<int>(jpeg_stats.decoded_min_ms);
-        handle.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(jpeg_stats.decoded_max_ms);
-        handle.last_ground_stats.texture_upload_count = static_cast<int>(renderer_stats.upload_count);
-        handle.last_ground_stats.texture_upload_time_total_ms = static_cast<int>(renderer_stats.upload_total_ms);
-        handle.last_ground_stats.texture_upload_time_min_ms = static_cast<int>(renderer_stats.upload_min_ms);
-        handle.last_ground_stats.texture_upload_time_max_ms = static_cast<int>(renderer_stats.upload_max_ms);
-        handle.last_ground_stats.discarded_frames_assembler_pool_overflow =
-            static_cast<int>(assembler_stats.discarded_frames);
-        handle.last_ground_stats.discarded_frames_decoder_input =
-            static_cast<int>(jpeg_stats.overwritten_pending_count);
-        handle.last_ground_stats.discarded_frames_decoded_output =
-            static_cast<int>(renderer_stats.discarded_pending_count);
-        handle.last_ground_stats.restored_transport_packets = handle.restored_transport_packets;
-        handle.last_ground_stats.restored_video_parts = handle.restored_video_parts;
-        handle.last_ground_stats.received_completed_frames = periodic_stats.received_completed_frames;
-        handle.last_ground_stats.restored_completed_frames = periodic_stats.restored_completed_frames;
-        __android_log_print(
-            ANDROID_LOG_INFO,
-            kNativeLogTag,
-            "frame_audit completed=%d+%d submitted=%u rendered=%u overwritten=%u upload=%u swap=%u decode_ms=%u/%u/%u upload_ms=%u/%u/%u swap_ms=%u/%u/%u broken=%u udp_fps=%.2f",
-            periodic_stats.received_completed_frames,
-            periodic_stats.restored_completed_frames,
-            jpeg_stats.input_submitted_count,
-            jpeg_stats.decoded_count,
-            jpeg_stats.overwritten_pending_count,
-            renderer_stats.upload_count,
-            renderer_stats.swap_count,
-            jpeg_stats.decoded_min_ms,
-            jpeg_stats.decoded_count == 0 ? 0u : (jpeg_stats.decoded_total_ms / jpeg_stats.decoded_count),
-            jpeg_stats.decoded_max_ms,
-            renderer_stats.upload_min_ms,
-            renderer_stats.upload_count == 0 ? 0u : (renderer_stats.upload_total_ms / renderer_stats.upload_count),
-            renderer_stats.upload_max_ms,
-            renderer_stats.swap_min_ms,
-            renderer_stats.swap_count == 0 ? 0u : (renderer_stats.swap_total_ms / renderer_stats.swap_count),
-            renderer_stats.swap_max_ms,
-            jpeg_stats.broken_frames,
-            handle.udp_video_fps);
-
-        AndroidGsStats next_stats = {};
-        next_stats.statsPacketIndex = handle.last_ground_stats.last_packet_index;
-        handle.gs_stats = next_stats;
-        handle.restored_transport_packets = 0;
-        handle.restored_video_parts = 0;
-        handle.last_udp_packets_sample = handle.udp_packets_received;
-        handle.last_periodic_stats_tp = now;
-    }
-
-    state.chips.push_back({"AIR:" + std::to_string(-static_cast<int>(handle.session.lastAirStats().rssiDbm)), false});
-    state.chips.push_back({"GS:UDP", false});
-    state.chips.push_back({std::to_string(handle.session.airStatus().wifi_queue_max) + "%", false});
-
-    std::ostringstream throughput_text;
-    throughput_text << std::fixed << std::setprecision(1) << handle.udp_throughput_mbps << "Mb";
-    state.chips.push_back({throughput_text.str(), false});
-    state.chips.push_back({gs::menu::getResolutionSummary(handle.config_packet, handle.session.airStatus().is_ov5640), false});
-    state.chips.push_back({std::to_string(static_cast<int>(std::round(handle.udp_video_fps))), false});
-    if (handle.session.airStatus().wifi_ovf)
-    {
-        state.chips.push_back({"OVF", true});
-    }
-    if (handle.session.airStatus().air_record)
-    {
-        state.chips.push_back({"AIR", true});
-    }
-
-    if (handle.groundstation_config.stats)
-    {
-        state.stats_state.visible = true;
-        state.stats_state.snapshot.fec_codec_n = handle.config_packet.dataChannel.fec_codec_n;
-        state.stats_state.snapshot.current_quality = handle.session.airStatus().curr_quality;
-        state.stats_state.snapshot.wifi_queue_max = handle.session.airStatus().wifi_queue_max;
-        state.stats_state.snapshot.cpu_temp_c = 0;
-        state.stats_state.snapshot.air_stats = handle.session.lastAirStats();
-        const auto& frame_stats = handle.session.frameStats();
-        state.stats_state.snapshot.frame_stats = frame_stats.frame_stats;
-        state.stats_state.snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
-        state.stats_state.snapshot.frame_time_stats = frame_stats.frame_time_stats;
-        state.stats_state.snapshot.frame_quality_stats = frame_stats.frame_quality_stats;
-        state.stats_state.snapshot.queue_usage_stats = frame_stats.queue_usage_stats;
-        state.stats_state.snapshot.data_size_stats = handle.data_size_stats;
-        state.stats_state.snapshot.ground_stats = handle.last_ground_stats;
-    }
-    state.build_info = build_info;
-    state.osd_font_name = handle.menu_platform->currentOSDFontName();
-    state.clear_flight_osd = handle.pending_flight_osd_clear;
-    state.has_flight_osd_update = handle.pending_flight_osd_dirty;
-    if (state.has_flight_osd_update)
-    {
-        state.flight_osd_data = handle.pending_flight_osd;
-    }
-    handle.pending_flight_osd_clear = false;
-    handle.pending_flight_osd_dirty = false;
-    if (handle.frame_packets_debug.isVisible())
-    {
-        state.has_frame_debug_osd = true;
-        state.frame_debug_osd = handle.frame_packets_debug.osdChars();
-    }
-    state.screen_mode = static_cast<int>(handle.groundstation_config.screenAspectRatio);
-    state.vsync = handle.groundstation_config.vsync;
-    state.vr_mode = handle.groundstation_config.vrMode;
-    return state;
 }
 
 bool handleTapLocked(NativeHandle& handle,
@@ -1531,6 +1081,20 @@ Java_com_esp32camfpv_androidgs_NativeCore_setAssetManager(JNIEnv* env,
     androidSetAssetManager(asset_manager == nullptr ? nullptr : AAssetManager_fromJava(env, asset_manager));
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setSettingsPath(JNIEnv* env,
+                                                          jobject /* thiz */,
+                                                          jstring path)
+{
+    const std::string settings_path = fromJString(env, path);
+    if (settings_path.empty())
+    {
+        return;
+    }
+
+    s_settingsStorage.setPath(settings_path);
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                                                        jobject /* thiz */,
@@ -1573,8 +1137,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
     if (bytes.empty())
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
-        native_handle->last_event_kind = gs::core::SessionEventKind::Ignore;
-        return static_cast<jint>(native_handle->last_event_kind);
+        s_runtimeCore.last_event_kind = gs::core::SessionEventKind::Ignore;
+        return static_cast<jint>(s_runtimeCore.last_event_kind);
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
@@ -1618,13 +1182,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_takeCompletedFrame(JNIEnv* env,
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    if (native_handle->last_completed_frame.empty())
+    if (s_runtimeCore.last_completed_frame.empty())
     {
         return nullptr;
     }
 
-    std::vector<uint8_t> frame = std::move(native_handle->last_completed_frame);
-    native_handle->last_completed_frame.clear();
+    std::vector<uint8_t> frame = std::move(s_runtimeCore.last_completed_frame);
+    s_runtimeCore.last_completed_frame.clear();
     return toJByteArray(env, frame);
 }
 
@@ -1732,7 +1296,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getLastEventKind(JNIEnv* /* env */,
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return static_cast<jint>(native_handle->last_event_kind);
+    return static_cast<jint>(s_runtimeCore.last_event_kind);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1747,7 +1311,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return native_handle->groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH ? 0 : 1;
+    return s_runtimeCore.groundstation_config.screenAspectRatio == ScreenAspectRatio::STRETCH ? 0 : 1;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1761,7 +1325,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isVrModeEnabled(JNIEnv* /* env */,
         return JNI_FALSE;
     }
 
-    return native_handle->groundstation_config.vrMode ? JNI_TRUE : JNI_FALSE;
+    return s_runtimeCore.groundstation_config.vrMode ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1807,11 +1371,36 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     }
 
     const std::string info = fromJString(env, build_info);
-    RendererSyncState sync_state;
+    RuntimeSyncState sync_state;
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
         processDecodedTransportPacketsLocked(*native_handle);
-        sync_state = collectRendererSyncStateLocked(*native_handle, info);
+        const AndroidBitmapJpegDecoder::DecodeStats decode_stats = native_handle->jpeg_decoder.consumeStats();
+        RuntimeSyncParams sync_params = {};
+        sync_params.decode_stats.input_submitted_count = decode_stats.input_submitted_count;
+        sync_params.decode_stats.decoded_count = decode_stats.decoded_count;
+        sync_params.decode_stats.overwritten_pending_count = decode_stats.overwritten_pending_count;
+        sync_params.decode_stats.broken_frames = decode_stats.broken_frames;
+        sync_params.decode_stats.decoded_total_ms = decode_stats.decoded_total_ms;
+        sync_params.decode_stats.decoded_min_ms = decode_stats.decoded_min_ms;
+        sync_params.decode_stats.decoded_max_ms = decode_stats.decoded_max_ms;
+        const GsVideoRenderer::RendererStats renderer_stats = native_handle->renderer.consumeStats();
+        sync_params.renderer_stats.upload_count = renderer_stats.upload_count;
+        sync_params.renderer_stats.upload_total_ms = renderer_stats.upload_total_ms;
+        sync_params.renderer_stats.upload_min_ms = renderer_stats.upload_min_ms;
+        sync_params.renderer_stats.upload_max_ms = renderer_stats.upload_max_ms;
+        sync_params.renderer_stats.swap_count = renderer_stats.swap_count;
+        sync_params.renderer_stats.swap_total_ms = renderer_stats.swap_total_ms;
+        sync_params.renderer_stats.swap_min_ms = renderer_stats.swap_min_ms;
+        sync_params.renderer_stats.swap_max_ms = renderer_stats.swap_max_ms;
+        sync_params.renderer_stats.discarded_pending_count = renderer_stats.discarded_pending_count;
+        sync_params.build_info = info;
+        sync_params.osd_font_name = native_handle->menu_platform->currentOSDFontName();
+        sync_params.throughput_mbps = native_handle->udp_throughput_mbps;
+        sync_params.udp_video_fps = native_handle->udp_video_fps;
+        sync_params.is_dual = false;
+        sync_params.osd_font_error = false;
+        sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params);
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     if (sync_state.clear_flight_osd)
@@ -1827,11 +1416,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     {
         native_handle->renderer.setFlightOsdChars(sync_state.frame_debug_osd);
     }
-    native_handle->renderer.setMenuFooter(sync_state.build_info);
-    native_handle->renderer.setScreenMode(sync_state.screen_mode);
-    native_handle->renderer.setVsync(sync_state.vsync);
-    native_handle->renderer.setVrMode(sync_state.vr_mode);
-    native_handle->renderer.setOverlayState(sync_state.chips, {}, sync_state.stats_state);
+    native_handle->renderer.setFrameUiState(sync_state.frame_ui_state);
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1977,8 +1562,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_consumeExitRequested(JNIEnv* /* env */
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    const bool requested = native_handle->exit_requested;
-    native_handle->exit_requested = false;
+    const bool requested = s_runtimeCore.exit_requested;
+    s_runtimeCore.exit_requested = false;
     return requested ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -1994,20 +1579,17 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    native_handle->session.resetPairing(native_handle->gs_device_id,
-                                        native_handle->transport,
-                                        Clock::now());
-    native_handle->transport.getPacketFilter().set_packet_filtering(0, 0);
-    native_handle->rx_decoder.reset(Clock::now());
-    native_handle->last_event_kind = gs::core::SessionEventKind::Ignore;
-    native_handle->last_completed_frame.clear();
-    native_handle->last_video_frame_index = 0;
-    native_handle->last_video_part_index = 0;
-    native_handle->last_video_last_part = 0;
-    native_handle->last_video_payload_size = 0;
-    native_handle->pending_flight_osd.clear();
-    native_handle->pending_flight_osd_dirty = false;
-    native_handle->pending_flight_osd_clear = true;
+    s_runtimeCore.resetPairing(native_handle->transport, Clock::now());
+    s_runtimeCore.rx_decoder.reset(Clock::now());
+    s_runtimeCore.last_event_kind = gs::core::SessionEventKind::Ignore;
+    s_runtimeCore.last_completed_frame.clear();
+    s_runtimeCore.last_video_frame_index = 0;
+    s_runtimeCore.last_video_part_index = 0;
+    s_runtimeCore.last_video_last_part = 0;
+    s_runtimeCore.last_video_payload_size = 0;
+    s_runtimeCore.pending_flight_osd.clear();
+    s_runtimeCore.pending_flight_osd_dirty = false;
+    s_runtimeCore.pending_flight_osd_clear = true;
     native_handle->menu_controller->close();
 }
 

@@ -10,16 +10,13 @@
 #include "fmt/format.h"
 #include "Clock.h"
 #include "Pool.h"
+#include "gs_gl_debug.h"
+#include "gs_stats.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
-#include "main.h"
 
 extern "C"
 {
-#ifdef TEST_LATENCY
-#include "pigpio.h"
-#endif
-
 #include <turbojpeg.h>
 #include <GLES3/gl3.h>
 #include <GLES3/gl3ext.h>
@@ -29,7 +26,6 @@ extern "C"
 //===================================================================================
 struct Input
 {
-    int32_t test_value = -1;
     gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer;
     uint32_t frame_id = 0;
 };
@@ -127,11 +123,7 @@ bool Video_Decoder::init(IHAL& hal)
     {
     };
 
-#ifdef TEST_DISPLAY_LATENCY
-    for (size_t i = 0; i < 1; i++)
-#else
     for (size_t i = 0; i < 4; i++)
-#endif
     {
         SDL_GLContext context = SDL_GL_CreateContext(m_impl->window);
         assert(context != nullptr);
@@ -170,7 +162,6 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
     }
         
     Input_ptr input = m_impl->input_pool.acquire();
-    input->test_value = -1;
     input->jpeg_buffer = std::move(jpeg_buffer);
     input->frame_id = frame_id;
 
@@ -189,25 +180,6 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
 
     return true;
 }
-
-
-//===================================================================================
-//===================================================================================
-void Video_Decoder::inject_test_data(uint32_t value)
-{
-    Input_ptr input = m_impl->input_pool.acquire();
-    input->test_value = value;
-    input->jpeg_buffer.reset();
-
-    {
-        std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
-        m_impl->input_queue.push_back(input);
-    }
-
-    m_impl->input_queue_cv.notify_all();
-}
-
-Clock::time_point s_start = Clock::now();
 
 
 //===================================================================================
@@ -241,31 +213,6 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
             else
                 continue;
         }
-#ifdef TEST_DISPLAY_LATENCY
-        uint32_t width = 800;
-        uint32_t height = 600;
-
-        Output_ptr output = m_impl->output_pool.acquire();
-        output->width = width;
-        output->height = height;
-
-        output->planes[0].resize(tjPlaneSizeYUV(0, width, 0, height, TJSAMP_422));
-        if (input->test_value == 0)
-            memset(output->planes[0].data(), 0, output->planes[0].size());
-        else
-            memset(output->planes[0].data(), 255, output->planes[0].size());
-
-        output->planes[1].resize(tjPlaneSizeYUV(1, width, 0, height, TJSAMP_422));
-        memset(output->planes[1].data(), 128, output->planes[1].size());
-        output->planes[2].resize(tjPlaneSizeYUV(2, width, 0, height, TJSAMP_422));
-        memset(output->planes[2].data(), 128, output->planes[2].size());
-
-        {
-            //LOGI("Enq buffer {}/{} at {}", input->test_value, (size_t)output.get(), std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_start).count());
-            std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-            m_impl->output_queue.push_back(std::move(output));
-        }
-#else
         const uint8_t* data = input->jpeg_buffer->data.data();
         size_t size = input->jpeg_buffer->data.size();
 
@@ -363,7 +310,6 @@ void Video_Decoder::decoder_thread_proc(size_t thread_index)
         m_impl->output_ready_cv.notify_one();
 
         //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->jpeg_buffer->data.size() - size);
-#endif
     }
 }
 

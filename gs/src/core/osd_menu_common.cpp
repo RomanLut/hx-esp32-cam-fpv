@@ -172,11 +172,30 @@ constexpr WIFI_Rate kWifiRates[] =
     WIFI_Rate::RATE_N_39M_MCS4
 };
 
+constexpr const char* kWifiRateRawLabels[] =
+{
+    "2M_L", "2M_S", "5M_L", "5M_S", "11M_L", "11M_S",
+    "6M", "9M", "12M", "18M", "24M", "36M", "48M", "54M",
+    "MCS0_6.5ML", "MCS0_7.2MS", "MCS1L_13M", "MCS1S_14.4M", "MCS2L_19.5M", "MCS2S_21.7M",
+    "MCS3L_26M", "MCS3S_28.9M", "MCS4L_39M", "MCS4S_43.3M", "MCS5L_52M",
+    "MCS5S_57.8M", "MCS6L_58.5M", "MCS6S_65M", "MCS7L_65", "MCS7S_72.2"
+};
+
 constexpr const char* kFecLabels[] =
 {
     "Weak (6/8)",
     "Medium (6/10)",
     "Strong (6/12)"
+};
+
+constexpr Resolution kResolutionCycle[] =
+{
+    Resolution::VGA16,
+    Resolution::VGA,
+    Resolution::SVGA16,
+    Resolution::SVGA,
+    Resolution::XGA16,
+    Resolution::HD
 };
 
 }
@@ -241,6 +260,12 @@ std::string getWifiRateSummary(const Ground2Air_Config_Packet& config)
     return kWifiRateLabels[getWifiRateMenuIndex(config.dataChannel.wifi_rate)];
 }
 
+const char* getWifiRateLabel(WIFI_Rate rate)
+{
+    const int index = std::clamp(static_cast<int>(rate), 0, static_cast<int>(std::size(kWifiRateRawLabels)) - 1);
+    return kWifiRateRawLabels[index];
+}
+
 const char* getWifiRateOptionLabel(int menu_index)
 {
     return kWifiRateLabels[std::clamp(menu_index, 0, 5)];
@@ -286,6 +311,21 @@ uint8_t getFecNForMenuIndex(int menu_index)
     case 2: return 12;
     default: return 10;
     }
+}
+
+int getResolutionCycleSize()
+{
+    return static_cast<int>(std::size(kResolutionCycle));
+}
+
+Resolution getResolutionCycleValue(int index)
+{
+    return kResolutionCycle[std::clamp(index, 0, static_cast<int>(std::size(kResolutionCycle)) - 1)];
+}
+
+Resolution getDefaultCyclingResolution()
+{
+    return Resolution::SVGA16;
 }
 
 }

@@ -1,6 +1,8 @@
 #pragma once
 
-#include "main.h"
+#include <vector>
+
+#include "Clock.h"
 #include "imgui.h"
 #include "packets.h"
 #include "core/osd_menu_common.h"

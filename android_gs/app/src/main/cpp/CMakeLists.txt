@@ -2,11 +2,37 @@ cmake_minimum_required(VERSION 3.22.1)
 project(android_gs_core)
 
 add_library(android_gs_core SHARED
-    android_jpeg_decoder.cpp
-    android_osd.cpp
-    android_video_renderer.cpp
+    android_surface_backend.cpp
+    android_bitmap_jpeg_decoder.cpp
+    android_asset_flight_osd.cpp
     native_bridge.cpp
+    ../../../../../gs/src/gs_runtime_aux_flow.cpp
+    ../../../../../gs/src/gs_runtime_config.cpp
+    ../../../../../gs/src/gs_runtime_core.cpp
+    ../../../../../gs/src/gs_runtime_event_classify.cpp
+    ../../../../../gs/src/gs_runtime_event_pipeline.cpp
+    ../../../../../gs/src/gs_runtime_event_dispatch.cpp
+    ../../../../../gs/src/gs_runtime_event_flow.cpp
+    ../../../../../gs/src/gs_runtime_frame_ui.cpp
+    ../../../../../gs/src/gs_runtime_globals.cpp
+    ../../../../../gs/src/gs_runtime_menu_ui.cpp
+    ../../../../../gs/src/gs_runtime_overlay_state.cpp
+    ../../../../../gs/src/gs_runtime_packet_flow.cpp
+    ../../../../../gs/src/gs_runtime_protocol.cpp
+    ../../../../../gs/src/gs_runtime_session.cpp
+    ../../../../../gs/src/gs_runtime_state.cpp
+    ../../../../../gs/src/gs_runtime_sync.cpp
+    ../../../../../gs/src/gs_runtime_video_flow.cpp
+    ../../../../../gs/src/gs_osd_font_shared.cpp
+    ../../../../../gs/src/gs_storage_status_shared.cpp
+    ../../../../../gs/src/settings_storage.cpp
     ../../../../../gs/src/fontwalksnail.cpp
+    ../../../../../gs/src/gs_asset_flight_osd.cpp
+    ../../../../../gs/src/gs_imgui_overlay_shared.cpp
+    ../../../../../gs/src/gs_top_overlay_shared.cpp
+    ../../../../../gs/src/gs_flight_osd_render_shared.cpp
+    ../../../../../gs/src/gs_video_layout_shared.cpp
+    ../../../../../gs/src/gs_video_renderer.cpp
     ../../../../../gs/src/imgui/imgui.cpp
     ../../../../../gs/src/imgui/imgui_draw.cpp
     ../../../../../gs/src/imgui/imgui_tables.cpp
@@ -31,11 +57,12 @@ add_library(android_gs_core SHARED
 )
 
 set_source_files_properties(
-    android_jpeg_decoder.cpp
+    android_bitmap_jpeg_decoder.cpp
     PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math;-funroll-loops"
 )
 
 target_include_directories(android_gs_core PRIVATE
+    .
     ../../../../../gs/src
     ../../../../../gs/src/utils
     ../../../../../gs/src/imgui

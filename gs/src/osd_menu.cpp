@@ -10,6 +10,9 @@
 #include "gpio_buttons.h"
 #include "lodepng.h"
 #include "desktop_osd.h"
+#include "gs_desktop_runtime.h"
+#include "gs_osd_font_shared.h"
+#include "gs_shared_runtime.h"
 
 namespace
 {
@@ -17,16 +20,6 @@ namespace
 class LinuxOSDMenuPlatform final : public gs::menu::IOSDMenuPlatform
 {
 public:
-    TGroundstationConfig& groundstationConfig() override
-    {
-        return s_groundstation_config;
-    }
-
-    const TGroundstationConfig& groundstationConfig() const override
-    {
-        return s_groundstation_config;
-    }
-
     gs::core::ITransport& transport() override
     {
         return s_transport;
@@ -35,27 +28,6 @@ public:
     const gs::core::ITransport& transport() const override
     {
         return s_transport;
-    }
-
-    bool isOV5640() const override
-    {
-        return s_isOV5640;
-    }
-
-    bool isDualCamera() const override
-    {
-        return s_isDual;
-    }
-
-    gs::menu::AirStorageStatus airStorageStatus() const override
-    {
-        return {
-            s_SDDetected,
-            s_SDError,
-            s_SDSlow,
-            s_SDFreeSpaceGB16,
-            s_SDTotalSpaceGB16,
-        };
     }
 
     gs::menu::GroundStorageStatus groundStorageStatus() const override
@@ -68,7 +40,9 @@ public:
 
     const char* currentOSDFontName() const override
     {
-        return g_osd.currentFontName;
+        static thread_local std::string font_name;
+        font_name = getSelectedOsdFontName();
+        return font_name.c_str();
     }
 
     const std::vector<std::string>& osdFontsList() const override
@@ -78,21 +52,11 @@ public:
 
     void selectOSDFont(Ground2Air_Config_Packet& config, const std::string& font_name) override
     {
-        ini["gs"]["osd_font"] = font_name;
-        s_iniFile.write(ini);
+        setSelectedOsdFontName(font_name);
+        s_settingsStorage.save();
         config.misc.osdFontCRC32 = lodepng_crc32(reinterpret_cast<const unsigned char*>(font_name.c_str()),
                                                  font_name.length());
         s_reload_osd_font = true;
-    }
-
-    void saveGroundStationConfig() override
-    {
-        ::saveGroundStationConfig();
-    }
-
-    void saveGround2AirConfig(const Ground2Air_Config_Packet& config) override
-    {
-        ::saveGround2AirConfig(config);
     }
 
     void applyWifiChannel(Ground2Air_Config_Packet& config) override
@@ -162,11 +126,6 @@ public:
 
         freeifaddrs(ifaddr);
         return result;
-    }
-
-    Clock::time_point lastPacketTime() const override
-    {
-        return s_last_packet_tp;
     }
 
     void captureFrameDebug(bool until_loss) override

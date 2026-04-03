@@ -39,13 +39,6 @@ extern "C"
 }
 #endif
 
-#ifdef TEST_LATENCY
-extern "C"
-{
-#include "pigpio.h"
-}
-#endif
-
 extern uint8_t s_font_droid_sans[];
 
 /* To install & compile SDL2 with DRM:
@@ -123,41 +116,6 @@ struct PI_HAL::Impl
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef TEST_LATENCY
-
-bool PI_HAL::init_pigpio()
-{
-    if (m_impl->pigpio_is_isitialized)
-        return true;
-
-    LOGI("Initializing pigpio");
-    if (gpioCfgClock(2, PI_CLOCK_PCM, 0) < 0 ||
-            gpioCfgPermissions(static_cast<uint64_t>(-1)))
-    {
-        LOGE("Cannot configure pigpio");
-        return false;
-    }
-    if (gpioInitialise() < 0)
-    {
-        LOGE("Cannot init pigpio");
-        return false;
-    }
-
-    m_impl->pigpio_is_isitialized = true;
-
-    return true;
-}
-
-// ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-void PI_HAL::shutdown_pigpio()
-{
-    if (m_impl->pigpio_is_isitialized)
-        gpioTerminate();
-
-    m_impl->pigpio_is_isitialized = false;
-}
-#endif
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool PI_HAL::init_display_dispmanx()
@@ -542,18 +500,42 @@ bool PI_HAL::update_display()
     if (s_groundstation_config.vrMode)
     {
         const int half_width = m_impl->width / 2;
-        int x1, y1, x2, y2;
-        calculateLetterBoxAndBorderInRect(0, 0, half_width, m_impl->height, x1, y1, x2, y2);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture), ImVec2(x1, y1), ImVec2(x2, y2));
+        const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
+        const gs::render::RectI left_rect =
+            gs::render::buildLetterboxedRect(0,
+                                             0,
+                                             half_width,
+                                             m_impl->height,
+                                             video_aspect,
+                                             s_groundstation_config.screenAspectRatio);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                                             ImVec2(left_rect.x1, left_rect.y1),
+                                             ImVec2(left_rect.x2, left_rect.y2));
 
-        calculateLetterBoxAndBorderInRect(half_width, 0, m_impl->width - half_width, m_impl->height, x1, y1, x2, y2);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture), ImVec2(x1, y1), ImVec2(x2, y2));
+        const gs::render::RectI right_rect =
+            gs::render::buildLetterboxedRect(half_width,
+                                             0,
+                                             m_impl->width - half_width,
+                                             m_impl->height,
+                                             video_aspect,
+                                             s_groundstation_config.screenAspectRatio);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                                             ImVec2(right_rect.x1, right_rect.y1),
+                                             ImVec2(right_rect.x2, right_rect.y2));
     }
     else
     {
-        int x1, y1, x2, y2;
-        calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),ImVec2(x1,y1),ImVec2(x2,y2));
+        const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
+        const gs::render::RectI rect =
+            gs::render::buildLetterboxedRect(0,
+                                             0,
+                                             m_impl->width,
+                                             m_impl->height,
+                                             video_aspect,
+                                             s_groundstation_config.screenAspectRatio);
+        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                                             ImVec2(rect.x1, rect.y1),
+                                             ImVec2(rect.x2, rect.y2));
     }
 
     ImGui::End();
@@ -680,14 +662,6 @@ bool PI_HAL::init()
     bcm_host_init();
 #endif
 
-#ifdef TEST_LATENCY
-    if (!init_pigpio())
-    {
-        LOGE("Cannot initialize pigpio");
-        return false;
-    }
-#endif
-
     if (!init_display())
     {
         LOGE("Cannot initialize display");
@@ -714,10 +688,6 @@ bool PI_HAL::init()
 void PI_HAL::shutdown()
 {
     ImGui_ImplOpenGL3_Shutdown();
-
-#ifdef TEST_LATENCY
-    shutdown_pigpio();
-#endif
 
     shutdown_ts();
     shutdown_display();
