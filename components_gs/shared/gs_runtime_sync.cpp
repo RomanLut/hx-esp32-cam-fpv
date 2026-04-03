@@ -70,7 +70,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core, const RuntimeSyncP
     overlay_input.gs_record = core.groundstation_config.record;
     overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;
     overlay_input.osd_font_error = params.osd_font_error;
-    overlay_input.incompatible_firmware_time = Clock::time_point::min();
+    overlay_input.incompatible_firmware_time = Clock::time_point{};
     overlay_input.now = now;
     state.frame_ui_state.overlay = buildRuntimeOverlayState(overlay_input);
     state.frame_ui_state.overlay.gs_link_text = "GS:UDP";
