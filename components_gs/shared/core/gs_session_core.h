@@ -10,6 +10,10 @@
 #include "packets.h"
 #include "stats.h"
 
+class ISerialTelemetry;
+class HXMavlinkParser;
+struct GSStats;
+
 namespace gs::core
 {
 
@@ -55,13 +59,6 @@ struct ControlPacketView
     ControlPacketType type = ControlPacketType::None;
     Ground2Air_Config_Packet config_packet = {};
     Ground2Air_Connect_Packet connect_packet = {};
-};
-
-struct TelemetryTxDecision
-{
-    bool should_flush = false;
-    bool should_send = false;
-    Ground2Air_Data_Packet packet = {};
 };
 
 struct TelemetryPacketView
@@ -166,9 +163,16 @@ public:
     size_t telemetryFreeBytes() const;
     uint8_t* telemetryPayloadWritePtr();
     void appendTelemetryBytes(size_t bytes);
-    TelemetryTxDecision buildTelemetryTxDecision(bool got_rc_packet,
-                                                 Clock::time_point now,
-                                                 uint16_t gs_device_id);
+    void processIncomingTelemetry(ISerialTelemetry& serial,
+                                  HXMavlinkParser& mavlink_parser,
+                                  uint16_t gs_device_id,
+                                  ITransport& transport,
+                                  std::mutex& gs_stats_mutex,
+                                  GSStats& gs_stats);
+    void flushTelemetryIfNeeded(bool got_rc_packet,
+                               Clock::time_point now,
+                               uint16_t gs_device_id,
+                               ITransport& transport);
     SessionEvent processReceivedPacket(const uint8_t* packet_data,
                                        size_t transport_packet_size,
                                        uint16_t gs_device_id,

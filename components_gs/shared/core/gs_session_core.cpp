@@ -1,8 +1,14 @@
 #include "core/gs_session_core.h"
+#include "ISerialTelemetry.h"
+#include "hx_mavlink_parser.h"
+#include "gs_stats.h"
 
 namespace gs::core
 {
 
+//===================================================================================
+//===================================================================================
+// Resets session state and reconfigures the transport packet filter for a fresh pairing.
 void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, Clock::time_point now)
 {
     {
@@ -25,6 +31,10 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
     (void)now;
 }
 
+//===================================================================================
+//===================================================================================
+// Accepts an initial connect-config packet from the air unit if not already connected,
+// stores the air config, and updates the transport packet filter.
 bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet_info,
                                           const uint8_t* packet_data,
                                           uint16_t gs_device_id,
@@ -63,6 +73,9 @@ bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns true if the packet belongs to the current active session.
 bool GsSessionCore::isPacketForSession(const protocol::AirPacketInfo& packet_info, uint16_t gs_device_id) const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -70,6 +83,10 @@ bool GsSessionCore::isPacketForSession(const protocol::AirPacketInfo& packet_inf
            protocol::isPacketForSession(packet_info, gs_device_id, m_connected_air_device_id);
 }
 
+//===================================================================================
+//===================================================================================
+// Parses a raw transport packet and classifies it by session packet type.
+// Attempts to accept a connect-config if not yet connected.
 SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
                                                     size_t packet_size,
                                                     uint16_t gs_device_id,
@@ -115,6 +132,9 @@ SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
     return decision;
 }
 
+//===================================================================================
+//===================================================================================
+// Validates and unpacks a video packet from raw data into a VideoPacketView.
 bool GsSessionCore::tryParseVideoPacket(const uint8_t* packet_data,
                                         size_t transport_packet_size,
                                         size_t packet_size,
@@ -143,6 +163,9 @@ bool GsSessionCore::tryParseVideoPacket(const uint8_t* packet_data,
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Validates and unpacks a telemetry packet from raw data into a TelemetryPacketView.
 bool GsSessionCore::tryParseTelemetryPacket(const uint8_t* packet_data,
                                             size_t transport_packet_size,
                                             size_t packet_size,
@@ -170,6 +193,10 @@ bool GsSessionCore::tryParseTelemetryPacket(const uint8_t* packet_data,
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Validates and unpacks an OSD packet from raw data into an OsdPacketView,
+// and updates the cached air stats from the packet.
 bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
                                       size_t transport_packet_size,
                                       size_t packet_size,
@@ -199,6 +226,10 @@ bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Atomically promotes a pending accepted config to the active session config.
+// Returns true and writes the config out if promotion occurred.
 bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
 {
     std::lock_guard<std::mutex> state_lock(m_state_mutex);
@@ -215,6 +246,10 @@ bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Promotes a pending accepted config if available, otherwise writes the given config
+// back into the session. Returns true if a new config was promoted.
 bool GsSessionCore::syncConfigPacket(Ground2Air_Config_Packet& config)
 {
     if (promoteAcceptedConfig(config))
@@ -227,12 +262,19 @@ bool GsSessionCore::syncConfigPacket(Ground2Air_Config_Packet& config)
     return false;
 }
 
+//===================================================================================
+//===================================================================================
+// Overwrites the stored config packet with the given value.
 void GsSessionCore::setConfigPacket(const Ground2Air_Config_Packet& config)
 {
     std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
     m_config_packet = config;
 }
 
+//===================================================================================
+//===================================================================================
+// Builds a control packet to send to the air unit: a connect packet before session
+// establishment, or a config packet with the current ping token once connected.
 ControlPacketView GsSessionCore::buildControlPacket(uint16_t gs_device_id) const
 {
     ControlPacketView view;
@@ -257,18 +299,27 @@ ControlPacketView GsSessionCore::buildControlPacket(uint16_t gs_device_id) const
     return view;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the number of telemetry bytes currently buffered in the outbound payload.
 size_t GsSessionCore::telemetryBufferedSize() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_telemetry_buffered_size;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the number of free bytes remaining in the outbound telemetry payload buffer.
 size_t GsSessionCore::telemetryFreeBytes() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return GROUND2AIR_DATA_MAX_PAYLOAD_SIZE - m_telemetry_buffered_size;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a pointer to the next write position in the outbound telemetry payload buffer.
 uint8_t* GsSessionCore::telemetryPayloadWritePtr()
 {
     std::lock_guard<std::mutex> data_lock(m_data_packet_mutex);
@@ -276,18 +327,73 @@ uint8_t* GsSessionCore::telemetryPayloadWritePtr()
     return &m_data_packet.payload[m_telemetry_buffered_size];
 }
 
+//===================================================================================
+//===================================================================================
+// Advances the telemetry buffer write position by the given number of bytes.
 void GsSessionCore::appendTelemetryBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_telemetry_buffered_size += bytes;
 }
 
-TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
-                                                            Clock::time_point now,
-                                                            uint16_t gs_device_id)
+//===================================================================================
+//===================================================================================
+// Reads incoming serial telemetry bytes, parses MAVLink RC packets to detect RC input,
+// updates RC period stats, and flushes the outbound telemetry packet if needed.
+void GsSessionCore::processIncomingTelemetry(ISerialTelemetry& serial,
+                                             HXMavlinkParser& mavlink_parser,
+                                             uint16_t gs_device_id,
+                                             ITransport& transport,
+                                             std::mutex& gs_stats_mutex,
+                                             GSStats& gs_stats)
 {
-    TelemetryTxDecision decision;
+    if (!serial.isOpen())
+    {
+        return;
+    }
 
+    const int frb = static_cast<int>(telemetryFreeBytes());
+    uint8_t* payload_write_ptr = telemetryPayloadWritePtr();
+    int n = serial.read(payload_write_ptr, frb);
+
+    bool gotRCPacket = false;
+
+    if (n > 0)
+    {
+        uint8_t* dPtr = payload_write_ptr;
+        for (int i = 0; i < n; i++)
+        {
+            mavlink_parser.processByte(*dPtr++);
+            if (mavlink_parser.gotPacket() &&
+                mavlink_parser.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
+            {
+                gotRCPacket = true;
+
+                static Clock::time_point s_last_rc_command = Clock::now();
+                Clock::time_point t = Clock::now();
+                int dt = std::chrono::duration_cast<std::chrono::milliseconds>(t - s_last_rc_command).count();
+                s_last_rc_command = t;
+                std::lock_guard<std::mutex> lg(gs_stats_mutex);
+                gs_stats.RCPeriodMax = std::max(gs_stats.RCPeriodMax, dt);
+            }
+        }
+
+        appendTelemetryBytes(n);
+        addInboundTelemetryBytes(n);
+    }
+
+    flushTelemetryIfNeeded(gotRCPacket, Clock::now(), gs_device_id, transport);
+}
+
+//===================================================================================
+//===================================================================================
+// Sends the buffered outbound telemetry packet if a flush condition is met:
+// buffer full, RC packet received, or the 100 ms drain timeout elapsed.
+void GsSessionCore::flushTelemetryIfNeeded(bool got_rc_packet,
+                                           Clock::time_point now,
+                                           uint16_t gs_device_id,
+                                           ITransport& transport)
+{
     size_t buffered_size = 0;
     uint16_t connected_air_device_id = 0;
     bool got_config_packet = false;
@@ -297,14 +403,14 @@ TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
         got_config_packet = m_got_config_packet;
         connected_air_device_id = m_connected_air_device_id;
 
-        decision.should_flush =
+        bool should_flush =
             (buffered_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
             got_rc_packet ||
             ((buffered_size > 0) && ((now - m_last_data_sent_tp) >= std::chrono::milliseconds(100)));
 
-        if (!decision.should_flush)
+        if (!should_flush)
         {
-            return decision;
+            return;
         }
 
         m_last_data_sent_tp = now;
@@ -313,18 +419,23 @@ TelemetryTxDecision GsSessionCore::buildTelemetryTxDecision(bool got_rc_packet,
 
     if (!got_config_packet)
     {
-        return decision;
+        return;
     }
 
+    Ground2Air_Data_Packet packet;
     {
         std::lock_guard<std::mutex> data_lock(m_data_packet_mutex);
-        decision.packet = m_data_packet;
+        packet = m_data_packet;
     }
-    protocol::prepareTelemetryPacket(decision.packet, buffered_size, connected_air_device_id, gs_device_id);
-    decision.should_send = true;
-    return decision;
+    protocol::prepareTelemetryPacket(packet, buffered_size, connected_air_device_id, gs_device_id);
+    transport.send(&packet, packet.size, true);
+    addSentPackets(1);
 }
 
+//===================================================================================
+//===================================================================================
+// Classifies and fully processes one received transport packet, returning a SessionEvent
+// describing the result (connect, video, telemetry, OSD, or invalid).
 SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
                                                   size_t transport_packet_size,
                                                   uint16_t gs_device_id,
@@ -406,45 +517,69 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a thread-safe copy of the current config packet.
 Ground2Air_Config_Packet GsSessionCore::copyConfigPacket() const
 {
     std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
     return m_config_packet;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a reference to the data packet mutex for external locking.
 std::mutex& GsSessionCore::dataPacketMutex()
 {
     return m_data_packet_mutex;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a reference to the outbound data packet.
 Ground2Air_Data_Packet& GsSessionCore::dataPacket()
 {
     return m_data_packet;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a mutable reference to the last received air stats.
 AirStats& GsSessionCore::lastAirStats()
 {
     return m_last_air_stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a const reference to the last received air stats.
 const AirStats& GsSessionCore::lastAirStats() const
 {
     return m_last_air_stats;
 }
 
-
+//===================================================================================
+//===================================================================================
+// Returns the current ping token that will be echoed back in the next pong.
 uint8_t GsSessionCore::currentPingToken() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_last_sent_ping;
 }
 
+//===================================================================================
+//===================================================================================
+// Records the timestamp at which the last ping was sent.
 void GsSessionCore::onPingSent(Clock::time_point now)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_last_ping_sent_tp = now;
 }
 
+//===================================================================================
+//===================================================================================
+// Processes a pong token received from the air unit, updates the ping snapshot
+// with the round-trip time, and advances the ping token.
 void GsSessionCore::onVideoPong(uint8_t pong, Clock::time_point now)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -462,6 +597,9 @@ void GsSessionCore::onVideoPong(uint8_t pong, Clock::time_point now)
     m_ping_snapshot.count++;
 }
 
+//===================================================================================
+//===================================================================================
+// Atomically returns and resets the accumulated ping snapshot.
 PingSnapshot GsSessionCore::consumePingSnapshot()
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -471,6 +609,9 @@ PingSnapshot GsSessionCore::consumePingSnapshot()
     return snapshot;
 }
 
+//===================================================================================
+//===================================================================================
+// Computes and returns a link status snapshot with min/max/avg ping and a no-ping flag.
 LinkStatusSnapshot GsSessionCore::consumeLinkStatus(Clock::time_point now)
 {
     const PingSnapshot ping_snapshot = consumePingSnapshot();
@@ -485,24 +626,36 @@ LinkStatusSnapshot GsSessionCore::consumeLinkStatus(Clock::time_point now)
     return snapshot;
 }
 
+//===================================================================================
+//===================================================================================
+// Adds to the count of packets sent during the current stats period.
 void GsSessionCore::addSentPackets(size_t count)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_periodic_stats.sent_count += count;
 }
 
+//===================================================================================
+//===================================================================================
+// Adds to the count of inbound telemetry bytes for the current stats period.
 void GsSessionCore::addInboundTelemetryBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_periodic_stats.in_tlm_size += bytes;
 }
 
+//===================================================================================
+//===================================================================================
+// Adds to the count of outbound telemetry bytes for the current stats period.
 void GsSessionCore::addOutboundTelemetryBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_periodic_stats.out_tlm_size += bytes;
 }
 
+//===================================================================================
+//===================================================================================
+// Adds to the total received bytes counters for the current stats period.
 void GsSessionCore::addReceivedBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -510,6 +663,9 @@ void GsSessionCore::addReceivedBytes(size_t bytes)
     m_total_data10 += bytes;
 }
 
+//===================================================================================
+//===================================================================================
+// Atomically returns and resets the periodic stats snapshot.
 PeriodicStatsSnapshot GsSessionCore::consumePeriodicStats()
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -518,6 +674,9 @@ PeriodicStatsSnapshot GsSessionCore::consumePeriodicStats()
     return snapshot;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the data rate in KB accumulated since the last call, clamped to 255, and resets the counter.
 uint8_t GsSessionCore::consumeDataRateSample()
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -530,6 +689,9 @@ uint8_t GsSessionCore::consumeDataRateSample()
     return static_cast<uint8_t>(sample);
 }
 
+//===================================================================================
+//===================================================================================
+// Records a partially lost frame (some parts missing) into frame stats.
 void GsSessionCore::onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue_usage)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -541,6 +703,9 @@ void GsSessionCore::onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue
     m_frame_stats.queue_usage_stats.add(queue_usage);
 }
 
+//===================================================================================
+//===================================================================================
+// Records one or more wholly lost frames into frame stats.
 void GsSessionCore::onLostWholeFrames(int lost_whole_frames)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -552,6 +717,10 @@ void GsSessionCore::onLostWholeFrames(int lost_whole_frames)
     m_frame_stats.queue_usage_stats.addMultiple(0, lost_whole_frames);
 }
 
+//===================================================================================
+//===================================================================================
+// Records a successfully completed frame into frame stats, including FEC recovery,
+// part index, quality, queue usage, and inter-frame timing.
 void GsSessionCore::onCompletedFrame(bool restored_by_fec,
                                      uint8_t completed_part_index,
                                      uint8_t quality,
@@ -582,12 +751,18 @@ void GsSessionCore::onCompletedFrame(bool restored_by_fec,
     m_last_frame_completed_tp = now;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a thread-safe copy of the current frame stats state.
 FrameStatsState GsSessionCore::copyFrameStats() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_frame_stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns and resets the count of lost frames accumulated since the last call.
 int GsSessionCore::consumeLostFrameCount()
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -596,28 +771,43 @@ int GsSessionCore::consumeLostFrameCount()
     return lost;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a mutable reference to the frame stats state.
 FrameStatsState& GsSessionCore::frameStats()
 {
     return m_frame_stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a const reference to the frame stats state.
 const FrameStatsState& GsSessionCore::frameStats() const
 {
     return m_frame_stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the device ID of the currently connected air unit.
 uint16_t GsSessionCore::connectedAirDeviceId() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_connected_air_device_id;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns true if a config packet has been received and the session is established.
 bool GsSessionCore::gotConfigPacket() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_got_config_packet;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns true if a config packet has been accepted but not yet promoted to active.
 bool GsSessionCore::acceptConfigPacket() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);

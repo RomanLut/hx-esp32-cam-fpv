@@ -52,6 +52,9 @@ IOSDFontStorage* s_OSDFontStorage = nullptr;
 RecordingsStorage* s_recordingsStorage = nullptr;
 FlightOSD s_flightOSD;
 
+//===================================================================================
+//===================================================================================
+// Application entry point. Initializes platform services and starts the Linux bootstrap.
 int main(int argc, const char* argv[])
 {
     s_RuntimePlatformServices = &getLinuxRuntimePlatformServices();

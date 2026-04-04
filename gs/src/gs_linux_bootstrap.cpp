@@ -23,6 +23,9 @@
 namespace
 {
 
+//===================================================================================
+//===================================================================================
+// Prints command-line usage help to stdout and returns 0.
 int printLinuxHelp()
 {
     printf("gs -option val -option val\n");
@@ -42,6 +45,9 @@ int printLinuxHelp()
     return 0;
 }
 
+//===================================================================================
+//===================================================================================
+// Parses command-line arguments and applies them to rx/tx descriptors and config.
 void parseLinuxArgs(int argc,
                       const char* argv[],
                       gs::core::RXDescriptor& rx_descriptor,
@@ -152,6 +158,10 @@ void parseLinuxArgs(int argc,
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Resolves interfaces, applies settings, and initializes HAL, transport, and storage.
+// Returns 1 on success, 0 or -1 on failure.
 int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
                             gs::core::TXDescriptor& tx_descriptor,
                             Ground2Air_Config_Packet& config)
@@ -229,6 +239,10 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
 
 } // namespace
 
+//===================================================================================
+//===================================================================================
+// Entry point for the Linux ground station: loads settings, parses args,
+// initializes hardware and transport, then runs the runtime loop.
 int runLinuxBootstrap(int argc, const char* argv[])
 {
     if (!ensureLinuxSingleInstance())

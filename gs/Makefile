@@ -20,7 +20,6 @@ SRCS := src/main.cpp \
 	src/gs_linux_recordings_storage.cpp \
 	src/gs_linux_render_helpers.cpp \
 	src/gs_linux_runtime_loop.cpp \
-	src/gs_linux_run_loop.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
 	src/gs_linux_udp_broadcast.cpp \

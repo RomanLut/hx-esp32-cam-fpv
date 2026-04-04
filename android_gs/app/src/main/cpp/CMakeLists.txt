@@ -57,6 +57,7 @@ add_library(android_gs_core SHARED
     ../../../../../components/common/packets.cpp
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
+    ../../../../../components/common/hx_mavlink_parser.cpp
 )
 
 set_source_files_properties(

@@ -1,5 +1,7 @@
 #include "utils.h"
 
+#include <fcntl.h>
+#include <unistd.h>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -7,6 +9,20 @@
 
 static bool _isRadxaZeroChecked = false;
 static bool _isRadxaZero = false;
+
+//===================================================================================
+//===================================================================================
+// Configures stdin to non-blocking mode so the main loop can poll for input
+// without stalling.
+void setupNonBlockingInput()
+{
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+}
 
 //======================================================
 //======================================================
