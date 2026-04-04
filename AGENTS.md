@@ -18,3 +18,4 @@ code definition comment rule:
   `//===================================================================================`
   `//===================================================================================`
 - after these two lines, add a short description comment explaining what it does
+- all comments must be in English

@@ -19,11 +19,17 @@
 
 static const char* GS_PID_FILE = "/tmp/esp32_cam_fpv_gs.pid";
 
+//===================================================================================
+//===================================================================================
+// Removes PID file from previous application run
 void cleanupLinuxSingleInstancePidFile()
 {
     unlink(GS_PID_FILE);
 }
 
+//===================================================================================
+//===================================================================================
+// Reads PID of running GS instance from file
 static pid_t readRunningInstancePid()
 {
     std::ifstream pid_file(GS_PID_FILE);
@@ -32,6 +38,9 @@ static pid_t readRunningInstancePid()
     return pid;
 }
 
+//===================================================================================
+//===================================================================================
+// Waits for process with given PID to exit within specified timeout
 static bool waitForProcessExit(pid_t pid, std::chrono::milliseconds timeout)
 {
     const auto deadline = Clock::now() + timeout;
@@ -49,6 +58,9 @@ static bool waitForProcessExit(pid_t pid, std::chrono::milliseconds timeout)
     return kill(pid, 0) != 0 && errno == ESRCH;
 }
 
+//===================================================================================
+//===================================================================================
+// Ensures only one GS instance is running on the system
 bool ensureLinuxSingleInstance()
 {
     const pid_t current_pid = getpid();
@@ -85,6 +97,9 @@ bool ensureLinuxSingleInstance()
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Executes shell command and returns output as string
 static std::string execCommand(const char* cmd)
 {
     std::array<char, 128> buffer;
@@ -103,6 +118,9 @@ static std::string execCommand(const char* cmd)
     return result;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns lowercased copy of input string
 static std::string toLowerCopy(const std::string& str)
 {
     std::string lower_str = str;
@@ -110,6 +128,9 @@ static std::string toLowerCopy(const std::string& str)
     return lower_str;
 }
 
+//===================================================================================
+//===================================================================================
+// Parses airmon-ng output and returns list of supported wifi interfaces
 static std::vector<std::string> getInterfacesWithChipset(const std::string& output)
 {
     std::istringstream iss(output);
@@ -139,12 +160,18 @@ static std::vector<std::string> getInterfacesWithChipset(const std::string& outp
     return interfaces;
 }
 
+//===================================================================================
+//===================================================================================
+// Scans system for available RX wifi interfaces
 void findLinuxRXInterfacesEx(gs::core::RXDescriptor& rx_descriptor)
 {
     std::string output = execCommand("sudo airmon-ng");
     rx_descriptor.interfaces = getInterfacesWithChipset(output);
 }
 
+//===================================================================================
+//===================================================================================
+// Scans for RX wifi interfaces with retries and initialization wait
 bool findLinuxRXInterfaces(gs::core::RXDescriptor& rx_descriptor)
 {
     rx_descriptor.interfaces.clear();
@@ -182,6 +209,9 @@ bool findLinuxRXInterfaces(gs::core::RXDescriptor& rx_descriptor)
     return rx_descriptor.interfaces.size() != 0;
 }
 
+//===================================================================================
+//===================================================================================
+// Generates unique device identifier based on machine-id
 uint16_t generateLinuxDeviceId()
 {
     std::ifstream file("/etc/machine-id");

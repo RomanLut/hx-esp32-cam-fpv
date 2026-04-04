@@ -37,15 +37,6 @@ Video_Decoder s_decoder;
 static LinuxSerialTelemetry s_linuxSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_linuxSerialTelemetry;
 std::string serialPortName = "";
-
-/* This prints an "Assertion failed" message and aborts.  */
-void __assert_fail(const char* __assertion, const char* __file, unsigned int __line, const char* __function)
-{
-    printf("assert: %s:%d: %s: %s", __file, __line, __function, __assertion);
-    fflush(stdout);
-    //    abort();
-}
-
 bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
