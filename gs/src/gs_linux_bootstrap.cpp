@@ -200,7 +200,7 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
     tx_descriptor.coding_n = 3;
     tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
 
-    init_uart();
+    g_serialTelemetry->init(serialPortName);
 
 #ifndef WRITE_RAW_MJPEG_STREAM
     prepAviBuffers();

@@ -549,7 +549,7 @@ bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor
     pcap.pcap = pcap_create(interface.c_str(), pcap.error_buffer);
     if (pcap.pcap == nullptr)
     {
-        LOGE("Unable to open interface {}: {}", interface, pcap_geterr(pcap.pcap));
+        LOGE("Unable to open interface {}: {}", interface, pcap.error_buffer);
         return false;
     }
     if (pcap_set_snaplen(pcap.pcap, 1800) < 0)
@@ -566,9 +566,9 @@ bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor
     {
         if (pcap_set_rfmon(pcap.pcap, 1) < 0)
         {
-            LOGE("Error setting pcap_set_rfmon: {}", pcap_geterr(pcap.pcap));
-            LOGE("Try running with -sm 1 flag\n");
-            return false;
+                LOGE("Error setting pcap_set_rfmon: {}", pcap_geterr(pcap.pcap));
+                LOGE("Try running with -sm 1 flag\n");
+                return false;
         }
     }
     if (pcap_set_timeout(pcap.pcap, -1) < 0)

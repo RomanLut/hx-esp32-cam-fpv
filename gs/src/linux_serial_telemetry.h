@@ -2,6 +2,8 @@
 
 #include "ISerialTelemetry.h"
 
+//===================================================================================
+//===================================================================================
 class LinuxSerialTelemetry : public ISerialTelemetry
 {
 public:
@@ -13,5 +15,7 @@ public:
     void write(const uint8_t* data, size_t size) override;
 
 private:
+    static std::string resolveSerialPortName(const std::string& port_name);
+
     int m_fd = -1;
 };

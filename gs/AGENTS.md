@@ -1,5 +1,9 @@
 to build project: make -j4
 
+building locally in WSL:
+- build command: `wsl -e bash -c "cd /mnt/d/Github/esp32-cam-fpv/esp32-cam-fpv/gs && make -j4 2>&1"`
+- Android build command: `cd android_gs && ./gradlew assembleDebug`
+
 code formatting:
 brackets {} are always placed on the next line
 

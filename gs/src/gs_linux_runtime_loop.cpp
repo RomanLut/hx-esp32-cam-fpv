@@ -275,19 +275,3 @@ int runLinuxRuntimeLoop(char* argv[])
     return 0;
 }
 
-bool init_uart()
-{
-    if (serialPortName.empty())
-    {
-        if (access("/dev/ttyUSB0", F_OK) == 0)
-        {
-            serialPortName = "/dev/ttyUSB0";
-        }
-        else
-        {
-            serialPortName = isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
-        }
-    }
-
-    return g_serialTelemetry->init(serialPortName);
-}
