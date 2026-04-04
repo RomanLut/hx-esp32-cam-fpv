@@ -1,7 +1,7 @@
 #include "osd_menu.h"
 
 #include "Comms.h"
-#include "frame_packets_debug.h"
+#include "shared/frame_packets_debug.h"
 #include "flight_osd.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_config.h"

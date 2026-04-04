@@ -9,7 +9,7 @@
 #include "PI_HAL.h"
 #include "cpu_temp.h"
 #include "flight_osd.h"
-#include "frame_packets_debug.h"
+#include "shared/frame_packets_debug.h"
 #include "gpio_buttons.h"
 #include "gs_linux_render_helpers.h"
 #include "gs_linux_run_loop.h"

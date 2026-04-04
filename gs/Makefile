@@ -67,7 +67,7 @@ SRCS := src/main.cpp \
 	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \
-	src/frame_packets_debug.cpp 
+	../components_gs/shared/frame_packets_debug.cpp
 	
 
 SRCS += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp

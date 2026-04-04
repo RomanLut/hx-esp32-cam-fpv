@@ -16,7 +16,7 @@
 #include "gs_linux_runtime.h"
 #include "gs_stats.h"
 #include "packets.h"
-#include "frame_packets_debug.h"
+#include "shared/frame_packets_debug.h"
 
 //#define DEBUG_PCAP
 

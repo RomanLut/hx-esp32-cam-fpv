@@ -2,7 +2,7 @@
 
 #include "avi.h"
 #include "flight_osd.h"
-#include "frame_packets_debug.h"
+#include "shared/frame_packets_debug.h"
 #include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_core.h"
