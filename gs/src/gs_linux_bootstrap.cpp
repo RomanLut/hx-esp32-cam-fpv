@@ -18,6 +18,7 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
 #include "gs_linux_socket.h"
+#include "gs_udp_broadcast.h"
 #include "utils/utils.h"
 
 namespace
@@ -97,7 +98,7 @@ void parseLinuxArgs(int argc,
         else if (temp == "-p")
         {
             check_argval_int("port");
-            s_groundstation_config.socket_fd = udp_socket_init(std::string("127.0.0.1"), std::stoi(next));
+            g_gsUDPBroadcast->init(std::string("127.0.0.1"), std::stoi(next));
             i++;
         }
         else if (temp == "-rx")

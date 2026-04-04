@@ -10,6 +10,7 @@
 #include "jpeg_parser.h"
 #include "Log.h"
 #include "gs_linux_socket.h"
+#include "gs_udp_broadcast.h"
 
 void logInvalidLinuxSessionEvent(const gs::core::SessionEvent& event, uint32_t current_frame_index)
 {
@@ -54,9 +55,9 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
         s_recordingsStorage->writeVideoFrame(video_frame_data, video_frame->data.size());
     }
 
-    if (s_groundstation_config.socket_fd > 0)
+    if (g_gsUDPBroadcast && g_gsUDPBroadcast->isOpen())
     {
-        send_data_to_udp(s_groundstation_config.socket_fd, video_frame_data, video_frame->data.size());
+        g_gsUDPBroadcast->sendVideoFrame(video_frame_data, completed_frame.size);
     }
 }
 

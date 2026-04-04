@@ -32,6 +32,7 @@ object NativeCore {
     ): Boolean
     external fun stopUdpClient(handle: Long)
     external fun isUdpClientRunning(handle: Long): Boolean
+    external fun setVideoUdpOutput(handle: Long, addr: String, port: Int): Boolean
     external fun getLastEventKind(handle: Long): Int
     external fun getScreenAspectRatio(handle: Long): Int
     external fun isVrModeEnabled(handle: Long): Boolean

@@ -21,6 +21,8 @@
 #include "gs_runtime_state.h"
 #include "ISerialTelemetry.h"
 #include "linux_serial_telemetry.h"
+#include "gs_udp_broadcast.h"
+#include "gs_linux_udp_broadcast.h"
 
 /*
 
@@ -36,6 +38,9 @@ Video_Decoder s_decoder;
 
 static LinuxSerialTelemetry s_linuxSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_linuxSerialTelemetry;
+
+static LinuxGSUDPBroadcast s_linuxGSUDPBroadcast;
+IGSUDPBroadcast* g_gsUDPBroadcast = &s_linuxGSUDPBroadcast;
 std::string serialPortName = "";
 bool bRestart = false;
 bool bRestartRequired = false;

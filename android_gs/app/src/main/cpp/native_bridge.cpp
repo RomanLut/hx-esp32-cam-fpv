@@ -63,9 +63,14 @@
 #include "ISerialTelemetry.h"
 #include "android_serial_telemetry.h"
 #include "gs_runtime_core.h"
+#include "gs_udp_broadcast.h"
+#include "android_udp_broadcast.h"
 
 static AndroidSerialTelemetry s_androidSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
+
+static AndroidGSUDPBroadcast s_androidGSUDPBroadcast;
+IGSUDPBroadcast* g_gsUDPBroadcast = &s_androidGSUDPBroadcast;
 
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;
 IOSDFontStorage* s_OSDFontStorage = nullptr;
@@ -661,6 +666,11 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                     {
                         handle.jpeg_decoder.submitJpeg(completed_frame.frame_data,
                                                        completed_frame.frame_index);
+                        if (g_gsUDPBroadcast && g_gsUDPBroadcast->isOpen())
+                        {
+                            g_gsUDPBroadcast->sendVideoFrame(completed_frame.data,
+                                                             completed_frame.size);
+                        }
                     }
                 },
                 [&](const ProcessedTelemetryEvent&, const TelemetryDispatchDecision& telemetry_decision)
@@ -1201,6 +1211,29 @@ Java_com_esp32camfpv_androidgs_NativeCore_stopUdpClient(JNIEnv* /* env */,
     }
 
     native_handle->stopUdpClient();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
+                                                            jobject /* thiz */,
+                                                            jlong /* handle */,
+                                                            jstring addr,
+                                                            jint port)
+{
+    const std::string addr_str = fromJString(env, addr);
+    if (addr_str.empty() || port <= 0)
+    {
+        return JNI_FALSE;
+    }
+
+    const bool ok = g_gsUDPBroadcast->init(addr_str, static_cast<int>(port));
+    __android_log_print(ANDROID_LOG_INFO,
+                        kNativeLogTag,
+                        "setVideoUdpOutput addr=%s port=%d ok=%d",
+                        addr_str.c_str(),
+                        static_cast<int>(port),
+                        ok ? 1 : 0);
+    return ok ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

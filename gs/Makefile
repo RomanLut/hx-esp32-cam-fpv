@@ -23,6 +23,7 @@ SRCS := src/main.cpp \
 	src/gs_linux_run_loop.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
+	src/gs_linux_udp_broadcast.cpp \
 	../components_gs/shared/gs_runtime_ui.cpp \
 	../components_gs/shared/gs_runtime_aux_flow.cpp \
 	../components_gs/shared/gs_runtime_config.cpp \

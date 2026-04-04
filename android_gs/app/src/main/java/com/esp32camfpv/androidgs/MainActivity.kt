@@ -121,6 +121,7 @@ private fun AndroidGsApp(
         withContext(Dispatchers.Default) {
             refreshNativeState()
             NativeCore.startUdpClient(nativeHandle)
+            NativeCore.setVideoUdpOutput(nativeHandle, "127.0.0.1", 5600)
         }
     }
 
