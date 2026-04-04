@@ -338,23 +338,34 @@ void GsSessionCore::appendTelemetryBytes(size_t bytes)
 
 //===================================================================================
 //===================================================================================
+// Writes outbound telemetry payload to serial and records the byte count.
+void GsSessionCore::dispatchOutboundTelemetry(const uint8_t* payload, size_t payload_size)
+{
+    if (payload == nullptr || payload_size == 0 || !g_serialTelemetry->isOpen())
+    {
+        return;
+    }
+    g_serialTelemetry->write(payload, payload_size);
+}
+
+//===================================================================================
+//===================================================================================
 // Reads incoming serial telemetry bytes, parses MAVLink RC packets to detect RC input,
 // updates RC period stats, and flushes the outbound telemetry packet if needed.
-void GsSessionCore::processIncomingTelemetry(ISerialTelemetry& serial,
-                                             HXMavlinkParser& mavlink_parser,
+void GsSessionCore::processIncomingTelemetry(HXMavlinkParser& mavlink_parser,
                                              uint16_t gs_device_id,
                                              ITransport& transport,
                                              std::mutex& gs_stats_mutex,
                                              GSStats& gs_stats)
 {
-    if (!serial.isOpen())
+    if (!g_serialTelemetry->isOpen())
     {
         return;
     }
 
     const int frb = static_cast<int>(telemetryFreeBytes());
     uint8_t* payload_write_ptr = telemetryPayloadWritePtr();
-    int n = serial.read(payload_write_ptr, frb);
+    int n = g_serialTelemetry->read(payload_write_ptr, frb);
 
     bool gotRCPacket = false;
 
@@ -379,7 +390,6 @@ void GsSessionCore::processIncomingTelemetry(ISerialTelemetry& serial,
         }
 
         appendTelemetryBytes(n);
-        addInboundTelemetryBytes(n);
     }
 
     flushTelemetryIfNeeded(gotRCPacket, Clock::now(), gs_device_id, transport);
@@ -429,6 +439,7 @@ void GsSessionCore::flushTelemetryIfNeeded(bool got_rc_packet,
     }
     protocol::prepareTelemetryPacket(packet, buffered_size, connected_air_device_id, gs_device_id);
     transport.send(&packet, packet.size, true);
+    addOutboundTelemetryBytes(packet.size);
     addSentPackets(1);
 }
 
@@ -526,21 +537,6 @@ Ground2Air_Config_Packet GsSessionCore::copyConfigPacket() const
     return m_config_packet;
 }
 
-//===================================================================================
-//===================================================================================
-// Returns a reference to the data packet mutex for external locking.
-std::mutex& GsSessionCore::dataPacketMutex()
-{
-    return m_data_packet_mutex;
-}
-
-//===================================================================================
-//===================================================================================
-// Returns a reference to the outbound data packet.
-Ground2Air_Data_Packet& GsSessionCore::dataPacket()
-{
-    return m_data_packet;
-}
 
 //===================================================================================
 //===================================================================================
@@ -637,7 +633,7 @@ void GsSessionCore::addSentPackets(size_t count)
 
 //===================================================================================
 //===================================================================================
-// Adds to the count of inbound telemetry bytes for the current stats period.
+// Adds to the count of inbound (air->gs) telemetry bytes for the current stats period.
 void GsSessionCore::addInboundTelemetryBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -646,7 +642,7 @@ void GsSessionCore::addInboundTelemetryBytes(size_t bytes)
 
 //===================================================================================
 //===================================================================================
-// Adds to the count of outbound telemetry bytes for the current stats period.
+// Adds to the count of outbound (gs->air) telemetry bytes for the current stats period.
 void GsSessionCore::addOutboundTelemetryBytes(size_t bytes)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);

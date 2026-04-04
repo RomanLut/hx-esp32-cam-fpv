@@ -130,7 +130,7 @@ void comms_thread_proc()
 
         g_CPUTemp.process();
 
-        s_runtimeCore.session.processIncomingTelemetry(*g_serialTelemetry, mavlinkParserIn, s_groundstation_config.deviceId, s_transport, s_gs_stats_mutex, s_gs_stats);
+        s_runtimeCore.session.processIncomingTelemetry(mavlinkParserIn, s_groundstation_config.deviceId, s_transport, s_gs_stats_mutex, s_gs_stats);
 
         do
         {
@@ -173,10 +173,6 @@ void comms_thread_proc()
                     [&, restoredByFEC](const ProcessedVideoEvent&, const VideoDispatchDecision& video_decision)
                     {
                         handleLinuxVideoDispatch(video_decision);
-                    },
-                    [&](const ProcessedTelemetryEvent&, const TelemetryDispatchDecision& telemetry_decision)
-                    {
-                        handleLinuxTelemetryDispatch(telemetry_decision);
                     },
                     [&](const ProcessedOsdEvent&, const OsdDispatchDecision& osd_decision)
                     {

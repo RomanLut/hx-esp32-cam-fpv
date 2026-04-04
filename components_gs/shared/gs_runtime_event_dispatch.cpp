@@ -11,12 +11,6 @@ void dispatchProcessedRuntimeEvent(const ProcessedRuntimeEvent& event,
             dispatch.on_video(event.video, event.video_decision);
         }
         break;
-    case gs::core::SessionEventKind::TelemetryPayload:
-        if (dispatch.on_telemetry)
-        {
-            dispatch.on_telemetry(event.telemetry, event.telemetry_decision);
-        }
-        break;
     case gs::core::SessionEventKind::OsdUpdate:
         if (dispatch.on_osd)
         {

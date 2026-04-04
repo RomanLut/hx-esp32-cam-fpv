@@ -7,7 +7,6 @@
 struct RuntimeEventDispatch
 {
     std::function<void(const ProcessedVideoEvent&, const VideoDispatchDecision&)> on_video;
-    std::function<void(const ProcessedTelemetryEvent&, const TelemetryDispatchDecision&)> on_telemetry;
     std::function<void(const ProcessedOsdEvent&, const OsdDispatchDecision&)> on_osd;
 };
 

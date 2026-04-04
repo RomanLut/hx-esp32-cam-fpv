@@ -10,7 +10,6 @@
 #include "packets.h"
 #include "stats.h"
 
-class ISerialTelemetry;
 class HXMavlinkParser;
 struct GSStats;
 
@@ -101,8 +100,8 @@ struct LinkStatusSnapshot
 struct PeriodicStatsSnapshot
 {
     size_t sent_count = 0;
-    size_t in_tlm_size = 0;
-    size_t out_tlm_size = 0;
+    size_t in_tlm_size = 0;   //air->gs telemetry
+    size_t out_tlm_size = 0;    //gs->air telemetry
     size_t total_data = 0;
     int received_completed_frames = 0;
     int restored_completed_frames = 0;
@@ -163,8 +162,8 @@ public:
     size_t telemetryFreeBytes() const;
     uint8_t* telemetryPayloadWritePtr();
     void appendTelemetryBytes(size_t bytes);
-    void processIncomingTelemetry(ISerialTelemetry& serial,
-                                  HXMavlinkParser& mavlink_parser,
+    void dispatchOutboundTelemetry(const uint8_t* payload, size_t payload_size);
+    void processIncomingTelemetry(HXMavlinkParser& mavlink_parser,
                                   uint16_t gs_device_id,
                                   ITransport& transport,
                                   std::mutex& gs_stats_mutex,
@@ -181,8 +180,6 @@ public:
 
     Ground2Air_Config_Packet copyConfigPacket() const;
 
-    std::mutex& dataPacketMutex();
-    Ground2Air_Data_Packet& dataPacket();
 
     AirStats& lastAirStats();
     const AirStats& lastAirStats() const;

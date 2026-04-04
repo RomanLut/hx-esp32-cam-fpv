@@ -673,10 +673,6 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                         }
                     }
                 },
-                [&](const ProcessedTelemetryEvent&, const TelemetryDispatchDecision& telemetry_decision)
-                {
-                    s_runtimeCore.session.addInboundTelemetryBytes(telemetry_decision.inbound_bytes);
-                },
                 [&](const ProcessedOsdEvent&, const OsdDispatchDecision& osd_decision)
                 {
                     if (osd_decision.should_apply && !s_runtimeCore.frame_packets_debug.isOn())

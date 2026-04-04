@@ -72,11 +72,3 @@ void handleLinuxOsdDispatch(const OsdDispatchDecision& osd_decision)
     s_last_stats_packet_tp = Clock::now();
 }
 
-void handleLinuxTelemetryDispatch(const TelemetryDispatchDecision& telemetry_decision)
-{
-    if (g_serialTelemetry->isOpen() && telemetry_decision.has_payload)
-    {
-        g_serialTelemetry->write(telemetry_decision.payload, telemetry_decision.payload_size);
-        s_runtimeCore.session.addOutboundTelemetryBytes(telemetry_decision.payload_size);
-    }
-}
