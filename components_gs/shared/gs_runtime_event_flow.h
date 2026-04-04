@@ -12,10 +12,8 @@ struct ProcessedRuntimeEvent
 {
     gs::core::SessionEventKind kind = gs::core::SessionEventKind::Ignore;
     ProcessedVideoEvent video = {};
-    ProcessedTelemetryEvent telemetry = {};
     ProcessedOsdEvent osd = {};
     VideoDispatchDecision video_decision = {};
-    TelemetryDispatchDecision telemetry_decision = {};
     OsdDispatchDecision osd_decision = {};
 };
 

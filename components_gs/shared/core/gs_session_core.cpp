@@ -500,7 +500,11 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
             return result;
         }
         addReceivedBytes(transport_packet_size);
-        result.kind = SessionEventKind::TelemetryPayload;
+        {
+            const uint8_t* payload = reinterpret_cast<const uint8_t*>(result.telemetry.packet) + sizeof(Air2Ground_Data_Packet);
+            dispatchOutboundTelemetry(payload, result.telemetry.payload_size);
+            addInboundTelemetryBytes(result.telemetry.payload_size);
+        }
         return result;
 
     case SessionPacketType::OSD:

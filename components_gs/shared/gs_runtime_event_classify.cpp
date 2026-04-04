@@ -16,7 +16,6 @@ RuntimeEventClass classifyRuntimeEvent(gs::core::SessionEventKind kind)
     case gs::core::SessionEventKind::ConfigReceived:
         return RuntimeEventClass::Config;
     case gs::core::SessionEventKind::VideoPacket:
-    case gs::core::SessionEventKind::TelemetryPayload:
     case gs::core::SessionEventKind::OsdUpdate:
         return RuntimeEventClass::RuntimeData;
     default:

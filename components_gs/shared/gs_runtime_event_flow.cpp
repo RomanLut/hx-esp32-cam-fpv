@@ -19,12 +19,6 @@ ProcessedRuntimeEvent processRuntimeSessionEvent(const gs::core::SessionEvent& e
                                                 now);
         result.video_decision = buildVideoDispatchDecision(result.video, restored_by_fec);
         break;
-    case gs::core::SessionEventKind::TelemetryPayload:
-        result.telemetry = processTelemetrySessionEvent(event);
-        result.telemetry_decision = buildTelemetryDispatchDecision(result.telemetry);
-        session.dispatchOutboundTelemetry(result.telemetry_decision.payload, result.telemetry_decision.payload_size);
-        session.addInboundTelemetryBytes(result.telemetry_decision.inbound_bytes);
-        break;
     case gs::core::SessionEventKind::OsdUpdate:
         result.osd = processOsdSessionEvent(event);
         result.osd_decision = buildOsdDispatchDecision(result.osd, false);

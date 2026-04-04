@@ -31,7 +31,6 @@ enum class SessionEventKind
     ConnectAccepted,
     ConfigReceived,
     VideoPacket,
-    TelemetryPayload,
     OsdUpdate,
     InvalidVideoPacket,
     InvalidTelemetryPacket,
