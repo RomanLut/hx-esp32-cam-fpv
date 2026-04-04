@@ -45,7 +45,6 @@ std::string serialPortName = "";
 bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
-bool s_debugWindowVisisble = false;
 
 Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
 IRuntimePlatformServices* s_RuntimePlatformServices = nullptr;

@@ -16,11 +16,6 @@
 
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
-    if (ImGui::IsKeyPressed(ImGuiKey_D) || ImGui::IsKeyPressed(ImGuiKey_MouseMiddle))
-    {
-        s_debugWindowVisisble = !s_debugWindowVisisble;
-    }
-
     if (ImGui::IsKeyPressed(ImGuiKey_S))
     {
         s_groundstation_config.stats = !s_groundstation_config.stats;
@@ -69,6 +64,16 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
     {
         config.camera.resolution = gs::menu::getDefaultCyclingResolution();
         commitGround2AirConfig(config);
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_1, false))
+    {
+        config.misc.profile1_btn++;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_2, false))
+    {
+        config.misc.profile2_btn++;
     }
 
     if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_R, false))

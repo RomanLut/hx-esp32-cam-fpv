@@ -13,7 +13,6 @@
 
 extern bool bRestartRequired;
 extern bool bRestart;
-extern bool s_debugWindowVisisble;
 extern Clock::time_point s_change_channel;
 extern Clock::time_point restart_tp;
 

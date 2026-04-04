@@ -9,10 +9,10 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
+#include "gs_runtime_frame_ui.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_top_overlay_shared.h"
-#include "gs_runtime_ui.h"
 #include "imgui.h"
 #include "osd_menu.h"
 #include "gs_linux_runtime.h"
@@ -27,25 +27,6 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
 {
     auto render_callback = [&config, argv]
     {
-        RuntimeUiContext runtime_ui = {};
-        runtime_ui.wifi_channel_apply_pending = s_change_channel < Clock::now() + std::chrono::hours(1);
-        runtime_ui.restart_required = bRestartRequired;
-        runtime_ui.osd_font_error = s_flightOSD.isFontError();
-        runtime_ui.applyWifiChannel = []
-        (Ground2Air_Config_Packet& config)
-        {
-            applyWifiChannelToSession(config);
-            s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
-        };
-        runtime_ui.toggleGsRecording = []
-        {
-            s_recordingsStorage->toggleRecording(0, 0, "debug_ui_button");
-        };
-        runtime_ui.requestRestart = []
-        {
-            restart_tp = Clock::now();
-            bRestart = true;
-        };
         RuntimeFrameUiState frame_ui = {};
         frame_ui.overlay_stats_visible = s_groundstation_config.stats;
         gs::stats::FullscreenStatsSnapshot overlay_stats_snapshot = {};
@@ -116,7 +97,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.gs_record = s_recordingsStorage->isRecording();
             input.hq_dvr = isHQDVRMode();
             input.gs_temp_celsius = s_RuntimePlatformServices->getCpuTemperatureCelsius();
-            input.osd_font_error = runtime_ui.osd_font_error;
+            input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
             input.now = Clock::now();
 
@@ -141,11 +122,6 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         {
             g_osdMenu.draw(config);
         });
-
-        if (s_debugWindowVisisble)
-        {
-            drawRuntimeDebugSettingsWindow(config, runtime_ui);
-        }
 
         handleRenderHotkeys(config, ignore_keys);
         processPendingRestart(argv);

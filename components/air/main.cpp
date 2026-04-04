@@ -1446,6 +1446,8 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
         ESP_ERROR_CHECK(set_wifi_channel(channel));
     }
 
+    s_video_target_frame_dt = 0;
+/*
     if ( processSetting( "Target FPS", dst.camera.fps_limit, src.camera.fps_limit, NULL) )
     {
         if (src.camera.fps_limit == 0)
@@ -1453,7 +1455,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
         else
             s_video_target_frame_dt = 1000000 / src.camera.fps_limit;
     }
-
+*/
     processSetting( "AutostartRecord", dst.misc.autostartRecord, src.misc.autostartRecord, "autostartRecord" );
 
     processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );

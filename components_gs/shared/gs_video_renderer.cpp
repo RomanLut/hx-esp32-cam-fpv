@@ -9,7 +9,6 @@
 #include "core/stats_panel_shared.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
-#include "gs_runtime_ui.h"
 #include "gs_video_layout_shared.h"
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
