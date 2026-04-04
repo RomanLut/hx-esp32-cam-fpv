@@ -60,7 +60,6 @@ SRCS := src/main.cpp \
 	../components/common/hx_mavlink_parser.cpp \
 	../components_gs/fmt/format.cc \
 	../components_gs/fmt/os.cc \
-	src/gs_linux_socket.cpp \
 	src/gs_linux_runtime_platform_services.cpp \
 	src/gs_linux_osd_font_storage.cpp \
 	src/linux_serial_telemetry.cpp \

@@ -9,7 +9,6 @@
 #include "gs_stats.h"
 #include "jpeg_parser.h"
 #include "Log.h"
-#include "gs_linux_socket.h"
 #include "gs_udp_broadcast.h"
 
 void logInvalidLinuxSessionEvent(const gs::core::SessionEvent& event, uint32_t current_frame_index)

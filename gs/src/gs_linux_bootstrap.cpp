@@ -17,7 +17,6 @@
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
-#include "gs_linux_socket.h"
 #include "gs_udp_broadcast.h"
 #include "utils/utils.h"
 

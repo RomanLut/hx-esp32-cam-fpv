@@ -14,5 +14,8 @@ public:
     void sendVideoFrame(const uint8_t* data, size_t size) override;
 
 private:
+    static int udp_socket_init(const std::string& addr, int port);
+    static void send_data_to_udp(int socketfd, uint8_t* buf, int len);
+
     int m_socket_fd = -1;
 };

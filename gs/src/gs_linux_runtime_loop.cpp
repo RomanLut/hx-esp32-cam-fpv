@@ -25,7 +25,6 @@
 #include "imgui_impl_opengl3.h"
 #include "jpeg_parser.h"
 #include "main.h"
-#include "gs_linux_socket.h"
 #include "util.h"
 #include "utils/utils.h"
 
