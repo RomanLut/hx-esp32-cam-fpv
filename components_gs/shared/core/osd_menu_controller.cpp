@@ -47,6 +47,33 @@ const char* getVisibleScreenAspectLabel(const gs::menu::IOSDMenuPlatform& platfo
     return modes[clamp(static_cast<int>(ratio), 0, 5)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a menu activate action.
+bool isMenuItemActivatePressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
+           ImGui::IsKeyPressed(ImGuiKey_RightArrow);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a menu open action.
+bool isMenuOpenPressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a right mouse click.
+bool isMenuRightClickPressed()
+{
+    return ImGui::IsMouseClicked(ImGuiMouseButton_Right, false);
+}
+
 }
 
 //=======================================================
@@ -122,7 +149,7 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
 
     if (m_draw_mode == DrawMode::Interactive)
     {
-        res = focused && ( ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_RightArrow)) && !this->keyHandled;
+        res = focused && isMenuItemActivatePressed() && !this->keyHandled;
     }
 
     if (gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused))
@@ -167,7 +194,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
     if (!this->visible) 
     {
-        if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_MouseRight))
+        if (isMenuOpenPressed() || isMenuRightClickPressed())
         {
             this->visible = true;
             this->menuId = OSDMenuId::Main;
@@ -616,8 +643,11 @@ bool OSDMenuController::exitKeyPressed()
         return false;
     }
 
-    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_R) || ImGui::IsKeyPressed(ImGuiKey_G) 
-    || ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_MouseRight);
+    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_R) ||
+           ImGui::IsKeyPressed(ImGuiKey_G) ||
+           ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+           isMenuRightClickPressed();
 }
 
 //=======================================================

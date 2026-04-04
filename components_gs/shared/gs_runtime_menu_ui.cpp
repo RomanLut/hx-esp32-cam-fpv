@@ -24,6 +24,10 @@ void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void
 {
     if (!state.visible)
     {
+        if (draw_menu)
+        {
+            draw_menu();
+        }
         return;
     }
 

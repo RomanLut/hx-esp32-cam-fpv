@@ -423,11 +423,11 @@ static void button_pressed(int uinput_fd, int pin, bool long_press)
   const Mapping *m = get_mapping(pin);
   if (m)
   {
-    unsigned int *keys = long_press ? m->keys_double : m->keys_single;
-    if (keys != NULL)
-    {
-      emit_sequence(uinput_fd, keys);
-    }
+      unsigned int *keys = long_press ? m->keys_double : m->keys_single;
+      if (keys != NULL)
+      {
+        emit_sequence(uinput_fd, keys);
+      }
   }
   else
   {

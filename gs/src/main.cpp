@@ -49,7 +49,6 @@ void __assert_fail(const char* __assertion, const char* __file, unsigned int __l
 bool bRestart = false;
 bool bRestartRequired = false;
 Clock::time_point restart_tp;
-
 bool s_debugWindowVisisble = false;
 
 Clock::time_point s_change_channel = Clock::now() + std::chrono::hours(10000);
@@ -65,4 +64,3 @@ int main(int argc, const char* argv[])
     s_recordingsStorage = &getLinuxRecordingsStorage();
     return runLinuxBootstrap(argc, argv);
 }
-
