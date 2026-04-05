@@ -1,7 +1,6 @@
 #include "osd_menu.h"
 
 #include "Comms.h"
-#include "shared/frame_packets_debug.h"
 #include "flight_osd.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_config.h"
@@ -46,15 +45,6 @@ public:
         performAirUnpair(s_groundstation_config.deviceId, s_transport);
     }
 
-    void captureFrameDebug(bool until_loss) override
-    {
-        g_framePacketsDebug.captureFrame(until_loss);
-    }
-
-    void disableFrameDebug() override
-    {
-        g_framePacketsDebug.off();
-    }
 };
 
 LinuxOSDMenuPlatform s_menu_platform;

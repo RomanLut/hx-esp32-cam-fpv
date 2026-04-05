@@ -1,5 +1,6 @@
 #include "android_osd_font_storage.h"
 
+#include <algorithm>
 #include <android/asset_manager.h>
 
 #include "android_jni_shared.h"
@@ -13,12 +14,6 @@ namespace
 // Owns the Android OSD font storage implementation for explicit runtime binding.
 AndroidOSDFontStorage s_android_osd_font_storage;
 
-//===================================================================================
-//===================================================================================
-// Lists the built-in Android OSD fonts packaged with the application assets.
-const std::vector<std::string> kAndroidBuiltinOsdFontNames = {
-    s_flightOSD.defaultFontName(),
-};
 } // namespace
 
 //===================================================================================
@@ -34,7 +29,35 @@ IOSDFontStorage& getAndroidOsdFontStorage()
 // Returns the Android OSD font list exposed by the packaged APK assets.
 const std::vector<std::string>& AndroidOSDFontStorage::osdFontsList() const
 {
-    return kAndroidBuiltinOsdFontNames;
+    static std::vector<std::string> s_font_names;
+    static bool s_initialized = false;
+    if (!s_initialized)
+    {
+        s_initialized = true;
+        AAssetManager* asset_manager = androidGetAssetManager();
+        if (asset_manager != nullptr)
+        {
+            AAssetDir* dir = AAssetManager_openDir(asset_manager, "osd_fonts");
+            if (dir != nullptr)
+            {
+                while (const char* filename = AAssetDir_getNextFileName(dir))
+                {
+                    const std::string name(filename);
+                    if (name.size() > 4 && name.substr(name.size() - 4) == ".png")
+                    {
+                        s_font_names.push_back(name);
+                    }
+                }
+                AAssetDir_close(dir);
+                std::sort(s_font_names.begin(), s_font_names.end());
+            }
+        }
+        if (s_font_names.empty())
+        {
+            s_font_names.push_back(s_flightOSD.defaultFontName());
+        }
+    }
+    return s_font_names;
 }
 
 //===================================================================================

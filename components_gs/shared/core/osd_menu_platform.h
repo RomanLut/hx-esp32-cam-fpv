@@ -27,8 +27,6 @@ public:
     virtual void airUnpair() = 0;
     virtual bool supportsCustomScreenAspectModes() const { return true; }
 
-    virtual void captureFrameDebug(bool until_loss) = 0;
-    virtual void disableFrameDebug() = 0;
 };
 
 } // namespace gs::menu

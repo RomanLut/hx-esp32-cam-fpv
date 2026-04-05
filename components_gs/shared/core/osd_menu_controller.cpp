@@ -1,5 +1,6 @@
 #include "core/osd_menu_controller.h"
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include "util.h"
 #include "flight_osd.h"
@@ -8,6 +9,7 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
+#include "frame_packets_debug.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
@@ -1553,7 +1555,7 @@ void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "Draw packets##1");
         if ( this->drawMenuItem( buf, 1) )
         {
-            m_platform.captureFrameDebug(false);
+            g_framePacketsDebug.captureFrame(false);
         }
     }
 
@@ -1562,7 +1564,7 @@ void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "Draw packets till loss##2");
         if ( this->drawMenuItem( buf, 2) )
         {
-            m_platform.captureFrameDebug(true);
+            g_framePacketsDebug.captureFrame(true);
         }
     }
 
@@ -1571,7 +1573,7 @@ void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "Hide packets##3");
         if ( this->drawMenuItem( buf, 3) )
         {
-            m_platform.disableFrameDebug();
+            g_framePacketsDebug.off();
         }
     }
 

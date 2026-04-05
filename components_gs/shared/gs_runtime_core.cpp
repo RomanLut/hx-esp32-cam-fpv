@@ -93,7 +93,6 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
     last_periodic_stats_tp = Clock::now();
     last_data_rate_sample_tp = Clock::now();
     last_udp_packets_sample = 0;
-    gs_packet_debug_mode = 0;
     exit_requested = false;
     osd_font_reload_pending = false;
 }
@@ -106,11 +105,15 @@ void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_po
 
 //===================================================================================
 //===================================================================================
+// Marks the current OSD font selection for lazy reload on the render thread.
 void pendingOsdFontReload()
 {
     s_runtimeCore.osd_font_reload_pending = true;
 }
 
+//===================================================================================
+//===================================================================================
+// Resolves the selected OSD font name without forcing GL texture creation on this thread.
 void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
 {
     if (!s_runtimeCore.osd_font_reload_pending)
@@ -123,11 +126,8 @@ void processPendingOsdFontReload(const Ground2Air_Config_Packet& config)
         s_flightOSD.findFontNameByCrc(font_names, config.misc.osdFontCRC32);
     if (!font_name.has_value())
     {
-        s_flightOSD.loadFont(s_flightOSD.defaultFontName().c_str());
+        s_flightOSD.setFontName(s_flightOSD.defaultFontName());
         return;
     }
-    if (s_flightOSD.currentFontName() != *font_name)
-    {
-        s_flightOSD.loadFont(font_name->c_str());
-    }
+    s_flightOSD.setFontName(*font_name);
 }

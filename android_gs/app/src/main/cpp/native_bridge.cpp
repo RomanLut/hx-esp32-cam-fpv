@@ -161,9 +161,6 @@ public:
     void applyGSTxPower(Ground2Air_Config_Packet& config) override;
     void airUnpair() override;
     bool supportsCustomScreenAspectModes() const override;
-    void captureFrameDebug(bool until_loss) override;
-    void disableFrameDebug() override;
-
 private:
     NativeHandle& m_handle;
 };
@@ -257,18 +254,6 @@ void AndroidMenuPlatform::airUnpair()
 bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
 {
     return false;
-}
-
-void AndroidMenuPlatform::captureFrameDebug(bool until_loss)
-{
-    s_runtimeCore.gs_packet_debug_mode = until_loss ? 2 : 1;
-    g_framePacketsDebug.captureFrame(until_loss);
-}
-
-void AndroidMenuPlatform::disableFrameDebug()
-{
-    s_runtimeCore.gs_packet_debug_mode = 0;
-    g_framePacketsDebug.off();
 }
 
 jlong toJLong(NativeHandle* handle)
@@ -1352,7 +1337,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.throughput_mbps = native_handle->udp_throughput_mbps;
         sync_params.udp_video_fps = native_handle->udp_video_fps;
         sync_params.is_dual = false;
-        sync_params.osd_font_error = false;
+        sync_params.osd_font_error = s_flightOSD.isFontError();
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);

@@ -70,7 +70,6 @@ struct GsRuntimeCore
     Clock::time_point last_periodic_stats_tp = Clock::now();
     Clock::time_point last_data_rate_sample_tp = Clock::now();
     uint64_t last_udp_packets_sample = 0;
-    int gs_packet_debug_mode = 0;
     bool exit_requested = false;
     bool osd_font_reload_pending = false;
 };

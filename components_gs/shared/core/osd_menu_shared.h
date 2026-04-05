@@ -57,7 +57,6 @@ struct MenuActionContext
     int* gs_gpio_keys_layout = nullptr;
     int* gs_osd_font_index = nullptr;
     bool* show_stats = nullptr;
-    int* gs_packet_debug_mode = nullptr;
     bool* exit_requested = nullptr;
     std::vector<std::string> transport_interfaces;
     std::function<void()> on_commit_config;
