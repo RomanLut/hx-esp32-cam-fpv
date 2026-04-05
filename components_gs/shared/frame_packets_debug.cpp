@@ -6,23 +6,26 @@
 
 FramePacketsDebug g_framePacketsDebug;
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Constructor for FramePacketsDebug class. Initializes the debug state by clearing data and turning off debugging.
 FramePacketsDebug::FramePacketsDebug()
 {
     clear();
     off();
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Clears the flight OSD debug information.
 void FramePacketsDebug::clear()
 {
     s_flightOSD.clear();
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Clears the internal debug buffer.
 void FramePacketsDebug::clearBuffer()
 {
     for (auto& row : m_buffer)
@@ -38,16 +41,18 @@ void FramePacketsDebug::clearBuffer()
     }
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Turns off frame packet debugging.
 void FramePacketsDebug::off()
 {
     m_state = State::Off;
     clearBuffer();
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Starts capturing frame packet debug information. If broken is true, captures broken frames.
 void FramePacketsDebug::captureFrame(bool broken)
 {
     clearBuffer();
@@ -56,22 +61,25 @@ void FramePacketsDebug::captureFrame(bool broken)
     m_retry_count = 0;
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Checks if frame packet debugging is currently enabled.
 bool FramePacketsDebug::isOn() const
 {
     return m_state != State::Off;
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Checks if the debug information is currently visible on screen.
 bool FramePacketsDebug::isVisible() const
 {
     return m_state == State::Showing;
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Handles the reception of a frame packet for debugging purposes.
 void FramePacketsDebug::onPacketReceived(uint32_t block_index, uint32_t packet_index, const uint8_t* data, bool old)
 {
     if (m_state == State::Off)
@@ -118,8 +126,9 @@ void FramePacketsDebug::onPacketReceived(uint32_t block_index, uint32_t packet_i
     }
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Handles the restoration of a frame packet for debugging purposes.
 void FramePacketsDebug::onPacketRestored(uint32_t block_index, uint32_t packet_index, const uint8_t* data)
 {
     if (m_state != State::Capture || block_index < m_first_block || packet_index >= kPacketsPerBlock)
@@ -138,15 +147,17 @@ void FramePacketsDebug::onPacketRestored(uint32_t block_index, uint32_t packet_i
     m_buffer[row][col][packet_index] = getPacketTypeChar(packet_index, data);
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Copies the debug buffer to the On-Screen Display.
 void FramePacketsDebug::copyToOSD()
 {
     s_flightOSD.setLowChars(m_osd_chars[0].data());
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Builds the On-Screen Display characters for debug visualization.
 bool FramePacketsDebug::buildOsdChars()
 {
     for (auto& row : m_osd_chars)
@@ -197,8 +208,9 @@ bool FramePacketsDebug::buildOsdChars()
     return has_lost_block;
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Returns a character representing the type of the packet for debug visualization.
 uint8_t FramePacketsDebug::getPacketTypeChar(uint32_t packet_index, const uint8_t* data) const
 {
     if (packet_index >= FPD_FEK_K)
