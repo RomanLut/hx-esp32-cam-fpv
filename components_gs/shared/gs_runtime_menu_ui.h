@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-
 struct RuntimeMenuUiState
 {
     bool visible = false;
@@ -11,4 +9,5 @@ struct RuntimeMenuUiState
     float surface_height = 0.0f;
 };
 
-void drawRuntimeMenuUi(const RuntimeMenuUiState& state, const std::function<void()>& draw_menu);
+void drawRuntimeMenuOverlay(const RuntimeMenuUiState& state);
+void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state);

@@ -938,15 +938,14 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
     m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
     m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
-    drawRuntimeMenuUi(menu_ui, [this]
+    drawRuntimeMenuOverlay(menu_ui);
+    if (m_menu_mutex != nullptr)
     {
-        if (m_menu_mutex != nullptr)
-        {
-            std::lock_guard<std::mutex> menu_lock(*m_menu_mutex);
-            m_menu_controller->draw(*m_menu_config);
-            m_menu_visible = m_menu_controller->isVisible();
-        }
-    });
+        std::lock_guard<std::mutex> menu_lock(*m_menu_mutex);
+        m_menu_controller->draw(*m_menu_config);
+        m_menu_visible = m_menu_controller->isVisible();
+    }
+    drawRuntimeMenuTouchNav(menu_ui);
 }
 
 void GsVideoRenderer::drawOverlayLocked()

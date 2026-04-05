@@ -318,10 +318,9 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         menu_ui.touch_nav_enabled = false;
         menu_ui.surface_width = ImGui::GetIO().DisplaySize.x;
         menu_ui.surface_height = ImGui::GetIO().DisplaySize.y;
-        drawRuntimeMenuUi(menu_ui, [&config]
-        {
-            g_osdMenu.draw(config);
-        });
+        drawRuntimeMenuOverlay(menu_ui);
+        g_osdMenu.draw(config);
+        drawRuntimeMenuTouchNav(menu_ui);
 
         handleRenderHotkeys(config, ignore_keys);
         processPendingRestart(argv);
