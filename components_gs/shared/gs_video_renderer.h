@@ -23,15 +23,24 @@ namespace gs::menu
 class OSDMenuController;
 }
 
+//===================================================================================
+//===================================================================================
+// Main class for rendering video frames with overlays and menus in Ground Station.
 class GsVideoRenderer
 {
 public:
+//===================================================================================
+//===================================================================================
+// Enumeration of supported pixel formats for video frames.
     enum class PixelFormat
     {
         RGB24,
         RGB565,
     };
 
+//===================================================================================
+//===================================================================================
+// Enumeration of possible menu action types.
     enum class MenuActionKind
     {
         None,
@@ -43,12 +52,18 @@ public:
         Activate,
     };
 
+//===================================================================================
+//===================================================================================
+// Structure representing a menu action with its kind and associated item index.
     struct MenuAction
     {
         MenuActionKind kind = MenuActionKind::None;
         int item_index = -1;
     };
 
+//===================================================================================
+//===================================================================================
+// Structure representing a rectangular area with position and dimensions.
     struct Rect
     {
         float x = 0.0f;
@@ -57,6 +72,9 @@ public:
         float height = 0.0f;
     };
 
+//===================================================================================
+//===================================================================================
+// Structure holding the current state of the overlay menu display.
     struct OverlayMenuState
     {
         bool visible = false;
@@ -68,6 +86,9 @@ public:
         std::string footer;
     };
 
+//===================================================================================
+//===================================================================================
+// Structure containing performance statistics for the video renderer.
     struct RendererStats
     {
         uint32_t upload_count = 0;
@@ -81,7 +102,13 @@ public:
         uint32_t swap_max_ms = 0;
     };
 
+//===================================================================================
+//===================================================================================
+// Constructor for GsVideoRenderer. Initializes the video rendering system.
     GsVideoRenderer();
+//===================================================================================
+//===================================================================================
+// Destructor for GsVideoRenderer. Cleans up rendering resources.
     ~GsVideoRenderer();
 
     void setSurface(void* surface_handle);
@@ -129,6 +156,9 @@ public:
     RendererStats consumeStats();
 
 private:
+//===================================================================================
+//===================================================================================
+// Structure holding data for a frame pending rendering.
     struct PendingFrame
     {
         std::vector<uint8_t> pixels;

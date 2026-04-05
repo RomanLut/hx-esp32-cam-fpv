@@ -46,6 +46,9 @@ void main() {
 }
 )";
 
+//===================================================================================
+//===================================================================================
+// Compiles an OpenGL shader from source code and returns the shader handle.
 GLuint compileShader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);
@@ -68,6 +71,9 @@ GLuint compileShader(GLenum type, const char* source)
     return 0;
 }
 
+//===================================================================================
+//===================================================================================
+// Creates and links an OpenGL shader program for video rendering.
 GLuint createProgram()
 {
     const GLuint vertex = compileShader(GL_VERTEX_SHADER, kVertexShader);
@@ -157,11 +163,17 @@ void logGlError(const char* stage)
 
 } // namespace
 
+//===================================================================================
+//===================================================================================
+// Constructor for GsVideoRenderer. Initializes the video rendering system.
 GsVideoRenderer::GsVideoRenderer()
     : m_thread(&GsVideoRenderer::run, this)
 {
 }
 
+//===================================================================================
+//===================================================================================
+// Destructor for GsVideoRenderer. Cleans up rendering resources.
 GsVideoRenderer::~GsVideoRenderer()
 {
     {
@@ -178,6 +190,9 @@ GsVideoRenderer::~GsVideoRenderer()
     releaseFrameRefLocked(m_pending_frame);
 }
 
+//===================================================================================
+//===================================================================================
+// Sets the rendering surface handle for the video renderer.
 void GsVideoRenderer::setSurface(void* surface_handle)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -186,11 +201,17 @@ void GsVideoRenderer::setSurface(void* surface_handle)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Clears the current rendering surface.
 void GsVideoRenderer::clearSurface()
 {
     setSurface(nullptr);
 }
 
+//===================================================================================
+//===================================================================================
+// Submits a video frame for rendering using raw pixel data.
 void GsVideoRenderer::submitFrame(const uint8_t* pixels,
                                        size_t size,
                                        int width,
@@ -231,6 +252,9 @@ void GsVideoRenderer::submitFrame(const uint8_t* pixels,
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Submits a video frame for rendering with external frame reference management.
 void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
                                        const uint8_t* pixels,
                                        size_t size,
@@ -280,6 +304,9 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Submits a video frame for rendering by moving pixel data ownership.
 void GsVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
                                        int width,
                                        int height,
@@ -319,6 +346,9 @@ void GsVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Sets the screen mode for video rendering.
 void GsVideoRenderer::setScreenMode(int screen_mode)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -327,6 +357,9 @@ void GsVideoRenderer::setScreenMode(int screen_mode)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Enables or disables vertical sync for rendering.
 void GsVideoRenderer::setVsync(bool enabled)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -334,6 +367,9 @@ void GsVideoRenderer::setVsync(bool enabled)
     m_surface_backend.setVsync(enabled);
 }
 
+//===================================================================================
+//===================================================================================
+// Enables or disables VR mode for video rendering.
 void GsVideoRenderer::setVrMode(bool enabled)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -342,6 +378,9 @@ void GsVideoRenderer::setVrMode(bool enabled)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Updates the flight OSD data for display.
 void GsVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
 {
     if (data == nullptr || size == 0)
@@ -355,6 +394,9 @@ void GsVideoRenderer::updateFlightOsd(const uint8_t* data, uint16_t size)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Clears the flight OSD display.
 void GsVideoRenderer::clearFlightOsd()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -363,6 +405,9 @@ void GsVideoRenderer::clearFlightOsd()
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Sets the font for flight OSD display.
 void GsVideoRenderer::setFlightOsdFont(const std::string& font_name)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -375,6 +420,9 @@ void GsVideoRenderer::setFlightOsdFont(const std::string& font_name)
 //===================================================================================
 //===================================================================================
 // Stores the top overlay payload separately from the frame UI state.
+//===================================================================================
+//===================================================================================
+// Sets the overlay input data for display.
 void GsVideoRenderer::setOverlayInput(const gs::imgui::TopOverlayData& overlay_input)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -386,6 +434,9 @@ void GsVideoRenderer::setOverlayInput(const gs::imgui::TopOverlayData& overlay_i
 //===================================================================================
 //===================================================================================
 // Stores the shared frame UI state for the renderer thread.
+//===================================================================================
+//===================================================================================
+// Sets the frame UI state for overlay rendering.
 void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -399,12 +450,18 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Sets the statistics snapshot for overlay display.
 void GsVideoRenderer::setOverlayStatsSnapshot(const gs::stats::FullscreenStatsSnapshot& snapshot)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_overlay_stats_snapshot = snapshot;
 }
 
+//===================================================================================
+//===================================================================================
+// Binds the menu controller and configuration for OSD menu handling.
 void GsVideoRenderer::setMenuBinding(gs::menu::OSDMenuController* menu_controller,
                                           Ground2Air_Config_Packet* config_packet,
                                           std::mutex* menu_mutex)
@@ -415,18 +472,27 @@ void GsVideoRenderer::setMenuBinding(gs::menu::OSDMenuController* menu_controlle
     m_menu_mutex = menu_mutex;
 }
 
+//===================================================================================
+//===================================================================================
+// Sets the footer text for the menu display.
 void GsVideoRenderer::setMenuFooter(const std::string& footer)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_menu_footer = footer;
 }
 
+//===================================================================================
+//===================================================================================
+// Checks if the OSD menu is currently visible.
 bool GsVideoRenderer::isMenuVisible()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_menu_visible;
 }
 
+//===================================================================================
+//===================================================================================
+// Queues a request to open the OSD menu.
 void GsVideoRenderer::queueMenuOpen()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -436,6 +502,9 @@ void GsVideoRenderer::queueMenuOpen()
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Queues a request to close the OSD menu.
 void GsVideoRenderer::queueMenuClose()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -445,6 +514,9 @@ void GsVideoRenderer::queueMenuClose()
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Queues a mouse tap event at the specified coordinates.
 void GsVideoRenderer::queueMouseTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -455,6 +527,9 @@ void GsVideoRenderer::queueMouseTap(float x, float y)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Queues a key press event for menu navigation.
 void GsVideoRenderer::queueKeyPress(ImGuiKey key)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -462,6 +537,9 @@ void GsVideoRenderer::queueKeyPress(ImGuiKey key)
     m_cv.notify_all();
 }
 
+//===================================================================================
+//===================================================================================
+// Dispatches a tap event and returns the resulting menu action.
 GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -503,6 +581,9 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     return {};
 }
 
+//===================================================================================
+//===================================================================================
+// Consumes and returns the current renderer performance statistics.
 GsVideoRenderer::RendererStats GsVideoRenderer::consumeStats()
 {
     RendererStats stats;
@@ -526,6 +607,9 @@ GsVideoRenderer::RendererStats GsVideoRenderer::consumeStats()
     return stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Main rendering thread function that processes frames and handles rendering.
 void GsVideoRenderer::run()
 {
     std::unique_lock<std::mutex> lock(m_mutex);
@@ -615,6 +699,9 @@ void GsVideoRenderer::run()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Applies any pending surface changes in a thread-safe manner.
 void GsVideoRenderer::applyPendingSurfaceLocked()
 {
     destroyImGuiLocked();
@@ -676,6 +763,9 @@ void GsVideoRenderer::applyPendingSurfaceLocked()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Releases frame reference and external resources.
 void GsVideoRenderer::releaseFrameRefLocked(PendingFrame& frame)
 {
     frame.external_frame_ref.reset();
@@ -684,6 +774,9 @@ void GsVideoRenderer::releaseFrameRefLocked(PendingFrame& frame)
     frame.pixels.clear();
 }
 
+//===================================================================================
+//===================================================================================
+// Initializes the ImGui context for overlay rendering.
 bool GsVideoRenderer::initImGuiLocked()
 {
     IMGUI_CHECKVERSION();
@@ -717,6 +810,9 @@ bool GsVideoRenderer::initImGuiLocked()
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Destroys the ImGui context and cleans up resources.
 void GsVideoRenderer::destroyImGuiLocked()
 {
     if (m_imgui_context == nullptr)
@@ -730,6 +826,9 @@ void GsVideoRenderer::destroyImGuiLocked()
     m_imgui_context = nullptr;
 }
 
+//===================================================================================
+//===================================================================================
+// Uploads the current frame to GPU texture memory.
 void GsVideoRenderer::uploadFrameLocked()
 {
     if (m_locked_frame.pixels.empty() && m_locked_frame.external_pixels == nullptr)
@@ -774,6 +873,9 @@ void GsVideoRenderer::uploadFrameLocked()
     drawFrameLocked();
 }
 
+//===================================================================================
+//===================================================================================
+// Ensures that a suitable OpenGL texture is available for frame rendering.
 void GsVideoRenderer::ensureTextureLocked()
 {
     if (m_texture == 0 || m_frame_width <= 0 || m_frame_height <= 0)
@@ -807,6 +909,9 @@ void GsVideoRenderer::ensureTextureLocked()
     m_uploaded_pixel_format = m_locked_frame.pixel_format;
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a textured quad with specified position, size, and texture coordinates.
 void GsVideoRenderer::drawTexturedQuadLocked(float x,
                                                   float y,
                                                   float width,
@@ -843,6 +948,9 @@ void GsVideoRenderer::drawTexturedQuadLocked(float x,
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a colored rectangle at the specified position and size.
 void GsVideoRenderer::drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color)
 {
     drawTexturedQuadLocked(x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, m_white_texture, color);
@@ -850,6 +958,9 @@ void GsVideoRenderer::drawRectLocked(float x, float y, float width, float height
 
 
 
+//===================================================================================
+//===================================================================================
+// Draws the OSD menu overlay.
 void GsVideoRenderer::drawMenuLocked()
 {
     if (m_menu_controller == nullptr || m_menu_config == nullptr)
@@ -881,6 +992,9 @@ void GsVideoRenderer::drawMenuLocked()
     drawMenuImGuiLocked();
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the menu using ImGui rendering system.
 void GsVideoRenderer::drawMenuImGuiLocked()
 {
     if (m_imgui_context == nullptr || m_menu_controller == nullptr || m_menu_config == nullptr)
@@ -912,6 +1026,9 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     drawRuntimeMenuTouchNav(menu_ui);
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the statistics and flight overlay elements.
 void GsVideoRenderer::drawOverlayLocked()
 {
     if (m_imgui_context != nullptr)
@@ -983,6 +1100,9 @@ void GsVideoRenderer::drawOverlayLocked()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the current video frame to the screen.
 void GsVideoRenderer::drawFrameLocked()
 {
     if (m_surface_width <= 0 || m_surface_height <= 0)
