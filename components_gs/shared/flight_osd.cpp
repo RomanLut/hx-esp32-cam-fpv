@@ -1,8 +1,8 @@
 #include "flight_osd.h"
 
 #include <cstring>
-#include <cstdio>
 
+#include "Log.h"
 #include "lodepng.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
@@ -263,7 +263,7 @@ bool FlightOSD::ensureFont()
 
     if (!s_OSDFontStorage->loadOSDFontBytes(m_font_name, m_font_png))
     {
-        std::fprintf(stderr, "Failed to load OSD font bytes: %s\n", m_font_name.c_str());
+        LOGE("Failed to load OSD font bytes: {}", m_font_name);
         m_font_failed = true;
         return false;
     }
@@ -271,7 +271,7 @@ bool FlightOSD::ensureFont()
     m_font = new FontWalksnail(m_font_png.data(), m_font_png.size());
     if (m_font == nullptr || !m_font->loaded)
     {
-        std::fprintf(stderr, "Failed to create OSD font atlas: %s\n", m_font_name.c_str());
+        LOGE("Failed to create OSD font atlas: {}", m_font_name);
         delete m_font;
         m_font = nullptr;
         m_font_failed = true;

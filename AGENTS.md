@@ -19,3 +19,9 @@ code definition comment rule:
   `//===================================================================================`
 - after these two lines, add a short description comment explaining what it does
 - all comments must be in English
+
+components_gs logging rule:
+- in first-party `components_gs` code, always use shared `LOGD` / `LOGI` / `LOGW` / `LOGE` macros for logging
+- do not use `__android_log_print`, `printf`, `fprintf`, or ad-hoc logging macros in first-party `components_gs` code
+- if platform-specific logging behavior is needed, implement it inside `components_gs/shared/Log.h`, not at call sites
+- treat vendored third-party code under `components_gs/imgui`, `components_gs/fmt`, and similar imported libraries as exceptions unless explicitly asked to modify them

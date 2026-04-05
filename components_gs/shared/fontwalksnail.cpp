@@ -1,10 +1,10 @@
 #include "fontwalksnail.h"
 
+#include "Log.h"
 #include "imgui.h"
 #include "lodepng.h"
 #include "util.h"
 
-#include <cstdio>
 #include <GLES2/gl2.h>
 
 #include <cstring>
@@ -19,17 +19,6 @@
 
 namespace
 {
-
-void reportFontError(const char* message, const char* detail)
-{
-  std::fprintf(stderr, "FontWalksnail: %s (%s)\n", message, detail != nullptr ? detail : "");
-}
-
-void reportFontError(const char* message, unsigned int detail)
-{
-  std::fprintf(stderr, "FontWalksnail: %s (%u)\n", message, detail);
-}
-
 }
 
 //======================================================
@@ -45,7 +34,7 @@ FontWalksnail::FontWalksnail(const char* fileName)
   unsigned int error = lodepng_decode32_file(&image, &width, &height, fileName);
   if (error)
   {
-    reportFontError(lodepng_error_text(error), error);
+    LOGE("FontWalksnail: {} ({})", lodepng_error_text(error), error);
     return;
   }
 
@@ -68,7 +57,7 @@ FontWalksnail::FontWalksnail(const void* pngData, size_t pngSize)
                                         pngSize);
   if (error)
   {
-    reportFontError(lodepng_error_text(error), error);
+    LOGE("FontWalksnail: {} ({})", lodepng_error_text(error), error);
     return;
   }
 
@@ -148,7 +137,7 @@ void FontWalksnail::initFromDecodedImage(unsigned char* image,
 {
   if ((width != OSD_CHAR_WIDTH_24) && (width != OSD_CHAR_WIDTH_36))
   {
-    reportFontError("Unexpected image size", sourceName);
+    LOGE("FontWalksnail: {} ({})", "Unexpected image size", sourceName != nullptr ? sourceName : "");
     return;
   }
 
@@ -165,7 +154,7 @@ void FontWalksnail::initFromDecodedImage(unsigned char* image,
   if ((this->charWidth == OSD_CHAR_WIDTH_24 && this->charHeight != OSD_CHAR_HEIGHT_24) ||
       (this->charWidth == OSD_CHAR_WIDTH_36 && this->charHeight != OSD_CHAR_HEIGHT_36))
   {
-    reportFontError("Unexpected image size", sourceName);
+    LOGE("FontWalksnail: {} ({})", "Unexpected image size", sourceName != nullptr ? sourceName : "");
     return;
   }
 

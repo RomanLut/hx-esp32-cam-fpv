@@ -2,8 +2,8 @@
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
-#include <android/log.h>
 
+#include "Log.h"
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/stats_panel_shared.h"
@@ -23,7 +23,6 @@
 namespace
 {
 
-constexpr const char* kLogTag = "GsVideoRenderer";
 constexpr float kLinuxMenuFontGlobalScale = 2.0f;
 constexpr float kTouchNavLabelScale = 0.75f;
 
@@ -64,7 +63,7 @@ GLuint compileShader(GLenum type, const char* source)
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
     std::vector<char> log(static_cast<size_t>(std::max(log_length, 1)));
     glGetShaderInfoLog(shader, log_length, nullptr, log.data());
-    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Shader compile failed: %s", log.data());
+    LOGE("Shader compile failed: {}", log.data());
     glDeleteShader(shader);
     return 0;
 }
@@ -106,7 +105,7 @@ GLuint createProgram()
     glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
     std::vector<char> log(static_cast<size_t>(std::max(log_length, 1)));
     glGetProgramInfoLog(program, log_length, nullptr, log.data());
-    __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Program link failed: %s", log.data());
+    LOGE("Program link failed: {}", log.data());
     glDeleteProgram(program);
     return 0;
 }
@@ -152,7 +151,7 @@ void logGlError(const char* stage)
     const GLenum error = glGetError();
     if (error != GL_NO_ERROR)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "%s glError=0x%04x", stage, error);
+        LOGE("{} glError=0x{:04x}", stage, static_cast<unsigned int>(error));
     }
 }
 
@@ -468,55 +467,23 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_imgui_context == nullptr)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kLogTag,
-                            "dispatchTap ignored imgui=%p tap=(%.1f,%.1f)",
-                            m_imgui_context,
-                            x,
-                            y);
         return {};
     }
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kLogTag,
-                        "dispatchTap tap=(%.1f,%.1f) up=(%.1f,%.1f %.1fx%.1f) down=(%.1f,%.1f %.1fx%.1f) left=(%.1f,%.1f %.1fx%.1f) right=(%.1f,%.1f %.1fx%.1f)",
-                        x,
-                        y,
-                        m_nav_up_bounds.x,
-                        m_nav_up_bounds.y,
-                        m_nav_up_bounds.width,
-                        m_nav_up_bounds.height,
-                        m_nav_down_bounds.x,
-                        m_nav_down_bounds.y,
-                        m_nav_down_bounds.width,
-                        m_nav_down_bounds.height,
-                        m_nav_left_bounds.x,
-                        m_nav_left_bounds.y,
-                        m_nav_left_bounds.width,
-                        m_nav_left_bounds.height,
-                        m_nav_right_bounds.x,
-                        m_nav_right_bounds.y,
-                        m_nav_right_bounds.width,
-                        m_nav_right_bounds.height);
-
     if (pointInRect(x, y, m_nav_up_bounds))
     {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Up");
         return {MenuActionKind::Up, -1};
     }
     if (pointInRect(x, y, m_nav_down_bounds))
     {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Down");
         return {MenuActionKind::Down, -1};
     }
     if (pointInRect(x, y, m_nav_left_bounds))
     {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Back");
         return {MenuActionKind::Back, -1};
     }
     if (pointInRect(x, y, m_nav_right_bounds))
     {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Activate");
         return {MenuActionKind::Activate, -1};
     }
 
@@ -524,18 +491,15 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     {
         if (pointInRect(x, y, m_menu_item_bounds[index]))
         {
-            __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> SelectItem %d", static_cast<int>(index));
             return {MenuActionKind::SelectItem, static_cast<int>(index)};
         }
     }
 
     if (!pointInRect(x, y, m_menu_bounds))
     {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> Outside");
         return {MenuActionKind::Outside, -1};
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "dispatchTap -> None");
     return {};
 }
 
