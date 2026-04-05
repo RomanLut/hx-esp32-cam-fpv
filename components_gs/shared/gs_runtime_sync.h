@@ -51,11 +51,6 @@ struct RuntimeSyncState
     gs::stats::FullscreenStatsSnapshot overlay_stats_snapshot;
     std::string build_info;
     std::string osd_font_name;
-    bool has_frame_debug_osd = false;
-    std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS> frame_debug_osd = {};
-    bool has_flight_osd_update = false;
-    bool clear_flight_osd = false;
-    std::vector<uint8_t> flight_osd_data;
 };
 
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,

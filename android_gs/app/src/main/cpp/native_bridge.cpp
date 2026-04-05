@@ -35,7 +35,7 @@
 #include "crc.h"
 #include "lodepng.h"
 #include "core/gs_session_core.h"
-#include "core/frame_packets_debug_core.h"
+#include "frame_packets_debug.h"
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
@@ -43,7 +43,6 @@
 #include "flight_osd.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
-#include "gs_runtime_aux_flow.h"
 #include "gs_runtime_event_classify.h"
 #include "gs_runtime_event_pipeline.h"
 #include "gs_runtime_event_dispatch.h"
@@ -263,13 +262,13 @@ bool AndroidMenuPlatform::supportsCustomScreenAspectModes() const
 void AndroidMenuPlatform::captureFrameDebug(bool until_loss)
 {
     s_runtimeCore.gs_packet_debug_mode = until_loss ? 2 : 1;
-    s_runtimeCore.frame_packets_debug.captureFrame(until_loss);
+    g_framePacketsDebug.captureFrame(until_loss);
 }
 
 void AndroidMenuPlatform::disableFrameDebug()
 {
     s_runtimeCore.gs_packet_debug_mode = 0;
-    s_runtimeCore.frame_packets_debug.off();
+    g_framePacketsDebug.off();
 }
 
 jlong toJLong(NativeHandle* handle)
@@ -673,16 +672,6 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
                         }
                     }
                 },
-                [&](const ProcessedOsdEvent&, const OsdDispatchDecision& osd_decision)
-                {
-                    if (osd_decision.should_apply && !s_runtimeCore.frame_packets_debug.isOn())
-                    {
-                        s_runtimeCore.pending_flight_osd.assign(osd_decision.payload,
-                                                              osd_decision.payload + osd_decision.payload_size);
-                        s_runtimeCore.pending_flight_osd_dirty = true;
-                        s_runtimeCore.pending_flight_osd_clear = false;
-                    }
-                }
             }
         };
         processAndDispatchSessionEvent(processed_packet,
@@ -1368,19 +1357,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     processPendingOsdFontReload(s_runtimeCore.config_packet);
-    if (sync_state.clear_flight_osd)
-    {
-        native_handle->renderer.clearFlightOsd();
-    }
-    if (sync_state.has_flight_osd_update && !sync_state.flight_osd_data.empty())
-    {
-        native_handle->renderer.updateFlightOsd(sync_state.flight_osd_data.data(),
-                                                static_cast<uint16_t>(sync_state.flight_osd_data.size()));
-    }
-    if (sync_state.has_frame_debug_osd)
-    {
-        native_handle->renderer.setFlightOsdChars(sync_state.frame_debug_osd);
-    }
     native_handle->renderer.setOverlayInput(overlay_input);
     native_handle->renderer.setFrameUiState(sync_state.frame_ui_state);
     native_handle->renderer.setOverlayStatsSnapshot(sync_state.overlay_stats_snapshot);
@@ -1556,9 +1532,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     s_runtimeCore.last_video_part_index = 0;
     s_runtimeCore.last_video_last_part = 0;
     s_runtimeCore.last_video_payload_size = 0;
-    s_runtimeCore.pending_flight_osd.clear();
-    s_runtimeCore.pending_flight_osd_dirty = false;
-    s_runtimeCore.pending_flight_osd_clear = true;
     native_handle->menu_controller->close();
 }
 

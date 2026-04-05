@@ -10,7 +10,6 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/osd_menu_imgui_shared.cpp \
 	../components_gs/shared/core/stats_panel_shared.cpp \
 	../components_gs/shared/core/osd_menu_shared.cpp \
-	../components_gs/shared/core/frame_packets_debug_core.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
 	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_recordings_storage.cpp \
@@ -23,7 +22,6 @@ SRCS := src/main.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
 	src/gs_linux_udp_broadcast.cpp \
-	../components_gs/shared/gs_runtime_aux_flow.cpp \
 	../components_gs/shared/gs_runtime_config.cpp \
 	../components_gs/shared/gs_runtime_core.cpp \
 	../components_gs/shared/gs_runtime_event_classify.cpp \

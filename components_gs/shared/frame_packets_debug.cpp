@@ -1,20 +1,17 @@
-#include <string.h>
-
 #include "frame_packets_debug.h"
+
+#include <algorithm>
 
 #include "flight_osd.h"
 
 FramePacketsDebug g_framePacketsDebug;
 
-#define FPD_FEK_K   6
-#define FPD_FEK_N   12
-
 //======================================================
 //======================================================
 FramePacketsDebug::FramePacketsDebug()
 {
-    this->clear();
-    m_core.off();
+    clear();
+    off();
 }
 
 //======================================================
@@ -26,12 +23,98 @@ void FramePacketsDebug::clear()
 
 //======================================================
 //======================================================
+void FramePacketsDebug::clearBuffer()
+{
+    for (auto& row : m_buffer)
+    {
+        for (auto& block : row)
+        {
+            block.fill(kCharEmpty);
+        }
+    }
+    for (auto& row : m_osd_chars)
+    {
+        row.fill(0);
+    }
+}
+
+//======================================================
+//======================================================
+void FramePacketsDebug::off()
+{
+    m_state = State::Off;
+    clearBuffer();
+}
+
+//======================================================
+//======================================================
+void FramePacketsDebug::captureFrame(bool broken)
+{
+    clearBuffer();
+    m_state = State::SyncBlockStart;
+    m_need_broken = broken;
+    m_retry_count = 0;
+}
+
+//======================================================
+//======================================================
+bool FramePacketsDebug::isOn() const
+{
+    return m_state != State::Off;
+}
+
+//======================================================
+//======================================================
+bool FramePacketsDebug::isVisible() const
+{
+    return m_state == State::Showing;
+}
+
+//======================================================
+//======================================================
 void FramePacketsDebug::onPacketReceived(uint32_t block_index, uint32_t packet_index, const uint8_t* data, bool old)
 {
-    m_core.onPacketReceived(block_index, packet_index, data, old, FPD_FEK_K, FPD_FEK_N);
-    if (m_core.isVisible())
+    if (m_state == State::Off)
     {
+        return;
+    }
+
+    if (m_state == State::SyncBlockStart)
+    {
+        if (old)
+        {
+            return;
+        }
+        m_first_block = block_index + 1;
+        m_state = State::Capture;
+    }
+
+    if (m_state != State::Capture || block_index < m_first_block || packet_index >= kPacketsPerBlock)
+    {
+        return;
+    }
+
+    const uint32_t relative_block = block_index - m_first_block;
+    const uint32_t row = relative_block / kBlocksPerRow;
+    const uint32_t col = relative_block % kBlocksPerRow;
+    if (row >= kRows)
+    {
+        const bool has_lost_block = buildOsdChars();
+        m_state = State::Showing;
+        if (!has_lost_block && m_need_broken && m_retry_count < 100)
+        {
+            const int retry_count = m_retry_count + 1;
+            captureFrame(true);
+            m_retry_count = retry_count;
+        }
         copyToOSD();
+        return;
+    }
+
+    uint8_t& cell = m_buffer[row][col][packet_index];
+    if (cell == kCharEmpty)
+    {
+        cell = old ? kCharOldRejected : getPacketTypeChar(packet_index, data);
     }
 }
 
@@ -39,49 +122,116 @@ void FramePacketsDebug::onPacketReceived(uint32_t block_index, uint32_t packet_i
 //======================================================
 void FramePacketsDebug::onPacketRestored(uint32_t block_index, uint32_t packet_index, const uint8_t* data)
 {
-    m_core.onPacketRestored(block_index, packet_index, data, FPD_FEK_K);
-    if (m_core.isVisible())
+    if (m_state != State::Capture || block_index < m_first_block || packet_index >= kPacketsPerBlock)
     {
-        copyToOSD();
+        return;
     }
+
+    const uint32_t relative_block = block_index - m_first_block;
+    const uint32_t row = relative_block / kBlocksPerRow;
+    const uint32_t col = relative_block % kBlocksPerRow;
+    if (row >= kRows)
+    {
+        return;
+    }
+
+    m_buffer[row][col][packet_index] = getPacketTypeChar(packet_index, data);
 }
 
 //======================================================
 //======================================================
 void FramePacketsDebug::copyToOSD()
 {
-    s_flightOSD.clear();
-    const auto& chars = m_core.osdChars();
-    for (int row = 0; row < OSD_ROWS; row++)
+    s_flightOSD.setLowChars(m_osd_chars[0].data());
+}
+
+//======================================================
+//======================================================
+bool FramePacketsDebug::buildOsdChars()
+{
+    for (auto& row : m_osd_chars)
     {
-        for (int col = 0; col < OSD_COLS; col++)
+        row.fill(0);
+    }
+
+    bool has_lost_block = false;
+    const int packet_columns = std::min<int>(FPD_FEK_N > 0 ? FPD_FEK_N : kPacketsPerBlock, kPacketsPerBlock);
+
+    for (int row = 0; row < kRows; ++row)
+    {
+        int osd_col = 0;
+        for (int block = 0; block < kBlocksPerRow; ++block)
         {
-            const uint8_t c = chars[row][col];
-            if (c != 0)
+            int block_count = 0;
+            for (int packet = 0; packet < packet_columns; ++packet)
             {
-                s_flightOSD.setLowChar(row, col, c);
+                const uint8_t c = m_buffer[row][block][packet];
+                if (c != kCharEmpty && c != kCharOldRejected && c != kCharUnknown)
+                {
+                    block_count++;
+                }
+                if (osd_col < OSD_COLS)
+                {
+                    m_osd_chars[row][osd_col] = c;
+                }
+                ++osd_col;
+            }
+
+            if (osd_col < OSD_COLS)
+            {
+                if (block_count < FPD_FEK_K)
+                {
+                    has_lost_block = true;
+                    m_osd_chars[row][osd_col] = kCharBlockLost;
+                }
+                ++osd_col;
+            }
+
+            if (osd_col < OSD_COLS)
+            {
+                ++osd_col;
             }
         }
     }
+
+    return has_lost_block;
 }
 
 //======================================================
 //======================================================
-bool FramePacketsDebug::isOn()
+uint8_t FramePacketsDebug::getPacketTypeChar(uint32_t packet_index, const uint8_t* data) const
 {
-    return m_core.isOn();
-}
+    if (packet_index >= FPD_FEK_K)
+    {
+        return kCharFec;
+    }
 
-//======================================================
-//======================================================
-void FramePacketsDebug::off()
-{
-    m_core.off();
-}
+    if (data == nullptr)
+    {
+        return kCharUnknown;
+    }
 
-//======================================================
-//======================================================
-void FramePacketsDebug::captureFrame(bool broken)
-{
-    m_core.captureFrame(broken);
+    const auto* header = reinterpret_cast<const Air2Ground_Header*>(data);
+    if (header->type == Air2Ground_Header::Type::Video)
+    {
+        const auto* video = reinterpret_cast<const Air2Ground_Video_Packet*>(data);
+        if (video->part_index == 0)
+        {
+            return video->last_part == 1 ? kCharFrameSingle : kCharFrameStart;
+        }
+        return video->last_part == 1 ? kCharFrameEnd : kCharFramePart;
+    }
+    if (header->type == Air2Ground_Header::Type::Telemetry)
+    {
+        return kCharTelemetry;
+    }
+    if (header->type == Air2Ground_Header::Type::OSD)
+    {
+        return kCharOsd;
+    }
+    if (header->type == Air2Ground_Header::Type::Config)
+    {
+        return kCharConfig;
+    }
+    return kCharUnknown;
 }

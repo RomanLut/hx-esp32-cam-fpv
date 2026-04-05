@@ -6,6 +6,7 @@
 #include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_core.h"
+#include "gs_runtime_state.h"
 #include "gs_stats.h"
 #include "jpeg_parser.h"
 #include "Log.h"
@@ -60,15 +61,4 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
     }
 }
 
-void handleLinuxOsdDispatch(const OsdDispatchDecision& osd_decision)
-{
-    syncAirStatusGlobals();
-
-    if (osd_decision.should_apply && !g_framePacketsDebug.isOn())
-    {
-        s_flightOSD.update(osd_decision.payload, osd_decision.payload_size);
-    }
-
-    s_last_stats_packet_tp = Clock::now();
-}
 

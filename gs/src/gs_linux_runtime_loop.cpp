@@ -173,10 +173,6 @@ void comms_thread_proc()
                     [&, restoredByFEC](const ProcessedVideoEvent&, const VideoDispatchDecision& video_decision)
                     {
                         handleLinuxVideoDispatch(video_decision);
-                    },
-                    [&](const ProcessedOsdEvent&, const OsdDispatchDecision& osd_decision)
-                    {
-                        handleLinuxOsdDispatch(osd_decision);
                     }
                 }
             };

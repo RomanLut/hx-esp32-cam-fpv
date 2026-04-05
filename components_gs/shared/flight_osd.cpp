@@ -131,6 +131,7 @@ FlightOSD::~FlightOSD()
 // Clears the whole OSD character buffer.
 void FlightOSD::clear()
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     std::memset(&m_buffer, 0, OSD_BUFFER_SIZE);
 }
 
@@ -139,6 +140,7 @@ void FlightOSD::clear()
 // Updates the OSD character buffer from the packed incoming DisplayPort payload.
 void FlightOSD::update(const uint8_t* data, uint16_t size)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     bool high_bank = false;
     int count = 0;
     int osd_col = 0;
@@ -196,10 +198,12 @@ void FlightOSD::update(const uint8_t* data, uint16_t size)
 
 //===================================================================================
 //===================================================================================
-// Writes a single low-bank OSD character into the current buffer.
-void FlightOSD::setLowChar(int row, int col, uint8_t value)
+// Copies a flat OSD_ROWS*OSD_COLS array into screenLow and clears screenHigh.
+void FlightOSD::setLowChars(const uint8_t* low_chars)
 {
-    m_buffer.screenLow[row][col] = value;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::memcpy(m_buffer.screenLow, low_chars, OSD_ROWS * OSD_COLS);
+    std::memset(m_buffer.screenHigh, 0, OSD_ROWS * OSD_COLS_H);
 }
 
 //===================================================================================
@@ -293,7 +297,13 @@ void FlightOSD::draw(int surface_width,
         return;
     }
 
-    auto draw_in_rect = [this, frame_width, frame_height, screen_mode](int origin_x, int width, int height)
+    OSDBuffer buffer_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        buffer_snapshot = m_buffer;
+    }
+
+    auto draw_in_rect = [this, &buffer_snapshot, frame_width, frame_height, screen_mode](int origin_x, int width, int height)
     {
         int x1 = origin_x;
         int y1 = 0;
@@ -302,7 +312,7 @@ void FlightOSD::draw(int surface_width,
         computeVideoBounds(width, height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
         x1 += origin_x;
         x2 += origin_x;
-        drawInRect(x1, y1, x2, y2);
+        drawInRect(buffer_snapshot, x1, y1, x2, y2);
     };
 
     if (vr_mode)
@@ -318,13 +328,13 @@ void FlightOSD::draw(int surface_width,
     int x2 = surface_width;
     int y2 = surface_height;
     computeVideoBounds(surface_width, surface_height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
-    drawInRect(x1, y1, x2, y2);
+    drawInRect(buffer_snapshot, x1, y1, x2, y2);
 }
 
 //===================================================================================
 //===================================================================================
 // Draws the buffered OSD characters into the supplied output rectangle.
-void FlightOSD::drawInRect(int x1, int y1, int x2, int y2)
+void FlightOSD::drawInRect(const OSDBuffer& buffer, int x1, int y1, int x2, int y2)
 {
     const float screen_width = static_cast<float>(x2 - x1 + 1);
     const float screen_height = static_cast<float>(y2 - y1 + 1);
@@ -343,8 +353,8 @@ void FlightOSD::drawInRect(int x1, int y1, int x2, int y2)
         int col8 = 0;
         for (int col = 0; col < OSD_COLS; col++)
         {
-            uint16_t c = m_buffer.screenLow[row][col];
-            if ((m_buffer.screenHigh[row][col8] & mask) != 0)
+            uint16_t c = buffer.screenLow[row][col];
+            if ((buffer.screenHigh[row][col8] & mask) != 0)
             {
                 c += 0x100;
             }

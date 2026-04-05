@@ -3,21 +3,8 @@
 void dispatchProcessedRuntimeEvent(const ProcessedRuntimeEvent& event,
                                   const RuntimeEventDispatch& dispatch)
 {
-    switch (event.kind)
+    if (event.kind == gs::core::SessionEventKind::VideoPacket && dispatch.on_video)
     {
-    case gs::core::SessionEventKind::VideoPacket:
-        if (dispatch.on_video)
-        {
-            dispatch.on_video(event.video, event.video_decision);
-        }
-        break;
-    case gs::core::SessionEventKind::OsdUpdate:
-        if (dispatch.on_osd)
-        {
-            dispatch.on_osd(event.osd, event.osd_decision);
-        }
-        break;
-    default:
-        break;
+        dispatch.on_video(event.video, event.video_decision);
     }
 }

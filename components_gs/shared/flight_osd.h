@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,7 +25,7 @@ public:
 
     void clear();
     void update(const uint8_t* data, uint16_t size);
-    void setLowChar(int row, int col, uint8_t value);
+    void setLowChars(const uint8_t* low_chars);
 
     void setFontName(const std::string& font_name);
     bool loadFont(const char* font_name);
@@ -41,8 +42,9 @@ public:
 private:
     bool ensureFont();
     void drawChar(uint16_t code, int x, int y, int width, int height);
-    void drawInRect(int x1, int y1, int x2, int y2);
+    void drawInRect(const OSDBuffer& buffer, int x1, int y1, int x2, int y2);
 
+    mutable std::mutex m_mutex;
     OSDBuffer m_buffer = {};
     std::string m_font_name;
     std::vector<unsigned char> m_font_png;

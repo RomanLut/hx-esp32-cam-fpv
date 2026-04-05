@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "frame_packets_debug.h"
+
 GsRuntimeCore::GsRuntimeCore(uint16_t gs_device_id_value,
                              TGroundstationConfig& groundstation_config_ref,
                              Ground2Air_Config_Packet& config_packet_ref)
@@ -32,21 +34,11 @@ GsRuntimeCore::GsRuntimeCore(uint16_t gs_device_id_value,
     FecBlockDecoder::Callbacks callbacks = {};
     callbacks.on_packet_received = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data, bool old)
     {
-        frame_packets_debug.onPacketReceived(
-            block_index,
-            packet_index,
-            packet_data,
-            old,
-            config_packet.dataChannel.fec_codec_k,
-            config_packet.dataChannel.fec_codec_n);
+        g_framePacketsDebug.onPacketReceived(block_index, packet_index, packet_data, old);
     };
     callbacks.on_packet_restored = [this](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data)
     {
-        frame_packets_debug.onPacketRestored(
-            block_index,
-            packet_index,
-            packet_data,
-            config_packet.dataChannel.fec_codec_k);
+        g_framePacketsDebug.onPacketRestored(block_index, packet_index, packet_data);
     };
     rx_decoder.setCallbacks(std::move(callbacks));
     resetState(gs_device_id_value);
@@ -91,7 +83,7 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
     last_video_last_part = 0;
     last_video_payload_size = 0;
     last_packet_tp = Clock::now();
-    frame_packets_debug.off();
+    g_framePacketsDebug.off();
     last_ground_stats = {};
     gs_stats = {};
     last_gs_stats = {};
@@ -103,9 +95,6 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
     last_udp_packets_sample = 0;
     gs_packet_debug_mode = 0;
     exit_requested = false;
-    pending_flight_osd.clear();
-    pending_flight_osd_dirty = false;
-    pending_flight_osd_clear = false;
     osd_font_reload_pending = false;
 }
 

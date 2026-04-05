@@ -372,24 +372,6 @@ void GsVideoRenderer::setFlightOsdFont(const std::string& font_name)
     m_cv.notify_all();
 }
 
-void GsVideoRenderer::setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    s_flightOSD.clear();
-    for (int row = 0; row < OSD_ROWS; ++row)
-    {
-        for (int col = 0; col < OSD_COLS; ++col)
-        {
-            const uint8_t c = chars[row][col];
-            if (c != 0)
-            {
-                s_flightOSD.setLowChar(row, col, c);
-            }
-        }
-    }
-    m_overlay_dirty = true;
-    m_cv.notify_all();
-}
 
 //===================================================================================
 //===================================================================================

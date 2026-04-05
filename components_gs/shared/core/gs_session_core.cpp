@@ -1,5 +1,9 @@
 #include "core/gs_session_core.h"
 #include "ISerialTelemetry.h"
+#include "flight_osd.h"
+#include "frame_packets_debug.h"
+#include "gs_runtime_core.h"
+#include "gs_runtime_state.h"
 #include "hx_mavlink_parser.h"
 #include "gs_stats.h"
 
@@ -522,7 +526,12 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
             return result;
         }
         addReceivedBytes(transport_packet_size);
-        result.kind = SessionEventKind::OsdUpdate;
+        syncAirStatusGlobals();
+        if (!g_framePacketsDebug.isOn())
+        {
+            s_flightOSD.update(&result.osd.packet->osd_enc_start, result.osd.osd_data_size);
+        }
+        s_last_stats_packet_tp = Clock::now();
         return result;
 
     case SessionPacketType::Ignore:

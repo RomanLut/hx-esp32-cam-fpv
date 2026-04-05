@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "frame_packets_debug.h"
 #include "gs_recordings_storage.h"
 #include "gs_runtime_state.h"
 #include "gs_runtime_session.h"
@@ -106,18 +107,5 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     state.frame_ui_state.vr_mode = core.groundstation_config.vrMode;
     state.build_info = params.build_info;
     state.osd_font_name = params.osd_font_name;
-    state.clear_flight_osd = core.pending_flight_osd_clear;
-    state.has_flight_osd_update = core.pending_flight_osd_dirty;
-    if (state.has_flight_osd_update)
-    {
-        state.flight_osd_data = core.pending_flight_osd;
-    }
-    core.pending_flight_osd_clear = false;
-    core.pending_flight_osd_dirty = false;
-    if (core.frame_packets_debug.isVisible())
-    {
-        state.has_frame_debug_osd = true;
-        state.frame_debug_osd = core.frame_packets_debug.osdChars();
-    }
     return state;
 }

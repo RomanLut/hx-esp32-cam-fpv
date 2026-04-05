@@ -113,7 +113,6 @@ public:
     void updateFlightOsd(const uint8_t* data, uint16_t size);
     void clearFlightOsd();
     void setFlightOsdFont(const std::string& font_name);
-    void setFlightOsdChars(const std::array<std::array<uint8_t, OSD_COLS>, OSD_ROWS>& chars);
     void setOverlayInput(const gs::imgui::TopOverlayData& overlay_input);
     void setFrameUiState(const RuntimeFrameUiState& frame_ui_state);
     void setOverlayStatsSnapshot(const gs::stats::FullscreenStatsSnapshot& snapshot);

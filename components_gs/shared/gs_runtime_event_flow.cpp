@@ -19,10 +19,6 @@ ProcessedRuntimeEvent processRuntimeSessionEvent(const gs::core::SessionEvent& e
                                                 now);
         result.video_decision = buildVideoDispatchDecision(result.video, restored_by_fec);
         break;
-    case gs::core::SessionEventKind::OsdUpdate:
-        result.osd = processOsdSessionEvent(event);
-        result.osd_decision = buildOsdDispatchDecision(result.osd, false);
-        break;
     default:
         break;
     }

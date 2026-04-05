@@ -8,7 +8,7 @@ add_library(android_gs_core SHARED
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
     native_bridge.cpp
-    ../../../../../components_gs/shared/gs_runtime_aux_flow.cpp
+    ../../../../../components_gs/shared/frame_packets_debug.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
     ../../../../../components_gs/shared/gs_runtime_core.cpp
     ../../../../../components_gs/shared/gs_runtime_event_classify.cpp
@@ -42,7 +42,6 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/utils/utils.cpp
     ../../../../../components_gs/shared/core/gs_protocol.cpp
     ../../../../../components_gs/shared/core/gs_session_core.cpp
-    ../../../../../components_gs/shared/core/frame_packets_debug_core.cpp
     ../../../../../components_gs/shared/core/osd_menu_common.cpp
     ../../../../../components_gs/shared/core/osd_menu_controller.cpp
     ../../../../../components_gs/shared/core/osd_menu_imgui_shared.cpp

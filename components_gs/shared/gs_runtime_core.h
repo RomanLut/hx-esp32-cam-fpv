@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "Clock.h"
-#include "core/frame_packets_debug_core.h"
 #include "core/gs_session_core.h"
 #include "core/stats_panel_shared.h"
 #include "core/transport.h"
@@ -62,7 +61,6 @@ struct GsRuntimeCore
     uint32_t last_video_payload_size = 0;
     Clock::time_point last_packet_tp = Clock::now();
     TGroundstationConfig& groundstation_config;
-    gs::core::FramePacketsDebugCore frame_packets_debug;
     gs::stats::GroundStatsSnapshot last_ground_stats = {};
     GSStats gs_stats = {};
     GSStats last_gs_stats = {};
@@ -74,9 +72,6 @@ struct GsRuntimeCore
     uint64_t last_udp_packets_sample = 0;
     int gs_packet_debug_mode = 0;
     bool exit_requested = false;
-    std::vector<uint8_t> pending_flight_osd;
-    bool pending_flight_osd_dirty = false;
-    bool pending_flight_osd_clear = false;
     bool osd_font_reload_pending = false;
 };
 
