@@ -1,10 +1,24 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 
-#include "gs_runtime_event_classify.h"
-#include "gs_runtime_event_dispatch.h"
-#include "gs_runtime_packet_flow.h"
+#include "Clock.h"
+#include "core/gs_session_core.h"
+#include "core/transport.h"
+#include "gs_runtime_event_flow.h"
+
+struct ProcessedSessionPacket
+{
+    gs::core::SessionEvent event = {};
+    Clock::time_point processed_tp = Clock::now();
+};
+
+struct RuntimeEventDispatch
+{
+    std::function<void(const ProcessedVideoEvent&, const VideoDispatchDecision&)> on_video;
+};
 
 struct SessionEventPipelineDispatch
 {

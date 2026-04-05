@@ -38,7 +38,11 @@ RuntimeEventClass processAndDispatchSessionEvent(const ProcessedSessionPacket& p
                                        session,
                                        restored_by_fec,
                                        processed_packet.processed_tp);
-        dispatchProcessedRuntimeEvent(processed_event, dispatch.runtime);
+        if (processed_event.kind == gs::core::SessionEventKind::VideoPacket &&
+            dispatch.runtime.on_video)
+        {
+            dispatch.runtime.on_video(processed_event.video, processed_event.video_decision);
+        }
         break;
     }
     case RuntimeEventClass::Ignore:

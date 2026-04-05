@@ -6,7 +6,6 @@
 #include "frame_packets_debug.h"
 #include "gs_recordings_storage.h"
 #include "gs_runtime_state.h"
-#include "gs_runtime_session.h"
 
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
@@ -22,9 +21,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
 
     if (now - core.last_periodic_stats_tp >= std::chrono::milliseconds(1000))
     {
-        const SessionPulseStats session_stats = consumeSessionPulseStats(core.session, now);
-        const gs::core::PeriodicStatsSnapshot& periodic_stats = session_stats.periodic_stats;
-        const gs::core::LinkStatusSnapshot& link_status = session_stats.link_status;
+        const gs::core::LinkStatusSnapshot link_status = core.session.consumeLinkStatus(now);
+        const gs::core::PeriodicStatsSnapshot periodic_stats = core.session.consumePeriodicStats();
         core.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
         core.gs_stats.pingMinMS = link_status.ping_min_ms;
         core.gs_stats.pingMaxMS = link_status.ping_max_ms;

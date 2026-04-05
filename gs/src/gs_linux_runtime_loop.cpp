@@ -70,9 +70,8 @@ void comms_thread_proc()
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
             const Clock::time_point now = Clock::now();
-            const SessionPulseStats session_stats = consumeSessionPulseStats(s_runtimeCore.session, now);
-            const gs::core::LinkStatusSnapshot& link_status = session_stats.link_status;
-            const gs::core::PeriodicStatsSnapshot& periodic_stats = session_stats.periodic_stats;
+            const gs::core::LinkStatusSnapshot link_status = s_runtimeCore.session.consumeLinkStatus(now);
+            const gs::core::PeriodicStatsSnapshot periodic_stats = s_runtimeCore.session.consumePeriodicStats();
             const gs::core::VideoFrameAssembler::Stats assembler_stats = videoFrameAssembler.consumeStats();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}",
                 periodic_stats.sent_count, periodic_stats.total_data, periodic_stats.in_tlm_size, periodic_stats.out_tlm_size,
@@ -142,12 +141,14 @@ void comms_thread_proc()
                 break;
             }
 
-            const ProcessedSessionPacket processed_packet =
-                processIncomingSessionPacket(s_runtimeCore.session,
-                                             rx_data.data.data(),
-                                             rx_data.size,
-                                             s_groundstation_config.deviceId,
-                                             s_transport);
+            ProcessedSessionPacket processed_packet = {};
+            processed_packet.processed_tp = Clock::now();
+            processed_packet.event =
+                s_runtimeCore.session.processReceivedPacket(rx_data.data.data(),
+                                                           rx_data.size,
+                                                           s_groundstation_config.deviceId,
+                                                           processed_packet.processed_tp,
+                                                           s_transport);
             s_last_packet_tp = processed_packet.processed_tp;
             rx_data.rssi = (int16_t)s_transport.get_input_dBm();
             if (restoredByFEC)
@@ -407,4 +408,3 @@ int runLinuxRuntimeLoop(char* argv[])
 
     return 0;
 }
-

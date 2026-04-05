@@ -11,15 +11,11 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/frame_packets_debug.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
     ../../../../../components_gs/shared/gs_runtime_core.cpp
-    ../../../../../components_gs/shared/gs_runtime_event_classify.cpp
     ../../../../../components_gs/shared/gs_runtime_event_pipeline.cpp
-    ../../../../../components_gs/shared/gs_runtime_event_dispatch.cpp
     ../../../../../components_gs/shared/gs_runtime_event_flow.cpp
     ../../../../../components_gs/shared/gs_runtime_globals.cpp
     ../../../../../components_gs/shared/gs_runtime_menu_ui.cpp
-    ../../../../../components_gs/shared/gs_runtime_packet_flow.cpp
     ../../../../../components_gs/shared/gs_runtime_protocol.cpp
-    ../../../../../components_gs/shared/gs_runtime_session.cpp
     ../../../../../components_gs/shared/gs_runtime_state.cpp
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp

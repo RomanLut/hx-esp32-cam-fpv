@@ -43,13 +43,9 @@
 #include "flight_osd.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
-#include "gs_runtime_event_classify.h"
 #include "gs_runtime_event_pipeline.h"
-#include "gs_runtime_event_dispatch.h"
 #include "gs_runtime_event_flow.h"
-#include "gs_runtime_packet_flow.h"
 #include "gs_runtime_protocol.h"
-#include "gs_runtime_session.h"
 #include "gs_runtime_sync.h"
 #include "gs_runtime_video_flow.h"
 #include "gs_runtime_osd_font_storage.h"
@@ -617,12 +613,14 @@ void processDecodedTransportPacketsLocked(NativeHandle& handle)
             s_runtimeCore.last_decoded_gs = header->gsDeviceId;
         }
 
-        const ProcessedSessionPacket processed_packet =
-            processIncomingSessionPacket(s_runtimeCore.session,
-                                         packet_data,
-                                         packet_size,
-                                         s_runtimeCore.gs_device_id,
-                                         handle.transport);
+        ProcessedSessionPacket processed_packet = {};
+        processed_packet.processed_tp = Clock::now();
+        processed_packet.event =
+            s_runtimeCore.session.processReceivedPacket(packet_data,
+                                                       packet_size,
+                                                       s_runtimeCore.gs_device_id,
+                                                       processed_packet.processed_tp,
+                                                       handle.transport);
         const gs::core::SessionEvent& session_event = processed_packet.event;
 
         s_runtimeCore.last_event_kind = session_event.kind;
