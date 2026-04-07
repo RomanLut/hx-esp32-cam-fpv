@@ -14,8 +14,12 @@
 namespace gs::core
 {
 
+//===================================================================================
+//===================================================================================
 class ITransportManager;
 
+//===================================================================================
+//===================================================================================
 struct TXDescriptor
 {
     std::string interface;
@@ -24,6 +28,8 @@ struct TXDescriptor
     size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header);
 };
 
+//===================================================================================
+//===================================================================================
 struct RXDescriptor
 {
     std::vector<std::string> interfaces;
@@ -36,12 +42,15 @@ struct RXDescriptor
     bool skip_mon_mode_cfg = true;
 };
 
+//===================================================================================
+//===================================================================================
 class ITransport
 {
 public:
     virtual ~ITransport() = default;
 
     virtual bool init(const RXDescriptor& rx_descriptor, const TXDescriptor& tx_descriptor) = 0;
+    virtual void activate() = 0;
     virtual bool usesChannelSearch() const = 0;
 
     virtual void process() = 0;
@@ -63,7 +72,7 @@ public:
     virtual PacketFilter& getPacketFilter() = 0;
 };
 
-}
+}  //namespace
 
 extern gs::core::ITransportManager* s_transportManager;
 extern gs::core::ITransport* s_transport;

@@ -18,6 +18,8 @@ public:
         m_tx_descriptor = tx_descriptor;
     }
 
+    void activate() override {}
+
     bool usesChannelSearch() const override
     {
         return false;

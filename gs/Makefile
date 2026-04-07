@@ -24,6 +24,7 @@ SRCS := src/main.cpp \
 	src/gs_linux_render_helpers.cpp \
 	src/gs_linux_runtime_loop.cpp \
 	src/gs_linux_transport_manager.cpp \
+	src/linux_apfpv_transport.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
 	src/gs_linux_udp_broadcast.cpp \

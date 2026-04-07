@@ -11,7 +11,7 @@ gs::core::ITransport& LinuxTransportManager::resolveTransport(gs::core::Transpor
         return m_raw_broadcast;
 
     case gs::core::TransportKind::APFPV:
-        return m_apfpv_stub;
+        return m_apfpv_transport;
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;
@@ -31,7 +31,7 @@ bool LinuxTransportManager::isTransportInitialized(gs::core::TransportKind kind)
         return m_raw_broadcast_initialized;
 
     case gs::core::TransportKind::APFPV:
-        return m_apfpv_stub_initialized;
+        return m_apfpv_transport_initialized;
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport_initialized;
@@ -52,7 +52,7 @@ void LinuxTransportManager::setTransportInitialized(gs::core::TransportKind kind
         break;
 
     case gs::core::TransportKind::APFPV:
-        m_apfpv_stub_initialized = initialized;
+        m_apfpv_transport_initialized = initialized;
         break;
 
     case gs::core::TransportKind::TestTransport:
@@ -72,7 +72,7 @@ const gs::core::ITransport& LinuxTransportManager::resolveTransport(gs::core::Tr
         return m_raw_broadcast;
 
     case gs::core::TransportKind::APFPV:
-        return m_apfpv_stub;
+        return m_apfpv_transport;
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;

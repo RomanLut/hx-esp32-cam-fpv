@@ -150,6 +150,11 @@ int processTransportPacket(NativeHandle& handle,
 // Starts or stops the APFPV UDP backend to match the currently active transport.
 void syncApfpvUdpClient(NativeHandle& handle);
 
+//===================================================================================
+//===================================================================================
+// Applies any deferred Android renderer invalidation requested by shared runtime code.
+void applyPendingRendererInvalidation(NativeHandle& handle);
+
 jlong toJLong(NativeHandle* handle)
 {
     return reinterpret_cast<jlong>(handle);
@@ -618,8 +623,9 @@ void syncApfpvUdpClient(NativeHandle& handle)
         udp_running = apfpv_transport.isUdpRunning();
         has_joinable_thread = apfpv_transport.hasJoinableUdpThread();
 
-        should_stop = !apfpv_active && (udp_running || has_joinable_thread);
-        should_start = apfpv_active && !udp_running;
+        should_stop = (!apfpv_active && (udp_running || has_joinable_thread)) ||
+                      (apfpv_active && !udp_running && has_joinable_thread);
+        should_start = apfpv_active && !udp_running && !has_joinable_thread;
     }
 
     if (should_stop)
@@ -675,6 +681,19 @@ void syncApfpvUdpClient(NativeHandle& handle)
                             udp_running ? 1 : 0,
                             has_joinable_thread ? 1 : 0);
     }
+}
+
+//===================================================================================
+//===================================================================================
+// Applies any deferred Android renderer invalidation requested by shared runtime code.
+void applyPendingRendererInvalidation(NativeHandle& handle)
+{
+    if (!consumeAndroidRendererInvalidateRequest())
+    {
+        return;
+    }
+
+    handle.renderer.invalidateDisplayedFrame();
 }
 
 int processTransportPacket(NativeHandle& handle,
@@ -1162,6 +1181,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     RuntimeSyncState sync_state;
     gs::imgui::TopOverlayData overlay_input = {};
     syncApfpvUdpClient(*native_handle);
+    applyPendingRendererInvalidation(*native_handle);
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
         pollActiveTransportPacketsLocked(*native_handle);

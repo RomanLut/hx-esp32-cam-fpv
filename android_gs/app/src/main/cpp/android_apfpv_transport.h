@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -65,6 +66,8 @@ private:
     int m_udp_local_port = 5600;
     std::string m_udp_last_error;
     std::atomic<bool> m_udp_stop_requested = false;
-    bool m_udp_running = false;
+    std::atomic<bool> m_udp_running = false;
+    mutable std::mutex m_udp_thread_mutex;
+    std::mutex m_udp_lifecycle_mutex;
     std::thread m_udp_thread;
 };

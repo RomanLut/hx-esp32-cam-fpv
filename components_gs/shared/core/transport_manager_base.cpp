@@ -101,6 +101,7 @@ bool TransportManagerBase::switchTransport(TransportKind kind)
     }
 
     setTransportInitialized(kind, true);
+    transport.activate();
     m_active_transport = &transport;
     m_active_kind = kind;
     s_transport = m_active_transport;

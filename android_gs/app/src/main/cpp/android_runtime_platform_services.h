@@ -3,6 +3,7 @@
 #include "Clock.h"
 #include "gs_runtime_platform_services.h"
 
+#include <atomic>
 #include <string>
 
 //===================================================================================
@@ -37,3 +38,8 @@ class GsVideoRenderer;
 //===================================================================================
 // Binds the Android renderer used by shared runtime platform services.
 void bindAndroidRuntimeRenderer(GsVideoRenderer* renderer);
+
+//===================================================================================
+//===================================================================================
+// Consumes the deferred Android renderer invalidation request flag.
+bool consumeAndroidRendererInvalidateRequest();

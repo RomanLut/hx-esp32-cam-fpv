@@ -104,9 +104,37 @@ exit /b 0
 
 :resolve_wsl_dir
 set "GS_WSL_DIR="
-del /q "%GS_WSL_DIR_FILE%" 2>nul
-wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "wslpath -a '%GS_DIR%'" > "%GS_WSL_DIR_FILE%"
-if exist "%GS_WSL_DIR_FILE%" set /p "GS_WSL_DIR="<"%GS_WSL_DIR_FILE%"
+set "GS_WSL_DIR=%GS_DIR:\=/%"
+if "%GS_WSL_DIR:~1,1%"==":" (
+  set "WSL_DRIVE=!GS_WSL_DIR:~0,1!"
+  if /i "!WSL_DRIVE!"=="A" set "WSL_DRIVE=a"
+  if /i "!WSL_DRIVE!"=="B" set "WSL_DRIVE=b"
+  if /i "!WSL_DRIVE!"=="C" set "WSL_DRIVE=c"
+  if /i "!WSL_DRIVE!"=="D" set "WSL_DRIVE=d"
+  if /i "!WSL_DRIVE!"=="E" set "WSL_DRIVE=e"
+  if /i "!WSL_DRIVE!"=="F" set "WSL_DRIVE=f"
+  if /i "!WSL_DRIVE!"=="G" set "WSL_DRIVE=g"
+  if /i "!WSL_DRIVE!"=="H" set "WSL_DRIVE=h"
+  if /i "!WSL_DRIVE!"=="I" set "WSL_DRIVE=i"
+  if /i "!WSL_DRIVE!"=="J" set "WSL_DRIVE=j"
+  if /i "!WSL_DRIVE!"=="K" set "WSL_DRIVE=k"
+  if /i "!WSL_DRIVE!"=="L" set "WSL_DRIVE=l"
+  if /i "!WSL_DRIVE!"=="M" set "WSL_DRIVE=m"
+  if /i "!WSL_DRIVE!"=="N" set "WSL_DRIVE=n"
+  if /i "!WSL_DRIVE!"=="O" set "WSL_DRIVE=o"
+  if /i "!WSL_DRIVE!"=="P" set "WSL_DRIVE=p"
+  if /i "!WSL_DRIVE!"=="Q" set "WSL_DRIVE=q"
+  if /i "!WSL_DRIVE!"=="R" set "WSL_DRIVE=r"
+  if /i "!WSL_DRIVE!"=="S" set "WSL_DRIVE=s"
+  if /i "!WSL_DRIVE!"=="T" set "WSL_DRIVE=t"
+  if /i "!WSL_DRIVE!"=="U" set "WSL_DRIVE=u"
+  if /i "!WSL_DRIVE!"=="V" set "WSL_DRIVE=v"
+  if /i "!WSL_DRIVE!"=="W" set "WSL_DRIVE=w"
+  if /i "!WSL_DRIVE!"=="X" set "WSL_DRIVE=x"
+  if /i "!WSL_DRIVE!"=="Y" set "WSL_DRIVE=y"
+  if /i "!WSL_DRIVE!"=="Z" set "WSL_DRIVE=z"
+  set "GS_WSL_DIR=/mnt/!WSL_DRIVE!!GS_WSL_DIR:~2!"
+)
 exit /b 0
 
 :detect_attached

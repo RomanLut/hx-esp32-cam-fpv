@@ -27,6 +27,7 @@ public:
     using RX_Descriptor = gs::core::RXDescriptor;
 
     bool init(const RX_Descriptor& rx_descriptor, const TX_Descriptor& tx_descriptor) override;
+    void activate() override;
     bool usesChannelSearch() const override;
 
     void process() override;

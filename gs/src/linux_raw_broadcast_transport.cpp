@@ -17,6 +17,7 @@
 #include "gs_stats.h"
 #include "packets.h"
 #include "shared/frame_packets_debug.h"
+#include <fstream>
 
 //#define DEBUG_PCAP
 
@@ -28,12 +29,67 @@ static std::vector<uint8_t> RADIOTAP_HEADER;
 static constexpr size_t SRC_MAC_LASTBYTE = 15;
 static constexpr size_t DST_MAC_LASTBYTE = 21;
 
+namespace
+{
+
+//===================================================================================
+//===================================================================================
+// Waits until the Linux network interface reports an operational up state.
+bool waitForInterfaceUp(const std::string& interface)
+{
+    const std::string operstate_path = fmt::format("/sys/class/net/{}/operstate", interface);
+    const std::string carrier_path = fmt::format("/sys/class/net/{}/carrier", interface);
+
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+        {
+            std::ifstream operstate_file(operstate_path);
+            std::string operstate;
+            if (operstate_file.is_open())
+            {
+                std::getline(operstate_file, operstate);
+                if (operstate == "up" || operstate == "unknown")
+                {
+                    return true;
+                }
+            }
+        }
+
+        {
+            std::ifstream carrier_file(carrier_path);
+            std::string carrier;
+            if (carrier_file.is_open())
+            {
+                std::getline(carrier_file, carrier);
+                if (carrier == "1")
+                {
+                    return true;
+                }
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    return false;
+}
+
+}
+
 //===================================================================================
 //===================================================================================
 // Reports that the raw-broadcast transport uses wifi-channel search.
 bool LinuxRawBroadcastTransport::usesChannelSearch() const
 {
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Activates raw-broadcast mode by switching the configured RX interfaces to monitor mode.
+void LinuxRawBroadcastTransport::activate()
+{
+    setMonitorMode(m_rx_descriptor.interfaces);
 }
 
 /*
@@ -675,8 +731,6 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
         this->m_rx_descriptor.interfaces.push_back(tx_descriptor.interface);
     }
 
-    setMonitorMode( this->m_rx_descriptor.interfaces );
-
     //this->m_rx_descriptor.mtu = std::min(this->m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
     if (m_rx_descriptor.coding_k == 0 || 
@@ -1188,6 +1242,10 @@ void LinuxRawBroadcastTransport::setMonitorMode(const std::vector<std::string> i
         system(fmt::format("sudo ip link set {} down", itf).c_str());
         system(fmt::format("sudo iw dev {} set type monitor", itf).c_str());
         system(fmt::format("sudo ip link set {} up", itf).c_str());
+        if (!waitForInterfaceUp(itf))
+        {
+            LOGW("Interface {} did not report up after switching to monitor mode", itf);
+        }
     }
 }
 

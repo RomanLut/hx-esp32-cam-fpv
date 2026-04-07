@@ -166,7 +166,7 @@ const std::string& AndroidAPFPVTransport::udpLastError() const
 // Marks the Android APFPV UDP backend as running or stopped.
 void AndroidAPFPVTransport::setUdpRunning(bool running)
 {
-    m_udp_running = running;
+    m_udp_running.store(running);
 }
 
 //===================================================================================
@@ -174,7 +174,7 @@ void AndroidAPFPVTransport::setUdpRunning(bool running)
 // Returns whether the Android APFPV UDP backend is currently running.
 bool AndroidAPFPVTransport::isUdpRunning() const
 {
-    return m_udp_running;
+    return m_udp_running.load();
 }
 
 //===================================================================================
@@ -198,6 +198,7 @@ bool AndroidAPFPVTransport::udpStopRequested() const
 // Returns true when the Android APFPV transport currently owns a joinable UDP thread.
 bool AndroidAPFPVTransport::hasJoinableUdpThread() const
 {
+    std::lock_guard<std::mutex> lock(m_udp_thread_mutex);
     return m_udp_thread.joinable();
 }
 
@@ -206,9 +207,20 @@ bool AndroidAPFPVTransport::hasJoinableUdpThread() const
 // Joins the current Android APFPV UDP thread if it is still joinable.
 void AndroidAPFPVTransport::joinUdpThread()
 {
-    if (m_udp_thread.joinable())
+    std::thread thread;
     {
-        m_udp_thread.join();
+        std::lock_guard<std::mutex> lock(m_udp_thread_mutex);
+        if (!m_udp_thread.joinable())
+        {
+            return;
+        }
+
+        thread = std::move(m_udp_thread);
+    }
+
+    if (thread.joinable())
+    {
+        thread.join();
     }
 }
 
@@ -217,6 +229,7 @@ void AndroidAPFPVTransport::joinUdpThread()
 // Replaces the owned Android APFPV UDP thread with a newly started backend thread.
 void AndroidAPFPVTransport::setUdpThread(std::thread thread)
 {
+    std::lock_guard<std::mutex> lock(m_udp_thread_mutex);
     m_udp_thread = std::move(thread);
 }
 
@@ -225,6 +238,8 @@ void AndroidAPFPVTransport::setUdpThread(std::thread thread)
 // Starts the Android APFPV UDP backend thread with the provided runtime callbacks.
 bool AndroidAPFPVTransport::startUdpClient(UdpLoopCallbacks callbacks)
 {
+    std::lock_guard<std::mutex> lifecycle_lock(m_udp_lifecycle_mutex);
+
     if (isUdpRunning())
     {
         __android_log_print(ANDROID_LOG_WARN, kAndroidApfpvLogTag, "startUdpClient ignored: already running");
@@ -234,7 +249,9 @@ bool AndroidAPFPVTransport::startUdpClient(UdpLoopCallbacks callbacks)
     if (hasJoinableUdpThread())
     {
         __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "startUdpClient joining stale thread before restart");
-        stopUdpClient();
+        requestUdpStop(true);
+        joinUdpThread();
+        setUdpRunning(false);
     }
 
     requestUdpStop(false);
@@ -250,6 +267,8 @@ bool AndroidAPFPVTransport::startUdpClient(UdpLoopCallbacks callbacks)
 // Stops and joins the Android APFPV UDP backend thread.
 void AndroidAPFPVTransport::stopUdpClient()
 {
+    std::lock_guard<std::mutex> lifecycle_lock(m_udp_lifecycle_mutex);
+
     __android_log_print(ANDROID_LOG_INFO,
                         kAndroidApfpvLogTag,
                         "stopUdpClient running=%d joinable=%d",

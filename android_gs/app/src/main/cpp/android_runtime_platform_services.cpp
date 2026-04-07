@@ -24,6 +24,7 @@ namespace
 // Owns the Android runtime platform services instance for explicit shared binding.
 AndroidRuntimePlatformServices s_android_runtime_platform_services;
 GsVideoRenderer* s_android_runtime_renderer = nullptr;
+std::atomic<bool> s_android_renderer_invalidate_requested = false;
 
 //===================================================================================
 //===================================================================================
@@ -101,6 +102,14 @@ void bindAndroidRuntimeRenderer(GsVideoRenderer* renderer)
 
 //===================================================================================
 //===================================================================================
+// Returns and clears the deferred Android renderer invalidation request flag.
+bool consumeAndroidRendererInvalidateRequest()
+{
+    return s_android_renderer_invalidate_requested.exchange(false);
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the Android ground-station CPU temperature when available.
 float AndroidRuntimePlatformServices::getCpuTemperatureCelsius() const
 {
@@ -157,10 +166,7 @@ void AndroidRuntimePlatformServices::restartGPIOButtons()
 // Invalidates the currently displayed Android video frame in the shared renderer.
 void AndroidRuntimePlatformServices::invalidateDisplayedVideoFrame()
 {
-    if (s_android_runtime_renderer != nullptr)
-    {
-        s_android_runtime_renderer->invalidateDisplayedFrame();
-    }
+    s_android_renderer_invalidate_requested.store(true);
 }
 
 //===================================================================================
