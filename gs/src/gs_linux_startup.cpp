@@ -3,7 +3,6 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
-#include <cstdlib>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -16,6 +15,7 @@
 
 #include "Clock.h"
 #include "util.h"
+#include "utils.h"
 
 static const char* GS_PID_FILE = "/tmp/esp32_cam_fpv_gs.pid";
 
@@ -99,27 +99,6 @@ bool ensureLinuxSingleInstance()
 
 //===================================================================================
 //===================================================================================
-// Executes shell command and returns output as string
-static std::string execCommand(const char* cmd)
-{
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe)
-    {
-        throw std::runtime_error("popen() failed!");
-    }
-
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
-    {
-        result += buffer.data();
-    }
-
-    return result;
-}
-
-//===================================================================================
-//===================================================================================
 // Parses airmon-ng output and returns list of supported wifi interfaces
 static std::vector<std::string> getInterfacesWithChipset(const std::string& output)
 {
@@ -155,7 +134,11 @@ static std::vector<std::string> getInterfacesWithChipset(const std::string& outp
 // Scans system for available RX wifi interfaces
 void findLinuxRXInterfacesEx(gs::core::RXDescriptor& rx_descriptor)
 {
-    std::string output = execCommand("sudo airmon-ng");
+    std::string output;
+    if (!runShellCommand("sudo airmon-ng", &output))
+    {
+        throw std::runtime_error("Failed to query wifi interfaces with airmon-ng");
+    }
     rx_descriptor.interfaces = getInterfacesWithChipset(output);
 }
 

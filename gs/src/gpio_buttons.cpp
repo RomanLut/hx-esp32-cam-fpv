@@ -201,7 +201,7 @@ static bool write_to_file(const char *file, const char *text)
   FILE *f = fopen(file, "w");
   if (f)
   {
-    fprintf(f, text);
+    fprintf(f, "%s", text);
     fclose(f);
     return true;
   }
@@ -380,7 +380,8 @@ void emit_event(int uinput_fd, int type, int code, int val)
   //   keystroke timestamp.
   ie.time.tv_sec = 0;
   ie.time.tv_usec = 0;
-  write(uinput_fd, &ie, sizeof(ie));
+  const ssize_t bytes_written = write(uinput_fd, &ie, sizeof(ie));
+  (void)bytes_written;
 }
 
 /*======================================================================
@@ -473,7 +474,8 @@ void polling_thread_func()
       {
         int pin = pins[i];
         char buff[50];
-        read(fdset[i].fd, buff, sizeof(buff));
+        const ssize_t bytes_read = read(fdset[i].fd, buff, sizeof(buff));
+        (void)bytes_read;
 
         // Debounce each GPIO transition and ignore startup noise.
         if (now_msec - ticks[i] > bounce_time && now_msec > 1000)

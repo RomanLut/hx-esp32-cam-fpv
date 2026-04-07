@@ -1,14 +1,37 @@
 #include "utils.h"
 
+#include <array>
 #include <fcntl.h>
 #include <unistd.h>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <memory>
+
+#include "Log.h"
 
 static bool _isRadxaZeroChecked = false;
 static bool _isRadxaZero = false;
+
+namespace
+{
+
+//===================================================================================
+//===================================================================================
+// Closes a FILE handle returned by popen().
+struct PipeCloser
+{
+    void operator()(FILE* pipe) const
+    {
+        if (pipe != nullptr)
+        {
+            pclose(pipe);
+        }
+    }
+};
+
+}
 
 //===================================================================================
 //===================================================================================
@@ -22,6 +45,48 @@ void setupNonBlockingInput()
 
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+}
+
+//===================================================================================
+//===================================================================================
+// Runs a shell command, optionally capturing stdout, and reports failures.
+bool runShellCommand(const std::string& command, std::string* output)
+{
+    if (output == nullptr)
+    {
+        const int result = std::system(command.c_str());
+        if (result != 0)
+        {
+            LOGW("Shell command failed ({}): {}", result, command);
+            return false;
+        }
+
+        return true;
+    }
+
+    std::array<char, 128> buffer = {};
+    std::string result;
+    std::unique_ptr<FILE, PipeCloser> pipe(popen(command.c_str(), "r"));
+    if (!pipe)
+    {
+        LOGW("popen() failed for command: {}", command);
+        return false;
+    }
+
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr)
+    {
+        result += buffer.data();
+    }
+
+    const int status = pclose(pipe.release());
+    if (status != 0)
+    {
+        LOGW("Shell command failed ({}): {}", status, command);
+        return false;
+    }
+
+    *output = std::move(result);
+    return true;
 }
 
 //======================================================

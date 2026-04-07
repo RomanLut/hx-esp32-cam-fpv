@@ -17,6 +17,7 @@
 #include "gs_stats.h"
 #include "packets.h"
 #include "shared/frame_packets_debug.h"
+#include "utils.h"
 #include <fstream>
 
 //#define DEBUG_PCAP
@@ -32,8 +33,6 @@ static constexpr size_t DST_MAC_LASTBYTE = 21;
 namespace
 {
 
-//===================================================================================
-//===================================================================================
 // Waits until the Linux network interface reports an operational up state.
 bool waitForInterfaceUp(const std::string& interface)
 {
@@ -309,6 +308,8 @@ bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
     char program_src[512];
 
     int link_encap = pcap_datalink(pcap.pcap);
+    const char* datalink_name = pcap_datalink_val_to_name(link_encap);
+    LOGI("pcap datalink: {} ({})", link_encap, datalink_name != nullptr ? datalink_name : "unknown");
 
     switch (link_encap)
     {
@@ -550,8 +551,6 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
             s_gs_stats.inPacketCounter[pcap.index]++;
         }
 
-        Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
-
         auto res = m_packet_filter.filter_packet(payload, bytes, m_rx_descriptor.mtu);
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
@@ -606,6 +605,12 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
 bool LinuxRawBroadcastTransport::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor)
 {
     LOGI("Opening interface {} in monitor mode", interface);
+
+    runShellCommand(fmt::format("ip link set {} up", interface));
+    if (!waitForInterfaceUp(interface))
+    {
+        LOGW("Interface {} did not report up before pcap activation", interface);
+    }
 
     pcap.pcap = pcap_create(interface.c_str(), pcap.error_buffer);
     if (pcap.pcap == nullptr)
@@ -739,6 +744,8 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
         LOGE("Invalid coding params: {} / {}", m_rx_descriptor.coding_k, m_rx_descriptor.coding_n);
         return false;
     }
+
+    setMonitorMode(this->m_rx_descriptor.interfaces);
 
     /////////
 
@@ -1218,7 +1225,7 @@ void LinuxRawBroadcastTransport::setChannel(int ch)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)  //the list contains both RX and TX interfaces
     {
-        system(fmt::format("iwconfig {} channel {}", itf, ch).c_str());
+        runShellCommand(fmt::format("iwconfig {} channel {}", itf, ch));
     }
 }
 
@@ -1228,8 +1235,8 @@ void LinuxRawBroadcastTransport::setTxPower(int txPower)
 {
     //iw dev wlan1 set txpower fixed -4500
     std::string s = fmt::format("iw dev {} set txpower fixed {}", m_tx_descriptor.interface, -(txPower * 100) );
-    system(s.c_str());
-    printf("%s\n", s.c_str());
+    LOGI("Setting TX power with command: {}", s);
+    runShellCommand(s);
 }
 
 //===================================================================================
@@ -1238,10 +1245,10 @@ void LinuxRawBroadcastTransport::setMonitorMode(const std::vector<std::string> i
 {
     for (const auto& itf:interfaces)
     {
-        printf("Setting monitor mode on %s...\n", itf.c_str());
-        system(fmt::format("sudo ip link set {} down", itf).c_str());
-        system(fmt::format("sudo iw dev {} set type monitor", itf).c_str());
-        system(fmt::format("sudo ip link set {} up", itf).c_str());
+        LOGI("Setting monitor mode on {}", itf);
+        runShellCommand(fmt::format("ip link set {} down", itf));
+        runShellCommand(fmt::format("iw dev {} set type monitor", itf));
+        runShellCommand(fmt::format("ip link set {} up", itf));
         if (!waitForInterfaceUp(itf))
         {
             LOGW("Interface {} did not report up after switching to monitor mode", itf);
