@@ -27,11 +27,12 @@ struct TXDescriptor
 struct RXDescriptor
 {
     std::vector<std::string> interfaces;
-    Clock::duration max_latency = std::chrono::milliseconds(500);
+    // Resets RX FEC/block assembly state after this much inactivity.
     Clock::duration reset_duration = std::chrono::milliseconds(1000);
     uint32_t coding_k = 12;
     uint32_t coding_n = 20;
     size_t mtu = WLAN_MAX_PAYLOAD_SIZE - sizeof(Packet_Header);
+    // When true, do not ask libpcap to enable monitor mode on RX interfaces.
     bool skip_mon_mode_cfg = true;
 };
 
