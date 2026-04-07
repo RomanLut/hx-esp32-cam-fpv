@@ -425,8 +425,7 @@ std::vector<std::vector<uint8_t>> buildTransportPacketsForControl(NativeHandle& 
             current_payload.data()
         };
         gf* fec_ptrs[1] = { fec_payload.data() };
-        const unsigned block_nums[1] = { 2 };
-        fec_encode(s_runtimeCore.tx_fec, src_ptrs, fec_ptrs, block_nums, 1, transport_payload_size);
+        fec_encode(s_runtimeCore.tx_fec, src_ptrs, fec_ptrs, fec_block_nums() + 2, 1, transport_payload_size);
 
         packets.push_back(makeTransportPacket(s_runtimeCore.gs_device_id,
                                               to_device_id,

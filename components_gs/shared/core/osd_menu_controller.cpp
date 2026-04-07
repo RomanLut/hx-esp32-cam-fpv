@@ -2,6 +2,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include "util.h"
 #include "flight_osd.h"
 #include "lodepng.h"
@@ -15,7 +17,6 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
-#include "gs_storage_status_shared.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -30,6 +31,65 @@ OSDMenuController g_osdMenuController;
 
 namespace
 {
+//===================================================================================
+//===================================================================================
+// Builds one storage status line from already formatted label, state, and capacities.
+std::string formatStorageLine(const char* label,
+                              const char* status,
+                              double free_gb,
+                              double total_gb,
+                              const char* suffix = "")
+{
+    std::ostringstream out;
+    out << label << ": " << status;
+    if (suffix != nullptr && suffix[0] != 0)
+    {
+        out << suffix;
+    }
+    out << ' ' << std::fixed << std::setprecision(2) << free_gb << "GB/" << total_gb << "GB";
+    return out.str();
+}
+}
+
+//===================================================================================
+//===================================================================================
+//===================================================================================
+//===================================================================================
+// Formats the AIR SD status line from raw status flags and capacity values.
+std::string OSDMenuController::formatAirStorageStatusLine(bool detected,
+                                                          bool error,
+                                                          bool slow,
+                                                          uint16_t free_space_gb16,
+                                                          uint16_t total_space_gb16,
+                                                          const char* detected_label,
+                                                          const char* missing_label,
+                                                          const char* trailing_suffix) const
+{
+    const char* suffix = error ? " Error" : (slow ? " Slow" : "");
+    std::string line = formatStorageLine(
+        "AIR SD",
+        detected && !error ? detected_label : missing_label,
+        free_space_gb16 / 16.0,
+        total_space_gb16 / 16.0,
+        suffix);
+    if (trailing_suffix != nullptr && trailing_suffix[0] != 0)
+    {
+        line += ' ';
+        line += trailing_suffix;
+    }
+    return line;
+}
+
+//===================================================================================
+//===================================================================================
+// Formats the GS SD status line from the current ground storage snapshot.
+std::string OSDMenuController::formatGroundStorageStatusLine(const GroundStorageStatus& status) const
+{
+    return formatStorageLine(
+        "GS SD",
+        status.free_space_bytes >= kGSMinFreeSpaceBytes ? "Ok" : "Low space",
+        static_cast<double>(status.free_space_bytes) / (1024.0 * 1024.0 * 1024.0),
+        static_cast<double>(status.total_space_bytes) / (1024.0 * 1024.0 * 1024.0));
 }
 
 //===================================================================================
@@ -440,21 +500,19 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     drawLargeGapIfTallScreen();
 
     {
-        const AirStorageStatusView air_storage = {
+        std::string line = this->formatAirStorageStatusLine(
             s_SDDetected,
             s_SDError,
             s_SDSlow,
             s_SDFreeSpaceGB16,
-            s_SDTotalSpaceGB16,
-        };
-        std::string line = formatAirStorageStatusLine(air_storage);
+            s_SDTotalSpaceGB16);
         line += "##status0";
         this->drawStatus(line.c_str());
     }
 
     {
         const auto gs_storage = s_recordingsStorage->groundStorageStatus();
-        std::string line = formatGroundStorageStatusLine(gs_storage);
+        std::string line = this->formatGroundStorageStatusLine(gs_storage);
         line += "##status1";
         this->drawStatus(line.c_str());
     }

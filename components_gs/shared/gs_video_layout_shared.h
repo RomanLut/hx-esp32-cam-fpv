@@ -4,6 +4,9 @@
 
 namespace gs::render
 {
+//===================================================================================
+//===================================================================================
+// Integer rectangle defined by two corner points.
 struct RectI
 {
     int x1 = 0;
@@ -12,6 +15,9 @@ struct RectI
     int y2 = 0;
 };
 
+//===================================================================================
+//===================================================================================
+// Describes the position, size, and UV coordinates of a rendered video quad.
 struct VideoQuad
 {
     float x = 0.0f;
@@ -24,6 +30,9 @@ struct VideoQuad
     float v1 = 0.0f;
 };
 
+//===================================================================================
+//===================================================================================
+// Computed positions and dimensions for the touch navigation pad buttons.
 struct NavPadLayout
 {
     float size = 0.0f;

@@ -20,6 +20,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "Clock.h"
+
 namespace
 {
 
@@ -868,7 +870,7 @@ void GsVideoRenderer::uploadFrameLocked()
         return;
     }
 
-    const auto upload_begin = std::chrono::steady_clock::now();
+    const auto upload_begin = Clock::now();
     ensureTextureLocked();
     glBindTexture(GL_TEXTURE_2D, m_texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -890,7 +892,7 @@ void GsVideoRenderer::uploadFrameLocked()
         upload_pixels);
     logGlError("glTexSubImage2D");
     const uint32_t duration_ms = static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - upload_begin).count());
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - upload_begin).count());
     m_upload_count.fetch_add(1);
     m_upload_total_ms.fetch_add(duration_ms);
     uint32_t current_min = m_upload_min_ms.load();
@@ -1183,10 +1185,10 @@ void GsVideoRenderer::drawFrameLocked()
 
     drawOverlayLocked();
 
-    const auto swap_begin = std::chrono::steady_clock::now();
+    const auto swap_begin = Clock::now();
     m_surface_backend.swapBuffers();
     const uint32_t swap_duration_ms = static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - swap_begin).count());
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
     m_swap_count.fetch_add(1);
     m_swap_total_ms.fetch_add(swap_duration_ms);
     uint32_t swap_min = m_swap_min_ms.load();

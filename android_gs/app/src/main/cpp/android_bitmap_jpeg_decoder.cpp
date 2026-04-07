@@ -1,4 +1,5 @@
 #include "android_bitmap_jpeg_decoder.h"
+#include "Clock.h"
 
 #include <jni.h>
 #include <android/asset_manager.h>
@@ -27,6 +28,10 @@ jfieldID g_decode_result_width = nullptr;
 jfieldID g_decode_result_height = nullptr;
 jfieldID g_decode_result_stride = nullptr;
 
+//===================================================================================
+//===================================================================================
+// RAII guard that attaches the current thread to the JVM on construction and
+// detaches it on destruction if attachment was performed here.
 struct AttachGuard
 {
     JNIEnv* env = nullptr;
@@ -65,6 +70,10 @@ struct AttachGuard
     }
 };
 
+//===================================================================================
+//===================================================================================
+// Wraps a JNI global reference to a direct ByteBuffer in a shared_ptr whose
+// custom deleter releases the global reference when the last owner drops it.
 std::shared_ptr<void> makeDirectBufferRef(jobject global_pixels_buffer)
 {
     return std::shared_ptr<void>(
@@ -86,6 +95,9 @@ std::shared_ptr<void> makeDirectBufferRef(jobject global_pixels_buffer)
         });
 }
 
+//===================================================================================
+//===================================================================================
+// Constructs a DecodeStats value from the given raw counter values.
 AndroidBitmapJpegDecoder::DecodeStats makeStats(uint32_t broken_frames,
                                           uint32_t input_submitted_count,
                                           uint32_t dropped_input_count,
@@ -107,21 +119,34 @@ AndroidBitmapJpegDecoder::DecodeStats makeStats(uint32_t broken_frames,
 
 } // namespace
 
+//===================================================================================
+//===================================================================================
+// Returns the global JavaVM pointer set during JNI_OnLoad.
 JavaVM* androidGetJavaVm()
 {
     return g_java_vm;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the global AAssetManager pointer set via androidSetAssetManager.
 AAssetManager* androidGetAssetManager()
 {
     return g_asset_manager;
 }
 
+//===================================================================================
+//===================================================================================
+// Stores the AAssetManager pointer for use by native code.
 void androidSetAssetManager(AAssetManager* asset_manager)
 {
     g_asset_manager = asset_manager;
 }
 
+//===================================================================================
+//===================================================================================
+// Called by the JVM when the native library is loaded. Stores the JavaVM pointer
+// and looks up all JNI class and method references needed for JPEG decoding.
 jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
 {
     g_java_vm = vm;
@@ -183,6 +208,9 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     return JNI_VERSION_1_6;
 }
 
+//===================================================================================
+//===================================================================================
+// Constructor. Starts the worker threads that process the decode queue.
 AndroidBitmapJpegDecoder::AndroidBitmapJpegDecoder(GsVideoRenderer& renderer)
     : m_renderer(renderer)
 {
@@ -192,6 +220,9 @@ AndroidBitmapJpegDecoder::AndroidBitmapJpegDecoder(GsVideoRenderer& renderer)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Destructor. Signals worker threads to exit and waits for them to finish.
 AndroidBitmapJpegDecoder::~AndroidBitmapJpegDecoder()
 {
     m_exit.store(true);
@@ -206,6 +237,10 @@ AndroidBitmapJpegDecoder::~AndroidBitmapJpegDecoder()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Enqueues a JPEG buffer for decoding, replacing any previously pending frame.
+// Drops the buffer silently if it is empty.
 void AndroidBitmapJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id)
 {
     if (!jpeg_buffer || jpeg_buffer->data.empty())
@@ -230,11 +265,17 @@ void AndroidBitmapJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBu
     m_input_cv.notify_one();
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the total number of decoded frames submitted to the renderer since construction.
 uint64_t AndroidBitmapJpegDecoder::submittedFrameCount() const
 {
     return m_submitted_frames.load();
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a snapshot of the current decode statistics without resetting the counters.
 AndroidBitmapJpegDecoder::DecodeStats AndroidBitmapJpegDecoder::statsSnapshot() const
 {
     return makeStats(
@@ -247,6 +288,9 @@ AndroidBitmapJpegDecoder::DecodeStats AndroidBitmapJpegDecoder::statsSnapshot() 
         m_decoded_max_ms.load());
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the current decode statistics and resets all counters to zero.
 AndroidBitmapJpegDecoder::DecodeStats AndroidBitmapJpegDecoder::consumeStats()
 {
     auto stats = makeStats(
@@ -264,6 +308,11 @@ AndroidBitmapJpegDecoder::DecodeStats AndroidBitmapJpegDecoder::consumeStats()
     return stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Worker thread loop: waits for queued JPEG frames, decodes each one via the
+// Android BitmapDecodeBridge JNI call, and submits the resulting RGB565 pixels
+// to the renderer.
 void AndroidBitmapJpegDecoder::workerThreadProc()
 {
     AttachGuard jni;
@@ -303,7 +352,7 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             reinterpret_cast<const jbyte*>(input.jpeg_buffer->data.data()));
         input.jpeg_buffer.reset();
 
-        const auto decode_begin = std::chrono::steady_clock::now();
+        const auto decode_begin = Clock::now();
         jobject result = jni.env->CallStaticObjectMethod(
             g_bitmap_decode_bridge_class,
             g_decode_rgb565_method,
@@ -361,7 +410,7 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
 
         const uint32_t duration_ms = static_cast<uint32_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - decode_begin)
+                Clock::now() - decode_begin)
                 .count());
         m_decoded_count.fetch_add(1);
         m_decoded_total_ms.fetch_add(duration_ms);

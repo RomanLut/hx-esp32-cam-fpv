@@ -11,6 +11,11 @@ constexpr float kTouchNavMargin = 18.0f;
 
 namespace gs::render
 {
+//===================================================================================
+//===================================================================================
+// Computes a letterboxed (or pillarboxed) rectangle that fits the given video
+// aspect ratio within the supplied screen region, respecting the screen aspect
+// ratio override setting.
 RectI buildLetterboxedRect(int origin_x,
                            int origin_y,
                            int rect_width,
@@ -69,6 +74,10 @@ RectI buildLetterboxedRect(int origin_x,
     return rect;
 }
 
+//===================================================================================
+//===================================================================================
+// Computes scaled positions and sizes for the touch navigation pad buttons
+// based on the surface dimensions.
 NavPadLayout buildTouchNavPadLayout(int surface_width, int surface_height)
 {
     NavPadLayout layout;
@@ -87,6 +96,10 @@ NavPadLayout buildTouchNavPadLayout(int surface_width, int surface_height)
     return layout;
 }
 
+//===================================================================================
+//===================================================================================
+// Builds a VideoQuad for rendering a video frame into a rectangle.
+// screen_mode 1 = letterbox/pillarbox, screen_mode 2 = crop-to-fill.
 VideoQuad buildVideoQuad(float rect_x,
                          float rect_y,
                          float rect_width,

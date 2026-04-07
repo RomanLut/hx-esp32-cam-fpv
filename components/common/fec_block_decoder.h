@@ -9,13 +9,14 @@
 #include <mutex>
 #include <vector>
 
+#include "../components_gs/shared/Clock.h"
 #include "fec.h"
 #include "packets.h"
 
 class FecBlockDecoder
 {
 public:
-    using Clock = std::chrono::steady_clock;
+    using Clock = ::Clock;
     using TimePoint = Clock::time_point;
 
     struct Descriptor

@@ -133,6 +133,9 @@ const char* kResolutionName5640HiAspect[] =
     "1600x1200"
 };
 
+//===================================================================================
+//===================================================================================
+// Returns the appropriate resolution name table for the given sensor and fps variant.
 const char* const* getResolutionNames(bool is_ov5640, bool high_fps, bool aspect_variant)
 {
     if (is_ov5640)
@@ -203,6 +206,9 @@ constexpr Resolution kResolutionCycle[] =
 namespace gs::menu
 {
 
+//===================================================================================
+//===================================================================================
+// Returns a short human-readable string describing the currently configured resolution.
 std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640)
 {
     const bool high_fps = is_ov5640 ? config.camera.ov5640HighFPS : config.camera.ov2640HighFPS;
@@ -211,6 +217,9 @@ std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is
     return names[index];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the display label for a resolution menu option at the given index.
 const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, int menu_index, bool aspect_variant)
 {
     const bool high_fps = is_ov5640 ? config.camera.ov5640HighFPS : config.camera.ov2640HighFPS;
@@ -227,6 +236,9 @@ const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, boo
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Maps a Resolution enum value to its corresponding menu item index.
 int getResolutionMenuIndex(Resolution resolution)
 {
     switch (resolution)
@@ -241,6 +253,9 @@ int getResolutionMenuIndex(Resolution resolution)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Maps a menu item index back to its corresponding Resolution enum value.
 Resolution getResolutionForMenuIndex(int menu_index)
 {
     switch (menu_index)
@@ -255,22 +270,34 @@ Resolution getResolutionForMenuIndex(int menu_index)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a short human-readable string describing the currently configured Wi-Fi rate.
 std::string getWifiRateSummary(const Ground2Air_Config_Packet& config)
 {
     return kWifiRateLabels[getWifiRateMenuIndex(config.dataChannel.wifi_rate)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the raw label string for the given WIFI_Rate enum value.
 const char* getWifiRateLabel(WIFI_Rate rate)
 {
     const int index = std::clamp(static_cast<int>(rate), 0, static_cast<int>(std::size(kWifiRateRawLabels)) - 1);
     return kWifiRateRawLabels[index];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the display label for the Wi-Fi rate menu option at the given index.
 const char* getWifiRateOptionLabel(int menu_index)
 {
     return kWifiRateLabels[std::clamp(menu_index, 0, 5)];
 }
 
+//===================================================================================
+//===================================================================================
+// Maps a WIFI_Rate value to its menu item index, or 6 (Other) if not found.
 int getWifiRateMenuIndex(WIFI_Rate rate)
 {
     for (int i = 0; i < 6; ++i)
@@ -283,26 +310,41 @@ int getWifiRateMenuIndex(WIFI_Rate rate)
     return 6;
 }
 
+//===================================================================================
+//===================================================================================
+// Maps a menu item index to its corresponding WIFI_Rate value.
 WIFI_Rate getWifiRateForMenuIndex(int menu_index)
 {
     return kWifiRates[std::clamp(menu_index, 0, 5)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a short human-readable string describing the currently configured FEC strength.
 std::string getFecSummary(const Ground2Air_Config_Packet& config)
 {
     return kFecLabels[getFecMenuIndex(config)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the display label for the FEC strength menu option at the given index.
 const char* getFecOptionLabel(int menu_index)
 {
     return kFecLabels[std::clamp(menu_index, 0, 2)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the menu index corresponding to the FEC codec N value in the config packet.
 int getFecMenuIndex(const Ground2Air_Config_Packet& config)
 {
     return config.dataChannel.fec_codec_n == 8 ? 0 : config.dataChannel.fec_codec_n == 12 ? 2 : 1;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the FEC codec N value (total packet count) for the given menu index.
 uint8_t getFecNForMenuIndex(int menu_index)
 {
     switch (menu_index)
@@ -313,16 +355,25 @@ uint8_t getFecNForMenuIndex(int menu_index)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the number of resolutions in the cycling sequence.
 int getResolutionCycleSize()
 {
     return static_cast<int>(std::size(kResolutionCycle));
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the Resolution at the given position in the cycling sequence.
 Resolution getResolutionCycleValue(int index)
 {
     return kResolutionCycle[std::clamp(index, 0, static_cast<int>(std::size(kResolutionCycle)) - 1)];
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the default resolution used when cycling starts with no prior selection.
 Resolution getDefaultCyclingResolution()
 {
     return Resolution::SVGA16;

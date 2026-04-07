@@ -20,10 +20,6 @@
 
 //#define DEBUG_PCAP
 
-static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-                                          10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                                          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
-
 static constexpr size_t DEFAULT_RATE_HZ = 26000000;
 static constexpr uint32_t RX_RESTART_BACKJUMP_BLOCKS = 64;
 
@@ -949,7 +945,7 @@ void Comms::tx_thread_proc()
                 }
 
                 //encode
-                fec_encode(tx.fec, tx.fec_src_packet_ptrs.data(), tx.fec_dst_packet_ptrs.data(), BLOCK_NUMS + coding_k, coding_n - coding_k, tx.payload_size);
+                fec_encode(tx.fec, tx.fec_src_packet_ptrs.data(), tx.fec_dst_packet_ptrs.data(), fec_block_nums() + coding_k, coding_n - coding_k, tx.payload_size);
 
                 //seal the result
                 for (size_t i = 0; i < fec_count; i++)

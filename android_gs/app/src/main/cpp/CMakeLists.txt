@@ -24,7 +24,6 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_recordings_storage.cpp
     ../../../../../components_gs/shared/gs_stub_transport.cpp
     ../../../../../components_gs/shared/gs_test_transport.cpp
-    ../../../../../components_gs/shared/gs_storage_status_shared.cpp
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp

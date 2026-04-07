@@ -56,6 +56,7 @@ GsRuntimeCore::~GsRuntimeCore()
 void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
 {
     gs_device_id = gs_device_id_value;
+    assembler = gs::core::VideoFrameAssembler();
     rx_decoder.reset(Clock::now());
     rx_decoder_k = FEC_K;
     rx_decoder_n = 8;

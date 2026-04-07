@@ -8,6 +8,7 @@
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/transport_kind.h"
+#include "gs_recordings_storage.h"
 #include "gs_shared_state.h"
 
 namespace gs::menu
@@ -57,6 +58,15 @@ private:
     void drawStatus( const char* caption );
     void drawSpacing();
     void drawLargeGapIfTallScreen();
+    std::string formatAirStorageStatusLine(bool detected,
+                                           bool error,
+                                           bool slow,
+                                           uint16_t free_space_gb16,
+                                           uint16_t total_space_gb16,
+                                           const char* detected_label = "Ok",
+                                           const char* missing_label = "?",
+                                           const char* trailing_suffix = "") const;
+    std::string formatGroundStorageStatusLine(const GroundStorageStatus& status) const;
 
     static bool isMenuItemActivatePressed();
     static bool isMenuOpenPressed();

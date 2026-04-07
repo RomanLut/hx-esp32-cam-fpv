@@ -48,8 +48,6 @@ void comms_thread_proc()
     Clock::time_point last_stats_tp10 = Clock::now();
     Clock::time_point last_comms_sent_tp = Clock::now();
 
-    gs::core::VideoFrameAssembler videoFrameAssembler;
-
     //===================================================================================
     //===================================================================================
     // Holds a received packet buffer, its size, and the RSSI of the received signal.
@@ -69,7 +67,7 @@ void comms_thread_proc()
             const Clock::time_point now = Clock::now();
             const gs::core::LinkStatusSnapshot link_status = s_runtimeCore.session.consumeLinkStatus(now);
             const gs::core::PeriodicStatsSnapshot periodic_stats = s_runtimeCore.session.consumePeriodicStats();
-            const gs::core::VideoFrameAssembler::Stats assembler_stats = videoFrameAssembler.consumeStats();
+            const gs::core::VideoFrameAssembler::Stats assembler_stats = s_runtimeCore.assembler.consumeStats();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}",
                 periodic_stats.sent_count, periodic_stats.total_data, periodic_stats.in_tlm_size, periodic_stats.out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
@@ -172,7 +170,7 @@ void comms_thread_proc()
                 },
                 [&](const gs::core::SessionEvent& invalid_event)
                 {
-                    logInvalidLinuxSessionEvent(invalid_event, videoFrameAssembler.currentFrameIndex());
+                    logInvalidLinuxSessionEvent(invalid_event, s_runtimeCore.assembler.currentFrameIndex());
                 },
                 [](const gs::core::SessionEvent&)
                 {
@@ -186,7 +184,7 @@ void comms_thread_proc()
             };
             const RuntimeEventClass event_class =
                 processAndDispatchSessionEvent(processed_packet,
-                                              videoFrameAssembler,
+                                              s_runtimeCore.assembler,
                                               s_runtimeCore.session,
                                               restoredByFEC,
                                               dispatch);

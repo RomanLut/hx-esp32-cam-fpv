@@ -20,6 +20,9 @@ constexpr float kLinuxMenuItemGap = 4.0f;
 constexpr float kLinuxMenuGapLarge = 20.0f;
 constexpr float kLinuxMenuGapSmall = 8.0f;
 
+//===================================================================================
+//===================================================================================
+// Computes the UI scale factor to fit the reference menu size onto the surface.
 float computeScale(float surface_width, float surface_height, bool scale_to_surface)
 {
     if (!scale_to_surface || surface_width <= 0.0f || surface_height <= 0.0f)
@@ -30,6 +33,10 @@ float computeScale(float surface_width, float surface_height, bool scale_to_surf
     return std::min(surface_width / kLinuxMenuRefWidth, surface_height / kLinuxMenuRefHeight);
 }
 
+//===================================================================================
+//===================================================================================
+// Pushes a solid-color button style (normal, hovered, and active states all the same)
+// with left-aligned text onto the ImGui style stack.
 void pushButtonStyle(const ImVec4& color)
 {
     ImGui::PushStyleColor(ImGuiCol_Button, color);
@@ -38,6 +45,9 @@ void pushButtonStyle(const ImVec4& color)
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.02f, 0.5f));
 }
 
+//===================================================================================
+//===================================================================================
+// Pops the button style pushed by pushButtonStyle from the ImGui style stack.
 void popButtonStyle()
 {
     ImGui::PopStyleVar();
@@ -46,6 +56,10 @@ void popButtonStyle()
 
 } // namespace
 
+//===================================================================================
+//===================================================================================
+// Computes a fully scaled MenuFrameLayout for the given surface dimensions,
+// positioning the window centered horizontally and slightly below vertical center.
 MenuFrameLayout buildMenuFrameLayout(float surface_width,
                                      float surface_height,
                                      bool scale_to_surface,
@@ -70,6 +84,10 @@ MenuFrameLayout buildMenuFrameLayout(float surface_width,
     return layout;
 }
 
+//===================================================================================
+//===================================================================================
+// Begins an ImGui menu window positioned and sized according to the layout,
+// with standard OSD flags (no resize, no move, no title bar, no background).
 void beginMenuWindow(const char* window_name, const MenuFrameLayout& layout, ImGuiWindowFlags extra_flags)
 {
     ImGui::SetNextWindowPos(ImVec2(layout.window_x, layout.window_y), ImGuiCond_Always);
@@ -89,12 +107,18 @@ void beginMenuWindow(const char* window_name, const MenuFrameLayout& layout, ImG
                      extra_flags);
 }
 
+//===================================================================================
+//===================================================================================
+// Ends the ImGui menu window and pops the style vars pushed by beginMenuWindow.
 void endMenuWindow()
 {
     ImGui::End();
     ImGui::PopStyleVar(2);
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a non-interactive title button at the top of the menu in green.
 void drawMenuTitle(const char* caption, const MenuFrameLayout& layout)
 {
     pushButtonStyle(ImColor(97, 137, 105));
@@ -102,6 +126,10 @@ void drawMenuTitle(const char* caption, const MenuFrameLayout& layout)
     popButtonStyle();
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a clickable menu item button, highlighted in blue when selected.
+// Returns true if the button was clicked.
 bool drawMenuItem(const char* caption, const MenuFrameLayout& layout, bool selected)
 {
     ImGui::Indent();
@@ -112,6 +140,9 @@ bool drawMenuItem(const char* caption, const MenuFrameLayout& layout, bool selec
     return clicked;
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a non-interactive status bar button in dark grey across the full window width.
 void drawMenuStatus(const char* caption, const MenuFrameLayout& layout)
 {
     pushButtonStyle(ImColor(48, 48, 48));
@@ -119,6 +150,10 @@ void drawMenuStatus(const char* caption, const MenuFrameLayout& layout)
     popButtonStyle();
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a right-aligned text label at the bottom of the menu window.
+// Does nothing if caption is null or empty.
 void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout)
 {
     if (caption == nullptr || caption[0] == 0)
@@ -133,6 +168,9 @@ void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout)
     ImGui::TextUnformatted(caption);
 }
 
+//===================================================================================
+//===================================================================================
+// Inserts a large vertical gap between menu sections, if applicable for the surface height.
 void drawLargeGap(const MenuFrameLayout& layout)
 {
     if (layout.large_gap > 0.0f)
@@ -141,6 +179,9 @@ void drawLargeGap(const MenuFrameLayout& layout)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Inserts a small vertical gap between closely related menu items.
 void drawSmallGap(const MenuFrameLayout& layout)
 {
     if (layout.small_gap > 0.0f)

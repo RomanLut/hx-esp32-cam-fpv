@@ -12,6 +12,11 @@
 #include <thread>
 #include <vector>
 
+//===================================================================================
+//===================================================================================
+// Decodes JPEG frames received from the video assembler using the Android Bitmap API
+// via JNI, running multiple worker threads and submitting decoded RGB565 frames
+// to the video renderer.
 class AndroidBitmapJpegDecoder
 {
 public:

@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cstring>
 
+#include "Clock.h"
+
 extern "C"
 {
 #include <turbojpeg.h>
@@ -145,7 +147,7 @@ void JpegDecoderCore::workerThreadProc()
             m_input_queue.clear();
         }
 
-        const auto decode_begin = std::chrono::steady_clock::now();
+        const auto decode_begin = Clock::now();
         int width = 0;
         int height = 0;
         int subsamp = 0;
@@ -188,7 +190,7 @@ void JpegDecoderCore::workerThreadProc()
         }
 
         const uint32_t duration_ms = static_cast<uint32_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - decode_begin).count());
+            std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - decode_begin).count());
         m_decoded_count.fetch_add(1);
         m_decoded_total_ms.fetch_add(duration_ms);
 

@@ -11,6 +11,10 @@
 namespace gs::core
 {
 
+//===================================================================================
+//===================================================================================
+// Assembles video frames from a stream of incoming video packets,
+// handling multi-part frames, FEC restoration tracking, and buffer pool management.
 class VideoFrameAssembler
 {
 public:

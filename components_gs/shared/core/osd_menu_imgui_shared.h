@@ -5,6 +5,9 @@
 namespace gs::menu::imgui
 {
 
+//===================================================================================
+//===================================================================================
+// Scaled layout parameters for an ImGui OSD menu window and its items.
 struct MenuFrameLayout
 {
     float scale = 1.0f;

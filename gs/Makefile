@@ -37,7 +37,6 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_runtime_state.cpp \
 	../components_gs/shared/gs_runtime_sync.cpp \
 	../components_gs/shared/gs_runtime_video_flow.cpp \
-	../components_gs/shared/gs_storage_status_shared.cpp \
 	../components_gs/shared/settings_storage.cpp \
 	../components_gs/utils/lodepng.cpp \
 	../components_gs/utils/utils.cpp \

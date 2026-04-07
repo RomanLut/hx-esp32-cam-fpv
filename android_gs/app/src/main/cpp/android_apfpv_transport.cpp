@@ -1,4 +1,5 @@
 #include "android_apfpv_transport.h"
+#include "Clock.h"
 
 #include <android/log.h>
 #include <arpa/inet.h>
@@ -264,7 +265,7 @@ void AndroidAPFPVTransport::stopUdpClient()
 // Runs the Android APFPV UDP backend loop for control TX, media RX, and transport stats.
 void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
 {
-    using ClockType = std::chrono::steady_clock;
+    using ClockType = Clock;
 
     addrinfo hints = {};
     hints.ai_family = AF_INET;
