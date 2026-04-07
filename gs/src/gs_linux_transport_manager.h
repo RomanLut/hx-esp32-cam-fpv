@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Comms.h"
+#include "linux_raw_broadcast_transport.h"
 #include "core/transport_manager_base.h"
 #include "gs_stub_transport.h"
 #include "gs_test_transport.h"
@@ -17,7 +17,7 @@ private:
     bool isTransportInitialized(gs::core::TransportKind kind) const override;
     void setTransportInitialized(gs::core::TransportKind kind, bool initialized) override;
 
-    Comms m_raw_broadcast;
+    LinuxRawBroadcastTransport m_raw_broadcast;
     GSStubTransport m_apfpv_stub = GSStubTransport("Linux APFPV");
     GSTestTransport m_test_transport;
     bool m_raw_broadcast_initialized = false;

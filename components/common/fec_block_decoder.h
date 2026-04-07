@@ -13,6 +13,10 @@
 #include "fec.h"
 #include "packets.h"
 
+//===================================================================================
+//===================================================================================
+// Decodes a stream of FEC-encoded UDP-like packets arranged in blocks.
+// Handles duplicate detection, stream restarts, and FEC recovery of lost packets.
 class FecBlockDecoder
 {
 public:

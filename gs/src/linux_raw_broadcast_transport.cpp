@@ -1,4 +1,4 @@
-#include "Comms.h"
+#include "linux_raw_broadcast_transport.h"
 #include <pcap.h>
 #include "radiotap/radiotap.h"
 #include <mutex>
@@ -31,7 +31,7 @@ static constexpr size_t DST_MAC_LASTBYTE = 21;
 //===================================================================================
 //===================================================================================
 // Reports that the raw-broadcast transport uses wifi-channel search.
-bool Comms::usesChannelSearch() const
+bool LinuxRawBroadcastTransport::usesChannelSearch() const
 {
     return true;
 }
@@ -91,7 +91,7 @@ struct Packet_Header
 
 //===================================================================================
 //===================================================================================
-struct Comms::PCap
+struct LinuxRawBroadcastTransport::PCap
 {
     std::mutex mutex;
     pcap_t* pcap = nullptr;
@@ -104,7 +104,7 @@ struct Comms::PCap
 
 //===================================================================================
 //===================================================================================
-struct Comms::TX
+struct LinuxRawBroadcastTransport::TX
 {
     std::thread thread;
 
@@ -146,7 +146,7 @@ struct Comms::TX
 
 //===================================================================================
 //===================================================================================
-struct Comms::RX
+struct LinuxRawBroadcastTransport::RX
 {
     std::vector<std::thread> threads;
 
@@ -158,7 +158,7 @@ struct Comms::RX
 //===================================================================================
 //===================================================================================
 static void seal_packet(PacketFilter& packet_filter,
-                        Comms::TX::Packet& packet,
+                        LinuxRawBroadcastTransport::TX::Packet& packet,
                         size_t header_offset,
                         uint32_t block_index,
                         uint8_t packet_index)
@@ -177,7 +177,7 @@ static void seal_packet(PacketFilter& packet_filter,
 
 //===================================================================================
 //===================================================================================
-struct Comms::Impl
+struct LinuxRawBroadcastTransport::Impl
 {
     size_t tx_packet_header_length = 0;  //=RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
 
@@ -188,7 +188,7 @@ struct Comms::Impl
 /*
 //===================================================================================
 //===================================================================================
-std::vector<std::string> Comms::enumerate_interfaces()
+std::vector<std::string> LinuxRawBroadcastTransport::enumerate_interfaces()
 {
     std::vector<std::string> res;
 
@@ -220,13 +220,13 @@ std::vector<std::string> Comms::enumerate_interfaces()
 
 //===================================================================================
 //===================================================================================
-Comms::Comms()
+LinuxRawBroadcastTransport::LinuxRawBroadcastTransport()
 {
 }
 
 //===================================================================================
 //===================================================================================
-Comms::~Comms()
+LinuxRawBroadcastTransport::~LinuxRawBroadcastTransport()
 {
     if (!m_impl)
         return;
@@ -247,7 +247,7 @@ Comms::~Comms()
 
 //===================================================================================
 //===================================================================================
-bool Comms::prepare_filter(PCap& pcap)
+bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
 {
     struct bpf_program program;
     char program_src[512];
@@ -314,7 +314,7 @@ static void radiotap_add_u16(uint8_t*& dst, size_t& idx, uint16_t data)
 
 //===================================================================================
 //===================================================================================
-void Comms::prepare_radiotap_header(size_t rate_hz)
+void LinuxRawBroadcastTransport::prepare_radiotap_header(size_t rate_hz)
 {
     RADIOTAP_HEADER.resize(1024);
     ieee80211_radiotap_header& hdr = reinterpret_cast<ieee80211_radiotap_header& >(*RADIOTAP_HEADER.data());
@@ -361,7 +361,7 @@ void Comms::prepare_radiotap_header(size_t rate_hz)
 
 //===================================================================================
 //===================================================================================
-void Comms::prepare_tx_packet_header(uint8_t* buffer)
+void LinuxRawBroadcastTransport::prepare_tx_packet_header(uint8_t* buffer)
 {
     //prepare the buffers with headers
     uint8_t* pu8 = buffer;
@@ -375,7 +375,7 @@ void Comms::prepare_tx_packet_header(uint8_t* buffer)
 
 //===================================================================================
 //===================================================================================
-bool Comms::process_rx_packet(PCap& pcap)
+bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
 {
     struct pcap_pkthdr* pcap_packet_header = nullptr;
     uint8_t* payload;
@@ -547,7 +547,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
 //===================================================================================
 //===================================================================================
-bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor)
+bool LinuxRawBroadcastTransport::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor)
 {
     LOGI("Opening interface {} in monitor mode", interface);
 
@@ -632,7 +632,7 @@ bool Comms::prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor
 
 //===================================================================================
 //===================================================================================
-bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_descriptor)
+bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_descriptor)
 {
     if (tx_descriptor.interface.empty())
     {
@@ -811,7 +811,7 @@ bool Comms::init(RX_Descriptor const& rx_descriptor, TX_Descriptor const& tx_des
 
 //===================================================================================
 //===================================================================================
-void Comms::rx_thread_proc(size_t index)
+void LinuxRawBroadcastTransport::rx_thread_proc(size_t index)
 {
     RX& rx = m_impl->rx;
     PCap& pcap = *rx.pcaps[index];
@@ -837,7 +837,7 @@ void Comms::rx_thread_proc(size_t index)
 
 //===================================================================================
 //===================================================================================
-void Comms::tx_thread_proc()
+void LinuxRawBroadcastTransport::tx_thread_proc()
 {
     TX& tx = m_impl->tx;
     uint32_t coding_k = m_tx_descriptor.coding_k;
@@ -1030,7 +1030,7 @@ void Comms::tx_thread_proc()
 //or appends and flushes
 //currently flush=true is always used
 //because we want the data headers to be on the beginning of each block
-void Comms::send(void const* _data, size_t size, bool flush)
+void LinuxRawBroadcastTransport::send(void const* _data, size_t size, bool flush)
 {
     TX& tx = m_impl->tx;
 
@@ -1069,21 +1069,21 @@ void Comms::send(void const* _data, size_t size, bool flush)
 
 //===================================================================================
 //===================================================================================
-size_t Comms::get_data_rate() const
+size_t LinuxRawBroadcastTransport::get_data_rate() const
 {
     return m_data_stats_rate;
 }
 
 //===================================================================================
 //===================================================================================
-int Comms::get_input_dBm() const
+int LinuxRawBroadcastTransport::get_input_dBm() const
 {
     return m_latched_input_dBm;
 }
 
 //===================================================================================
 //===================================================================================
-void Comms::reset_rx_state()
+void LinuxRawBroadcastTransport::reset_rx_state()
 {
     if (!m_impl)
         return;
@@ -1099,7 +1099,7 @@ void Comms::reset_rx_state()
 
 //===================================================================================
 //===================================================================================
-void Comms::process_rx_packets()
+void LinuxRawBroadcastTransport::process_rx_packets()
 {
     m_impl->rx.decoder.process(Clock::now());
     sync_rx_decoder_stats();
@@ -1107,14 +1107,14 @@ void Comms::process_rx_packets()
 
 //===================================================================================
 //===================================================================================
-bool Comms::receive(void* data, size_t& size, bool& restoredByFEC)
+bool LinuxRawBroadcastTransport::receive(void* data, size_t& size, bool& restoredByFEC)
 {
     return m_impl->rx.decoder.receive(data, size, restoredByFEC);
 }
 
 //===================================================================================
 //===================================================================================
-void Comms::process()
+void LinuxRawBroadcastTransport::process()
 {
     if (!m_impl)
         return;
@@ -1139,7 +1139,7 @@ void Comms::process()
     }
 }
 
-void Comms::sync_rx_decoder_stats()
+void LinuxRawBroadcastTransport::sync_rx_decoder_stats()
 {
     const FecBlockDecoder::Stats stats = m_impl->rx.decoder.getStats();
     {
@@ -1160,7 +1160,7 @@ void Comms::sync_rx_decoder_stats()
 
 //===================================================================================
 //===================================================================================
-void Comms::setChannel(int ch)
+void LinuxRawBroadcastTransport::setChannel(int ch)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)  //the list contains both RX and TX interfaces
     {
@@ -1170,7 +1170,7 @@ void Comms::setChannel(int ch)
 
 //===================================================================================
 //===================================================================================
-void Comms::setTxPower(int txPower)
+void LinuxRawBroadcastTransport::setTxPower(int txPower)
 {
     //iw dev wlan1 set txpower fixed -4500
     std::string s = fmt::format("iw dev {} set txpower fixed {}", m_tx_descriptor.interface, -(txPower * 100) );
@@ -1180,7 +1180,7 @@ void Comms::setTxPower(int txPower)
 
 //===================================================================================
 //===================================================================================
-void Comms::setMonitorMode(const std::vector<std::string> interfaces)
+void LinuxRawBroadcastTransport::setMonitorMode(const std::vector<std::string> interfaces)
 {
     for (const auto& itf:interfaces)
     {
@@ -1193,21 +1193,21 @@ void Comms::setMonitorMode(const std::vector<std::string> interfaces)
 
 //===================================================================================
 //===================================================================================
-PacketFilter& Comms::getPacketFilter()
+PacketFilter& LinuxRawBroadcastTransport::getPacketFilter()
 {
     return m_packet_filter;
 }
 
 //===================================================================================
 //===================================================================================
-const Comms::RX_Descriptor& Comms::getRXDescriptor() const
+const LinuxRawBroadcastTransport::RX_Descriptor& LinuxRawBroadcastTransport::getRXDescriptor() const
 {
     return this->m_rx_descriptor;
 }
 
 //===================================================================================
 //===================================================================================
-void Comms::setTxInterface(const std::string& interface)
+void LinuxRawBroadcastTransport::setTxInterface(const std::string& interface)
 {
     std::lock_guard<std::mutex> lg( m_impl->tx.pcap->mutex );
 

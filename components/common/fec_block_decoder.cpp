@@ -4,8 +4,14 @@
 #include <cstring>
 #include <limits>
 
+//===================================================================================
+//===================================================================================
+// Default constructor.
 FecBlockDecoder::FecBlockDecoder() = default;
 
+//===================================================================================
+//===================================================================================
+// Destructor. Frees the FEC codec if it was allocated.
 FecBlockDecoder::~FecBlockDecoder()
 {
     if (m_fec)
@@ -15,6 +21,10 @@ FecBlockDecoder::~FecBlockDecoder()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Initializes the decoder with the given descriptor, allocating the FEC codec
+// and resetting all internal state. Returns false if parameters are invalid.
 bool FecBlockDecoder::init(const Descriptor& descriptor)
 {
     if (descriptor.coding_k == 0 ||
@@ -60,6 +70,10 @@ bool FecBlockDecoder::init(const Descriptor& descriptor)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Clears all queued blocks and received packet history, resetting the decoder
+// to a clean state as of the given timestamp.
 void FecBlockDecoder::reset(TimePoint now)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
@@ -78,12 +92,20 @@ void FecBlockDecoder::reset(TimePoint now)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Replaces the current callback set used to notify callers of decoded and restored packets.
 void FecBlockDecoder::setCallbacks(Callbacks callbacks)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     m_callbacks = std::move(callbacks);
 }
 
+//===================================================================================
+//===================================================================================
+// Accepts an incoming raw packet from the given interface, deduplicates it,
+// inserts it into the appropriate block queue slot, and detects stream restarts.
+// Returns false if the packet is malformed or out of range.
 bool FecBlockDecoder::pushPacket(const uint8_t* data,
                                  size_t size,
                                  size_t interface_index,
@@ -243,6 +265,11 @@ bool FecBlockDecoder::pushPacket(const uint8_t* data,
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Processes the block queue: emits complete blocks directly, attempts FEC recovery
+// on incomplete blocks that have enough redundancy packets, and skips blocks
+// that all interfaces have moved past.
 void FecBlockDecoder::process(TimePoint now)
 {
     std::unique_lock<std::mutex> lg(m_state_mutex);
@@ -384,6 +411,10 @@ void FecBlockDecoder::process(TimePoint now)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Dequeues the next decoded packet into the caller's buffer.
+// Returns false if no packet is available.
 bool FecBlockDecoder::receive(void* data, size_t& size, bool& restored_by_fec)
 {
     std::lock_guard<std::mutex> lg(m_ready_mutex);
@@ -404,24 +435,36 @@ bool FecBlockDecoder::receive(void* data, size_t& size, bool& restored_by_fec)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns a snapshot of the current decoder statistics.
 FecBlockDecoder::Stats FecBlockDecoder::getStats() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_stats;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the timestamp of the last successfully completed FEC block.
 FecBlockDecoder::TimePoint FecBlockDecoder::lastBlockTime() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_last_block_tp;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the timestamp of the last packet that produced a decoded output.
 FecBlockDecoder::TimePoint FecBlockDecoder::lastPacketTime() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_last_packet_tp;
 }
 
+//===================================================================================
+//===================================================================================
+// Allocates a new Packet with data storage pre-reserved to the configured MTU.
 FecBlockDecoder::PacketPtr FecBlockDecoder::makePacket() const
 {
     PacketPtr packet = std::make_shared<Packet>();
@@ -429,6 +472,9 @@ FecBlockDecoder::PacketPtr FecBlockDecoder::makePacket() const
     return packet;
 }
 
+//===================================================================================
+//===================================================================================
+// Allocates a new Block with packet vectors pre-reserved to the configured k and n counts.
 FecBlockDecoder::BlockPtr FecBlockDecoder::makeBlock() const
 {
     BlockPtr block = std::make_shared<Block>();
@@ -437,6 +483,9 @@ FecBlockDecoder::BlockPtr FecBlockDecoder::makeBlock() const
     return block;
 }
 
+//===================================================================================
+//===================================================================================
+// Copies a decoded packet into the ready queue and fires the on_decoded_packet callback.
 void FecBlockDecoder::emitDecodedPacket(const PacketPtr& packet, uint32_t block_index)
 {
     DecodedPacket decoded = {};
@@ -458,6 +507,10 @@ void FecBlockDecoder::emitDecodedPacket(const PacketPtr& packet, uint32_t block_
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Removes packet IDs from the duplicate-detection window that are older than
+// the configured duplicate_window size. Must be called with m_state_mutex held.
 void FecBlockDecoder::pruneReceivedPacketIdsLocked(uint32_t newest_packet_index)
 {
     const uint32_t last_seen = *std::max_element(m_last_packet_id_by_interface.begin(), m_last_packet_id_by_interface.end());

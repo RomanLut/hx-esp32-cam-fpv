@@ -17,11 +17,11 @@ struct fec_t;
 
 //===================================================================================
 //===================================================================================
-class Comms : public gs::core::ITransport
+class LinuxRawBroadcastTransport : public gs::core::ITransport
 {
 public:
-    Comms();
-    ~Comms();
+    LinuxRawBroadcastTransport();
+    ~LinuxRawBroadcastTransport();
 
     using TX_Descriptor = gs::core::TXDescriptor;
     using RX_Descriptor = gs::core::RXDescriptor;

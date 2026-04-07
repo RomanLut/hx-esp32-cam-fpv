@@ -43,7 +43,7 @@ SRCS := src/main.cpp \
 	../components/common/util.cpp \
 	../components_gs/shared/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
-	src/Comms.cpp \
+	src/linux_raw_broadcast_transport.cpp \
 	src/Video_Decoder.cpp \
 	../components_gs/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
