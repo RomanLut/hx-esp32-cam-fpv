@@ -4,7 +4,6 @@
 #include "frame_packets_debug.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
-#include "hx_mavlink_parser.h"
 #include "gs_stats.h"
 
 namespace gs::core
@@ -356,8 +355,7 @@ void GsSessionCore::dispatchOutboundTelemetry(const uint8_t* payload, size_t pay
 //===================================================================================
 // Reads incoming serial telemetry bytes, parses MAVLink RC packets to detect RC input,
 // updates RC period stats, and flushes the outbound telemetry packet if needed.
-void GsSessionCore::processIncomingTelemetry(HXMavlinkParser& mavlink_parser,
-                                             uint16_t gs_device_id,
+void GsSessionCore::processIncomingTelemetry(uint16_t gs_device_id,
                                              ITransport& transport,
                                              std::mutex& gs_stats_mutex,
                                              GSStats& gs_stats)
@@ -378,9 +376,9 @@ void GsSessionCore::processIncomingTelemetry(HXMavlinkParser& mavlink_parser,
         uint8_t* dPtr = payload_write_ptr;
         for (int i = 0; i < n; i++)
         {
-            mavlink_parser.processByte(*dPtr++);
-            if (mavlink_parser.gotPacket() &&
-                mavlink_parser.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
+            m_mavlink_parser_in.processByte(*dPtr++);
+            if (m_mavlink_parser_in.gotPacket() &&
+                m_mavlink_parser_in.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
             {
                 gotRCPacket = true;
 

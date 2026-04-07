@@ -26,7 +26,6 @@
 #include "gs_runtime_state.h"
 #include "gs_top_overlay_shared.h"
 #include "core/osd_menu_controller.h"
-#include "hx_mavlink_parser.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "jpeg_parser.h"
@@ -38,8 +37,6 @@ namespace
 {
 
 std::thread s_comms_thread;
-
-HXMavlinkParser mavlinkParserIn(true);
 
 //===================================================================================
 //===================================================================================
@@ -133,7 +130,6 @@ void comms_thread_proc()
         {
             std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
             s_runtimeCore.session.processIncomingTelemetry(
-                mavlinkParserIn,
                 s_groundstation_config.deviceId,
                 *s_transport,
                 s_gs_stats_mutex,
@@ -229,15 +225,6 @@ void signalHandler(int signal)
 
 } // namespace
 
-
-//===================================================================================
-//===================================================================================
-// Initializes the OSD by loading the currently selected font.
-void initializeLinuxOsd()
-{
-    const std::string font_name = s_flightOSD.selectedFontName();
-    s_flightOSD.loadFont(font_name.c_str());
-}
 
 //===================================================================================
 //===================================================================================
@@ -411,7 +398,7 @@ int runLinuxRuntimeLoop(char* argv[])
     config = s_runtimeCore.session.copyConfigPacket();
     size_t video_frame_count = 0;
 
-    initializeLinuxOsd();
+    s_flightOSD.loadFont(s_flightOSD.selectedFontName().c_str());
 
     Clock::time_point last_stats_tp = Clock::now();
     Clock::time_point last_tp = Clock::now();

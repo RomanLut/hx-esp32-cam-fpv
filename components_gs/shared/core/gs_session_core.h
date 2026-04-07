@@ -7,10 +7,10 @@
 #include "Clock.h"
 #include "core/gs_protocol.h"
 #include "core/transport.h"
+#include "hx_mavlink_parser.h"
 #include "packets.h"
 #include "stats.h"
 
-class HXMavlinkParser;
 struct GSStats;
 
 namespace gs::core
@@ -161,8 +161,7 @@ public:
     uint8_t* telemetryPayloadWritePtr();
     void appendTelemetryBytes(size_t bytes);
     void dispatchOutboundTelemetry(const uint8_t* payload, size_t payload_size);
-    void processIncomingTelemetry(HXMavlinkParser& mavlink_parser,
-                                  uint16_t gs_device_id,
+    void processIncomingTelemetry(uint16_t gs_device_id,
                                   ITransport& transport,
                                   std::mutex& gs_stats_mutex,
                                   GSStats& gs_stats);
@@ -229,6 +228,7 @@ private:
     uint16_t m_connected_air_device_id = 0;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;
+    HXMavlinkParser m_mavlink_parser_in = HXMavlinkParser(true);
 };
 
 }

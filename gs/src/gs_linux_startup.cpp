@@ -1,6 +1,5 @@
 #include "gs_linux_startup.h"
 
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -16,6 +15,7 @@
 #include <unistd.h>
 
 #include "Clock.h"
+#include "util.h"
 
 static const char* GS_PID_FILE = "/tmp/esp32_cam_fpv_gs.pid";
 
@@ -116,16 +116,6 @@ static std::string execCommand(const char* cmd)
     }
 
     return result;
-}
-
-//===================================================================================
-//===================================================================================
-// Returns lowercased copy of input string
-static std::string toLowerCopy(const std::string& str)
-{
-    std::string lower_str = str;
-    std::transform(lower_str.begin(), lower_str.end(), lower_str.begin(), ::tolower);
-    return lower_str;
 }
 
 //===================================================================================
