@@ -14,6 +14,9 @@ object NativeCore {
     const val EVENT_INVALID_TELEMETRY_PACKET = 7
     const val EVENT_INVALID_OSD_PACKET = 8
     const val EVENT_UNSUPPORTED_PACKET = 9
+    const val TRANSPORT_RAW_BROADCAST = 0
+    const val TRANSPORT_APFPV = 1
+    const val TRANSPORT_TEST = 2
 
     init {
         System.loadLibrary("android_gs_core")
@@ -24,6 +27,7 @@ object NativeCore {
     external fun setSettingsPath(path: String)
     external fun createHandle(gsDeviceId: Int = 1): Long
     external fun describeHandle(handle: Long): String
+    external fun getActiveTransportKind(handle: Long): Int
     external fun startUdpClient(
         handle: Long,
         peerHost: String = "192.168.4.1",

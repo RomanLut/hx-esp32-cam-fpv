@@ -38,6 +38,7 @@ private val VideoBackgroundColor = Color(0xFF0A0D14)
 class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
+    private lateinit var apfpvWifiController: ApfpvWifiController
 
     private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
+        apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         enableEdgeToEdge()
         applyImmersiveFullscreen()
@@ -67,11 +69,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        apfpvWifiController.start()
     }
 
     override fun onResume() {
         super.onResume()
         applyImmersiveFullscreen()
+        apfpvWifiController.start()
+    }
+
+    override fun onDestroy() {
+        apfpvWifiController.stop()
+        super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

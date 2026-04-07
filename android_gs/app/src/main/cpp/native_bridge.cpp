@@ -887,6 +887,21 @@ Java_com_esp32camfpv_androidgs_NativeCore_describeHandle(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_getActiveTransportKind(JNIEnv* /* env */,
+                                                                 jobject /* thiz */,
+                                                                 jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return static_cast<jint>(gs::core::TransportKind::RawBroadcast);
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return static_cast<jint>(native_handle->transport_manager.activeKind());
+}
+
+extern "C" JNIEXPORT jint JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
                                                      jobject /* thiz */,
                                                      jlong handle,
