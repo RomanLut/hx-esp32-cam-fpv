@@ -20,9 +20,6 @@
 
 //#define DEBUG_PCAP
 
-Comms s_comms;
-gs::core::ITransport& s_transport = s_comms;
-
 static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
@@ -34,6 +31,14 @@ static std::vector<uint8_t> RADIOTAP_HEADER;
 
 static constexpr size_t SRC_MAC_LASTBYTE = 15;
 static constexpr size_t DST_MAC_LASTBYTE = 21;
+
+//===================================================================================
+//===================================================================================
+// Reports that the raw-broadcast transport uses wifi-channel search.
+bool Comms::usesChannelSearch() const
+{
+    return true;
+}
 
 /*
 // Penumbra IEEE80211 header
@@ -156,14 +161,18 @@ struct Comms::RX
 
 //===================================================================================
 //===================================================================================
-static void seal_packet(Comms::TX::Packet& packet, size_t header_offset, uint32_t block_index, uint8_t packet_index)
+static void seal_packet(PacketFilter& packet_filter,
+                        Comms::TX::Packet& packet,
+                        size_t header_offset,
+                        uint32_t block_index,
+                        uint8_t packet_index)
 {
     //header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
     assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
 
     Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
 
-    s_comms.getPacketFilter().apply_packet_header_data(&header);
+    packet_filter.apply_packet_header_data(&header);
 
     header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
     header.block_index = block_index;
@@ -491,7 +500,7 @@ bool Comms::process_rx_packet(PCap& pcap)
 
         Packet_Header& header = *reinterpret_cast<Packet_Header*>(payload);
 
-        auto res = s_comms.getPacketFilter().filter_packet(payload, bytes, m_rx_descriptor.mtu);
+        auto res = m_packet_filter.filter_packet(payload, bytes, m_rx_descriptor.mtu);
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
             //s_stats.inRejectedPacketCounter++;
@@ -909,7 +918,11 @@ void Comms::tx_thread_proc()
             {
                 //m_packet_header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
                 //packet->data() + m_packet_header_offset => Packet_Header
-                seal_packet(*packet, m_packet_header_offset, tx.last_block_index, tx.block_packets.size());
+                seal_packet(m_packet_filter,
+                            *packet,
+                            m_packet_header_offset,
+                            tx.last_block_index,
+                            tx.block_packets.size());
                 tx.ready_packet_queue.push_back(packet); //ready to send
                 tx.block_packets.push_back(packet);
             }
@@ -941,7 +954,11 @@ void Comms::tx_thread_proc()
                 //seal the result
                 for (size_t i = 0; i < fec_count; i++)
                 {
-                    seal_packet(*tx.block_fec_packets[i], m_packet_header_offset, tx.last_block_index, coding_k + i);
+                    seal_packet(m_packet_filter,
+                                *tx.block_fec_packets[i],
+                                m_packet_header_offset,
+                                tx.last_block_index,
+                                coding_k + i);
                     tx.ready_packet_queue.push_back(tx.block_fec_packets[i]); //ready to send
                 }
 

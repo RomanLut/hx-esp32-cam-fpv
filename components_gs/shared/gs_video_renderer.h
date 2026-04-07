@@ -146,6 +146,7 @@ public:
     void setMenuBinding(gs::menu::OSDMenuController* menu_controller,
                         Ground2Air_Config_Packet* config_packet,
                         std::mutex* menu_mutex);
+    void invalidateDisplayedFrame();
     void setMenuFooter(const std::string& footer);
     bool isMenuVisible();
     void queueMenuOpen();

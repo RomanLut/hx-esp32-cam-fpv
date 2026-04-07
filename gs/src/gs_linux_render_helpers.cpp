@@ -12,7 +12,7 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_core.h"
 #include "core/osd_menu_common.h"
-#include "osd_menu.h"
+#include "core/osd_menu_controller.h"
 
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
@@ -115,8 +115,7 @@ void processPendingWifiChannelChange()
         else
         {
             s_change_channel = Clock::now() + std::chrono::hours(10000);
-            s_transport.setChannel(s_groundstation_config.wifi_channel);
+            s_transport->setChannel(s_groundstation_config.wifi_channel);
         }
     }
 }
-

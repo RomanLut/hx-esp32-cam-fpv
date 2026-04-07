@@ -9,6 +9,7 @@
 #include "gpio_buttons.h"
 #include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
+#include "gs_runtime_config.h"
 
 namespace
 {
@@ -74,6 +75,14 @@ std::string LinuxRuntimePlatformServices::getSystemIPv4() const
 
 //===================================================================================
 //===================================================================================
+// Reports that Linux supports the extended screen-aspect menu variants.
+bool LinuxRuntimePlatformServices::supportsCustomScreenAspectModes() const
+{
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
 // Applies Linux VSync immediately through the HAL backend.
 void LinuxRuntimePlatformServices::setVsync(bool enabled)
 {
@@ -99,4 +108,29 @@ void LinuxRuntimePlatformServices::restartGPIOButtons()
 {
     gpio_buttons_stop();
     gpio_buttons_start();
+}
+
+//===================================================================================
+//===================================================================================
+// Invalidates the currently displayed Linux video frame and drops stale decoded output.
+void LinuxRuntimePlatformServices::invalidateDisplayedVideoFrame()
+{
+    s_decoder.invalidate_displayed_frame();
+}
+
+//===================================================================================
+//===================================================================================
+// Applies the selected GS Wi-Fi channel through the deferred Linux channel-switch path.
+void LinuxRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Config_Packet& config)
+{
+    applyWifiChannelToSession(config);
+    s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+}
+
+//===================================================================================
+//===================================================================================
+// Applies the selected GS TX power to the active Linux transport.
+void LinuxRuntimePlatformServices::applyGroundStationTxPower(Ground2Air_Config_Packet& /* config */)
+{
+    applyGSTxPowerToTransport(*s_transport);
 }

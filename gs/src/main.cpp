@@ -17,6 +17,7 @@
 #include "imgui.h"
 #include "gs_linux_osd_font_storage.h"
 #include "gs_linux_bootstrap.h"
+#include "gs_linux_transport_manager.h"
 #include "Video_Decoder.h"
 #include "gs_runtime_state.h"
 #include "ISerialTelemetry.h"
@@ -60,5 +61,6 @@ int main(int argc, const char* argv[])
     s_RuntimePlatformServices = &getLinuxRuntimePlatformServices();
     s_OSDFontStorage = &getLinuxOsdFontStorage();
     s_recordingsStorage = &getLinuxRecordingsStorage();
+    s_transportManager = &getLinuxTransportManager();
     return runLinuxBootstrap(argc, argv);
 }

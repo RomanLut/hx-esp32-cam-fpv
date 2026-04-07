@@ -474,6 +474,28 @@ void GsVideoRenderer::setMenuBinding(gs::menu::OSDMenuController* menu_controlle
 
 //===================================================================================
 //===================================================================================
+// Invalidates the currently displayed video frame and discards any stale queued frame data.
+void GsVideoRenderer::invalidateDisplayedFrame()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    releaseFrameRefLocked(m_locked_frame);
+    m_locked_frame = {};
+    releaseFrameRefLocked(m_pending_frame);
+    m_pending_frame = {};
+    m_has_pending_frame = false;
+    m_frame_width = 0;
+    m_frame_height = 0;
+    m_frame_stride = 0;
+    m_uploaded_width = 0;
+    m_uploaded_height = 0;
+    m_has_uploaded_frame = false;
+    m_frame_dirty.store(false);
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+//===================================================================================
+//===================================================================================
 // Sets the footer text for the menu display.
 void GsVideoRenderer::setMenuFooter(const std::string& footer)
 {
@@ -759,6 +781,16 @@ void GsVideoRenderer::applyPendingSurfaceLocked()
             glClear(GL_COLOR_BUFFER_BIT);
             m_surface_backend.swapBuffers();
             initImGuiLocked();
+            s_flightOSD.invalidateFontAtlas();
+
+            if (!m_locked_frame.pixels.empty() || m_locked_frame.external_pixels != nullptr)
+            {
+                uploadFrameLocked();
+            }
+            else
+            {
+                drawFrameLocked();
+            }
         }
     }
 }
@@ -1031,51 +1063,47 @@ void GsVideoRenderer::drawMenuImGuiLocked()
 // Draws the statistics and flight overlay elements.
 void GsVideoRenderer::drawOverlayLocked()
 {
-    if (m_imgui_context != nullptr)
-    {
-        ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
-        io.DeltaTime = 1.0f / 60.0f;
-        m_touch_action = {};
-        if (m_touch_pending)
-        {
-            io.AddMousePosEvent(m_touch_x, m_touch_y);
-            io.AddMouseButtonEvent(0, true);
-            io.AddMouseButtonEvent(0, false);
-        }
-        for (const ImGuiKey key : m_pending_key_presses)
-        {
-            io.AddKeyEvent(key, true);
-            io.AddKeyEvent(key, false);
-        }
-        m_pending_key_presses.clear();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
-        ImGui::Begin("FULLSCREEN_OVERLAY",
-                     nullptr,
-                     ImGuiWindowFlags_NoDecoration |
-                         ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoBackground |
-                         ImGuiWindowFlags_NoInputs |
-                         ImGuiWindowFlags_NoNav |
-                         ImGuiWindowFlags_NoFocusOnAppearing);
-    }
-
-    s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
     if (m_imgui_context == nullptr)
     {
         return;
     }
 
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
+    io.DeltaTime = 1.0f / 60.0f;
+    m_touch_action = {};
+    if (m_touch_pending)
+    {
+        io.AddMousePosEvent(m_touch_x, m_touch_y);
+        io.AddMouseButtonEvent(0, true);
+        io.AddMouseButtonEvent(0, false);
+    }
+    for (const ImGuiKey key : m_pending_key_presses)
+    {
+        io.AddKeyEvent(key, true);
+        io.AddKeyEvent(key, false);
+    }
+    m_pending_key_presses.clear();
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
+    ImGui::Begin("FULLSCREEN_OVERLAY",
+                 nullptr,
+                 ImGuiWindowFlags_NoDecoration |
+                     ImGuiWindowFlags_NoResize |
+                     ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoInputs |
+                     ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing);
+
+    s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
     gs::imgui::drawTopOverlayStatus(m_overlay_input);
     if (m_frame_ui_state.overlay_stats_visible)
     {
@@ -1118,7 +1146,7 @@ void GsVideoRenderer::drawFrameLocked()
     {
         const auto drawVideoCopy = [this](float rect_x, float rect_y, float rect_width, float rect_height)
         {
-            const gs::render::VideoQuad quad =
+            gs::render::VideoQuad quad =
                 gs::render::buildVideoQuad(rect_x,
                                            rect_y,
                                            rect_width,
@@ -1126,6 +1154,7 @@ void GsVideoRenderer::drawFrameLocked()
                                            m_frame_width,
                                            m_frame_height,
                                            m_screen_mode);
+            std::swap(quad.v0, quad.v1);
 
             drawTexturedQuadLocked(
                 quad.x,

@@ -75,3 +75,35 @@ void PacketFilter::set_packet_filtering( uint16_t filter_from_device_id, uint16_
     return PacketFilterResult::Pass;
 }
 
+//=============================================================================================
+//=============================================================================================
+// Returns the source device id that will be written into outgoing packet headers.
+uint16_t PacketFilter::get_packet_header_from_device_id() const
+{
+    return m_from_device_id.load(std::memory_order_acquire);
+}
+
+//=============================================================================================
+//=============================================================================================
+// Returns the destination device id that will be written into outgoing packet headers.
+uint16_t PacketFilter::get_packet_header_to_device_id() const
+{
+    return m_to_device_id.load(std::memory_order_acquire);
+}
+
+//=============================================================================================
+//=============================================================================================
+// Returns the source device id currently used to filter incoming packets.
+uint16_t PacketFilter::get_filter_from_device_id() const
+{
+    return m_filter_from_device_id.load(std::memory_order_acquire);
+}
+
+//=============================================================================================
+//=============================================================================================
+// Returns the destination device id currently used to filter incoming packets.
+uint16_t PacketFilter::get_filter_to_device_id() const
+{
+    return m_filter_to_device_id.load(std::memory_order_acquire);
+}
+

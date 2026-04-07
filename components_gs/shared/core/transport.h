@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,8 @@
 
 namespace gs::core
 {
+
+class ITransportManager;
 
 struct TXDescriptor
 {
@@ -38,6 +41,7 @@ public:
     virtual ~ITransport() = default;
 
     virtual bool init(const RXDescriptor& rx_descriptor, const TXDescriptor& tx_descriptor) = 0;
+    virtual bool usesChannelSearch() const = 0;
 
     virtual void process() = 0;
     virtual void reset_rx_state() = 0;
@@ -60,4 +64,6 @@ public:
 
 }
 
-extern gs::core::ITransport& s_transport;
+extern gs::core::ITransportManager* s_transportManager;
+extern gs::core::ITransport* s_transport;
+extern std::mutex s_transport_mutex;

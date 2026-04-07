@@ -19,19 +19,22 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val VideoBackgroundColor = Color(0xFF0A0D14)
-
 class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
@@ -120,7 +123,6 @@ private fun AndroidGsApp(
     LaunchedEffect(nativeHandle) {
         withContext(Dispatchers.Default) {
             refreshNativeState()
-            NativeCore.startUdpClient(nativeHandle)
             NativeCore.setVideoUdpOutput(nativeHandle, "127.0.0.1", 5600)
         }
     }
@@ -162,10 +164,30 @@ private fun NativeVideoSurface(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val surfaceViewRef = remember { AtomicReference<SurfaceView?>(null) }
+
+    DisposableEffect(nativeHandle, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val surfaceView = surfaceViewRef.get()
+                val surface = surfaceView?.holder?.surface
+                if (surface != null && surface.isValid) {
+                    NativeCore.setRenderSurface(nativeHandle, surface)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     AndroidView(
         modifier = modifier,
         factory = { context ->
             SurfaceView(context).apply {
+                surfaceViewRef.set(this)
                 isClickable = true
                 isFocusable = true
                 setOnTouchListener { _, event ->
@@ -198,6 +220,13 @@ private fun NativeVideoSurface(
                         NativeCore.clearRenderSurface(nativeHandle)
                     }
                 })
+            }
+        },
+        update = { view ->
+            surfaceViewRef.set(view)
+            val surface = view.holder.surface
+            if (surface != null && surface.isValid) {
+                NativeCore.setRenderSurface(nativeHandle, surface)
             }
         }
     )

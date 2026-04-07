@@ -9,6 +9,8 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
+#include "core/transport_manager.h"
+#include "core/transport_manager_base.h"
 #include "frame_packets_debug.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
@@ -19,28 +21,121 @@
 
 using OSDMenuController = gs::menu::OSDMenuController;
 
-namespace
+namespace gs::menu
 {
 
-gs::menu::imgui::MenuFrameLayout offsetMenuLayout(const gs::menu::imgui::MenuFrameLayout& layout, float origin_x)
+OSDMenuController g_osdMenuController;
+
+}
+
+namespace
+{
+}
+
+//===================================================================================
+//===================================================================================
+// Constructor - initializes the OSD menu controller with hidden state.
+OSDMenuController::OSDMenuController()
+{
+    this->visible = false;
+}
+
+//===================================================================================
+//===================================================================================
+// Maps a transport kind to the corresponding mode-menu item index.
+int OSDMenuController::getTransportModeMenuIndex(gs::core::TransportKind kind)
+{
+    switch (kind)
+    {
+    case gs::core::TransportKind::RawBroadcast:
+        return 0;
+
+    case gs::core::TransportKind::APFPV:
+        return 1;
+
+    case gs::core::TransportKind::TestTransport:
+        return 2;
+    }
+
+    return 0;
+}
+
+//===================================================================================
+//===================================================================================
+// Maps a mode-menu item index to the corresponding transport kind.
+gs::core::TransportKind OSDMenuController::getTransportKindForMenuIndex(int menu_index)
+{
+    switch (menu_index)
+    {
+    case 0:
+        return gs::core::TransportKind::RawBroadcast;
+
+    case 1:
+        return gs::core::TransportKind::APFPV;
+
+    case 2:
+        return gs::core::TransportKind::TestTransport;
+
+    default:
+        return gs::core::TransportKind::RawBroadcast;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Offsets a menu layout horizontally while preserving its other metrics.
+gs::menu::imgui::MenuFrameLayout OSDMenuController::offsetMenuLayout(const gs::menu::imgui::MenuFrameLayout& layout, float origin_x)
 {
     gs::menu::imgui::MenuFrameLayout shifted = layout;
     shifted.window_x += origin_x;
     return shifted;
 }
 
-int getVisibleScreenAspectSelection(const gs::menu::IOSDMenuPlatform& platform, ScreenAspectRatio ratio)
+//===================================================================================
+//===================================================================================
+// Maps the configured screen aspect ratio to the visible menu selection index.
+int OSDMenuController::getVisibleScreenAspectSelection(ScreenAspectRatio ratio)
 {
-    if (!platform.supportsCustomScreenAspectModes())
+    if (s_RuntimePlatformServices != nullptr && !s_RuntimePlatformServices->supportsCustomScreenAspectModes())
     {
         return ratio == ScreenAspectRatio::STRETCH ? 0 : 1;
     }
     return clamp(static_cast<int>(ratio), 0, 5);
 }
 
-const char* getVisibleScreenAspectLabel(const gs::menu::IOSDMenuPlatform& platform, ScreenAspectRatio ratio)
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a menu activate action.
+bool OSDMenuController::isMenuItemActivatePressed()
 {
-    if (!platform.supportsCustomScreenAspectModes())
+    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
+           ImGui::IsKeyPressed(ImGuiKey_RightArrow);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a menu open action.
+bool OSDMenuController::isMenuOpenPressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a right mouse click.
+bool OSDMenuController::isMenuRightClickPressed()
+{
+    return ImGui::IsMouseClicked(ImGuiMouseButton_Right, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the user-facing label for the current screen aspect ratio selection.
+const char* OSDMenuController::getVisibleScreenAspectLabel(ScreenAspectRatio ratio)
+{
+    if (s_RuntimePlatformServices != nullptr && !s_RuntimePlatformServices->supportsCustomScreenAspectModes())
     {
         return ratio == ScreenAspectRatio::STRETCH ? "Stretch" : "Letterbox";
     }
@@ -51,41 +146,7 @@ const char* getVisibleScreenAspectLabel(const gs::menu::IOSDMenuPlatform& platfo
 
 //===================================================================================
 //===================================================================================
-// Returns true when the current frame contains a menu activate action.
-bool isMenuItemActivatePressed()
-{
-    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
-           ImGui::IsKeyPressed(ImGuiKey_RightArrow);
-}
-
-//===================================================================================
-//===================================================================================
-// Returns true when the current frame contains a menu open action.
-bool isMenuOpenPressed()
-{
-    return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
-}
-
-//===================================================================================
-//===================================================================================
-// Returns true when the current frame contains a right mouse click.
-bool isMenuRightClickPressed()
-{
-    return ImGui::IsMouseClicked(ImGuiMouseButton_Right, false);
-}
-
-}
-
-//=======================================================
-//=======================================================
-OSDMenuController::OSDMenuController(gs::menu::IOSDMenuPlatform& platform)
-    : m_platform(platform)
-{
-    this->visible = false;
-}
-
+// Opens the OSD menu, navigating to the main menu with the first item selected.
 void OSDMenuController::open()
 {
     this->visible = true;
@@ -95,18 +156,25 @@ void OSDMenuController::open()
     this->backMenuItems.clear();
 }
 
+//===================================================================================
+//===================================================================================
+// Closes the OSD menu.
 void OSDMenuController::close()
 {
     this->visible = false;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns true if the OSD menu is currently visible.
 bool OSDMenuController::isVisible() const
 {
     return this->visible;
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the menu title bar and resets per-frame item and key tracking state.
 void OSDMenuController::drawMenuTitle( const char* caption )
 {
     gs::menu::imgui::drawMenuTitle(caption, m_imgui_layout);
@@ -115,25 +183,33 @@ void OSDMenuController::drawMenuTitle( const char* caption )
     drawLargeGapIfTallScreen();
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws a status text line in the menu.
 void OSDMenuController::drawStatus( const char* caption )
 {
     gs::menu::imgui::drawMenuStatus(caption, m_imgui_layout);
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a small vertical gap between menu items.
 void OSDMenuController::drawSpacing()
 {
     gs::menu::imgui::drawSmallGap(m_imgui_layout);
 }
 
+//===================================================================================
+//===================================================================================
+// Draws a large vertical gap, used on tall screens to pad menu content.
 void OSDMenuController::drawLargeGapIfTallScreen()
 {
     gs::menu::imgui::drawLargeGap(m_imgui_layout);
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws a single menu item and returns true if it was activated this frame.
 bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool clip )
 {
     int d = itemIndex - this->selectedItem;
@@ -171,6 +247,9 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     return res;
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the entire menu in an ImGui window using the given layout and mode.
 void OSDMenuController::drawMenuWindow(const char* window_name,
                                        const gs::menu::imgui::MenuFrameLayout& layout,
                                        Ground2Air_Config_Packet& config,
@@ -190,11 +269,12 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
     this->m_draw_mode = DrawMode::Interactive;
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Main draw entry point; handles menu open/close logic and VR mode cloning.
 void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
-    if (!this->visible) 
+    if (!this->visible)
     {
         if (isMenuOpenPressed() || isMenuRightClickPressed())
         {
@@ -243,6 +323,9 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Dispatches rendering to the appropriate menu page based on the current menu ID.
 void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
 {
     switch (this->menuId)
@@ -265,7 +348,9 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
-        case OSDMenuId::Search: this->drawSearchMenu(config); break;
+        case OSDMenuId::Search: this->drawConnectMenu(config); break;
+        case OSDMenuId::SearchMode: this->drawSearchModeMenu(config); break;
+        case OSDMenuId::SearchRun: this->drawSearchRunMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
@@ -274,33 +359,9 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
-void OSDMenuController::searchNextWifiChannel(Ground2Air_Config_Packet& config)
-{
-    auto& gs_config = s_groundstation_config;
-    this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
-    
-    gs_config.wifi_channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
-    int channel_index = getWifiChannelIndex(gs_config.wifi_channel);
-
-    for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
-    {
-        channel_index++;
-        if (channel_index >= WIFI_CHANNELS_COUNT) channel_index = 0;
-        int nextChannel = WIFI_CHANNELS_BY_INDEX[channel_index];
-        if (isWifiChannelAllowedByBand(nextChannel, gs_config.wifiBand))
-        {
-            gs_config.wifi_channel = nextChannel;
-            break;
-        }
-    }
-    
-    m_platform.applyWifiChannelInstant(config);
-}
-
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the main top-level OSD menu with connection, resolution, and settings options.
 void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 {
     const auto& gs_config = s_groundstation_config;
@@ -311,11 +372,8 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( "Search & Connect...", 0) )
+        if ( this->drawMenuItem( "Connect...", 0) )
         {
-            this->searchNextWifiChannel(config);
-            this->searchDone = false;
-            m_platform.airUnpair();
             this->goForward( OSDMenuId::Search, 0);
         }
     }
@@ -329,7 +387,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
             this->goForward( OSDMenuId::Resolution, item );
         }
     }
-    
+
     {
         char buf[256];
         int channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
@@ -407,12 +465,13 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the image settings sub-menu (brightness, contrast, exposure, etc.).
 void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Image Settings" );
-    
+
     {
         char buf[256];
         sprintf(buf, "Brightness: %d##0", config.camera.brightness);
@@ -489,12 +548,13 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the camera settings sub-menu.
 void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Camera Settings" );
-    
+
     {
         if ( this->drawMenuItem( "Image Settings...", 0 ) )
         {
@@ -551,7 +611,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 4) )
         {
             config.misc.mavlink2mspRC ^= 1;
-            
+
         }
     }
 
@@ -579,8 +639,9 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the resolution selection menu.
 void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Resolution" );
@@ -599,7 +660,7 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
         config.camera.resolution = Resolution::VGA;
         saveAndExit = true;
     }
-    
+
 
     if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 2, true), 2) )
     {
@@ -636,8 +697,9 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Returns true if the user pressed a back/exit key during an interactive frame.
 bool OSDMenuController::exitKeyPressed()
 {
     if (m_draw_mode != DrawMode::Interactive)
@@ -652,8 +714,9 @@ bool OSDMenuController::exitKeyPressed()
            isMenuRightClickPressed();
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the brightness selection menu.
 void OSDMenuController::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Camera Settings -> Brightness" );
@@ -703,8 +766,9 @@ void OSDMenuController::drawBrightnessMenu(Ground2Air_Config_Packet& config)
 }
 
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the contrast selection menu.
 void OSDMenuController::drawContrastMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Camera Settings -> Contrast" );
@@ -753,8 +817,9 @@ void OSDMenuController::drawContrastMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the exposure selection menu.
 void OSDMenuController::drawExposureMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Camera Settings -> Exposure" );
@@ -803,8 +868,9 @@ void OSDMenuController::drawExposureMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the saturation selection menu.
 void OSDMenuController::drawSaturationMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Camera Settings -> Saturation" );
@@ -853,8 +919,9 @@ void OSDMenuController::drawSaturationMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the sharpness selection menu.
 void OSDMenuController::drawSharpnessMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Camera Settings -> Sharpness" );
@@ -903,8 +970,9 @@ void OSDMenuController::drawSharpnessMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the "Exit to Shell" confirmation menu.
 void OSDMenuController::drawExitToShellMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Exit To Shell ?" );
@@ -927,8 +995,9 @@ void OSDMenuController::drawExitToShellMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the screen aspect ratio (letterbox) selection menu.
 void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -949,7 +1018,7 @@ void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
         saveAndExit = true;
     }
 
-    if (m_platform.supportsCustomScreenAspectModes())
+    if (s_RuntimePlatformServices == nullptr || s_RuntimePlatformServices->supportsCustomScreenAspectModes())
     {
         if ( this->drawMenuItem( "Letterbox, Screen is 5:4", 2) )
         {
@@ -987,8 +1056,9 @@ void OSDMenuController::drawLetterboxMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the WiFi rate selection menu.
 void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Wifi Rate" );
@@ -1043,8 +1113,9 @@ void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the WiFi channel selection menu.
 void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1063,24 +1134,24 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
         }
 
         char buf[32];
-        if (channel >= 36 && channel <= 48) 
+        if (channel >= 36 && channel <= 48)
         {
             sprintf(buf, "%d  (5.8GHz,ETSI,FCC)", channel);
-        } 
-        else 
-        if (channel >= 52 && channel <= 144) 
+        }
+        else
+        if (channel >= 52 && channel <= 144)
         {
             sprintf(buf, "%d  (5.8GHz,ETSI,FCC,DFS)", channel);
-        } 
-        else if (channel >= 149 && channel <= 165) 
+        }
+        else if (channel >= 149 && channel <= 165)
         {
             sprintf(buf, "%d  (5.8GHz,FCC)", channel);
-        } 
-        else if (channel == 12 || channel == 13)  
+        }
+        else if (channel == 12 || channel == 13)
         {
             sprintf(buf, "%d  (2.4GHz,ETSI)", channel);
         }
-        else 
+        else
         {
             sprintf(buf, "%d  (2.4GHz,ETSI,FCC)", channel);
         }
@@ -1090,7 +1161,7 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
             {
                 gs_config.wifi_channel = channel;
                 s_settingsStorage.saveGroundStationConfig();
-                m_platform.applyWifiChannel(config);
+                s_RuntimePlatformServices->applyGroundStationWifiChannel(config);
             }
             bExit = true;
         }
@@ -1104,8 +1175,9 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the camera stop RC channel selection menu.
 void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Camera Stop Channel" );
@@ -1116,7 +1188,7 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
     for ( int i = 0; i <= 18; i++ )
     {
         char buf[12];
-        if ( i == 0 ) 
+        if ( i == 0 )
         {
             sprintf(buf, "None" );
         }
@@ -1137,8 +1209,9 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the ground station TX power selection menu.
 void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1153,11 +1226,11 @@ void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
         sprintf(buf, "%d", i + gs::menu::kMinTxPower);
         if ( this->drawMenuItem( buf, i, true) )
         {
-            if ( gs_config.txPower != (i + gs::menu::kMinTxPower) )  
+            if ( gs_config.txPower != (i + gs::menu::kMinTxPower) )
             {
                 gs_config.txPower = ( i + gs::menu::kMinTxPower );
                 s_settingsStorage.saveGroundStationConfig();
-                m_platform.applyGSTxPower(config);
+                s_RuntimePlatformServices->applyGroundStationTxPower(config);
             }
             bExit = true;
         }
@@ -1170,8 +1243,9 @@ void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
 }
 
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the ground station TX interface selection menu.
 void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1180,25 +1254,21 @@ void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    auto rx_descriptor = m_platform.transport().getRXDescriptor();
+    const auto interfaces = copyCurrentTransportInterfaces();
 
     if ( this->drawMenuItem( "auto", 0) )
     {
         gs_config.txInterface = "auto";
-
-        m_platform.transport().setTxInterface(rx_descriptor.interfaces[0]);
-        m_platform.transport().setTxPower(gs_config.txPower);
-
+        applySelectedTxInterfaceToTransport();
         saveAndExit = true;
     }
 
-    for ( unsigned int i = 0; i < rx_descriptor.interfaces.size(); i++ )
+    for ( unsigned int i = 0; i < interfaces.size(); i++ )
     {
-        if ( this->drawMenuItem( rx_descriptor.interfaces[i].c_str(), i+1) )
+        if ( this->drawMenuItem( interfaces[i].c_str(), i+1) )
         {
-            gs_config.txInterface = rx_descriptor.interfaces[i];
-            m_platform.transport().setTxInterface(gs_config.txInterface);
-            m_platform.transport().setTxPower(gs_config.txPower);
+            gs_config.txInterface = interfaces[i];
+            applySelectedTxInterfaceToTransport();
             saveAndExit = true;
         }
     }
@@ -1215,8 +1285,9 @@ void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 }
 
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the FEC (Forward Error Correction) strength selection menu.
 void OSDMenuController::drawFECMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> FEC" );
@@ -1253,8 +1324,9 @@ void OSDMenuController::drawFECMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the ground station settings menu.
 void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1315,8 +1387,9 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the ground station screen settings menu.
 void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1325,10 +1398,10 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Letterbox: %s##1", getVisibleScreenAspectLabel(m_platform, gs_config.screenAspectRatio));
+        sprintf(buf, "Letterbox: %s##1", getVisibleScreenAspectLabel(gs_config.screenAspectRatio));
         if ( this->drawMenuItem( buf, 0) )
         {
-            this->goForward( OSDMenuId::Letterbox, getVisibleScreenAspectSelection(m_platform, gs_config.screenAspectRatio) );
+            this->goForward( OSDMenuId::Letterbox, getVisibleScreenAspectSelection(gs_config.screenAspectRatio) );
         }
     }
 
@@ -1359,14 +1432,15 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the ground station WiFi settings menu.
 void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
     this->drawMenuTitle( "Menu -> GS Wifi Settings" );
     drawSpacing();
-    auto rx_descriptor = m_platform.transport().getRXDescriptor();
+    const auto interfaces = copyCurrentTransportInterfaces();
 
     {
         char buf[256];
@@ -1390,7 +1464,7 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
             s_settingsStorage.saveGroundStationConfig();
             if ( channelChanged )
             {
-                m_platform.applyWifiChannel(config);
+                s_RuntimePlatformServices->applyGroundStationWifiChannel(config);
             }
         }
     }
@@ -1401,9 +1475,9 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 1) )
         {
             size_t index = 0;
-            for( size_t i = 0; i < rx_descriptor.interfaces.size(); i++ )
+            for( size_t i = 0; i < interfaces.size(); i++ )
             {
-                if ( rx_descriptor.interfaces[i] == gs_config.txInterface )
+                if ( interfaces[i] == gs_config.txInterface )
                 {
                     index = i + 1;
                 }
@@ -1423,15 +1497,15 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 
     drawLargeGapIfTallScreen();
 
-    if ( rx_descriptor.interfaces.empty() )
+    if ( interfaces.empty() )
     {
         this->drawStatus("No network interfaces detected##if_status_empty");
     }
     else
     {
-        for (size_t i = 0; i < rx_descriptor.interfaces.size(); i++)
+        for (size_t i = 0; i < interfaces.size(); i++)
         {
-            std::string summary = getInterfaceSummary(rx_descriptor.interfaces[i]);
+            std::string summary = getInterfaceSummary(interfaces[i]);
             char buf[512];
             snprintf(buf, sizeof(buf), "%s##if_status_%zu", summary.c_str(), i);
             this->drawStatus(buf);
@@ -1444,13 +1518,17 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the restarting status screen.
 void OSDMenuController::drawRestartMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Restarting..." );
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the OSD font selection menu.
 void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "GS -> Displayport OSD Font" );
@@ -1487,54 +1565,157 @@ void OSDMenuController::drawOSDFontMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
-void OSDMenuController::drawSearchMenu(Ground2Air_Config_Packet& config)
+//===================================================================================
+//===================================================================================
+// Draws the connection mode and channel search menu.
+void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
+{
+    const gs::core::TransportKind transport_kind = currentTransportKind();
+    const bool uses_channel_search = gs::core::TransportManagerBase::transportKindUsesChannelSearch(transport_kind);
+    this->drawMenuTitle("Menu -> Connect");
+    drawSpacing();
+
+    {
+        char buf[256];
+        sprintf(buf, "Mode: %s##0", gs::core::TransportManagerBase::transportModeLabel(transport_kind));
+        if (this->drawMenuItem(buf, 0))
+        {
+            this->goForward(OSDMenuId::SearchMode, getTransportModeMenuIndex(transport_kind));
+            return;
+        }
+    }
+
+    if (uses_channel_search)
+    {
+        {
+            char buf[256];
+            sprintf(buf, "Search...##1");
+            if (this->drawMenuItem(buf, 1))
+            {
+                if (!switchActiveTransport(transport_kind))
+                {
+                    return;
+                }
+
+                this->searchDone = false;
+                beginSelectedTransportSearchOrConnect(config, this->search_tp);
+
+                this->goForward(OSDMenuId::SearchRun, 0);
+            }
+        }
+    }
+
+    if (!uses_channel_search && this->selectedItem > 0)
+    {
+        this->selectedItem = 0;
+    }
+
+    if (this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the transport mode selection menu.
+void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle("Search -> Mode");
+    drawSpacing();
+
+    for (int item_index = 0; item_index < 3; ++item_index)
+    {
+        const gs::core::TransportKind kind = OSDMenuController::getTransportKindForMenuIndex(item_index);
+        if (this->drawMenuItem(gs::core::TransportManagerBase::transportModeLabel(kind), item_index))
+        {
+            if (!switchActiveTransport(kind))
+            {
+                return;
+            }
+
+            if (!gs::core::TransportManagerBase::transportKindUsesChannelSearch(kind))
+            {
+                this->searchDone = false;
+                beginSelectedTransportSearchOrConnect(config, this->search_tp);
+            }
+
+            this->goBack();
+            return;
+        }
+    }
+
+    if (this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the active channel search or connect progress screen.
+void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
-    char title[128];
-    const char* band = gs_config.wifiBand == GS_WIFI_BAND_2_4_GHZ ? "2.4GHz" :
-                       gs_config.wifiBand == GS_WIFI_BAND_5_8_GHZ ? "5.8GHz" :
-                       "2.4 & 5.8 GHz";
-    sprintf(title, "Menu -> Search (%s)...", band);
-    this->drawMenuTitle( title );
+    const bool uses_channel_search = gs::core::TransportManagerBase::transportKindUsesChannelSearch(currentTransportKind());
+
+    if (uses_channel_search)
+    {
+        char title[128];
+        const char* band = gs_config.wifiBand == GS_WIFI_BAND_2_4_GHZ ? "2.4GHz" :
+                           gs_config.wifiBand == GS_WIFI_BAND_5_8_GHZ ? "5.8GHz" :
+                           "2.4 & 5.8 GHz";
+        sprintf(title, "Menu -> Search (%s)...", band);
+        this->drawMenuTitle(title);
+    }
+    else
+    {
+        this->drawMenuTitle("Menu -> Connect");
+    }
     drawSpacing();
 
     bool bExit = false;
 
     char buf[512];
-    sprintf(buf, searchDone ? "Found Channel: %d" : "Searching: Channel %d...", gs_config.wifi_channel);
+    if (uses_channel_search)
+    {
+        sprintf(buf, searchDone ? "Found Channel: %d" : "Searching: Channel %d...", gs_config.wifi_channel);
+    }
+    else
+    {
+        sprintf(buf, "%s", isSelectedTransportConnected() ? "Connected." : "Connecting...");
+    }
     this->drawStatus(buf);
 
-    if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - this->search_tp).count() > SEARCH_TIME_STEP_MS )
+    advanceSelectedTransportSearchOrConnect(config, this->search_tp, this->searchDone);
+
+    if (uses_channel_search)
     {
-        if ( this->searchDone )
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - this->search_tp).count() > SEARCH_TIME_STEP_MS &&
+            this->searchDone)
         {
             bExit = true;
         }
-        else if ( std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < SEARCH_TIME_STEP_MS/2 )
-        {
-            this->searchDone = true;
-            this->search_tp = Clock::now() + std::chrono::milliseconds(SEARCH_TIME_STEP_MS);
-            s_settingsStorage.saveGroundStationConfig();  //save Wifi channel
-        }
-        else
-        {
-            this->searchNextWifiChannel(config);
-        }
+    }
+    else if (isSelectedTransportConnected())
+    {
+        bExit = true;
     }
 
     if ( bExit || this->exitKeyPressed() )
     {
-        s_settingsStorage.saveGroundStationConfig();
+        cancelSelectedTransportSearchOrConnect();
+        if (uses_channel_search)
+        {
+            s_settingsStorage.saveGroundStationConfig();
+        }
         this->goBack();
     }
 }
 
-//=======================================================
-//=======================================================
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Draws the debugging tools menu.
 void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
@@ -1583,8 +1764,9 @@ void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)
     }
 }
 
-//=======================================================
-//=======================================================
+//===================================================================================
+//===================================================================================
+// Navigates forward to a new menu page, saving the current page to the back stack.
 void OSDMenuController::goForward(OSDMenuId newMenuId, int newItem)
 {
     this->backMenuIds.push_back(this->menuId);
@@ -1593,8 +1775,10 @@ void OSDMenuController::goForward(OSDMenuId newMenuId, int newItem)
     this->menuId = newMenuId;
     this->selectedItem = newItem;
 }
-//=======================================================
-//=======================================================
+
+//===================================================================================
+//===================================================================================
+// Navigates back to the previous menu page by popping from the back stack.
 void OSDMenuController::goBack()
 {
     if ( this->backMenuIds.size() > 0 )

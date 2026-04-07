@@ -14,10 +14,11 @@ wsl linux build rule:
 - do not use plain `wsl ...` without `-d Ubuntu`, because the default distro may be `docker-desktop-data` and break path mounts/build execution
 
 code definition comment rule:
-- every function, method, class, and struct definition should start with:
+- every out-of-class function or method definition, and every class or struct definition, should start with:
   `//===================================================================================`
   `//===================================================================================`
 - after these two lines, add a short description comment explaining what it does
+- do not add these separator lines or description comments to method declarations inside a class or struct body
 - all comments must be in English
 
 components_gs logging rule:

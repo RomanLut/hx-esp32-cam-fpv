@@ -27,6 +27,7 @@ struct GsRuntimeCore
 
     void resetState(uint16_t gs_device_id_value);
     void resetPairing(gs::core::ITransport& transport, Clock::time_point now);
+    void resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now);
 
     uint16_t gs_device_id = 1;
     gs::core::GsSessionCore session;

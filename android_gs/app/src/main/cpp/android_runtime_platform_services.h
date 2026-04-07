@@ -13,9 +13,13 @@ class AndroidRuntimePlatformServices final : public IRuntimePlatformServices
 public:
     float getCpuTemperatureCelsius() const override;
     std::string getSystemIPv4() const override;
+    bool supportsCustomScreenAspectModes() const override;
     void setVsync(bool enabled) override;
     void exitApp() override;
     void restartGPIOButtons() override;
+    void invalidateDisplayedVideoFrame() override;
+    void applyGroundStationWifiChannel(Ground2Air_Config_Packet& config) override;
+    void applyGroundStationTxPower(Ground2Air_Config_Packet& config) override;
 
 private:
     mutable std::string m_cached_ipv4 = "0.0.0.0";
@@ -26,3 +30,10 @@ private:
 //===================================================================================
 // Returns the shared Android runtime platform services instance for explicit binding.
 IRuntimePlatformServices& getAndroidRuntimePlatformServices();
+
+class GsVideoRenderer;
+
+//===================================================================================
+//===================================================================================
+// Binds the Android renderer used by shared runtime platform services.
+void bindAndroidRuntimeRenderer(GsVideoRenderer* renderer);

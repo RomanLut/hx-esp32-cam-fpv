@@ -60,5 +60,3 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
         g_gsUDPBroadcast->sendVideoFrame(video_frame_data, completed_frame.size);
     }
 }
-
-

@@ -25,7 +25,7 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
 #include "gs_top_overlay_shared.h"
-#include "osd_menu.h"
+#include "core/osd_menu_controller.h"
 #include "hx_mavlink_parser.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -119,7 +119,8 @@ void comms_thread_proc()
             std::vector<uint8_t> control_payload;
             if (tryBuildControlPacketPayload(s_groundstation_config.deviceId, control_payload))
             {
-                s_transport.send(control_payload.data(), control_payload.size(), true);
+                std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
+                s_transport->send(control_payload.data(), control_payload.size(), true);
                 s_runtimeCore.session.addSentPackets(1);
             }
 
@@ -129,13 +130,23 @@ void comms_thread_proc()
 
         g_CPUTemp.process();
 
-        s_runtimeCore.session.processIncomingTelemetry(mavlinkParserIn, s_groundstation_config.deviceId, s_transport, s_gs_stats_mutex, s_gs_stats);
+        {
+            std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
+            s_runtimeCore.session.processIncomingTelemetry(
+                mavlinkParserIn,
+                s_groundstation_config.deviceId,
+                *s_transport,
+                s_gs_stats_mutex,
+                s_gs_stats);
+        }
 
         do
         {
-            s_transport.process();
+            std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
+            s_transport->process();
+            rx_data.size = rx_data.data.size();
             bool restoredByFEC;
-            if (!s_transport.receive(rx_data.data.data(), rx_data.size, restoredByFEC))
+            if (!s_transport->receive(rx_data.data.data(), rx_data.size, restoredByFEC))
             {
                 std::this_thread::yield();
                 break;
@@ -148,9 +159,9 @@ void comms_thread_proc()
                                                            rx_data.size,
                                                            s_groundstation_config.deviceId,
                                                            processed_packet.processed_tp,
-                                                           s_transport);
+                                                           *s_transport);
             s_last_packet_tp = processed_packet.processed_tp;
-            rx_data.rssi = (int16_t)s_transport.get_input_dBm();
+            rx_data.rssi = (int16_t)s_transport->get_input_dBm();
             if (restoredByFEC)
             {
                 s_runtimeCore.restored_transport_packets++;
@@ -187,7 +198,16 @@ void comms_thread_proc()
                 event_class == RuntimeEventClass::Ignore ||
                 event_class == RuntimeEventClass::Invalid)
             {
+                if (s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet))
+                {
+                    pendingOsdFontReload();
+                }
                 break;
+            }
+
+            if (s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet))
+            {
+                pendingOsdFontReload();
             }
         }
         while (false);
@@ -257,7 +277,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         frame_ui.vr_mode = s_groundstation_config.vrMode;
         frame_ui.flight_osd_is_16x9 = s_decoder.isAspect16x9();
 
-        bool ignore_keys = g_osdMenu.visible;
+        bool ignore_keys = gs::menu::g_osdMenuController.visible;
 
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -313,13 +333,13 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         ImGui::PopStyleVar();
 
         RuntimeMenuUiState menu_ui = {};
-        menu_ui.visible = g_osdMenu.isVisible();
+        menu_ui.visible = gs::menu::g_osdMenuController.isVisible();
         menu_ui.vr_mode = s_groundstation_config.vrMode;
         menu_ui.touch_nav_enabled = false;
         menu_ui.surface_width = ImGui::GetIO().DisplaySize.x;
         menu_ui.surface_height = ImGui::GetIO().DisplaySize.y;
         drawRuntimeMenuOverlay(menu_ui);
-        g_osdMenu.draw(config);
+        gs::menu::g_osdMenuController.draw(config);
         drawRuntimeMenuTouchNav(menu_ui);
 
         handleRenderHotkeys(config, ignore_keys);
@@ -387,7 +407,8 @@ int runLinuxRuntimeLoop(char* argv[])
 
     s_comms_thread = std::thread(&comms_thread_proc);
 
-    Ground2Air_Config_Packet config = s_runtimeCore.session.copyConfigPacket();
+    Ground2Air_Config_Packet& config = s_runtimeCore.config_packet;
+    config = s_runtimeCore.session.copyConfigPacket();
     size_t video_frame_count = 0;
 
     initializeLinuxOsd();

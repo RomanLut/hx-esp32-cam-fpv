@@ -22,6 +22,7 @@ public:
     uint32_t get_video_texture_id() const;
     ImVec2 get_video_resolution() const;
     bool unlock_output();
+    void invalidate_displayed_frame();
 
     bool isAspect16x9();
 

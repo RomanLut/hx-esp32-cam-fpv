@@ -1,21 +1,27 @@
 #include "android_surface_backend.h"
 
 #include <EGL/egl.h>
-#include <android/log.h>
 #include <android/native_window.h>
 
 namespace
 {
-constexpr const char* kLogTag = "GsSurfaceBackend";
-
+//===================================================================================
+//===================================================================================
+// Converts opaque surface handle to ANativeWindow pointer
 ANativeWindow* asNativeWindow(void* surface_handle)
 {
     return static_cast<ANativeWindow*>(surface_handle);
 }
 }
 
+//===================================================================================
+//===================================================================================
+// Default constructor for GL surface backend
 GsGlSurfaceBackend::GsGlSurfaceBackend() = default;
 
+//===================================================================================
+//===================================================================================
+// Destructor - cleans up EGL resources and native window references
 GsGlSurfaceBackend::~GsGlSurfaceBackend()
 {
     destroyEgl();
@@ -31,6 +37,9 @@ GsGlSurfaceBackend::~GsGlSurfaceBackend()
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Sets new surface handle to be applied on next frame
 void GsGlSurfaceBackend::setSurface(void* surface_handle)
 {
     if (m_pending_window != nullptr)
@@ -40,6 +49,9 @@ void GsGlSurfaceBackend::setSurface(void* surface_handle)
     m_pending_window = surface_handle;
 }
 
+//===================================================================================
+//===================================================================================
+// Applies pending surface and initializes EGL context with requested vsync mode
 bool GsGlSurfaceBackend::applyPendingSurface(bool vsync_enabled)
 {
     destroyEgl();
@@ -60,6 +72,9 @@ bool GsGlSurfaceBackend::applyPendingSurface(bool vsync_enabled)
     return initEgl(vsync_enabled);
 }
 
+//===================================================================================
+//===================================================================================
+// Enables or disables vertical synchronization for buffer swaps
 void GsGlSurfaceBackend::setVsync(bool enabled)
 {
     const EGLDisplay display = static_cast<EGLDisplay>(m_egl_display);
@@ -69,6 +84,9 @@ void GsGlSurfaceBackend::setVsync(bool enabled)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Swaps front and back buffers to display rendered content
 bool GsGlSurfaceBackend::swapBuffers()
 {
     if (!isReady())
@@ -80,21 +98,33 @@ bool GsGlSurfaceBackend::swapBuffers()
                           static_cast<EGLSurface>(m_egl_surface)) == EGL_TRUE;
 }
 
+//===================================================================================
+//===================================================================================
+// Checks if surface backend is ready for rendering
 bool GsGlSurfaceBackend::isReady() const
 {
     return m_egl_display != nullptr && m_egl_surface != nullptr && m_egl_context != nullptr;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns current surface width in pixels
 int GsGlSurfaceBackend::surfaceWidth() const
 {
     return m_surface_width;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns current surface height in pixels
 int GsGlSurfaceBackend::surfaceHeight() const
 {
     return m_surface_height;
 }
 
+//===================================================================================
+//===================================================================================
+// Initializes EGL display, surface and OpenGL ES context for current window
 bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
 {
     const EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -162,6 +192,9 @@ bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Destroys EGL context, surface and terminates display connection
 void GsGlSurfaceBackend::destroyEgl()
 {
     const EGLDisplay display = static_cast<EGLDisplay>(m_egl_display);

@@ -25,6 +25,8 @@ enum class OSDMenuId
     GSScreen,
     OSDFont,
     Search,
+    SearchMode,
+    SearchRun,
     GSTxPower,
     GSTxInterface,
     Image,
@@ -34,6 +36,10 @@ enum class OSDMenuId
 
 namespace gs::menu
 {
+
+constexpr int kMinTxPower = 5;
+constexpr int kDefaultTxPower = 45;
+constexpr int kMaxTxPower = 63;
 
 std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640);
 const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, int menu_index, bool aspect_variant);

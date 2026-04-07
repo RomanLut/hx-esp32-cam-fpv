@@ -1,0 +1,365 @@
+#include "gs_test_transport.h"
+
+#include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <iterator>
+#include <limits>
+#include <string>
+
+#ifdef __ANDROID__
+#include <android/asset_manager.h>
+#include "android_jni_shared.h"
+#endif
+
+#include "Log.h"
+#include "crc.h"
+#include "packets.h"
+#include "gs_shared_state.h"
+
+namespace
+{
+
+constexpr uint16_t kTestAirDeviceId = 0x7777;
+constexpr auto kTargetFramePeriod = std::chrono::microseconds(33333);
+
+//===================================================================================
+//===================================================================================
+// Computes the CRC for a fixed-size air packet header before transport delivery.
+template <typename T>
+void sealFixedHeaderPacket(T& packet)
+{
+    packet.crc = 0;
+    packet.crc = crc8(0, &packet, sizeof(T));
+}
+
+//===================================================================================
+//===================================================================================
+// Loads a binary file from disk into memory for Linux-side shared test transport assets.
+bool loadBinaryFile(const char* path, std::vector<uint8_t>& bytes)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input.is_open())
+    {
+        return false;
+    }
+
+    bytes.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    return !bytes.empty();
+}
+
+} // namespace
+
+//===================================================================================
+//===================================================================================
+// Resets the paced static-JPEG stream state so the transport can reconnect cleanly.
+void GSTestTransport::resetStreamState()
+{
+    m_ready_packets.clear();
+    m_next_frame_tp = Clock::time_point::min();
+    m_next_packet_tp = Clock::time_point::min();
+    m_frame_period = kTargetFramePeriod;
+    m_packet_period = kTargetFramePeriod;
+    m_next_frame_index = 1;
+    m_data_rate = 0;
+    m_config_pending = true;
+}
+
+//===================================================================================
+//===================================================================================
+// Loads the shared nosignal JPEG and prepares the paced test-stream state.
+bool GSTestTransport::init(const gs::core::RXDescriptor& rx_descriptor,
+                           const gs::core::TXDescriptor& tx_descriptor)
+{
+    storeDescriptors(rx_descriptor, tx_descriptor);
+    resetStreamState();
+
+    if (!loadStaticJpeg())
+    {
+        LOGE("Test transport failed to load assets_gs/nosignal.jpg");
+        return false;
+    }
+
+    LOGI("Test transport initialized with paced 30 FPS static JPEG stream");
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Resets the test stream so switching back to Test transport restarts config and frame output.
+void GSTestTransport::reset_rx_state()
+{
+    resetStreamState();
+}
+
+//===================================================================================
+//===================================================================================
+// Advances internal pacing state for the shared 30 FPS static-JPEG stream.
+void GSTestTransport::process()
+{
+    scheduleDuePackets(Clock::now());
+}
+
+//===================================================================================
+//===================================================================================
+// Drops outgoing payloads because the shared test transport is receive-driven.
+void GSTestTransport::send(const void* /* data */, size_t /* size */, bool /* flush */)
+{
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the next due config or video packet from the paced static-JPEG stream.
+bool GSTestTransport::receive(void* data, size_t& size, bool& restoredByFEC)
+{
+    restoredByFEC = false;
+    if (data == nullptr)
+    {
+        return false;
+    }
+
+    scheduleDuePackets(Clock::now());
+    if (m_ready_packets.empty())
+    {
+        return false;
+    }
+
+    const std::vector<uint8_t>& packet = m_ready_packets.front();
+    if (size < packet.size())
+    {
+        return false;
+    }
+
+    std::memcpy(data, packet.data(), packet.size());
+    size = packet.size();
+    m_ready_packets.pop_front();
+    if (!m_ready_packets.empty())
+    {
+        m_next_packet_tp = Clock::now() + m_packet_period;
+    }
+    else
+    {
+        m_next_packet_tp = Clock::time_point::min();
+    }
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the approximate transport data rate generated by the paced static-JPEG stream.
+size_t GSTestTransport::get_data_rate() const
+{
+    return m_data_rate;
+}
+
+//===================================================================================
+//===================================================================================
+// Loads the shared nosignal JPEG bytes from APK assets on Android or assets_gs on Linux.
+bool GSTestTransport::loadStaticJpeg()
+{
+    if (!m_static_jpeg.empty())
+    {
+        return true;
+    }
+
+#ifdef __ANDROID__
+    AAssetManager* asset_manager = androidGetAssetManager();
+    if (asset_manager == nullptr)
+    {
+        return false;
+    }
+
+    AAsset* asset = AAssetManager_open(asset_manager, "nosignal.jpg", AASSET_MODE_BUFFER);
+    if (asset == nullptr)
+    {
+        return false;
+    }
+
+    const off_t asset_size = AAsset_getLength(asset);
+    if (asset_size <= 0)
+    {
+        AAsset_close(asset);
+        return false;
+    }
+
+    m_static_jpeg.resize(static_cast<size_t>(asset_size));
+    const int read_size = AAsset_read(asset, m_static_jpeg.data(), m_static_jpeg.size());
+    AAsset_close(asset);
+    return read_size == static_cast<int>(m_static_jpeg.size());
+#else
+    static constexpr const char* kCandidatePaths[] = {
+        "../assets_gs/nosignal.jpg",
+        "assets_gs/nosignal.jpg",
+        "./assets_gs/nosignal.jpg"
+    };
+
+    for (const char* path : kCandidatePaths)
+    {
+        if (loadBinaryFile(path, m_static_jpeg))
+        {
+            return true;
+        }
+    }
+
+    return false;
+#endif
+}
+
+//===================================================================================
+//===================================================================================
+// Builds and queues the first connect-config packet for immediate session establishment.
+void GSTestTransport::queueConnectConfigPacket()
+{
+    if (!m_config_pending)
+    {
+        return;
+    }
+
+    Air2Ground_Config_Packet config_packet = {};
+    config_packet.type = Air2Ground_Header::Type::Config;
+    config_packet.size = sizeof(config_packet);
+    config_packet.pong = 0;
+    config_packet.version = PACKET_VERSION;
+    config_packet.airDeviceId = kTestAirDeviceId;
+    config_packet.gsDeviceId = currentGsDeviceId();
+    config_packet.camera.resolution = Resolution::HD;
+    config_packet.dataChannel.fec_codec_mtu =
+        static_cast<uint16_t>(std::min<size_t>(std::numeric_limits<uint16_t>::max(), m_rx_descriptor.mtu));
+    config_packet.misc.apfpv = 0;
+    sealFixedHeaderPacket(config_packet);
+
+    std::vector<uint8_t> raw_packet(sizeof(config_packet));
+    std::memcpy(raw_packet.data(), &config_packet, sizeof(config_packet));
+    m_ready_packets.push_back(std::move(raw_packet));
+    m_config_pending = false;
+    LOGI("Test transport queued config air={} gs={} mtu={}",
+         static_cast<unsigned int>(kTestAirDeviceId),
+         static_cast<unsigned int>(config_packet.gsDeviceId),
+         static_cast<unsigned int>(config_packet.dataChannel.fec_codec_mtu));
+}
+
+//===================================================================================
+//===================================================================================
+// Schedules transport packets for the next frame when the next 30 FPS slot is due.
+void GSTestTransport::scheduleDuePackets(Clock::time_point now)
+{
+    if (m_config_pending)
+    {
+        queueConnectConfigPacket();
+    }
+
+    if (m_next_frame_tp == Clock::time_point::min())
+    {
+        m_next_frame_tp = now;
+    }
+
+    if (!m_ready_packets.empty() && now < m_next_packet_tp)
+    {
+        return;
+    }
+
+    if (m_ready_packets.empty() && now >= m_next_frame_tp)
+    {
+        std::vector<std::vector<uint8_t>> frame_packets = buildFramePackets(m_next_frame_index++);
+        if (!frame_packets.empty())
+        {
+            size_t total_bytes = 0;
+            for (auto& packet : frame_packets)
+            {
+                total_bytes += packet.size();
+                m_ready_packets.push_back(std::move(packet));
+            }
+            m_data_rate = total_bytes * 30;
+
+            const size_t packet_count = std::max<size_t>(1, m_ready_packets.size());
+            m_packet_period = kTargetFramePeriod / packet_count;
+            if (m_packet_period <= Clock::duration::zero())
+            {
+                m_packet_period = std::chrono::microseconds(1);
+            }
+        }
+
+        m_next_frame_tp = now + kTargetFramePeriod;
+        m_next_packet_tp = now;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Builds the raw transport packets that represent a single static JPEG frame.
+std::vector<std::vector<uint8_t>> GSTestTransport::buildFramePackets(uint32_t frame_index) const
+{
+    std::vector<std::vector<uint8_t>> packets;
+    if (m_static_jpeg.empty())
+    {
+        return packets;
+    }
+
+    const size_t payload_size = maxVideoPayloadSize();
+    if (payload_size == 0)
+    {
+        return packets;
+    }
+
+    const size_t packet_count = (m_static_jpeg.size() + payload_size - 1) / payload_size;
+    packets.reserve(packet_count);
+
+    size_t offset = 0;
+    for (size_t packet_index = 0; packet_index < packet_count; ++packet_index)
+    {
+        const size_t chunk_size = std::min(payload_size, m_static_jpeg.size() - offset);
+        Air2Ground_Video_Packet video_packet = {};
+        video_packet.type = Air2Ground_Header::Type::Video;
+        video_packet.size = static_cast<uint32_t>(sizeof(video_packet) + chunk_size);
+        video_packet.pong = 0;
+        video_packet.version = PACKET_VERSION;
+        video_packet.airDeviceId = kTestAirDeviceId;
+        video_packet.gsDeviceId = currentGsDeviceId();
+        video_packet.resolution = Resolution::HD;
+        video_packet.part_index = static_cast<uint8_t>(packet_index);
+        video_packet.last_part = (packet_index + 1 == packet_count) ? 1 : 0;
+        video_packet.frame_index = frame_index;
+        sealFixedHeaderPacket(video_packet);
+
+        std::vector<uint8_t> raw_packet(sizeof(video_packet) + chunk_size);
+        std::memcpy(raw_packet.data(), &video_packet, sizeof(video_packet));
+        std::memcpy(raw_packet.data() + sizeof(video_packet), m_static_jpeg.data() + offset, chunk_size);
+        packets.push_back(std::move(raw_packet));
+        offset += chunk_size;
+    }
+    return packets;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the currently active GS device id from the transport packet filter state.
+uint16_t GSTestTransport::currentGsDeviceId() const
+{
+    const uint16_t filtered_gs_device_id = m_packet_filter.get_filter_to_device_id();
+    if (filtered_gs_device_id != 0)
+    {
+        return filtered_gs_device_id;
+    }
+
+    const uint16_t packet_header_gs_device_id = m_packet_filter.get_packet_header_from_device_id();
+    if (packet_header_gs_device_id != 0)
+    {
+        return packet_header_gs_device_id;
+    }
+
+    return s_groundstation_config.deviceId;
+}
+
+//===================================================================================
+//===================================================================================
+// Computes the payload size available for one video packet at the current MTU.
+size_t GSTestTransport::maxVideoPayloadSize() const
+{
+    const size_t mtu = m_rx_descriptor.mtu > 0 ? m_rx_descriptor.mtu : AIR2GROUND_MAX_MTU;
+    if (mtu <= sizeof(Air2Ground_Video_Packet))
+    {
+        return 0;
+    }
+
+    return mtu - sizeof(Air2Ground_Video_Packet);
+}

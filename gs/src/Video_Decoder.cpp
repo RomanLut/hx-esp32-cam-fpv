@@ -125,9 +125,6 @@ bool Video_Decoder::init(IHAL& hal)
 
     for (size_t i = 0; i < 4; i++)
     {
-        SDL_GLContext context = SDL_GL_CreateContext(m_impl->window);
-        assert(context != nullptr);
-        m_impl->contexts.push_back(context);
         m_impl->threads.push_back(std::thread([this, i]() { decoder_thread_proc(i); }));
     }
 
@@ -184,11 +181,8 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
 
 //===================================================================================
 //===================================================================================
-void Video_Decoder::decoder_thread_proc(size_t thread_index)
+void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
 {
-    LOGI("SDL window: {}", (size_t)m_impl->window);
-    SDLCHK(SDL_GL_MakeCurrent(m_impl->window, m_impl->contexts[thread_index]));
-
     while (!m_exit)
     {
         Input_ptr input;
@@ -422,6 +416,26 @@ bool Video_Decoder::unlock_output()
         m_impl->locked_outputs.pop_front();
 
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Invalidates the currently displayed decoder output and drops queued stale frames.
+void Video_Decoder::invalidate_displayed_frame()
+{
+    {
+        std::lock_guard<std::mutex> input_lock(m_impl->input_queue_mutex);
+        m_impl->input_queue.clear();
+    }
+
+    {
+        std::lock_guard<std::mutex> output_lock(m_impl->output_queue_mutex);
+        m_impl->pending_output.reset();
+        m_impl->has_pending_output = false;
+    }
+
+    m_texture = 0;
+    m_resolution = ImVec2(0.0f, 0.0f);
 }
 
 //===================================================================================

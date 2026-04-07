@@ -14,6 +14,7 @@
 #include "main.h"
 #include "gs_linux_runtime_loop.h"
 #include "gs_linux_startup.h"
+#include "gs_linux_transport_manager.h"
 #include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
@@ -224,15 +225,15 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
         return -1;
     }
 
-    if (!s_transport.init(rx_descriptor, tx_descriptor))
+    if (!getLinuxTransportManager().init(s_groundstation_config.transportKind, rx_descriptor, tx_descriptor))
     {
         return -1;
     }
 
-    performAirUnpair(s_groundstation_config.deviceId, s_transport);
+    performAirUnpair(s_groundstation_config.deviceId, *s_transport);
     s_isDual = rx_descriptor.interfaces.size() > 1;
-    s_transport.setChannel(s_groundstation_config.wifi_channel);
-    s_transport.setTxPower(s_groundstation_config.txPower);
+    s_transport->setChannel(s_groundstation_config.wifi_channel);
+    s_transport->setTxPower(s_groundstation_config.txPower);
 
     return 1;
 }

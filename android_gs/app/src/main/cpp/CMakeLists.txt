@@ -2,11 +2,13 @@ cmake_minimum_required(VERSION 3.22.1)
 project(android_gs_core)
 
 add_library(android_gs_core SHARED
+    android_apfpv_transport.cpp
     android_surface_backend.cpp
     android_bitmap_jpeg_decoder.cpp
     android_osd_font_storage.cpp
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
+    android_transport_manager.cpp
     native_bridge.cpp
     ../../../../../components_gs/shared/frame_packets_debug.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
@@ -20,6 +22,8 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
     ../../../../../components_gs/shared/gs_recordings_storage.cpp
+    ../../../../../components_gs/shared/gs_stub_transport.cpp
+    ../../../../../components_gs/shared/gs_test_transport.cpp
     ../../../../../components_gs/shared/gs_storage_status_shared.cpp
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
@@ -38,6 +42,9 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/utils/utils.cpp
     ../../../../../components_gs/shared/core/gs_protocol.cpp
     ../../../../../components_gs/shared/core/gs_session_core.cpp
+    ../../../../../components_gs/shared/core/transport_manager_base.cpp
+    ../../../../../components_gs/shared/core/transport_globals.cpp
+    ../../../../../components_gs/shared/core/transport_kind.cpp
     ../../../../../components_gs/shared/core/osd_menu_common.cpp
     ../../../../../components_gs/shared/core/osd_menu_controller.cpp
     ../../../../../components_gs/shared/core/osd_menu_imgui_shared.cpp

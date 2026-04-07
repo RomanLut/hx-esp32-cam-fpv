@@ -105,6 +105,15 @@ void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_po
 
 //===================================================================================
 //===================================================================================
+// Resets runtime transport/session state after a transport switch or explicit session reset.
+void GsRuntimeCore::resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now)
+{
+    resetState(gs_device_id);
+    resetPairing(transport, now);
+}
+
+//===================================================================================
+//===================================================================================
 // Marks the current OSD font selection for lazy reload on the render thread.
 void pendingOsdFontReload()
 {

@@ -9,16 +9,21 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/jpeg_decoder_core.cpp \
 	../components_gs/shared/core/osd_menu_imgui_shared.cpp \
 	../components_gs/shared/core/stats_panel_shared.cpp \
-	../components_gs/shared/core/osd_menu_shared.cpp \
+	../components_gs/shared/core/transport_manager_base.cpp \
+	../components_gs/shared/core/transport_globals.cpp \
+	../components_gs/shared/core/transport_kind.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
 	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_recordings_storage.cpp \
+	../components_gs/shared/gs_stub_transport.cpp \
+	../components_gs/shared/gs_test_transport.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	src/gs_linux_bootstrap.cpp \
 	src/gs_linux_recordings_storage.cpp \
 	src/gs_linux_render_helpers.cpp \
 	src/gs_linux_runtime_loop.cpp \
+	src/gs_linux_transport_manager.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
 	src/gs_linux_udp_broadcast.cpp \
@@ -56,7 +61,6 @@ SRCS := src/main.cpp \
 	src/gs_linux_runtime_platform_services.cpp \
 	src/gs_linux_osd_font_storage.cpp \
 	src/linux_serial_telemetry.cpp \
-	src/osd_menu.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \
 	../components_gs/shared/frame_packets_debug.cpp

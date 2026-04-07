@@ -12,7 +12,9 @@
 #include <unistd.h>
 
 #include "gs_runtime_core.h"
+#include "gs_runtime_config.h"
 #include "gs_shared_state.h"
+#include "gs_video_renderer.h"
 
 namespace
 {
@@ -21,6 +23,7 @@ namespace
 //===================================================================================
 // Owns the Android runtime platform services instance for explicit shared binding.
 AndroidRuntimePlatformServices s_android_runtime_platform_services;
+GsVideoRenderer* s_android_runtime_renderer = nullptr;
 
 //===================================================================================
 //===================================================================================
@@ -90,6 +93,14 @@ IRuntimePlatformServices& getAndroidRuntimePlatformServices()
 
 //===================================================================================
 //===================================================================================
+// Binds the Android renderer used by shared runtime platform services.
+void bindAndroidRuntimeRenderer(GsVideoRenderer* renderer)
+{
+    s_android_runtime_renderer = renderer;
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the Android ground-station CPU temperature when available.
 float AndroidRuntimePlatformServices::getCpuTemperatureCelsius() const
 {
@@ -108,6 +119,14 @@ std::string AndroidRuntimePlatformServices::getSystemIPv4() const
         m_next_ipv4_refresh_tp = now + std::chrono::seconds(1);
     }
     return m_cached_ipv4;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports that Android only supports the simplified screen-aspect menu variants.
+bool AndroidRuntimePlatformServices::supportsCustomScreenAspectModes() const
+{
+    return false;
 }
 
 //===================================================================================
@@ -131,4 +150,33 @@ void AndroidRuntimePlatformServices::exitApp()
 // Restarts Android GPIO buttons when supported; currently a no-op.
 void AndroidRuntimePlatformServices::restartGPIOButtons()
 {
+}
+
+//===================================================================================
+//===================================================================================
+// Invalidates the currently displayed Android video frame in the shared renderer.
+void AndroidRuntimePlatformServices::invalidateDisplayedVideoFrame()
+{
+    if (s_android_runtime_renderer != nullptr)
+    {
+        s_android_runtime_renderer->invalidateDisplayedFrame();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Applies the selected GS Wi-Fi channel by committing the Android config packet immediately.
+void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Config_Packet& config)
+{
+    s_runtimeCore.config_packet = config;
+    commitGround2AirConfig(s_runtimeCore.config_packet);
+}
+
+//===================================================================================
+//===================================================================================
+// Applies the selected GS TX power by committing the Android config packet immediately.
+void AndroidRuntimePlatformServices::applyGroundStationTxPower(Ground2Air_Config_Packet& config)
+{
+    s_runtimeCore.config_packet = config;
+    commitGround2AirConfig(s_runtimeCore.config_packet);
 }

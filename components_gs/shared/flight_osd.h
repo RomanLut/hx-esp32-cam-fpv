@@ -31,6 +31,7 @@ public:
     bool loadFont(const char* font_name);
     const std::string& currentFontName() const;
     bool isFontError() const;
+    void invalidateFontAtlas();
 
     void draw(int surface_width,
               int surface_height,

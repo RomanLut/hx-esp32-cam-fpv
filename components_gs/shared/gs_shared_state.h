@@ -4,6 +4,7 @@
 
 #include "Clock.h"
 #include "core/gs_session_core.h"
+#include "core/transport_kind.h"
 #include "packets.h"
 
 enum class ScreenAspectRatio : int
@@ -27,6 +28,7 @@ struct TGroundstationConfig
     bool vrMode = false;
     bool vsync = true;
     std::string txInterface = "";
+    gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;
     uint16_t deviceId;
     uint8_t GPIOKeysLayout = 0;
 };

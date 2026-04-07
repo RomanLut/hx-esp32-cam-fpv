@@ -10,7 +10,7 @@
 namespace
 {
 
-const std::string kDefaultOsdFontName = "INAV_default_24.png";
+constexpr const char* kDefaultOsdFontName = "INAV_default_24.png";
 
 //===================================================================================
 //===================================================================================
@@ -66,7 +66,8 @@ void computeVideoBounds(int surface_width,
 // Returns the shared fallback OSD font name used when no explicit selection exists.
 const std::string& FlightOSD::defaultFontName() const
 {
-    return kDefaultOsdFontName;
+    static const std::string s_default_osd_font_name = kDefaultOsdFontName;
+    return s_default_osd_font_name;
 }
 
 //===================================================================================
@@ -243,7 +244,18 @@ const std::string& FlightOSD::currentFontName() const
 // Reports whether the currently selected OSD font failed to load.
 bool FlightOSD::isFontError() const
 {
-    return m_font_failed || m_font == nullptr || !m_font->loaded;
+    return m_font_failed;
+}
+
+//===================================================================================
+//===================================================================================
+// Invalidates the current GL font atlas so it will be rebuilt in the next context.
+void FlightOSD::invalidateFontAtlas()
+{
+    delete m_font;
+    m_font = nullptr;
+    m_font_dirty = true;
+    m_font_failed = false;
 }
 
 //===================================================================================
@@ -278,6 +290,7 @@ bool FlightOSD::ensureFont()
         return false;
     }
 
+    LOGI("OSD font loaded ok: {}", m_font_name);
     m_font_failed = false;
     return true;
 }
@@ -294,6 +307,7 @@ void FlightOSD::draw(int surface_width,
 {
     if (!ensureFont())
     {
+        LOGE("FlightOSD::draw ensureFont failed, skipping draw");
         return;
     }
 
