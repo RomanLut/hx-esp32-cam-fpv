@@ -9,7 +9,31 @@ jobs:
 
     strategy:
       matrix:
-        project: [air_firmware_esp32c5, air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
+        include:
+          - project: air_firmware_esp32c5
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32c5
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32cam
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32cam
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32s3sense
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32s3sense
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32s3sense_ov5640
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32s3sense_ov5640
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
 
     steps:
     - name: Checkout repository
@@ -35,6 +59,8 @@ jobs:
         python -m platformio --version
 
     - name: Build firmware
+      env:
+        PLATFORMIO_BUILD_FLAGS: ${{ matrix.build_flags }}
       run: |
         python -m platformio run -d ${{ matrix.project }}
 
@@ -43,7 +69,7 @@ jobs:
 
     - name: Zip firmware files
       run: |
-        out="release_zips/${{ matrix.project }}.zip"
+        out="release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip"
         zip -j "$out" \
           ${{ matrix.project }}/.pio/build/**/bootloader.bin \
           ${{ matrix.project }}/.pio/build/**/firmware.bin \
@@ -54,8 +80,8 @@ jobs:
     - name: Upload zip as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.project }}.zip
-        path: release_zips/${{ matrix.project }}.zip
+        name: ${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
+        path: release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
 
   release:
     needs: build
