@@ -336,6 +336,9 @@ void deinitQueues()
   delete[] s_wlan_incoming_queue.getBuffer();
 }
 
+//===========================================================================================
+//===========================================================================================
+// Receives APFPV UDP transport packets and updates the same RX stats used by raw Wi-Fi mode.
 static void udp_rx_proc(void*)
 {
     uint8_t buffer[sizeof(Packet_Header) + AIR2GROUND_MAX_MTU];
@@ -353,12 +356,23 @@ static void udp_rx_proc(void*)
         int len = recvfrom(s_udp_socket, reinterpret_cast<char*>(buffer), sizeof(buffer), 0, reinterpret_cast<sockaddr*>(&from_addr), &from_len);
         if (len <= 0)
         {
+            const int udp_errno = errno;
+            if (udp_errno != EAGAIN && udp_errno != EWOULDBLOCK && udp_errno != EINTR)
+            {
+                s_stats.wlan_error_count++;
+            }
             vTaskDelay(1);
             continue;
         }
 
         s_udp_peer_addr = from_addr;
         s_udp_peer_known = true;
+
+        if (static_cast<size_t>(len) < sizeof(Packet_Header))
+        {
+            s_stats.wlan_error_count++;
+            continue;
+        }
 
         deliver_transport_payload(buffer, static_cast<size_t>(len), 0, 0);
     }

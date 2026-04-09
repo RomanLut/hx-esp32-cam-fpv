@@ -127,8 +127,6 @@ void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t* cam_event, BaseTyp
     }
 }
 
-volatile int pk2 = 0;
-
 #if CONFIG_IDF_TARGET_ESP32C5
 
 #define MAX_FRAME_SIZE (500*1024)

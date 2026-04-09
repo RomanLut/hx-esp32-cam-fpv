@@ -467,8 +467,6 @@ static bool ll_cam_calc_rgb_dma(cam_obj_t *cam){
     return 1;
 }
 
-volatile int pk;
-
 bool ll_cam_dma_sizes(cam_obj_t *cam)
 {
     cam->dma_bytes_per_item = ll_cam_bytes_per_sample(sampling_mode);

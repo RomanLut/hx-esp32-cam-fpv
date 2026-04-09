@@ -42,8 +42,6 @@
 
 static const char *TAG = "s3 ll_cam";
 
-volatile int pk;
-
 void ll_cam_dma_print_state(cam_obj_t *cam)
 {
     esp_rom_printf("dma_infifo_status[%u]  :\n", cam->dma_num);
