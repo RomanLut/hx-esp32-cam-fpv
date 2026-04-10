@@ -67,7 +67,6 @@ static sockaddr_in s_udp_peer_addr = {};
 static bool s_udp_peer_known = false;
 static TickType_t s_apfpv_rssi_last_poll_tick = 0;
 static int8_t s_apfpv_rssi_dbm = 0;
-static int8_t s_apfpv_noise_floor_dbm = 0;
 
 constexpr uint16_t APFPV_UDP_PORT = 5600;
 static constexpr const char* APFPV_IP = "192.168.4.1";
@@ -169,7 +168,6 @@ static void clear_apfpv_link_quality_cache()
 {
     s_apfpv_rssi_last_poll_tick = 0;
     s_apfpv_rssi_dbm = 0;
-    s_apfpv_noise_floor_dbm = 0;
 }
 
 static esp_err_t ensure_ap_netif()
@@ -201,6 +199,30 @@ static esp_err_t configure_ap_netif()
     return ESP_OK;
 }
 
+//===========================================================================================
+//===========================================================================================
+//Applies a manual country configuration that exposes the full supported channel range
+static esp_err_t apply_wifi_country_for_channel(uint8_t channel)
+{
+    channel = static_cast<uint8_t>(getValidWifiChannel(channel));
+    wifi_country_t country_config = {};
+
+    memcpy(country_config.cc, "01", sizeof(country_config.cc));
+    country_config.schan = 1;
+    country_config.max_tx_power = 20;
+    country_config.policy = WIFI_COUNTRY_POLICY_MANUAL;
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    country_config.nchan = 14;
+    country_config.wifi_5g_channel_mask = 0; // Allow all 5GHz channels on dual-band C5.
+#else
+    (void)channel;
+    country_config.nchan = 13;
+#endif
+
+    return esp_wifi_set_country(&country_config);
+}
+
 static void get_ap_ssid(char* ssid, size_t size)
 {
     snprintf(ssid, size, "esp32cam-fpv-%04x", s_device_id);
@@ -228,20 +250,17 @@ static void update_apfpv_link_quality_cache_if_needed()
     if (err != ESP_OK)
     {
         s_apfpv_rssi_dbm = 0;
-        s_apfpv_noise_floor_dbm = 0;
         return;
     }
 
     if (sta_list.num <= 0)
     {
         s_apfpv_rssi_dbm = 0;
-        s_apfpv_noise_floor_dbm = 0;
         return;
     }
 
     // APFPV allows one associated station, so the first entry is the active video client.
     s_apfpv_rssi_dbm = sta_list.sta[0].rssi;
-    s_apfpv_noise_floor_dbm = 0;
 }
 
 static void raw_packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
@@ -422,7 +441,7 @@ static void udp_rx_proc(void*)
         }
 
         update_apfpv_link_quality_cache_if_needed();
-        deliver_transport_payload(buffer, static_cast<size_t>(len), s_apfpv_rssi_dbm, s_apfpv_noise_floor_dbm);
+        deliver_transport_payload(buffer, static_cast<size_t>(len), -s_apfpv_rssi_dbm, 0);
     }
 }
 
@@ -490,6 +509,7 @@ static esp_err_t start_raw_transport(WIFI_Rate wifi_rate, uint8_t chn, float pow
 
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
+    ESP_ERROR_CHECK(apply_wifi_country_for_channel(chn));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 
@@ -502,19 +522,6 @@ static esp_err_t start_raw_transport(WIFI_Rate wifi_rate, uint8_t chn, float pow
     //update: do not see any bad effect. Contrary, without completion cb, wifi_tx() tends to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
     ESP_ERROR_CHECK(esp_wifi_set_tx_done_cb(wifi_tx_done));
     xSemaphoreGive(s_wifi_tx_done_semaphore);
-#endif
-
-#ifdef BOARD_ESP32C5
-    // Enable both 2.4GHz and 5GHz bands by default
-    wifi_country_t country_config = {
-        .cc = "01",  // World-wide safe mode
-        .schan = 1,
-        .nchan = 14,
-        .max_tx_power = 20,
-        .policy = WIFI_COUNTRY_POLICY_AUTO,
-    };
-    country_config.wifi_5g_channel_mask = 0; // Allow all 5GHz channels
-    ESP_ERROR_CHECK(esp_wifi_set_country(&country_config));
 #endif
 
     //set channel before seting rate and bandwidth to select correct band (2.4/5Ghz)
@@ -546,12 +553,16 @@ static esp_err_t start_raw_transport(WIFI_Rate wifi_rate, uint8_t chn, float pow
 
 static esp_err_t start_ap_udp_transport(uint8_t chn, float power_dbm)
 {
+    chn = static_cast<uint8_t>(getValidWifiChannel(chn));
     ESP_ERROR_CHECK(ensure_wifi_init());
     ESP_ERROR_CHECK(configure_ap_netif());
     clear_apfpv_link_quality_cache();
 
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
+    ESP_ERROR_CHECK(apply_wifi_country_for_channel(chn));
+
+    LOG("Starting APFPV AP transport on channel %d at %d dBm\n", chn, (int)power_dbm);
 
     wifi_config_t wifi_config = {};
     get_ap_ssid(reinterpret_cast<char*>(wifi_config.ap.ssid), sizeof(wifi_config.ap.ssid));
@@ -568,6 +579,8 @@ static esp_err_t start_ap_udp_transport(uint8_t chn, float power_dbm)
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(set_wlan_power_dBm(power_dbm));
     ESP_ERROR_CHECK(start_udp_socket());
+
+    LOG("APFPV AP transport started on channel %d\n", chn);
 
     s_wifi_transport_mode = WifiTransportMode::ApUdp;
     return ESP_OK;
@@ -1043,19 +1056,26 @@ esp_err_t start_file_server(const char *base_path);
 
 
 
-void setup_wifi_file_server(void)
+//===========================================================================================
+//===========================================================================================
+//Starts the configuration file server AP on the selected validated Wi-Fi channel
+void setup_wifi_file_server(uint8_t channel)
 {
+    channel = static_cast<uint8_t>(getValidWifiChannel(channel));
     ESP_ERROR_CHECK(stop_wifi_transport());
     ESP_ERROR_CHECK(ensure_wifi_init());
     ESP_ERROR_CHECK(ensure_ap_netif());
     ESP_ERROR_CHECK(esp_netif_set_static_ip(s_ap_netif));
+    esp_wifi_set_promiscuous(false);
+    esp_wifi_stop();
+    ESP_ERROR_CHECK(apply_wifi_country_for_channel(channel));
 
     wifi_config_t wifi_config = {
         .ap = {
             .ssid = {0},
             .password = {0},
             .ssid_len = 0,
-            .channel = 5,
+            .channel = channel,
             .authmode = WIFI_AUTH_OPEN,
             .ssid_hidden = 0,
             .max_connection = 5,
@@ -1080,7 +1100,6 @@ void setup_wifi_file_server(void)
 
     start_file_server("/sdcard");
 }
-
 uint8_t getMaxWlanOutgoingQueueUsage()
 {
     size_t v;

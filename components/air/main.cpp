@@ -1444,7 +1444,24 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     {
         int channel = getValidWifiChannel(src.dataChannel.wifi_channel);
         LOG("Validated Wifi channel: %d\n", channel );
-        ESP_ERROR_CHECK(set_wifi_channel(channel));
+
+        // APFPV mode must rebuild the AP on the new channel so GS can reassociate to the moved SSID.
+        if (src.misc.apfpv != 0)
+        {
+            LOG("APFPV applying channel change: requested=%d validated=%d rate=%d power=%d\n",
+                src.dataChannel.wifi_channel,
+                channel,
+                (int)src.dataChannel.wifi_rate,
+                (int)src.dataChannel.wifi_power);
+            ESP_ERROR_CHECK(switch_wifi_transport(true,
+                                                 src.dataChannel.wifi_rate,
+                                                 channel,
+                                                 src.dataChannel.wifi_power));
+        }
+        else
+        {
+            ESP_ERROR_CHECK(set_wifi_channel(channel));
+        }
     }
 
     s_video_target_frame_dt = 0;
@@ -3375,7 +3392,7 @@ extern "C" void app_main()
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
         heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
-        setup_wifi_file_server();
+        setup_wifi_file_server(channel);
 
 #if defined(USB_DISK_SUPPORT)
         if (s_sd_initialized)

@@ -64,7 +64,7 @@ void set_ground2air_connect_packet_handler(void (*handler)(Ground2Air_Config_Pac
 void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& src));
 esp_err_t set_wifi_fixed_rate(WIFI_Rate value);
 esp_err_t set_wlan_power_dBm(float dBm);
-void setup_wifi_file_server(void);
+void setup_wifi_file_server(uint8_t channel);
 uint8_t getMaxWlanOutgoingQueueUsage();
 uint8_t getMinWlanOutgoingQueueUsageSeen();
 uint8_t getMaxWlanOutgoingQueueUsageFrame();
