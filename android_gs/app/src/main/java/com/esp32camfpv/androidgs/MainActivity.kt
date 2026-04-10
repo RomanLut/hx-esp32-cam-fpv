@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
@@ -147,10 +149,11 @@ private fun AndroidGsApp(
                 onExitApp()
                 return@LaunchedEffect
             }
-            val isRunning = withContext(Dispatchers.Default) {
-                NativeCore.isUdpClientRunning(nativeHandle)
+            val needsFastPoll = withContext(Dispatchers.Default) {
+                NativeCore.isUdpClientRunning(nativeHandle) ||
+                    NativeCore.getActiveTransportKind(nativeHandle) == NativeCore.TRANSPORT_TEST
             }
-            delay(if (isRunning) 16 else 250)
+            delay(if (needsFastPoll) 16 else 250)
         }
     }
 
