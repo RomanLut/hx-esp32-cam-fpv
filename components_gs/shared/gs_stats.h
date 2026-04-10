@@ -54,5 +54,20 @@ struct GSStatsSync
     uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
 };
 
+//===================================================================================
+//===================================================================================
+// Returns whether one GS stats window indicates heavy on-channel interference.
+inline bool shouldShowInterferenceChip(const GSStats& gs_stats)
+{
+    const int valid_packets =
+        static_cast<int>(gs_stats.inPacketCounter[0]) +
+        static_cast<int>(gs_stats.inPacketCounter[1]);
+    const int all_packets =
+        static_cast<int>(gs_stats.inPacketCounterAll[0]) +
+        static_cast<int>(gs_stats.inPacketCounterAll[1]);
+
+    return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
+}
+
 extern GSStats& s_gs_stats;
 extern GSStats& s_last_gs_stats;

@@ -41,22 +41,6 @@ std::thread s_comms_thread;
 
 //===================================================================================
 //===================================================================================
-// Returns whether the last one-second GS receive window was dominated by non-transport packets
-// while valid transport traffic is high enough to make the ratio meaningful.
-bool shouldShowInterferenceChip(const GSStats& gs_stats)
-{
-    const int valid_packets =
-        static_cast<int>(gs_stats.inPacketCounter[0]) +
-        static_cast<int>(gs_stats.inPacketCounter[1]);
-    const int all_packets =
-        static_cast<int>(gs_stats.inPacketCounterAll[0]) +
-        static_cast<int>(gs_stats.inPacketCounterAll[1]);
-
-    return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
-}
-
-//===================================================================================
-//===================================================================================
 // Background thread that handles all communication: sending control packets,
 // receiving and dispatching session packets, processing telemetry and video frames.
 void comms_thread_proc()

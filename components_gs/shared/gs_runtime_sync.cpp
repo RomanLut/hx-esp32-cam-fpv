@@ -7,27 +7,6 @@
 #include "gs_recordings_storage.h"
 #include "gs_runtime_state.h"
 
-namespace
-{
-
-//===================================================================================
-//===================================================================================
-// Returns whether the current one-second GS receive stats indicate heavy on-channel interference
-// while valid transport traffic is high enough to make the ratio meaningful.
-bool shouldShowInterferenceChip(const GSStats& ground_stats)
-{
-    const int valid_packets =
-        static_cast<int>(ground_stats.inPacketCounter[0]) +
-        static_cast<int>(ground_stats.inPacketCounter[1]);
-    const int all_packets =
-        static_cast<int>(ground_stats.inPacketCounterAll[0]) +
-        static_cast<int>(ground_stats.inPacketCounterAll[1]);
-
-    return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
-}
-
-}
-
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
                                          gs::imgui::TopOverlayData& overlay_input)
