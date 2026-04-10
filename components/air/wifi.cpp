@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "local/esp_wifi_types_native.h"
 #include "esp_wifi_types.h"
 #include "structures.h"
 #include "fec_codec.h"
@@ -64,12 +65,16 @@ static int s_udp_socket = -1;
 static esp_netif_t* s_ap_netif = nullptr;
 static sockaddr_in s_udp_peer_addr = {};
 static bool s_udp_peer_known = false;
+static TickType_t s_apfpv_rssi_last_poll_tick = 0;
+static int8_t s_apfpv_rssi_dbm = 0;
+static int8_t s_apfpv_noise_floor_dbm = 0;
 
 constexpr uint16_t APFPV_UDP_PORT = 5600;
 static constexpr const char* APFPV_IP = "192.168.4.1";
 static constexpr const char* APFPV_NETMASK = "255.255.255.0";
 static constexpr int APFPV_UDP_SEND_TIMEOUT_US = 20000;
 static constexpr int APFPV_UDP_SEND_BUFFER_SIZE = 8 * 1024;
+static constexpr TickType_t APFPV_RSSI_POLL_INTERVAL_TICKS = pdMS_TO_TICKS(3000);
 
 #ifdef TX_COMPLETION_CB
 static void wifi_tx_done(uint8_t ifidx, uint8_t *data, uint16_t *data_len, bool txStatus);
@@ -157,6 +162,16 @@ static void close_udp_socket()
     clear_udp_peer();
 }
 
+//===========================================================================================
+//===========================================================================================
+// Resets cached APFPV link-quality values when the SoftAP transport is restarted or stopped.
+static void clear_apfpv_link_quality_cache()
+{
+    s_apfpv_rssi_last_poll_tick = 0;
+    s_apfpv_rssi_dbm = 0;
+    s_apfpv_noise_floor_dbm = 0;
+}
+
 static esp_err_t ensure_ap_netif()
 {
     esp_err_t err = ensure_netif();
@@ -195,6 +210,38 @@ static void deliver_transport_payload(const uint8_t* data, size_t size, int8_t r
 {
     if (s_transport_packet_received_handler)
         s_transport_packet_received_handler(data, size, rssi_dbm, noise_floor_dbm);
+}
+
+//===========================================================================================
+//===========================================================================================
+// Refreshes cached SoftAP RSSI for APFPV mode at a low rate so stats do not add packet-path overhead.
+static void update_apfpv_link_quality_cache_if_needed()
+{
+    TickType_t now = xTaskGetTickCount();
+    if (s_apfpv_rssi_last_poll_tick != 0 && (now - s_apfpv_rssi_last_poll_tick) < APFPV_RSSI_POLL_INTERVAL_TICKS)
+        return;
+
+    s_apfpv_rssi_last_poll_tick = now;
+
+    wifi_sta_list_t sta_list = {};
+    esp_err_t err = esp_wifi_ap_get_sta_list(&sta_list);
+    if (err != ESP_OK)
+    {
+        s_apfpv_rssi_dbm = 0;
+        s_apfpv_noise_floor_dbm = 0;
+        return;
+    }
+
+    if (sta_list.num <= 0)
+    {
+        s_apfpv_rssi_dbm = 0;
+        s_apfpv_noise_floor_dbm = 0;
+        return;
+    }
+
+    // APFPV allows one associated station, so the first entry is the active video client.
+    s_apfpv_rssi_dbm = sta_list.sta[0].rssi;
+    s_apfpv_noise_floor_dbm = 0;
 }
 
 static void raw_packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
@@ -374,7 +421,8 @@ static void udp_rx_proc(void*)
             continue;
         }
 
-        deliver_transport_payload(buffer, static_cast<size_t>(len), 0, 0);
+        update_apfpv_link_quality_cache_if_needed();
+        deliver_transport_payload(buffer, static_cast<size_t>(len), s_apfpv_rssi_dbm, s_apfpv_noise_floor_dbm);
     }
 }
 
@@ -500,6 +548,7 @@ static esp_err_t start_ap_udp_transport(uint8_t chn, float power_dbm)
 {
     ESP_ERROR_CHECK(ensure_wifi_init());
     ESP_ERROR_CHECK(configure_ap_netif());
+    clear_apfpv_link_quality_cache();
 
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
@@ -845,6 +894,7 @@ void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t devi
 esp_err_t stop_wifi_transport()
 {
     stop_udp_rx_task();
+    clear_apfpv_link_quality_cache();
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
     s_wifi_transport_mode = WifiTransportMode::Raw80211;
