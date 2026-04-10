@@ -1,4 +1,5 @@
 #include "core/gs_session_core.h"
+#include "Log.h"
 #include "ISerialTelemetry.h"
 #include "flight_osd.h"
 #include "frame_packets_debug.h"

@@ -8,6 +8,7 @@ extern std::mutex s_gs_stats_mutex;
 struct GSStats
 {
     uint16_t outPacketCounter = 0;
+    uint16_t inPacketCounterAll[2] = {0,0};  //all received radio packets per interface for the last second
     uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
 
     uint32_t lastPacketIndex = 0;           //gs_stats: last recevied packet index, last_gs_stats: last packet index received for the period of last_gs_stats
@@ -49,6 +50,7 @@ struct GSStats
 struct GSStatsSync
 {
     uint16_t outPacketCounter = 0;
+    uint16_t inPacketCounterAll[2] = {0,0};  //all received radio packets per interface for the last second
     uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
 };
 

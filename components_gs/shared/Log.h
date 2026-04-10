@@ -59,6 +59,7 @@ void logf(LogLevel level, char const* file, int line, Fmt const& fmt, Params&&..
     __android_log_print(android_priority, "esp32-cam-fpv", "(%s) %s:%d: %s", levelStr, file, line, message.c_str());
 #else
     std::printf("(%s) %s:%d: %s\n", levelStr, file, line, message.c_str());
+    std::fflush(stdout);
 #endif
 }
 

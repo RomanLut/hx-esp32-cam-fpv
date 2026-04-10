@@ -10,6 +10,7 @@ add_library(android_gs_core SHARED
     android_runtime_platform_services.cpp
     android_transport_manager.cpp
     native_bridge.cpp
+    ../../../../../components_gs/mcp/gs_mcp_server.cpp
     ../../../../../components_gs/shared/frame_packets_debug.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
     ../../../../../components_gs/shared/gs_runtime_core.cpp

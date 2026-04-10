@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "core/gs_session_core.h"
 #include "core/stats_panel_shared.h"
 #include "core/transport.h"
@@ -25,9 +25,10 @@ struct GsRuntimeCore
                   Ground2Air_Config_Packet& config_packet_ref);
     ~GsRuntimeCore();
 
-    void resetState(uint16_t gs_device_id_value);
+    void resetState(uint16_t gs_device_id_value, bool clear_apfpv_state = true);
     void resetPairing(gs::core::ITransport& transport, Clock::time_point now);
     void resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now);
+    void resetTransportRuntimePreserveApfpvState(gs::core::ITransport& transport, Clock::time_point now);
 
     uint16_t gs_device_id = 1;
     gs::core::GsSessionCore session;

@@ -1,13 +1,16 @@
 #include "utils.h"
 
 #include <array>
+#include <cstdlib>
 #include <fcntl.h>
-#include <unistd.h>
-#include <iostream>
 #include <fstream>
-#include <string>
-#include <sstream>
+#include <iostream>
 #include <memory>
+#include <set>
+#include <sstream>
+#include <string>
+#include <unistd.h>
+#include <vector>
 
 #include "Log.h"
 
@@ -87,6 +90,102 @@ bool runShellCommand(const std::string& command, std::string* output)
 
     *output = std::move(result);
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Finds an executable by searching the current PATH first, then common Linux system directories.
+std::optional<std::string> findExecutablePath(const std::string& executable_name)
+{
+    if (executable_name.empty())
+    {
+        return std::nullopt;
+    }
+
+    std::vector<std::string> search_dirs;
+    std::set<std::string> seen_dirs;
+
+    const char* path_env = std::getenv("PATH");
+    if (path_env != nullptr)
+    {
+        std::stringstream ss(path_env);
+        std::string path_entry;
+        while (std::getline(ss, path_entry, ':'))
+        {
+            if (!path_entry.empty() && seen_dirs.insert(path_entry).second)
+            {
+                search_dirs.push_back(path_entry);
+            }
+        }
+    }
+
+    static constexpr const char* kFallbackDirs[] = {
+        "/usr/local/sbin",
+        "/usr/local/bin",
+        "/usr/sbin",
+        "/usr/bin",
+        "/sbin",
+        "/bin"
+    };
+    for (const char* dir : kFallbackDirs)
+    {
+        if (seen_dirs.insert(dir).second)
+        {
+            search_dirs.emplace_back(dir);
+        }
+    }
+
+    for (const std::string& dir : search_dirs)
+    {
+        const std::string candidate = dir + "/" + executable_name;
+        if (access(candidate.c_str(), X_OK) == 0)
+        {
+            return candidate;
+        }
+    }
+
+    return std::nullopt;
+}
+
+//===================================================================================
+//===================================================================================
+// Trims leading and trailing ASCII whitespace from a string.
+std::string trimAsciiWhitespace(const std::string& value)
+{
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0)
+    {
+        ++start;
+    }
+
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0)
+    {
+        --end;
+    }
+
+    return value.substr(start, end - start);
+}
+
+//===================================================================================
+//===================================================================================
+// Escapes a string so it can be safely embedded as a single shell argument.
+std::string shellQuote(const std::string& value)
+{
+    std::string quoted = "'";
+    for (const char ch : value)
+    {
+        if (ch == '\'')
+        {
+            quoted += "'\\''";
+        }
+        else
+        {
+            quoted += ch;
+        }
+    }
+    quoted += "'";
+    return quoted;
 }
 
 //======================================================

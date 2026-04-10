@@ -1,5 +1,5 @@
 #include "android_apfpv_transport.h"
-#include "Clock.h"
+#include "../../../../../components/common/Clock.h"
 
 #include <android/log.h>
 #include <arpa/inet.h>
@@ -11,6 +11,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
+
+#include "gs_runtime_state.h"
 
 namespace
 {
@@ -111,6 +113,10 @@ void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received, float thro
     m_udp_packets_received = packets_received;
     m_udp_throughput_mbps = throughput_mbps;
     m_udp_video_fps = video_fps;
+    if (packets_received > 0)
+    {
+        setLinkState(LinkState::None);
+    }
 }
 
 //===================================================================================

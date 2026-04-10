@@ -12,10 +12,12 @@
 #include <future>
 #include <atomic>
 #include <mutex>
+#include <optional>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
-#include "Clock.h"
+#include "../../components/common/Clock.h"
+#include "../../components_gs/mcp/gs_mcp_server.h"
 
 #ifdef USE_MANGA_SCREEN2
 #include <tslib.h> //needs libts-dev 
@@ -38,6 +40,60 @@ extern "C"
 #include <EGL/eglext_brcm.h>
 }
 #endif
+
+namespace
+{
+
+//===================================================================================
+//===================================================================================
+// Maps one injected ImGui key used by MCP to the SDL keycode consumed by the backend.
+std::optional<SDL_Keycode> mapInjectedImGuiKeyToSdlKeycode(ImGuiKey key)
+{
+    switch (key)
+    {
+    case ImGuiKey_UpArrow: return SDLK_UP;
+    case ImGuiKey_DownArrow: return SDLK_DOWN;
+    case ImGuiKey_LeftArrow: return SDLK_LEFT;
+    case ImGuiKey_RightArrow: return SDLK_RIGHT;
+    case ImGuiKey_Enter: return SDLK_RETURN;
+    case ImGuiKey_KeypadEnter: return SDLK_KP_ENTER;
+    case ImGuiKey_Escape: return SDLK_ESCAPE;
+    case ImGuiKey_R: return SDLK_r;
+    case ImGuiKey_G: return SDLK_g;
+    case ImGuiKey_S: return SDLK_s;
+    case ImGuiKey_Space: return SDLK_SPACE;
+    default: return std::nullopt;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Pushes one queued MCP key transition into the SDL event queue before polling input.
+void pushInjectedSdlKeyTransition()
+{
+    gs::mcp::InjectedKeyTransition transition = {};
+    if (!gs::mcp::popInjectedKeyTransition(transition))
+    {
+        return;
+    }
+
+    const std::optional<SDL_Keycode> keycode = mapInjectedImGuiKeyToSdlKeycode(transition.key);
+    if (!keycode.has_value())
+    {
+        return;
+    }
+
+    SDL_Event event = {};
+    event.type = transition.down ? SDL_KEYDOWN : SDL_KEYUP;
+    event.key.type = event.type;
+    event.key.state = transition.down ? SDL_PRESSED : SDL_RELEASED;
+    event.key.repeat = 0;
+    event.key.keysym.sym = *keycode;
+    event.key.keysym.scancode = SDL_GetScancodeFromKey(*keycode);
+    SDL_PushEvent(&event);
+}
+
+} // namespace
 
 /* To install & compile SDL2 with DRM:
 
@@ -453,6 +509,8 @@ void PI_HAL::shutdown_display()
 
 bool PI_HAL::update_display()
 {
+    pushInjectedSdlKeyTransition();
+
     SDL_Event event;
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     while (SDL_PollEvent(&event))

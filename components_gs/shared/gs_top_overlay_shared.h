@@ -2,7 +2,8 @@
 
 #include <string>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
+#include "gs_runtime_state.h"
 #include "packets.h"
 
 namespace gs::imgui
@@ -30,6 +31,7 @@ struct TopOverlayData
     int video_fps = 0;
     bool video_fps_alert = false;
     bool no_ping = false;
+    bool interference = false;
     bool sd_slow = false;
     bool air_record = false;
     bool gs_record = false;
@@ -38,6 +40,7 @@ struct TopOverlayData
     bool osd_font_error = false;
     Clock::time_point incompatible_firmware_time = Clock::time_point{};
     Clock::time_point now = Clock::time_point::min();
+    LinkState link_state = LinkState::None;
 };
 
 void drawTopOverlayStatus(const TopOverlayData& input);

@@ -29,6 +29,8 @@ GroundStatsSnapshot buildGroundStatsSnapshot(const GSStats& gs_stats)
 {
     GroundStatsSnapshot ground_stats = {};
     ground_stats.out_packet_counter = gs_stats.outPacketCounter;
+    ground_stats.in_packet_counter_all[0] = gs_stats.inPacketCounterAll[0];
+    ground_stats.in_packet_counter_all[1] = gs_stats.inPacketCounterAll[1];
     ground_stats.in_packet_counter[0] = gs_stats.inPacketCounter[0];
     ground_stats.in_packet_counter[1] = gs_stats.inPacketCounter[1];
     ground_stats.last_packet_index = gs_stats.lastPacketIndex;
@@ -138,6 +140,7 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
         row("AirOthersPacketRate", [&] { ImGui::Text("%d pkt/s", air_stats.inRejectedPacketRate); });
         row("AirPacketLossRatio", [&] { ImGui::Text("%.1f%%", calcLossRatio(ground_stats.out_packet_counter, air_stats.inPacketRate)); });
         row("GSOutPacketRate", [&] { ImGui::Text("%d pkt/s", ground_stats.out_packet_counter); });
+        row("GSInPacketRateAll", [&] { ImGui::Text("%d+%d", ground_stats.in_packet_counter_all[0], ground_stats.in_packet_counter_all[1]); });
         row("GSInPacketRate", [&] { ImGui::Text("%d+%d", ground_stats.in_packet_counter[0], ground_stats.in_packet_counter[1]); });
         row("GSPacketLossRatio1", [&]
         {

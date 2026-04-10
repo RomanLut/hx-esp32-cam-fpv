@@ -32,11 +32,28 @@
 #include "main.h"
 #include "util.h"
 #include "utils/utils.h"
+#include "../../components_gs/mcp/gs_mcp_server.h"
 
 namespace
 {
 
 std::thread s_comms_thread;
+
+//===================================================================================
+//===================================================================================
+// Returns whether the last one-second GS receive window was dominated by non-transport packets
+// while valid transport traffic is high enough to make the ratio meaningful.
+bool shouldShowInterferenceChip(const GSStats& gs_stats)
+{
+    const int valid_packets =
+        static_cast<int>(gs_stats.inPacketCounter[0]) +
+        static_cast<int>(gs_stats.inPacketCounter[1]);
+    const int all_packets =
+        static_cast<int>(gs_stats.inPacketCounterAll[0]) +
+        static_cast<int>(gs_stats.inPacketCounterAll[1]);
+
+    return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
+}
 
 //===================================================================================
 //===================================================================================
@@ -62,6 +79,15 @@ void comms_thread_proc()
 
     while (true)
     {
+        if (isTransportReconnectPauseRequested())
+        {
+            setTransportReconnectPauseObserved(true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+
+        setTransportReconnectPauseObserved(false);
+
         if (Clock::now() - last_stats_tp >= std::chrono::milliseconds(1000))
         {
             const Clock::time_point now = Clock::now();
@@ -114,9 +140,12 @@ void comms_thread_proc()
             std::vector<uint8_t> control_payload;
             if (tryBuildControlPacketPayload(s_groundstation_config.deviceId, control_payload))
             {
-                std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
-                s_transport->send(control_payload.data(), control_payload.size(), true);
-                s_runtimeCore.session.addSentPackets(1);
+                std::unique_lock<std::mutex> transport_lock(s_transport_mutex, std::try_to_lock);
+                if (transport_lock.owns_lock())
+                {
+                    s_transport->send(control_payload.data(), control_payload.size(), true);
+                    s_runtimeCore.session.addSentPackets(1);
+                }
             }
 
             last_comms_sent_tp = Clock::now();
@@ -124,25 +153,42 @@ void comms_thread_proc()
         }
 
         g_CPUTemp.process();
+        processPendingSelectedTransportReconnect();
 
         {
-            std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
-            s_runtimeCore.session.processIncomingTelemetry(
-                s_groundstation_config.deviceId,
-                *s_transport,
-                s_gs_stats_mutex,
-                s_gs_stats);
+            std::unique_lock<std::mutex> transport_lock(s_transport_mutex, std::try_to_lock);
+            if (transport_lock.owns_lock())
+            {
+                s_runtimeCore.session.processIncomingTelemetry(
+                    s_groundstation_config.deviceId,
+                    *s_transport,
+                    s_gs_stats_mutex,
+                    s_gs_stats);
+            }
         }
 
-        do
+        while (true)
         {
-            std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
-            s_transport->process();
-            rx_data.size = rx_data.data.size();
-            bool restoredByFEC;
-            if (!s_transport->receive(rx_data.data.data(), rx_data.size, restoredByFEC))
+            bool restoredByFEC = false;
             {
-                std::this_thread::yield();
+                std::unique_lock<std::mutex> transport_lock(s_transport_mutex, std::try_to_lock);
+                if (!transport_lock.owns_lock())
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    break;
+                }
+
+                s_transport->process();
+                rx_data.size = rx_data.data.size();
+                if (!s_transport->receive(rx_data.data.data(), rx_data.size, restoredByFEC))
+                {
+                    std::this_thread::yield();
+                    break;
+                }
+            }
+
+            if (rx_data.size == 0)
+            {
                 break;
             }
 
@@ -204,7 +250,6 @@ void comms_thread_proc()
                 pendingOsdFontReload();
             }
         }
-        while (false);
     }
 }
 
@@ -297,6 +342,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.video_fps = static_cast<int>(video_fps);
             input.video_fps_alert = had_loss;
             input.no_ping = s_noPing;
+            input.interference = shouldShowInterferenceChip(s_last_gs_stats);
             input.sd_slow = s_SDSlow;
             input.air_record = s_air_record;
             input.gs_record = s_recordingsStorage->isRecording();
@@ -305,6 +351,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
             input.now = Clock::now();
+            input.link_state = getLinkState();
 
             gs::imgui::drawTopOverlayStatus(input);
             //------------------------------------------------

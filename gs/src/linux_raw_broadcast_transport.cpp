@@ -14,11 +14,14 @@
 #include "structures.h"
 #include <algorithm>
 #include "gs_linux_runtime.h"
+#include "gs_runtime_core.h"
 #include "gs_stats.h"
 #include "packets.h"
 #include "shared/frame_packets_debug.h"
 #include "utils.h"
 #include <fstream>
+#include <cerrno>
+#include <cstring>
 
 //#define DEBUG_PCAP
 
@@ -33,6 +36,27 @@ static constexpr size_t DST_MAC_LASTBYTE = 21;
 namespace
 {
 
+//===================================================================================
+//===================================================================================
+// Forces one monitor-mode interface onto the configured raw-broadcast channel with HT20 width.
+void setMonitorChannel(const std::string& interface, int channel)
+{
+    if (channel <= 0)
+    {
+        return;
+    }
+
+    if (!runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel)))
+    {
+        LOGW("Failed to set monitor channel {} HT20 on {} via iw; falling back to iwconfig",
+             channel,
+             interface);
+        runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel));
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Waits until the Linux network interface reports an operational up state.
 bool waitForInterfaceUp(const std::string& interface)
 {
@@ -73,6 +97,24 @@ bool waitForInterfaceUp(const std::string& interface)
     return false;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns whether one 802.11 header matches the exact 6-byte legacy MAC signature used by the old pcap filter.
+bool matchesLegacyAir2GroundMacSignature(const uint8_t* ieee_header, size_t ieee_header_size)
+{
+    if (ieee_header == nullptr || ieee_header_size < 16)
+    {
+        return false;
+    }
+
+    return ieee_header[10] == 0x11 &&
+           ieee_header[11] == 0x22 &&
+           ieee_header[12] == 0x33 &&
+           ieee_header[13] == 0x44 &&
+           ieee_header[14] == 0x55 &&
+           ieee_header[15] == 0x66;
+}
+
 }
 
 //===================================================================================
@@ -85,10 +127,71 @@ bool LinuxRawBroadcastTransport::usesChannelSearch() const
 
 //===================================================================================
 //===================================================================================
-// Activates raw-broadcast mode by switching the configured RX interfaces to monitor mode.
+// Reports that raw-broadcast search is handled by the generic channel-search flow instead of transport hooks.
+bool LinuxRawBroadcastTransport::supportsMenuSearchOrConnect() const
+{
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Reapplies the raw-broadcast activation path after menu-driven reconnect requests.
+bool LinuxRawBroadcastTransport::requestImmediateReconnect()
+{
+    activate();
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Leaves menu-search control to the generic transport manager for raw-broadcast mode.
+void LinuxRawBroadcastTransport::beginMenuSearchOrConnect()
+{
+}
+
+//===================================================================================
+//===================================================================================
+// Leaves menu-search control to the generic transport manager for raw-broadcast mode.
+bool LinuxRawBroadcastTransport::advanceMenuSearchOrConnect()
+{
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Leaves menu-search control to the generic transport manager for raw-broadcast mode.
+void LinuxRawBroadcastTransport::cancelMenuSearchOrConnect()
+{
+}
+
+//===================================================================================
+//===================================================================================
+// Activates raw-broadcast mode by switching the configured RX interfaces to monitor mode
+// and reopening the pcap backend on the freshly reconfigured interface handles.
 void LinuxRawBroadcastTransport::activate()
 {
+    // Reopen the backend on every activation because switching the same adapter through
+    // APFPV managed mode can invalidate the old pcap handle and later inject/read calls
+    // fail with "No such device or address" on the stale descriptor.
+    setLinkState(LinkState::LookingForWifiNetwork);
+    setLinkStateDetailText("Setting monitor mode...");
+    stopBackend();
     setMonitorMode(m_rx_descriptor.interfaces);
+    setChannel(s_groundstation_config.wifi_channel);
+    if (!startBackend())
+    {
+        LOGE("Failed to restart raw-broadcast backend after switching to monitor mode");
+        return;
+    }
+    setLinkStateDetailText({});
+}
+
+//===================================================================================
+//===================================================================================
+// Stops the raw-broadcast backend while another transport temporarily owns the interfaces.
+void LinuxRawBroadcastTransport::deactivate()
+{
+    stopBackend();
 }
 
 /*
@@ -283,30 +386,19 @@ LinuxRawBroadcastTransport::LinuxRawBroadcastTransport()
 //===================================================================================
 LinuxRawBroadcastTransport::~LinuxRawBroadcastTransport()
 {
-    if (!m_impl)
-        return;
+    stopBackend();
 
-    m_exit = true;
-
-    m_impl->tx.packet_queue_cv.notify_all();
-
-    for (auto& thread: m_impl->rx.threads)
-        if (thread.joinable())
-            thread.join();
-
-    if (m_impl->tx.thread.joinable())
-        m_impl->tx.thread.join();
-
-    fec_free(m_impl->tx.fec);
+    if (m_impl && m_impl->tx.fec)
+    {
+        fec_free(m_impl->tx.fec);
+        m_impl->tx.fec = nullptr;
+    }
 }
 
 //===================================================================================
 //===================================================================================
 bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
 {
-    struct bpf_program program;
-    char program_src[512];
-
     int link_encap = pcap_datalink(pcap.pcap);
     const char* datalink_name = pcap_datalink_val_to_name(link_encap);
     LOGI("pcap datalink: {} ({})", link_encap, datalink_name != nullptr ? datalink_name : "unknown");
@@ -316,13 +408,11 @@ bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
     case DLT_PRISM_HEADER:
         LOGI("DLT_PRISM_HEADER Encap");
         pcap._80211_header_length = 0x20; // ieee80211 comes after this
-        sprintf(program_src, "radio[0x4a:4]==0x11223344 && radio[0x4e:2] == 0x5566");
         break;
 
     case DLT_IEEE802_11_RADIO:
         LOGI("DLT_IEEE802_11_RADIO Encap");
         pcap._80211_header_length = 0x18; // ieee80211 comes after this
-        sprintf(program_src, "ether[0x0a:4]==0x11223344 && ether[0x0e:2] == 0x5566");
         break;
 
     default:
@@ -330,20 +420,12 @@ bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
         return false;
     }
 
-    if (pcap_compile(pcap.pcap, &program, program_src, 1, 0) == -1)
-    {
-        LOGE("Failed to compile program: {} : {}", program_src, pcap_geterr(pcap.pcap));
-        return false;
-    }
-    if (pcap_setfilter(pcap.pcap, &program) == -1)
-    {
-        pcap_freecode(&program);
-        LOGE("Failed to set program: {} : {}", program_src, pcap_geterr(pcap.pcap));
-        return false;
-    }
-    pcap_freecode(&program);
-
     pcap.rx_pcap_selectable_fd = pcap_get_selectable_fd(pcap.pcap);
+    if (pcap.rx_pcap_selectable_fd < 0)
+    {
+        LOGE("pcap_get_selectable_fd failed for interface {}", m_rx_descriptor.interfaces[pcap.index]);
+        return false;
+    }
 
     return true;
 }
@@ -432,6 +514,7 @@ void LinuxRawBroadcastTransport::prepare_tx_packet_header(uint8_t* buffer)
 
 //===================================================================================
 //===================================================================================
+// Drains all packets currently available from one raw pcap handle.
 bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
 {
     struct pcap_pkthdr* pcap_packet_header = nullptr;
@@ -448,16 +531,25 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
                 return false;
             }
             if (retval != 1)
+            {
                 break;
+            }
+        }
+
+        if (pcap.index < 2)
+        {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+            s_gs_stats.inPacketCounterAll[pcap.index]++;
         }
 
         size_t header_len = (payload[2] + (payload[3] << 8));
         if (pcap_packet_header->len < (header_len + pcap._80211_header_length))
         {
-            LOGW("packet too small");
+            //LOGW("packet too small");
             return true;
         }
 
+        const uint8_t* ieee_header = payload + header_len;
         size_t bytes = pcap_packet_header->len - (header_len + pcap._80211_header_length);
 
         ieee80211_radiotap_iterator rti;
@@ -517,6 +609,12 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
         }
         payload += header_len + pcap._80211_header_length;
 
+        if (!matchesLegacyAir2GroundMacSignature(ieee_header, pcap._80211_header_length))
+        {
+            s_runtimeCore.transport_packets_filtered++;
+            continue;
+        }
+
         if (prh.radiotap_flags & IEEE80211_RADIOTAP_F_FCS)
             bytes -= 4;
 
@@ -545,17 +643,29 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
             return true; 
         }
 */
-        if ( pcap.index < 2 )
+        s_runtimeCore.transport_packets_seen++;
+        if (bytes >= sizeof(Packet_Header))
         {
-            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-            s_gs_stats.inPacketCounter[pcap.index]++;
+            const Packet_Header& header = *reinterpret_cast<const Packet_Header*>(payload);
+            s_runtimeCore.last_transport_block = header.block_index;
+            s_runtimeCore.last_transport_packet_index = header.packet_index;
+            s_runtimeCore.last_transport_payload_size = header.size;
+            s_runtimeCore.last_transport_from = header.fromDeviceId;
+            s_runtimeCore.last_transport_to = header.toDeviceId;
+        }
+        else
+        {
+            s_runtimeCore.last_transport_block = 0;
+            s_runtimeCore.last_transport_packet_index = 0;
+            s_runtimeCore.last_transport_payload_size = 0;
+            s_runtimeCore.last_transport_from = 0;
+            s_runtimeCore.last_transport_to = 0;
         }
 
         auto res = m_packet_filter.filter_packet(payload, bytes, m_rx_descriptor.mtu);
         if ( res != PacketFilter::PacketFilterResult::Pass )
         {
-            //s_stats.inRejectedPacketCounter++;
-
+            s_runtimeCore.transport_packets_filtered++;
             if ( res == PacketFilter::PacketFilterResult::WrongVersion )
             {
                 s_incompatibleFirmwareTime = Clock::now();
@@ -563,6 +673,12 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
             continue;
         }
 
+        s_runtimeCore.transport_packets_passed_filter++;
+        if (pcap.index < 2)
+        {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+            s_gs_stats.inPacketCounter[pcap.index]++;
+        }
         {
             if (prh.input_dBm > -1000)
             {
@@ -745,10 +861,6 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
         return false;
     }
 
-    setMonitorMode(this->m_rx_descriptor.interfaces);
-
-    /////////
-
     //    IEEE_HEADER[SRC_MAC_LASTBYTE] = 0;
     //    IEEE_HEADER[DST_MAC_LASTBYTE] = 0;
 
@@ -796,29 +908,6 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
     //        LOGE("Error setting {} to IN capture only: {}", m_interface, pcap_geterr(m_impl->pcap));
     //        return false;
     //    }
-
-    m_impl->rx.pcaps.resize( this->m_rx_descriptor.interfaces.size() );
-    size_t index = 0;
-    for (auto& interf: this->m_rx_descriptor.interfaces)
-    {
-        m_impl->rx.pcaps[index] = std::make_unique<PCap>();
-        m_impl->rx.pcaps[index]->index = index;
-        if ( !prepare_pcap(interf, *m_impl->rx.pcaps[index], rx_descriptor) )
-        {
-            return false;
-        }
-
-        if ( m_tx_descriptor.interface == interf )
-        {
-            m_impl->tx.pcap = m_impl->rx.pcaps[index].get();
-        }
-
-        index++;
-    }
-
-    m_impl->tx.thread = std::thread([this]() { tx_thread_proc(); });
-    for (size_t i = 0; i < m_rx_descriptor.interfaces.size(); i++)
-        m_impl->rx.threads.push_back(std::thread([this, i]() { rx_thread_proc(i); }));
 
     FecBlockDecoder::Descriptor decoder_descriptor = {};
     decoder_descriptor.coding_k = m_rx_descriptor.coding_k;
@@ -872,6 +961,108 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
 
 //===================================================================================
 //===================================================================================
+// Reopens all raw-broadcast pcap handles and worker threads on the current monitor-mode interfaces.
+bool LinuxRawBroadcastTransport::startBackend()
+{
+    if (!m_impl)
+    {
+        return false;
+    }
+
+    m_exit = false;
+    m_impl->tx.pcap = nullptr;
+    m_impl->rx.pcaps.clear();
+    m_impl->rx.pcaps.resize(m_rx_descriptor.interfaces.size());
+
+    size_t index = 0;
+    for (const auto& interf : m_rx_descriptor.interfaces)
+    {
+        m_impl->rx.pcaps[index] = std::make_unique<PCap>();
+        m_impl->rx.pcaps[index]->index = index;
+        if (!prepare_pcap(interf, *m_impl->rx.pcaps[index], m_rx_descriptor))
+        {
+            stopBackend();
+            return false;
+        }
+
+        if (m_tx_descriptor.interface == interf)
+        {
+            m_impl->tx.pcap = m_impl->rx.pcaps[index].get();
+        }
+
+        index++;
+    }
+
+    if (m_impl->tx.pcap == nullptr)
+    {
+        LOGE("Raw-broadcast TX interface {} is not available in reopened pcap set", m_tx_descriptor.interface);
+        stopBackend();
+        return false;
+    }
+
+    reset_rx_state();
+
+    m_impl->tx.thread = std::thread([this]() { tx_thread_proc(); });
+    for (size_t i = 0; i < m_rx_descriptor.interfaces.size(); i++)
+    {
+        m_impl->rx.threads.push_back(std::thread([this, i]() { rx_thread_proc(i); }));
+    }
+
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Closes raw-broadcast worker threads and stale pcap handles before another mode reuses the adapter.
+void LinuxRawBroadcastTransport::stopBackend()
+{
+    if (!m_impl)
+    {
+        return;
+    }
+
+    m_exit = true;
+    m_impl->tx.packet_queue_cv.notify_all();
+
+    for (auto& thread : m_impl->rx.threads)
+    {
+        if (thread.joinable())
+        {
+            thread.join();
+        }
+    }
+    m_impl->rx.threads.clear();
+
+    if (m_impl->tx.thread.joinable())
+    {
+        m_impl->tx.thread.join();
+    }
+
+    for (auto& pcap : m_impl->rx.pcaps)
+    {
+        if (pcap && pcap->pcap != nullptr)
+        {
+            pcap_close(pcap->pcap);
+            pcap->pcap = nullptr;
+        }
+    }
+    m_impl->rx.pcaps.clear();
+    m_impl->tx.pcap = nullptr;
+
+    {
+        std::lock_guard<std::mutex> lg(m_impl->tx.packet_queue_mutex);
+        m_impl->tx.packet_queue.clear();
+    }
+    m_impl->tx.ready_packet_queue.clear();
+    m_impl->tx.block_packets.clear();
+    m_impl->tx.block_fec_packets.clear();
+    m_impl->tx.crt_packet.reset();
+
+}
+
+//===================================================================================
+//===================================================================================
+// Waits for pcap RX readiness on one interface and drains packets when that interface descriptor becomes readable.
 void LinuxRawBroadcastTransport::rx_thread_proc(size_t index)
 {
     RX& rx = m_impl->rx;
@@ -888,8 +1079,21 @@ void LinuxRawBroadcastTransport::rx_thread_proc(size_t index)
         FD_ZERO(&readset);
         FD_SET(pcap.rx_pcap_selectable_fd, &readset);
 
-        int n = select(30, &readset, nullptr, nullptr, &to);
-        if (n != 0 && FD_ISSET(pcap.rx_pcap_selectable_fd, &readset))
+        int n = select(pcap.rx_pcap_selectable_fd + 1, &readset, nullptr, nullptr, &to);
+        if (n < 0)
+        {
+            LOGW("Raw RX select failed on {} fd={} errno={} ({})",
+                 m_rx_descriptor.interfaces[pcap.index],
+                 pcap.rx_pcap_selectable_fd,
+                 errno,
+                 std::strerror(errno));
+            continue;
+        }
+        if (n == 0)
+        {
+            continue;
+        }
+        if (FD_ISSET(pcap.rx_pcap_selectable_fd, &readset))
         {
             process_rx_packet(pcap);
         }
@@ -1225,7 +1429,7 @@ void LinuxRawBroadcastTransport::setChannel(int ch)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)  //the list contains both RX and TX interfaces
     {
-        runShellCommand(fmt::format("iwconfig {} channel {}", itf, ch));
+        setMonitorChannel(itf, ch);
     }
 }
 

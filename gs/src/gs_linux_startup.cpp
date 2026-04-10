@@ -13,7 +13,7 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "util.h"
 #include "utils.h"
 

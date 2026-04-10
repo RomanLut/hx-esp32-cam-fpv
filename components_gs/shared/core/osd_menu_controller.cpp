@@ -98,6 +98,7 @@ std::string OSDMenuController::formatGroundStorageStatusLine(const GroundStorage
 OSDMenuController::OSDMenuController()
 {
     this->visible = false;
+    resetCapturedMenuBuffer();
 }
 
 //===================================================================================
@@ -222,6 +223,7 @@ void OSDMenuController::open()
 void OSDMenuController::close()
 {
     this->visible = false;
+    resetCapturedMenuBuffer();
 }
 
 //===================================================================================
@@ -234,12 +236,70 @@ bool OSDMenuController::isVisible() const
 
 //===================================================================================
 //===================================================================================
+// Returns a thread-safe copy of the last menu buffer captured during rendering.
+gs::menu::CapturedMenuBuffer OSDMenuController::copyCapturedMenuBuffer() const
+{
+    std::lock_guard<std::mutex> lock(m_capture_mutex);
+    return m_captured_menu_buffer;
+}
+
+//===================================================================================
+//===================================================================================
+// Clears the cached rendered menu lines before capturing a new interactive frame.
+void OSDMenuController::resetCapturedMenuBuffer()
+{
+    std::lock_guard<std::mutex> lock(m_capture_mutex);
+    m_captured_menu_buffer.visible = visible;
+    m_captured_menu_buffer.menu_id = menuId;
+    m_captured_menu_buffer.selected_item = selectedItem;
+    m_captured_menu_buffer.title.clear();
+    m_captured_menu_buffer.lines.clear();
+}
+
+//===================================================================================
+//===================================================================================
+// Appends one sanitized line to the cached rendered menu buffer.
+void OSDMenuController::appendCapturedLine(const std::string& line)
+{
+    std::lock_guard<std::mutex> lock(m_capture_mutex);
+    m_captured_menu_buffer.lines.push_back(line);
+}
+
+//===================================================================================
+//===================================================================================
+// Strips the hidden ImGui identifier suffix from a menu caption before exposing it.
+std::string OSDMenuController::sanitizeCapturedCaption(const char* caption)
+{
+    if (caption == nullptr)
+    {
+        return {};
+    }
+
+    std::string sanitized = caption;
+    const size_t id_separator = sanitized.find("##");
+    if (id_separator != std::string::npos)
+    {
+        sanitized.erase(id_separator);
+    }
+    return sanitized;
+}
+
+//===================================================================================
+//===================================================================================
 // Draws the menu title bar and resets per-frame item and key tracking state.
 void OSDMenuController::drawMenuTitle( const char* caption )
 {
     gs::menu::imgui::drawMenuTitle(caption, m_imgui_layout);
     this->itemsCount = 0;
     this->keyHandled = false;
+    if (m_draw_mode == DrawMode::Interactive)
+    {
+        std::lock_guard<std::mutex> lock(m_capture_mutex);
+        m_captured_menu_buffer.visible = visible;
+        m_captured_menu_buffer.menu_id = menuId;
+        m_captured_menu_buffer.selected_item = selectedItem;
+        m_captured_menu_buffer.title = sanitizeCapturedCaption(caption);
+    }
     drawLargeGapIfTallScreen();
 }
 
@@ -249,6 +309,10 @@ void OSDMenuController::drawMenuTitle( const char* caption )
 void OSDMenuController::drawStatus( const char* caption )
 {
     gs::menu::imgui::drawMenuStatus(caption, m_imgui_layout);
+    if (m_draw_mode == DrawMode::Interactive)
+    {
+        appendCapturedLine("    " + sanitizeCapturedCaption(caption));
+    }
 }
 
 //===================================================================================
@@ -283,6 +347,10 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     }
 
     bool focused = this->selectedItem == itemIndex;
+    if (m_draw_mode == DrawMode::Interactive)
+    {
+        appendCapturedLine(std::string(focused ? "[*] " : "[ ] ") + sanitizeCapturedCaption(caption));
+    }
     bool res = false;
 
     if (m_draw_mode == DrawMode::Interactive)
@@ -321,12 +389,23 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
     this->itemsCount = 0;
     this->keyHandled = false;
     this->m_draw_mode = mode;
+    if (mode == DrawMode::Interactive)
+    {
+        resetCapturedMenuBuffer();
+    }
 
     gs::menu::imgui::beginMenuWindow(window_name, m_imgui_layout, extra_flags);
     drawCurrentMenu(config);
     gs::menu::imgui::endMenuWindow();
 
     this->m_draw_mode = DrawMode::Interactive;
+    if (mode == DrawMode::Interactive)
+    {
+        std::lock_guard<std::mutex> lock(m_capture_mutex);
+        m_captured_menu_buffer.visible = visible;
+        m_captured_menu_buffer.menu_id = menuId;
+        m_captured_menu_buffer.selected_item = selectedItem;
+    }
 }
 
 //===================================================================================
@@ -413,6 +492,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::SearchRun: this->drawSearchRunMenu(config); break;
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
+        case OSDMenuId::GSApfpvInterface: this->drawGSApfpvInterfaceMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
@@ -432,7 +512,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( "Connect...", 0) )
+        if ( this->drawMenuItem( "Search & Connect...", 0) )
         {
             this->goForward( OSDMenuId::Search, 0);
         }
@@ -1303,11 +1383,11 @@ void OSDMenuController::drawGSTxPowerMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the ground station TX interface selection menu.
+// Draws the RAW transport TX interface selection menu.
 void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
-    this->drawMenuTitle( "GS Settings -> TX Interface" );
+    this->drawMenuTitle( "GS Settings -> RAW TX Interface" );
     drawSpacing();
 
     bool saveAndExit = false;
@@ -1334,6 +1414,48 @@ void OSDMenuController::drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config)
     if ( saveAndExit )
     {
         s_settingsStorage.saveGroundStationConfig();
+    }
+
+    if ( saveAndExit || this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the APFPV interface selection menu and applies the new interface immediately.
+void OSDMenuController::drawGSApfpvInterfaceMenu(Ground2Air_Config_Packet& config)
+{
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "GS Settings -> APFPV Interface" );
+    drawSpacing();
+
+    bool saveAndExit = false;
+    const auto interfaces = copyCurrentTransportInterfaces();
+
+    if ( this->drawMenuItem( "auto", 0) )
+    {
+        gs_config.apfpvInterface = "auto";
+        saveAndExit = true;
+    }
+
+    for ( unsigned int i = 0; i < interfaces.size(); i++ )
+    {
+        if ( this->drawMenuItem( interfaces[i].c_str(), i+1) )
+        {
+            gs_config.apfpvInterface = interfaces[i];
+            saveAndExit = true;
+        }
+    }
+
+    if ( saveAndExit )
+    {
+        s_settingsStorage.saveGroundStationConfig();
+        if (gs_config.transportKind == gs::core::TransportKind::APFPV)
+        {
+            queueSelectedTransportReconnect();
+        }
     }
 
     if ( saveAndExit || this->exitKeyPressed())
@@ -1499,13 +1621,14 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
     this->drawMenuTitle( "Menu -> GS Wifi Settings" );
     drawSpacing();
     const auto interfaces = copyCurrentTransportInterfaces();
+    int item_index = 0;
 
     {
         char buf[256];
         const char* bands[] = {"2.4GHz", "5.8GHz", "2.4GHz & 5.8GHz"};
         int band_index = clamp((int)gs_config.wifiBand, 0, 2);
         sprintf(buf, "Band: %s##0", bands[band_index]);
-        if ( this->drawMenuItem( buf, 0) )
+        if ( this->drawMenuItem( buf, item_index) )
         {
             gs_config.wifiBand = (uint8_t)((band_index + 1) % 3);
 
@@ -1525,12 +1648,14 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
                 s_RuntimePlatformServices->applyGroundStationWifiChannel(config);
             }
         }
+        item_index++;
     }
 
+    if (gs_config.transportKind == gs::core::TransportKind::RawBroadcast)
     {
         char buf[256];
-        sprintf(buf, "TX Interface: %s##1", gs_config.txInterface.c_str());
-        if ( this->drawMenuItem( buf, 1) )
+        sprintf(buf, "RAW TX Interface: %s##1", gs_config.txInterface.c_str());
+        if ( this->drawMenuItem( buf, item_index) )
         {
             size_t index = 0;
             for( size_t i = 0; i < interfaces.size(); i++ )
@@ -1542,12 +1667,31 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
             }
             this->goForward( OSDMenuId::GSTxInterface, index );
         }
+        item_index++;
+    }
+    else if (gs_config.transportKind == gs::core::TransportKind::APFPV)
+    {
+        char buf[256];
+        sprintf(buf, "APFPV Interface: %s##1", gs_config.apfpvInterface.c_str());
+        if ( this->drawMenuItem( buf, item_index) )
+        {
+            size_t index = 0;
+            for( size_t i = 0; i < interfaces.size(); i++ )
+            {
+                if ( interfaces[i] == gs_config.apfpvInterface )
+                {
+                    index = i + 1;
+                }
+            }
+            this->goForward( OSDMenuId::GSApfpvInterface, index );
+        }
+        item_index++;
     }
 
     {
         char buf[256];
         sprintf(buf, "TX Power: %d##2", gs_config.txPower);
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, item_index) )
         {
             this->goForward( OSDMenuId::GSTxPower, gs_config.txPower - gs::menu::kMinTxPower);
         }
@@ -1630,6 +1774,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 {
     const gs::core::TransportKind transport_kind = currentTransportKind();
     const bool uses_channel_search = gs::core::TransportManagerBase::transportKindUsesChannelSearch(transport_kind);
+    const ApfpvCameraStateSnapshot apfpv_camera_state = copyApfpvCameraState();
     this->drawMenuTitle("Menu -> Connect");
     drawSpacing();
 
@@ -1640,6 +1785,54 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
         {
             this->goForward(OSDMenuId::SearchMode, getTransportModeMenuIndex(transport_kind));
             return;
+        }
+    }
+
+    if (transport_kind == gs::core::TransportKind::APFPV)
+    {
+        int item_index = 1;
+
+        if (this->drawMenuItem("Search...##apfpv_search", item_index))
+        {
+            this->searchDone = false;
+            beginSelectedTransportSearchOrConnect(config, this->search_tp);
+            this->goForward(OSDMenuId::SearchRun, 0);
+            return;
+        }
+        item_index++;
+
+        if (apfpv_camera_state.active_camera_id != 0)
+        {
+            const std::string active_caption =
+                "Active Air Id: " + formatApfpvCameraId(apfpv_camera_state.active_camera_id) + "##apfpv_active";
+            (void)this->drawMenuItem(active_caption.c_str(), item_index);
+            item_index++;
+        }
+
+        for (const ApfpvCameraDescriptor& camera : apfpv_camera_state.discovered_cameras)
+        {
+            if (camera.device_id == 0 || camera.device_id == apfpv_camera_state.active_camera_id)
+            {
+                continue;
+            }
+
+            const std::string connect_caption =
+                "Connect to: " + formatApfpvCameraId(camera.device_id) + "##apfpv_connect_" + std::to_string(camera.device_id);
+            if (this->drawMenuItem(connect_caption.c_str(), item_index))
+            {
+                s_groundstation_config.apfpvPreferredCameraId = camera.device_id;
+                setApfpvPreferredCameraId(camera.device_id);
+                s_settingsStorage.saveGroundStationConfig();
+                this->close();
+                queueSelectedTransportReconnect();
+                return;
+            }
+            item_index++;
+        }
+
+        if (apfpv_camera_state.active_camera_id == 0 && apfpv_camera_state.discovered_cameras.empty())
+        {
+            this->drawStatus("No APFPV cameras found##apfpv_empty");
         }
     }
 
@@ -1663,7 +1856,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if (!uses_channel_search && this->selectedItem > 0)
+    if (!uses_channel_search && transport_kind != gs::core::TransportKind::APFPV && this->selectedItem > 0)
     {
         this->selectedItem = 0;
     }
@@ -1692,7 +1885,8 @@ void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
                 return;
             }
 
-            if (!gs::core::TransportManagerBase::transportKindUsesChannelSearch(kind))
+            if (!gs::core::TransportManagerBase::transportKindUsesChannelSearch(kind) &&
+                kind != gs::core::TransportKind::APFPV)
             {
                 this->searchDone = false;
                 beginSelectedTransportSearchOrConnect(config, this->search_tp);
@@ -1716,6 +1910,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
     const bool uses_channel_search = gs::core::TransportManagerBase::transportKindUsesChannelSearch(currentTransportKind());
+    const bool is_apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
 
     if (uses_channel_search)
     {
@@ -1728,7 +1923,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
     }
     else
     {
-        this->drawMenuTitle("Menu -> Connect");
+        this->drawMenuTitle(is_apfpv ? "Menu -> Search" : "Menu -> Connect");
     }
     drawSpacing();
 
@@ -1739,11 +1934,34 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
     {
         sprintf(buf, searchDone ? "Found Channel: %d" : "Searching: Channel %d...", gs_config.wifi_channel);
     }
+    else if (is_apfpv)
+    {
+        const ApfpvCameraStateSnapshot apfpv_camera_state = copyApfpvCameraState();
+        if (apfpv_camera_state.discovered_cameras.size() >= 2)
+        {
+            sprintf(buf, "Found %d APFPV cameras.", static_cast<int>(apfpv_camera_state.discovered_cameras.size()));
+        }
+        else if (apfpv_camera_state.active_camera_id != 0 || isSelectedTransportConnected())
+        {
+            sprintf(buf, "Connected.");
+        }
+        else if (apfpv_camera_state.discovered_cameras.size() == 1)
+        {
+            sprintf(buf, "Connecting to %s...", formatApfpvCameraId(apfpv_camera_state.discovered_cameras.front().device_id).c_str());
+        }
+        else
+        {
+            sprintf(buf, "Searching for APFPV cameras...");
+        }
+    }
     else
     {
         sprintf(buf, "%s", isSelectedTransportConnected() ? "Connected." : "Connecting...");
     }
-    this->drawStatus(buf);
+    if (!(is_apfpv && std::strcmp(buf, "Connected.") == 0))
+    {
+        this->drawStatus(buf);
+    }
 
     advanceSelectedTransportSearchOrConnect(config, this->search_tp, this->searchDone);
 
@@ -1754,6 +1972,10 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
         {
             bExit = true;
         }
+    }
+    else if (is_apfpv)
+    {
+        bExit = this->searchDone;
     }
     else if (isSelectedTransportConnected())
     {

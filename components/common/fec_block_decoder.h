@@ -9,7 +9,7 @@
 #include <mutex>
 #include <vector>
 
-#include "../components_gs/shared/Clock.h"
+#include "Clock.h"
 #include "fec.h"
 #include "packets.h"
 
@@ -20,9 +20,6 @@
 class FecBlockDecoder
 {
 public:
-    using Clock = ::Clock;
-    using TimePoint = Clock::time_point;
-
     struct Descriptor
     {
         uint8_t coding_k = FEC_K;

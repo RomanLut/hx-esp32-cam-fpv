@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "core/gs_session_core.h"
 #include "core/transport_kind.h"
 #include "packets.h"
@@ -28,8 +28,10 @@ struct TGroundstationConfig
     bool vrMode = false;
     bool vsync = true;
     std::string txInterface = "";
+    std::string apfpvInterface = "";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;
     uint16_t deviceId;
+    uint16_t apfpvPreferredCameraId = 0;
     uint8_t GPIOKeysLayout = 0;
 };
 

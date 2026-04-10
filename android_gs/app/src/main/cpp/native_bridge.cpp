@@ -59,6 +59,7 @@
 #include "gs_runtime_core.h"
 #include "gs_udp_broadcast.h"
 #include "android_udp_broadcast.h"
+#include "../../../../../components_gs/mcp/gs_mcp_server.h"
 
 static AndroidSerialTelemetry s_androidSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
@@ -97,12 +98,14 @@ struct NativeHandle
         transport_manager.init(s_groundstation_config.transportKind, gs::core::RXDescriptor{}, gs::core::TXDescriptor{});
         s_runtimeCore.resetTransportRuntime(*s_transport, Clock::now());
         renderer.setMenuBinding(&gs::menu::g_osdMenuController, &s_runtimeCore.config_packet, &mutex);
+        gs::mcp::GsMcpServer::instance().start();
     }
 
     ~NativeHandle()
     {
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
+        gs::mcp::GsMcpServer::instance().stop();
     }
 
     void stopUdpClient()
@@ -901,6 +904,76 @@ Java_com_esp32camfpv_androidgs_NativeCore_getActiveTransportKind(JNIEnv* /* env 
     return static_cast<jint>(native_handle->transport_manager.activeKind());
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the persisted APFPV preferred camera id used by shared camera selection logic.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_getPreferredApfpvCameraId(JNIEnv* /* env */,
+                                                                    jobject /* thiz */,
+                                                                    jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return static_cast<jint>(s_groundstation_config.apfpvPreferredCameraId);
+}
+
+//===================================================================================
+//===================================================================================
+// Synchronizes discovered and active APFPV camera SSIDs from the Android Wi-Fi controller.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
+                                                               jobject /* thiz */,
+                                                               jlong handle,
+                                                               jobjectArray discovered_ssids,
+                                                               jstring active_ssid)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::vector<ApfpvCameraDescriptor> discovered_cameras;
+    if (discovered_ssids != nullptr)
+    {
+        const jsize count = env->GetArrayLength(discovered_ssids);
+        for (jsize i = 0; i < count; ++i)
+        {
+            auto* ssid_value = static_cast<jstring>(env->GetObjectArrayElement(discovered_ssids, i));
+            const std::string ssid = fromJString(env, ssid_value);
+            if (ssid_value != nullptr)
+            {
+                env->DeleteLocalRef(ssid_value);
+            }
+
+            const uint16_t device_id = parseApfpvCameraIdFromSsid(ssid);
+            if (device_id == 0)
+            {
+                continue;
+            }
+            discovered_cameras.push_back({device_id, ssid});
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    updateApfpvDiscoveredCameras(discovered_cameras);
+
+    const std::string active_ssid_value = fromJString(env, active_ssid);
+    if (!active_ssid_value.empty())
+    {
+        setApfpvActiveCamera(active_ssid_value);
+    }
+    else
+    {
+        clearApfpvActiveCamera();
+    }
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
                                                      jobject /* thiz */,
@@ -1227,6 +1300,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.is_dual = false;
         sync_params.osd_font_error = s_flightOSD.isFontError();
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
+        processPendingSelectedTransportReconnect();
     }
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     processPendingOsdFontReload(s_runtimeCore.config_packet);
@@ -1399,6 +1473,25 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     std::lock_guard<std::mutex> lock(native_handle->mutex);
     s_runtimeCore.resetTransportRuntime(native_handle->transport_manager.activeTransport(), Clock::now());
     gs::menu::g_osdMenuController.close();
+}
+
+//===================================================================================
+//===================================================================================
+// Updates the shared runtime link state exposed through the top overlay.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setLinkState(JNIEnv* /* env */,
+                                                       jobject /* thiz */,
+                                                       jlong handle,
+                                                       jint state)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    setLinkState(static_cast<LinkState>(state));
 }
 
 extern "C" JNIEXPORT void JNICALL

@@ -11,52 +11,95 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $plink = "C:\Program Files\putty\plink.exe"
-$pscp = "C:\Program Files\putty\pscp.exe"
 
 function Require-Tool([string]$path)
 {
-    if (-not (Test-Path $path)) {
+    if (-not (Test-Path $path))
+    {
         throw "Required tool not found: $path"
     }
 }
 
-Require-Tool $plink
-Require-Tool $pscp
-
-$changedFiles = @(git -C $repoRoot diff --name-only -- `
-    gs `
-    components_gs `
-    components/common `
-    assets_gs)
-
-if ($changedFiles.Count -eq 0) {
-    Write-Host "No changed GS files to sync."
-} else {
-    Write-Host "Syncing changed GS files to ${User}@${RemoteHost}:${RemoteProjectDir} ..."
-    foreach ($relativePath in $changedFiles) {
-        if ([string]::IsNullOrWhiteSpace($relativePath)) {
-            continue
-        }
-
-        $normalizedPath = $relativePath -replace "\\", "/"
-        $localPath = Join-Path $repoRoot $relativePath
-        if (-not (Test-Path -LiteralPath $localPath)) {
-            continue
-        }
-
-        $remoteDir = [System.IO.Path]::GetDirectoryName($normalizedPath)
-        if ([string]::IsNullOrWhiteSpace($remoteDir)) {
-            $remoteDir = "."
-        } else {
-            $remoteDir = $remoteDir -replace "\\", "/"
-        }
-
-        & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p '$RemoteProjectDir/$remoteDir'"
-        & $pscp -scp -batch -pw $Password $localPath "${User}@${RemoteHost}:${RemoteProjectDir}/${remoteDir}/"
-    }
+function Convert-ToBashSingleQuoted([string]$value)
+{
+    return "'" + ($value -replace "'", "'\''") + "'"
 }
 
-if ($Build) {
+function Convert-ToWslPath([string]$windowsPath)
+{
+    $normalized = $windowsPath -replace "\\", "/"
+    if ($normalized.Length -lt 3 -or $normalized[1] -ne ":")
+    {
+        throw "Unsupported Windows path for WSL conversion: $windowsPath"
+    }
+
+    $drive = $normalized.Substring(0, 1).ToLowerInvariant()
+    $suffix = $normalized.Substring(2)
+    return "/mnt/$drive$suffix"
+}
+
+Require-Tool $plink
+
+$syncPaths = @(
+    "gs",
+    "components_gs",
+    "components/common",
+    "assets_gs"
+)
+
+$rsyncExcludesByPath = @{
+    "gs" = @(
+        "--exclude=build/"
+        "--exclude=gs"
+        "--exclude=gs.ini"
+        "--exclude=imgui.ini"
+    )
+}
+
+$remoteDirs = @(
+    $RemoteProjectDir,
+    "$RemoteProjectDir/gs",
+    "$RemoteProjectDir/components_gs",
+    "$RemoteProjectDir/components",
+    "$RemoteProjectDir/components/common",
+    "$RemoteProjectDir/assets_gs"
+)
+
+$mkdirArgs = ($remoteDirs | ForEach-Object { Convert-ToBashSingleQuoted $_ }) -join " "
+$mkdirCommand = "mkdir -p $mkdirArgs"
+
+Write-Host "Preparing remote directories on ${User}@${RemoteHost}:${RemoteProjectDir} ..."
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $mkdirCommand
+
+$repoRootForWsl = Convert-ToWslPath $repoRoot
+if ([string]::IsNullOrWhiteSpace($repoRootForWsl))
+{
+    throw "Failed to resolve WSL path for repo root: $repoRoot"
+}
+
+Write-Host "Syncing GS runtime trees via rsync ..."
+foreach ($relativePath in $syncPaths)
+{
+    $sourceForWsl = Convert-ToWslPath (Join-Path $repoRoot $relativePath)
+    $sourceForBash = Convert-ToBashSingleQuoted ($sourceForWsl.TrimEnd("/") + "/")
+    $destinationForBash = Convert-ToBashSingleQuoted ("${User}@${RemoteHost}:${RemoteProjectDir}/$relativePath/")
+    $passwordForBash = Convert-ToBashSingleQuoted $Password
+    $excludeArgs = @()
+    if ($rsyncExcludesByPath.ContainsKey($relativePath))
+    {
+        $excludeArgs = $rsyncExcludesByPath[$relativePath]
+    }
+    $excludeArgsString = if ($excludeArgs.Count -gt 0) { ($excludeArgs -join " ") + " " } else { "" }
+    $rsyncCommand = "export SSHPASS=$passwordForBash; " +
+                    "export RSYNC_RSH='ssh -o StrictHostKeyChecking=no'; " +
+                    "sshpass -e rsync -az --delete --omit-dir-times --no-perms --no-owner --no-group " +
+                    $excludeArgsString +
+                    "$sourceForBash $destinationForBash"
+    & wsl.exe -d Ubuntu -u root -- bash -lc $rsyncCommand
+}
+
+if ($Build)
+{
     Write-Host "Building GS on remote host ..."
     & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir/$RemoteBuildSubdir && make -j4"
 }

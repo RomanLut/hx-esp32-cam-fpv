@@ -1,9 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <string>
+#include <vector>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "core/gs_session_core.h"
 #include "gs_stats.h"
 #include "stats.h"
@@ -33,5 +36,50 @@ extern uint8_t s_curr_quality;
 extern bool s_wifi_ovf;
 extern bool s_noPing;
 
+//===================================================================================
+//===================================================================================
+// Describes the current high-level link progress shown in the shared top overlay.
+enum class LinkState : uint8_t
+{
+    None = 0,
+    LookingForWifiNetwork = 1,
+    ConnectingToWifiNetwork = 2,
+    ConnectingToStream = 3
+};
+
+extern std::atomic<LinkState> s_link_state;
+
+//===================================================================================
+//===================================================================================
+// Describes one APFPV camera discovered via Wi-Fi scanning.
+struct ApfpvCameraDescriptor
+{
+    uint16_t device_id = 0;
+    std::string ssid;
+};
+
+//===================================================================================
+//===================================================================================
+// Captures the shared APFPV camera selection state used by both menu and transports.
+struct ApfpvCameraStateSnapshot
+{
+    uint16_t preferred_camera_id = 0;
+    uint16_t active_camera_id = 0;
+    std::vector<ApfpvCameraDescriptor> discovered_cameras;
+};
+
 void syncAirStatusGlobals();
 bool isHQDVRMode();
+void setLinkState(LinkState state);
+LinkState getLinkState();
+void setLinkStateDetailText(const std::string& text);
+std::string getLinkStateDetailText();
+uint16_t parseApfpvCameraIdFromSsid(const std::string& ssid);
+std::string formatApfpvCameraId(uint16_t device_id);
+void updateApfpvDiscoveredCameras(const std::vector<ApfpvCameraDescriptor>& cameras);
+void setApfpvPreferredCameraId(uint16_t device_id);
+uint16_t getApfpvPreferredCameraId();
+void setApfpvActiveCamera(const std::string& ssid);
+void clearApfpvActiveCamera();
+void clearApfpvCameraRuntimeState();
+ApfpvCameraStateSnapshot copyApfpvCameraState();

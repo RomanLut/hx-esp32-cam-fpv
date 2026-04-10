@@ -1,5 +1,5 @@
 #include "android_bitmap_jpeg_decoder.h"
-#include "Clock.h"
+#include "../../../../../components/common/Clock.h"
 
 #include <jni.h>
 #include <android/asset_manager.h>

@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "Log.h"
 #include "frame_packets_debug.h"
+#include "gs_runtime_state.h"
 
 GsRuntimeCore::GsRuntimeCore(uint16_t gs_device_id_value,
                              TGroundstationConfig& groundstation_config_ref,
@@ -53,7 +55,7 @@ GsRuntimeCore::~GsRuntimeCore()
     }
 }
 
-void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
+void GsRuntimeCore::resetState(uint16_t gs_device_id_value, bool clear_apfpv_state)
 {
     gs_device_id = gs_device_id_value;
     assembler = gs::core::VideoFrameAssembler();
@@ -96,6 +98,11 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value)
     last_udp_packets_sample = 0;
     exit_requested = false;
     osd_font_reload_pending = false;
+    if (clear_apfpv_state)
+    {
+        clearApfpvCameraRuntimeState();
+    }
+    setLinkState(LinkState::None);
 }
 
 void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_point now)
@@ -110,6 +117,15 @@ void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_po
 void GsRuntimeCore::resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now)
 {
     resetState(gs_device_id);
+    resetPairing(transport, now);
+}
+
+//===================================================================================
+//===================================================================================
+// Resets transport/session runtime while preserving the current APFPV camera runtime snapshot.
+void GsRuntimeCore::resetTransportRuntimePreserveApfpvState(gs::core::ITransport& transport, Clock::time_point now)
+{
+    resetState(gs_device_id, false);
     resetPairing(transport, now);
 }
 

@@ -25,6 +25,12 @@ class ApfpvWifiController(
     private val activity: ComponentActivity,
     private val currentNativeHandle: () -> Long
 ) {
+    private data class CameraNetwork(
+        val ssid: String,
+        val deviceId: Int,
+        val level: Int
+    )
+
     private val wifiManager =
         activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val connectivityManager =
@@ -62,6 +68,8 @@ class ApfpvWifiController(
     fun stop() {
         syncJob?.cancel()
         syncJob = null
+        updateLinkState(NativeCore.LINK_STATE_NONE)
+        syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         bindToNetwork(null)
     }
@@ -78,6 +86,8 @@ class ApfpvWifiController(
             NativeCore.getActiveTransportKind(handle)
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
+            updateLinkState(NativeCore.LINK_STATE_NONE)
+            syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             bindToNetwork(null)
             return
@@ -88,29 +98,51 @@ class ApfpvWifiController(
             return
         }
 
-        val matchingSsid = withContext(Dispatchers.Default) {
-            findMatchingCameraSsid()
+        val cameraNetworks = withContext(Dispatchers.Default) {
+            findCameraNetworks()
         }
-        if (matchingSsid == null) {
+        syncCameraState(cameraNetworks, currentConnectedCameraSsid())
+
+        val preferredCameraId = withContext(Dispatchers.Default) {
+            NativeCore.getPreferredApfpvCameraId(handle)
+        }
+        val matchingNetwork = selectTargetCamera(cameraNetworks, preferredCameraId)
+        if (matchingNetwork == null) {
+            updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
             wifiManager.startScan()
             return
         }
 
-        connectToCameraNetwork(handle, matchingSsid)
+        connectToCameraNetwork(handle, matchingNetwork.ssid)
     }
 
-    private fun findMatchingCameraSsid(): String? {
-        val scanResults = wifiManager.scanResults ?: return null
-        val bestResult = scanResults
+    private fun findCameraNetworks(): List<CameraNetwork> {
+        val scanResults = wifiManager.scanResults ?: return emptyList()
+        val bestResults = scanResults
             .asSequence()
             .filter { !it.SSID.isNullOrBlank() }
             .filter { it.SSID.startsWith(CAMERA_SSID_PREFIX) }
-            .maxByOrNull { it.level }
+            .mapNotNull { result ->
+                val deviceId = parseCameraId(result.SSID) ?: return@mapNotNull null
+                CameraNetwork(result.SSID, deviceId, result.level)
+            }
+            .groupBy { it.deviceId }
+            .values
+            .mapNotNull { candidates -> candidates.maxByOrNull { it.level } }
+            .sortedBy { it.deviceId }
+            .toList()
 
-        if (bestResult != null) {
-            Log.i(LOG_TAG, "APFPV camera SSID detected: ${bestResult.SSID}")
+        if (bestResults.isNotEmpty()) {
+            Log.i(LOG_TAG, "APFPV camera SSIDs detected: ${bestResults.joinToString { it.ssid }}")
         }
-        return bestResult?.SSID
+        return bestResults
+    }
+
+    private fun selectTargetCamera(networks: List<CameraNetwork>, preferredCameraId: Int): CameraNetwork? {
+        if (preferredCameraId != 0) {
+            return networks.firstOrNull { it.deviceId == preferredCameraId }
+        }
+        return networks.maxByOrNull { it.level }
     }
 
     private suspend fun connectToCameraNetwork(handle: Long, ssid: String) {
@@ -127,6 +159,7 @@ class ApfpvWifiController(
             return
         }
 
+        updateLinkState(NativeCore.LINK_STATE_CONNECTING_TO_WIFI)
         releaseRequestedNetwork()
 
         val specifier = WifiNetworkSpecifier.Builder()
@@ -140,8 +173,11 @@ class ApfpvWifiController(
             override fun onAvailable(network: Network) {
                 Log.i(LOG_TAG, "APFPV Wi-Fi network available: $ssid")
                 bindToNetwork(network)
+                syncCameraState(findCameraNetworks(), ssid)
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
+                    NativeCore.resetSession(handle)
+                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
                 }
             }
 
@@ -153,8 +189,11 @@ class ApfpvWifiController(
                 if (requestedSsid == ssid) {
                     releaseRequestedNetwork()
                 }
+                syncCameraState(findCameraNetworks(), null)
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
+                    NativeCore.resetSession(handle)
+                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
                 }
             }
 
@@ -162,6 +201,12 @@ class ApfpvWifiController(
                 Log.w(LOG_TAG, "APFPV Wi-Fi network unavailable: $ssid")
                 if (requestedSsid == ssid) {
                     releaseRequestedNetwork()
+                }
+                syncCameraState(findCameraNetworks(), null)
+                activity.lifecycleScope.launch(Dispatchers.Default) {
+                    NativeCore.stopUdpClient(handle)
+                    NativeCore.resetSession(handle)
+                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
                 }
             }
         }
@@ -176,9 +221,14 @@ class ApfpvWifiController(
     private fun connectWithLegacyWifiManager(handle: Long, ssid: String) {
         val currentSsid = wifiManager.connectionInfo?.ssid?.trim('"')
         if (currentSsid == ssid) {
+            syncCameraState(findCameraNetworks(), ssid)
+            activity.lifecycleScope.launch(Dispatchers.Default) {
+                NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
+            }
             return
         }
 
+        updateLinkState(NativeCore.LINK_STATE_CONNECTING_TO_WIFI)
         val configuration = WifiConfiguration().apply {
             SSID = "\"$ssid\""
             allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
@@ -192,8 +242,11 @@ class ApfpvWifiController(
         wifiManager.disconnect()
         wifiManager.enableNetwork(networkId, true)
         wifiManager.reconnect()
+        syncCameraState(findCameraNetworks(), ssid)
         activity.lifecycleScope.launch(Dispatchers.Default) {
             NativeCore.stopUdpClient(handle)
+            NativeCore.resetSession(handle)
+            NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
         }
         Log.i(LOG_TAG, "Connected to legacy APFPV Wi-Fi network: $ssid")
     }
@@ -239,6 +292,41 @@ class ApfpvWifiController(
             }
         }
         permissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    private fun updateLinkState(state: Int) {
+        val handle = currentNativeHandle()
+        if (handle == 0L) {
+            return
+        }
+
+        activity.lifecycleScope.launch(Dispatchers.Default) {
+            NativeCore.setLinkState(handle, state)
+        }
+    }
+
+    private fun syncCameraState(networks: List<CameraNetwork>, activeSsid: String?) {
+        val handle = currentNativeHandle()
+        if (handle == 0L) {
+            return
+        }
+
+        val discoveredSsids = networks.map { it.ssid }.toTypedArray()
+        activity.lifecycleScope.launch(Dispatchers.Default) {
+            NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid)
+        }
+    }
+
+    private fun currentConnectedCameraSsid(): String? {
+        val currentSsid = wifiManager.connectionInfo?.ssid?.trim('"') ?: return null
+        return if (currentSsid.startsWith(CAMERA_SSID_PREFIX)) currentSsid else null
+    }
+
+    private fun parseCameraId(ssid: String): Int? {
+        if (!ssid.startsWith(CAMERA_SSID_PREFIX)) {
+            return null
+        }
+        return ssid.removePrefix(CAMERA_SSID_PREFIX).toIntOrNull(16)
     }
 
     private companion object {

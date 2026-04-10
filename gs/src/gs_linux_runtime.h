@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "IHAL.h"
 #include "Video_Decoder.h"
 #include "gs_video_layout_shared.h"

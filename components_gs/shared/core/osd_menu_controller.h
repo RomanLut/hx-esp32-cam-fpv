@@ -1,8 +1,10 @@
 #pragma once
 
+#include <mutex>
+#include <string>
 #include <vector>
 
-#include "Clock.h"
+#include "../../../components/common/Clock.h"
 #include "imgui.h"
 #include "packets.h"
 #include "core/osd_menu_common.h"
@@ -14,6 +16,21 @@
 namespace gs::menu
 {
 
+//===================================================================================
+//===================================================================================
+// Stores the last menu content rendered by the controller for debug and MCP reads.
+struct CapturedMenuBuffer
+{
+    bool visible = false;
+    OSDMenuId menu_id = OSDMenuId::Main;
+    int selected_item = 0;
+    std::string title;
+    std::vector<std::string> lines;
+};
+
+//===================================================================================
+//===================================================================================
+// Draws and tracks the GS on-screen menu state and navigation.
 class OSDMenuController
 {
 public:
@@ -31,6 +48,7 @@ public:
     void open();
     void close();
     bool isVisible() const;
+    CapturedMenuBuffer copyCapturedMenuBuffer() const;
 
 private:
     enum class DrawMode
@@ -41,18 +59,23 @@ private:
 
     DrawMode m_draw_mode = DrawMode::Interactive;
 
-    OSDMenuId menuId;
-    int selectedItem;
-    int itemsCount;
-    int keyHandled;
+    OSDMenuId menuId = OSDMenuId::Main;
+    int selectedItem = 0;
+    int itemsCount = 0;
+    int keyHandled = false;
 
     std::vector<OSDMenuId> backMenuIds;
     std::vector<int> backMenuItems;
 
     Clock::time_point search_tp = Clock::now();
-    bool searchDone;
+    bool searchDone = false;
 
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
+    mutable std::mutex m_capture_mutex;
+    CapturedMenuBuffer m_captured_menu_buffer = {};
+    void resetCapturedMenuBuffer();
+    void appendCapturedLine(const std::string& line);
+    static std::string sanitizeCapturedCaption(const char* caption);
     void drawMenuTitle( const char* caption );
     bool drawMenuItem( const char* caption, int itemIndex, bool clip = false);
     void drawStatus( const char* caption );
@@ -98,6 +121,7 @@ private:
     void drawConnectMenu(Ground2Air_Config_Packet& config);
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);
     void drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config);
+    void drawGSApfpvInterfaceMenu(Ground2Air_Config_Packet& config);
     void drawImageSettingsMenu(Ground2Air_Config_Packet& config);
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
     void drawDebugMenu(Ground2Air_Config_Packet& config);

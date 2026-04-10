@@ -7,6 +7,27 @@
 #include "gs_recordings_storage.h"
 #include "gs_runtime_state.h"
 
+namespace
+{
+
+//===================================================================================
+//===================================================================================
+// Returns whether the current one-second GS receive stats indicate heavy on-channel interference
+// while valid transport traffic is high enough to make the ratio meaningful.
+bool shouldShowInterferenceChip(const gs::stats::GroundStatsSnapshot& ground_stats)
+{
+    const int valid_packets =
+        static_cast<int>(ground_stats.in_packet_counter[0]) +
+        static_cast<int>(ground_stats.in_packet_counter[1]);
+    const int all_packets =
+        static_cast<int>(ground_stats.in_packet_counter_all[0]) +
+        static_cast<int>(ground_stats.in_packet_counter_all[1]);
+
+    return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
+}
+
+}
+
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
                                          gs::imgui::TopOverlayData& overlay_input)
@@ -76,9 +97,11 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.air_record = core.session.lastAirStats().air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();
     overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;
+    overlay_input.interference = shouldShowInterferenceChip(core.last_ground_stats);
     overlay_input.osd_font_error = params.osd_font_error;
     overlay_input.incompatible_firmware_time = Clock::time_point{};
     overlay_input.now = now;
+    overlay_input.link_state = getLinkState();
 
     if (core.groundstation_config.stats)
     {

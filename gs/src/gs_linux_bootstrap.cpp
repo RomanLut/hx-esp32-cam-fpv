@@ -20,6 +20,7 @@
 #include "gs_runtime_state.h"
 #include "gs_udp_broadcast.h"
 #include "utils/utils.h"
+#include "../../components_gs/mcp/gs_mcp_server.h"
 
 namespace
 {
@@ -243,7 +244,7 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
 //===================================================================================
 //===================================================================================
 // Entry point for the Linux ground station: loads settings, parses args,
-// initializes hardware and transport, then runs the runtime loop.
+// initializes single-instance ownership first, then starts MCP, hardware, transport, and the runtime loop.
 int runLinuxBootstrap(int argc, const char* argv[])
 {
     if (!ensureLinuxSingleInstance())
@@ -252,6 +253,15 @@ int runLinuxBootstrap(int argc, const char* argv[])
     }
 
     std::atexit(cleanupLinuxSingleInstancePidFile);
+    gs::mcp::GsMcpServer::instance().start();
+    struct GsMcpServerStopScope
+    {
+        ~GsMcpServerStopScope()
+        {
+            gs::mcp::GsMcpServer::instance().stop();
+        }
+    } mcp_server_stop_scope;
+
     init_crc8_table();
     std::srand(static_cast<unsigned int>(std::time(0)));
 

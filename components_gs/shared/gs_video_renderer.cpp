@@ -13,6 +13,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "utils/lodepng.h"
+#include "../mcp/gs_mcp_server.h"
 
 #include <algorithm>
 #include <array>
@@ -20,7 +21,7 @@
 #include <cmath>
 #include <cstring>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 
 namespace
 {
@@ -1074,6 +1075,7 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
     io.DeltaTime = 1.0f / 60.0f;
+    gs::mcp::drainInjectedKeysToImGui();
     m_touch_action = {};
     if (m_touch_pending)
     {

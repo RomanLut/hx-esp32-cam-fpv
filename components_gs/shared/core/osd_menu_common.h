@@ -32,6 +32,7 @@ enum class OSDMenuId
     SearchRun,
     GSTxPower,
     GSTxInterface,
+    GSApfpvInterface,
     Image,
     CameraStopCH,
     Debug

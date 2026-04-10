@@ -447,7 +447,7 @@ FecBlockDecoder::Stats FecBlockDecoder::getStats() const
 //===================================================================================
 //===================================================================================
 // Returns the timestamp of the last successfully completed FEC block.
-FecBlockDecoder::TimePoint FecBlockDecoder::lastBlockTime() const
+TimePoint FecBlockDecoder::lastBlockTime() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_last_block_tp;
@@ -456,7 +456,7 @@ FecBlockDecoder::TimePoint FecBlockDecoder::lastBlockTime() const
 //===================================================================================
 //===================================================================================
 // Returns the timestamp of the last packet that produced a decoded output.
-FecBlockDecoder::TimePoint FecBlockDecoder::lastPacketTime() const
+TimePoint FecBlockDecoder::lastPacketTime() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_last_packet_tp;

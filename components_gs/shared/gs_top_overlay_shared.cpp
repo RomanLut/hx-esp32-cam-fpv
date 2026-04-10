@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "gs_runtime_state.h"
 #include "core/osd_menu_common.h"
 #include "imgui.h"
 #include "utils/utils.h"
@@ -15,6 +17,7 @@ namespace
 {
 
 constexpr float kOverlayChipGap = 6.0f;
+constexpr float kOverlayBannerGap = 6.0f;
 
 //===================================================================================
 //===================================================================================
@@ -29,7 +32,7 @@ struct OverlayChipSpec
 //===================================================================================
 //===================================================================================
 // Draws the top overlay chips in a single horizontal strip.
-void drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips)
+float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y)
 {
     const float resolved_height = std::max(20.0f, ImGui::GetIO().DisplaySize.y * 0.04f);
     float x = 0.0f;
@@ -47,7 +50,7 @@ void drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips)
         const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
                                      : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
 
-        ImGui::SetCursorPos(ImVec2(x, 0.0f));
+        ImGui::SetCursorPos(ImVec2(x, start_y));
         ImGui::PushID(static_cast<int>(i));
         ImGui::PushStyleColor(ImGuiCol_Button, bg);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
@@ -58,6 +61,61 @@ void drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips)
 
         x += chip_width + kOverlayChipGap;
     }
+
+    return resolved_height;
+}
+
+//===================================================================================
+//===================================================================================
+// Maps the shared link state to the user-facing top overlay text.
+std::string getLinkStateText(LinkState state)
+{
+    const std::string detail_text = getLinkStateDetailText();
+    if (!detail_text.empty() && state != LinkState::None)
+    {
+        return detail_text;
+    }
+
+    switch (state)
+    {
+    case LinkState::LookingForWifiNetwork:
+        return {};
+
+    case LinkState::ConnectingToWifiNetwork:
+    {
+        const uint16_t preferred_camera_id = getApfpvPreferredCameraId();
+        if (preferred_camera_id != 0)
+        {
+            return "Connecting to WiFi network " + formatApfpvCameraId(preferred_camera_id) + "...";
+        }
+        return "Connecting to WiFi network...";
+    }
+
+    case LinkState::ConnectingToStream:
+        return "Connecting to stream...";
+
+    case LinkState::None:
+        break;
+    }
+
+    return {};
+}
+
+//===================================================================================
+//===================================================================================
+// Builds the optional top overlay link-state chip shown while the link is still connecting.
+std::optional<OverlayChipSpec> makeLinkStateChip(LinkState state)
+{
+    const std::string text = getLinkStateText(state);
+    if (text.empty())
+    {
+        return std::nullopt;
+    }
+
+    OverlayChipSpec chip = {};
+    chip.text = text;
+    chip.alert = true;
+    return chip;
 }
 
 } // namespace
@@ -134,6 +192,7 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     chips.push_back({buf, input.video_fps_alert, 45.0f});
 
     if (input.no_ping) chips.push_back({"NO PING!", true, 0.0f});
+    if (input.interference) chips.push_back({"CHANNEL CONGESTED!", true, 0.0f});
     if (input.sd_slow) chips.push_back({"SD SLOW!", true, 0.0f});
     if (input.air_record) chips.push_back({"AIR", true, 0.0f});
     if (input.gs_record) chips.push_back({"GS", true, 0.0f});
@@ -145,6 +204,11 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     if (input.osd_font_error) chips.push_back({"Displayport OSD Font Unexpected Format!", true, 0.0f});
     if (input.air_suspended) chips.push_back({"OFF", true, 0.0f});
 
-    drawOverlayChipStrip(chips);
+    const float main_row_height = drawOverlayChipStrip(chips, 0.0f);
+    const std::optional<OverlayChipSpec> link_state_chip = makeLinkStateChip(input.link_state);
+    if (link_state_chip.has_value())
+    {
+        drawOverlayChipStrip({*link_state_chip}, main_row_height + kOverlayBannerGap);
+    }
 }
 }

@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "core/gs_session_core.h"
 #include "core/video_frame_assembler.h"
 

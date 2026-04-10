@@ -1,6 +1,7 @@
 #include "gs_test_transport.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -15,6 +16,7 @@
 #include "Log.h"
 #include "crc.h"
 #include "packets.h"
+#include "frame_packets_debug.h"
 #include "gs_shared_state.h"
 
 namespace
@@ -22,6 +24,23 @@ namespace
 
 constexpr uint16_t kTestAirDeviceId = 0x7777;
 constexpr auto kTargetFramePeriod = std::chrono::microseconds(33333);
+
+//===================================================================================
+//===================================================================================
+// Builds decoder callbacks that feed the shared frame-packet debug overlay.
+FecBlockDecoder::Callbacks makeTestDecoderCallbacks()
+{
+    FecBlockDecoder::Callbacks callbacks = {};
+    callbacks.on_packet_received = [](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data, bool old)
+    {
+        g_framePacketsDebug.onPacketReceived(block_index, packet_index, packet_data, old);
+    };
+    callbacks.on_packet_restored = [](uint32_t block_index, uint32_t packet_index, const uint8_t* packet_data)
+    {
+        g_framePacketsDebug.onPacketRestored(block_index, packet_index, packet_data);
+    };
+    return callbacks;
+}
 
 //===================================================================================
 //===================================================================================
@@ -55,7 +74,7 @@ bool loadBinaryFile(const char* path, std::vector<uint8_t>& bytes)
 // Resets the paced static-JPEG stream state so the transport can reconnect cleanly.
 void GSTestTransport::resetStreamState()
 {
-    m_ready_packets.clear();
+    m_pending_packets.clear();
     m_next_frame_tp = Clock::time_point::min();
     m_next_packet_tp = Clock::time_point::min();
     m_frame_period = kTargetFramePeriod;
@@ -63,6 +82,74 @@ void GSTestTransport::resetStreamState()
     m_next_frame_index = 1;
     m_data_rate = 0;
     m_config_pending = true;
+    m_next_transport_block_index = 1;
+    m_rx_decoder.reset(Clock::now());
+}
+
+//===================================================================================
+//===================================================================================
+// Releases the internal FEC codec used by the test transport loopback.
+GSTestTransport::~GSTestTransport()
+{
+    if (m_tx_fec != nullptr)
+    {
+        fec_free(m_tx_fec);
+        m_tx_fec = nullptr;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Initializes the internal FEC loopback codec and decoder used by the test transport.
+bool GSTestTransport::initLoopbackCodec()
+{
+    if (m_tx_fec != nullptr)
+    {
+        fec_free(m_tx_fec);
+        m_tx_fec = nullptr;
+    }
+
+    const uint8_t requested_k = static_cast<uint8_t>(
+        std::clamp<uint32_t>(m_rx_descriptor.coding_k > 0 ? m_rx_descriptor.coding_k : FEC_K, 1u, 32u));
+    const uint8_t requested_n = static_cast<uint8_t>(
+        std::clamp<uint32_t>(m_rx_descriptor.coding_n >= requested_k ? m_rx_descriptor.coding_n : FEC_N,
+                             requested_k,
+                             32u));
+    const uint16_t requested_mtu =
+        m_rx_descriptor.mtu > 0 ? static_cast<uint16_t>(std::min<size_t>(m_rx_descriptor.mtu, AIR2GROUND_MAX_MTU))
+                                : static_cast<uint16_t>(AIR2GROUND_MAX_MTU);
+
+    m_effective_coding_k = requested_k;
+    m_effective_coding_n = requested_n;
+    m_transport_payload_size = requested_mtu;
+
+    m_tx_fec = fec_new(m_effective_coding_k, m_effective_coding_n);
+    if (m_tx_fec == nullptr)
+    {
+        LOGE("Test transport failed to allocate FEC {} / {}", m_effective_coding_k, m_effective_coding_n);
+        return false;
+    }
+
+    FecBlockDecoder::Descriptor decoder_descriptor = {};
+    decoder_descriptor.coding_k = m_effective_coding_k;
+    decoder_descriptor.coding_n = m_effective_coding_n;
+    decoder_descriptor.mtu = m_transport_payload_size;
+    decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
+    decoder_descriptor.restart_backjump_blocks = 64;
+    decoder_descriptor.max_block_queue_size = 3;
+    decoder_descriptor.duplicate_window = 100;
+    decoder_descriptor.interface_count = 1;
+    if (!m_rx_decoder.init(decoder_descriptor))
+    {
+        LOGE("Test transport failed to initialize decoder {} / {} mtu={}",
+             m_effective_coding_k,
+             m_effective_coding_n,
+             static_cast<unsigned int>(m_transport_payload_size));
+        return false;
+    }
+
+    m_rx_decoder.setCallbacks(makeTestDecoderCallbacks());
+    return true;
 }
 
 //===================================================================================
@@ -72,6 +159,12 @@ bool GSTestTransport::init(const gs::core::RXDescriptor& rx_descriptor,
                            const gs::core::TXDescriptor& tx_descriptor)
 {
     storeDescriptors(rx_descriptor, tx_descriptor);
+
+    if (!initLoopbackCodec())
+    {
+        return false;
+    }
+
     resetStreamState();
 
     if (!loadStaticJpeg())
@@ -80,7 +173,9 @@ bool GSTestTransport::init(const gs::core::RXDescriptor& rx_descriptor,
         return false;
     }
 
-    LOGI("Test transport initialized with paced 30 FPS static JPEG stream");
+    LOGI("Test transport initialized with paced 30 FPS static JPEG stream and FEC {} / {}",
+         m_effective_coding_k,
+         m_effective_coding_n);
     return true;
 }
 
@@ -94,10 +189,99 @@ void GSTestTransport::reset_rx_state()
 
 //===================================================================================
 //===================================================================================
+// Encodes queued session packets into one or more transport FEC blocks and loops them into the decoder.
+void GSTestTransport::encodePendingPackets(Clock::time_point now)
+{
+    if (m_tx_fec == nullptr)
+    {
+        return;
+    }
+
+    const size_t fec_count = static_cast<size_t>(m_effective_coding_n - m_effective_coding_k);
+    while (m_pending_packets.size() >= m_effective_coding_k)
+    {
+        std::vector<std::array<uint8_t, sizeof(Packet_Header) + AIR2GROUND_MAX_MTU>> primary_packets(
+            m_effective_coding_k);
+        std::vector<std::array<uint8_t, sizeof(Packet_Header) + AIR2GROUND_MAX_MTU>> fec_packets(fec_count);
+        std::vector<const gf*> src_ptrs(m_effective_coding_k, nullptr);
+        std::vector<gf*> dst_ptrs(fec_count, nullptr);
+
+        for (uint8_t packet_index = 0; packet_index < m_effective_coding_k; ++packet_index)
+        {
+            const std::vector<uint8_t>& session_packet = m_pending_packets[packet_index];
+            auto& transport_packet = primary_packets[packet_index];
+            transport_packet.fill(0);
+
+            auto* header = reinterpret_cast<Packet_Header*>(transport_packet.data());
+            header->packet_version = PACKET_VERSION;
+            header->packet_signature = PACKET_SIGNATURE;
+            header->fromDeviceId = kTestAirDeviceId;
+            header->toDeviceId = currentGsDeviceId();
+            header->size = m_transport_payload_size;
+            header->block_index = m_next_transport_block_index;
+            header->packet_index = packet_index;
+
+            const size_t copy_size = std::min(session_packet.size(), static_cast<size_t>(m_transport_payload_size));
+            std::memcpy(transport_packet.data() + sizeof(Packet_Header), session_packet.data(), copy_size);
+            src_ptrs[packet_index] = transport_packet.data() + sizeof(Packet_Header);
+        }
+
+        for (size_t fec_index = 0; fec_index < fec_count; ++fec_index)
+        {
+            fec_packets[fec_index].fill(0);
+
+            auto* header = reinterpret_cast<Packet_Header*>(fec_packets[fec_index].data());
+            header->packet_version = PACKET_VERSION;
+            header->packet_signature = PACKET_SIGNATURE;
+            header->fromDeviceId = kTestAirDeviceId;
+            header->toDeviceId = currentGsDeviceId();
+            header->size = m_transport_payload_size;
+            header->block_index = m_next_transport_block_index;
+            header->packet_index = static_cast<uint8_t>(m_effective_coding_k + fec_index);
+            dst_ptrs[fec_index] = fec_packets[fec_index].data() + sizeof(Packet_Header);
+        }
+
+        fec_encode(m_tx_fec,
+                   src_ptrs.data(),
+                   dst_ptrs.data(),
+                   fec_block_nums() + m_effective_coding_k,
+                   fec_count,
+                   m_transport_payload_size);
+
+        for (uint8_t packet_index = 0; packet_index < m_effective_coding_k; ++packet_index)
+        {
+            m_rx_decoder.pushPacket(primary_packets[packet_index].data(),
+                                    sizeof(Packet_Header) + m_transport_payload_size,
+                                    0,
+                                    now);
+        }
+
+        for (size_t fec_index = 0; fec_index < fec_count; ++fec_index)
+        {
+            m_rx_decoder.pushPacket(fec_packets[fec_index].data(),
+                                    sizeof(Packet_Header) + m_transport_payload_size,
+                                    0,
+                                    now);
+        }
+
+        for (uint8_t packet_index = 0; packet_index < m_effective_coding_k; ++packet_index)
+        {
+            m_pending_packets.pop_front();
+        }
+
+        m_next_transport_block_index++;
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Advances internal pacing state for the shared 30 FPS static-JPEG stream.
 void GSTestTransport::process()
 {
-    scheduleDuePackets(Clock::now());
+    const Clock::time_point now = Clock::now();
+    scheduleDuePackets(now);
+    encodePendingPackets(now);
+    m_rx_decoder.process(now);
 }
 
 //===================================================================================
@@ -109,39 +293,16 @@ void GSTestTransport::send(const void* /* data */, size_t /* size */, bool /* fl
 
 //===================================================================================
 //===================================================================================
-// Returns the next due config or video packet from the paced static-JPEG stream.
+// Returns the next decoded config or video packet from the paced static-JPEG transport loopback.
 bool GSTestTransport::receive(void* data, size_t& size, bool& restoredByFEC)
 {
-    restoredByFEC = false;
     if (data == nullptr)
     {
         return false;
     }
 
-    scheduleDuePackets(Clock::now());
-    if (m_ready_packets.empty())
-    {
-        return false;
-    }
-
-    const std::vector<uint8_t>& packet = m_ready_packets.front();
-    if (size < packet.size())
-    {
-        return false;
-    }
-
-    std::memcpy(data, packet.data(), packet.size());
-    size = packet.size();
-    m_ready_packets.pop_front();
-    if (!m_ready_packets.empty())
-    {
-        m_next_packet_tp = Clock::now() + m_packet_period;
-    }
-    else
-    {
-        m_next_packet_tp = Clock::time_point::min();
-    }
-    return true;
+    process();
+    return m_rx_decoder.receive(data, size, restoredByFEC);
 }
 
 //===================================================================================
@@ -230,7 +391,7 @@ void GSTestTransport::queueConnectConfigPacket()
 
     std::vector<uint8_t> raw_packet(sizeof(config_packet));
     std::memcpy(raw_packet.data(), &config_packet, sizeof(config_packet));
-    m_ready_packets.push_back(std::move(raw_packet));
+    m_pending_packets.push_back(std::move(raw_packet));
     m_config_pending = false;
     LOGI("Test transport queued config air={} gs={} mtu={}",
          static_cast<unsigned int>(kTestAirDeviceId),
@@ -253,12 +414,7 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
         m_next_frame_tp = now;
     }
 
-    if (!m_ready_packets.empty() && now < m_next_packet_tp)
-    {
-        return;
-    }
-
-    if (m_ready_packets.empty() && now >= m_next_frame_tp)
+    if (now >= m_next_frame_tp && m_pending_packets.size() < m_effective_coding_k)
     {
         std::vector<std::vector<uint8_t>> frame_packets = buildFramePackets(m_next_frame_index++);
         if (!frame_packets.empty())
@@ -267,11 +423,11 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
             for (auto& packet : frame_packets)
             {
                 total_bytes += packet.size();
-                m_ready_packets.push_back(std::move(packet));
+                m_pending_packets.push_back(std::move(packet));
             }
             m_data_rate = total_bytes * 30;
 
-            const size_t packet_count = std::max<size_t>(1, m_ready_packets.size());
+            const size_t packet_count = std::max<size_t>(1, m_pending_packets.size());
             m_packet_period = kTargetFramePeriod / packet_count;
             if (m_packet_period <= Clock::duration::zero())
             {

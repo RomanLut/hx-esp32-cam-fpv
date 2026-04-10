@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "Clock.h"
+#include "../../../components/common/Clock.h"
 #include "fec.h"
 #include "packet_filter.h"
 #include "structures.h"
@@ -51,10 +51,16 @@ public:
 
     virtual bool init(const RXDescriptor& rx_descriptor, const TXDescriptor& tx_descriptor) = 0;
     virtual void activate() = 0;
+    virtual void deactivate() = 0;
+    virtual bool requestImmediateReconnect() = 0;
     virtual bool usesChannelSearch() const = 0;
+    virtual bool supportsMenuSearchOrConnect() const = 0;
 
     virtual void process() = 0;
     virtual void reset_rx_state() = 0;
+    virtual void beginMenuSearchOrConnect() = 0;
+    virtual bool advanceMenuSearchOrConnect() = 0;
+    virtual void cancelMenuSearchOrConnect() = 0;
 
     virtual void send(const void* data, size_t size, bool flush) = 0;
     virtual bool receive(void* data, size_t& size, bool& restoredByFEC) = 0;

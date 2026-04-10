@@ -144,10 +144,25 @@ void SettingsStorage::loadGroundStationConfig()
         }
     }
 
+    {
+        std::string& temp = (*this)["gs"]["apfpv_camera_id"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.apfpvPreferredCameraId =
+                static_cast<uint16_t>(std::clamp(std::atoi(temp.c_str()), 0, 0xFFFF));
+        }
+    }
+
     s_groundstation_config.txInterface = (*this)["gs"]["tx_interface"];
     if (s_groundstation_config.txInterface.empty())
     {
         s_groundstation_config.txInterface = "auto";
+    }
+
+    s_groundstation_config.apfpvInterface = (*this)["gs"]["apfpv_interface"];
+    if (s_groundstation_config.apfpvInterface.empty())
+    {
+        s_groundstation_config.apfpvInterface = "auto";
     }
 }
 
@@ -226,7 +241,9 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["vsync"] = std::to_string(s_groundstation_config.vsync ? 1 : 0);
     (*this)["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     (*this)["gs"]["tx_interface"] = s_groundstation_config.txInterface;
+    (*this)["gs"]["apfpv_interface"] = s_groundstation_config.apfpvInterface;
     (*this)["gs"]["transport_kind"] = std::to_string(gs::core::transportKindToInt(s_groundstation_config.transportKind));
+    (*this)["gs"]["apfpv_camera_id"] = std::to_string(s_groundstation_config.apfpvPreferredCameraId);
     (*this)["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     (*this)["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
     save();

@@ -11,6 +11,7 @@ namespace gs::stats
 struct GroundStatsSnapshot
 {
     uint16_t out_packet_counter = 0;
+    uint16_t in_packet_counter_all[2] = {0, 0};
     uint16_t in_packet_counter[2] = {0, 0};
     uint32_t last_packet_index = 0;
     uint32_t stats_packet_index = 0;

@@ -19,13 +19,31 @@ public:
     }
 
     void activate() override {}
+    void deactivate() override {}
+
+    bool requestImmediateReconnect() override
+    {
+        activate();
+        return true;
+    }
 
     bool usesChannelSearch() const override
     {
         return false;
     }
 
+    bool supportsMenuSearchOrConnect() const override
+    {
+        return false;
+    }
+
     void reset_rx_state() override {}
+    void beginMenuSearchOrConnect() override {}
+    bool advanceMenuSearchOrConnect() override
+    {
+        return false;
+    }
+    void cancelMenuSearchOrConnect() override {}
     void setChannel(int /* ch */) override {}
     void setTxPower(int /* txPower */) override {}
     void setMonitorMode(const std::vector<std::string> /* interfaces */) override {}

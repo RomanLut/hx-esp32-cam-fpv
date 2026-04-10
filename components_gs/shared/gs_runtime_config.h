@@ -17,6 +17,14 @@ void performAirUnpair(uint16_t gs_device_id, gs::core::ITransport& transport);
 void resetAirPairing(uint16_t gs_device_id, gs::core::ITransport& transport);
 gs::core::TransportKind currentTransportKind();
 bool switchActiveTransport(gs::core::TransportKind kind);
+bool requestSelectedTransportReconnect();
+void queueSelectedTransportReconnect();
+bool processPendingSelectedTransportReconnect();
+void requestTransportReconnectPause();
+void releaseTransportReconnectPause();
+bool isTransportReconnectPauseRequested();
+void setTransportReconnectPauseObserved(bool observed);
+bool isTransportReconnectPauseObserved();
 void beginSelectedTransportSearchOrConnect(Ground2Air_Config_Packet& config, Clock::time_point& search_tp);
 void advanceSelectedTransportSearchOrConnect(Ground2Air_Config_Packet& config,
                                              Clock::time_point& search_tp,

@@ -7,7 +7,7 @@
 
 #include "linux_raw_broadcast_transport.h"
 #include "core/transport.h"
-#include "Clock.h"
+#include "../../components/common/Clock.h"
 #include "flight_osd.h"
 #include "IHAL.h"
 #include "PI_HAL.h"

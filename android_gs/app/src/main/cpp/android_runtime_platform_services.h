@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Clock.h"
+#include "../../../../../components/common/Clock.h"
 #include "gs_runtime_platform_services.h"
 
 #include <atomic>

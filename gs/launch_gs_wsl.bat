@@ -10,8 +10,12 @@ set "IFACE="
 set "GS_WSL_DIR="
 set "ATTACHED="
 set "BUSID_FILE=%TEMP%\gs_wsl_busid.txt"
-set "IFACE_FILE=%TEMP%\gs_wsl_iface.txt"
-set "GS_WSL_DIR_FILE=%TEMP%\gs_wsl_dir.txt"
+set "WSL_HELPER_PS1=%GS_DIR%\launch_gs_wsl_helper.ps1"
+set "LAUNCH_MODE=normal"
+set "WSL_MCP_CLIENT="
+
+if /i "%~1"=="-mcp" set "LAUNCH_MODE=mcp"
+if /i "%~1"=="-mcp-stop" set "LAUNCH_MODE=mcp-stop"
 
 if not exist "%USBIPD_EXE%" (
   echo usbipd-win not found at "%USBIPD_EXE%".
@@ -21,6 +25,18 @@ if not exist "%USBIPD_EXE%" (
 if not exist "%GS_DIR%\Makefile" (
   echo gs Makefile not found in "%GS_DIR%".
   exit /b 1
+)
+
+if not exist "%WSL_HELPER_PS1%" (
+  echo WSL helper script not found at "%WSL_HELPER_PS1%".
+  exit /b 1
+)
+
+if /i "%LAUNCH_MODE%"=="mcp-stop" (
+  echo Stopping WSL gs MCP instance...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" stop_mcp "%WSL_DISTRO%"
+  echo Stopped WSL gs MCP instance.
+  exit /b 0
 )
 
 echo Detecting RTL8812AU USB adapter...
@@ -74,6 +90,18 @@ exit /b 1
 :iface_ready
 echo Using interface %IFACE%.
 
+echo Waiting for Wifi interface readiness in WSL...
+for /l %%N in (1,1,60) do (
+  call :probe_iface_ready
+  if /i "!IFACE_READY!"=="1" goto :iface_ready_ok
+  timeout /t 1 /nobreak >nul
+)
+
+echo Wifi interface %IFACE% did not become ready in WSL.
+exit /b 1
+
+:iface_ready_ok
+
 echo Resolving WSL path...
 call :resolve_wsl_dir
 if not defined GS_WSL_DIR (
@@ -81,12 +109,16 @@ if not defined GS_WSL_DIR (
   exit /b 1
 )
 
+set "WSL_MCP_CLIENT=%GS_WSL_DIR%/scripts/gs_mcp_client.py"
+
 echo Building gs under WSL...
-wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "cd '%GS_WSL_DIR%' && make -j4"
+wsl.exe -d %WSL_DISTRO% -e bash -lc "cd '%GS_WSL_DIR%' && make -j2"
 if errorlevel 1 (
   echo gs build failed.
   exit /b 1
 )
+
+if /i "%LAUNCH_MODE%"=="mcp" goto :launch_mcp
 
 echo Launching gs on interface %IFACE%...
 wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "cd '%GS_WSL_DIR%' && exec ./gs -rx '%IFACE%' -tx '%IFACE%' -fullscreen 0 -sm 1"
@@ -95,11 +127,28 @@ set "EXIT_CODE=%ERRORLEVEL%"
 echo gs exited with code %EXIT_CODE%.
 exit /b %EXIT_CODE%
 
+:launch_mcp
+echo Launching gs in MCP mode on interface %IFACE% in a dedicated WSL window...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" launch_mcp_full "%WSL_DISTRO%" "%IFACE%" "%GS_WSL_DIR%" "%WSL_MCP_CLIENT%"
+if errorlevel 1 (
+  echo gs MCP startup failed.
+  exit /b 1
+)
+echo gs MCP ready on interface %IFACE%.
+exit /b 0
+
 :detect_iface
 set "IFACE="
-del /q "%IFACE_FILE%" 2>nul
-wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | head -n1" > "%IFACE_FILE%"
-if exist "%IFACE_FILE%" set /p "IFACE="<"%IFACE_FILE%"
+del /q "%BUSID_FILE%" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%"
+if exist "%BUSID_FILE%" set /p "IFACE="<"%BUSID_FILE%"
+:detect_iface_done
+exit /b 0
+
+:probe_iface_ready
+set "IFACE_READY="
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" probe_iface_ready "%WSL_DISTRO%" "%IFACE%"
+if not errorlevel 1 set "IFACE_READY=1"
 exit /b 0
 
 :resolve_wsl_dir

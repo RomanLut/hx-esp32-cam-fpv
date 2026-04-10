@@ -28,10 +28,16 @@ public:
 
     bool init(const RX_Descriptor& rx_descriptor, const TX_Descriptor& tx_descriptor) override;
     void activate() override;
+    void deactivate() override;
+    bool requestImmediateReconnect() override;
     bool usesChannelSearch() const override;
+    bool supportsMenuSearchOrConnect() const override;
 
     void process() override;
     void reset_rx_state() override;
+    void beginMenuSearchOrConnect() override;
+    bool advanceMenuSearchOrConnect() override;
+    void cancelMenuSearchOrConnect() override;
 
     void send(const void* data, size_t size, bool flush) override;
     bool receive(void* data, size_t& size, bool& restoredByFEC) override;
@@ -54,6 +60,8 @@ public:
     struct TX;
 
 private:
+    bool startBackend();
+    void stopBackend();
     bool prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor);
 
     bool prepare_filter(PCap& pcap);

@@ -95,6 +95,19 @@ bool TransportManagerBase::init(TransportKind initial_kind,
 bool TransportManagerBase::switchTransport(TransportKind kind)
 {
     ITransport& transport = resolveTransport(kind);
+    const bool switching_transport = m_active_transport != nullptr && m_active_transport != &transport;
+    if (m_active_transport != nullptr && m_active_transport != &transport)
+    {
+        m_active_transport->deactivate();
+    }
+    if (switching_transport)
+    {
+        // Linux transport switches can leave backend-specific device state behind, especially
+        // when the same Wi-Fi adapter changes mode between managed APFPV and monitor raw-broadcast.
+        // Reinitializing the destination transport on every real switch matches a fresh process
+        // startup more closely than reusing partially stale backend state.
+        setTransportInitialized(kind, false);
+    }
     if (!isTransportInitialized(kind) && m_descriptors_ready && !transport.init(m_rx_descriptor, m_tx_descriptor))
     {
         return false;
@@ -125,6 +138,13 @@ void TransportManagerBase::beginSearchOrConnect(Ground2Air_Config_Packet& config
 {
     search_done = false;
 
+    if (m_active_transport != nullptr && m_active_transport->supportsMenuSearchOrConnect())
+    {
+        m_active_transport->beginMenuSearchOrConnect();
+        search_tp = Clock::now();
+        return;
+    }
+
     if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
     {
         advanceSearchWifiChannel(config, *m_active_transport, search_tp);
@@ -143,6 +163,12 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
                                                   Clock::time_point& search_tp,
                                                   bool& search_done)
 {
+    if (m_active_transport != nullptr && m_active_transport->supportsMenuSearchOrConnect())
+    {
+        search_done = m_active_transport->advanceMenuSearchOrConnect();
+        return;
+    }
+
     if (m_active_transport == nullptr || !m_active_transport->usesChannelSearch())
     {
         search_done = isConnected();
@@ -175,6 +201,10 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
 // Cancels any active search-or-connect lifecycle.
 void TransportManagerBase::cancelSearchOrConnect()
 {
+    if (m_active_transport != nullptr && m_active_transport->supportsMenuSearchOrConnect())
+    {
+        m_active_transport->cancelMenuSearchOrConnect();
+    }
 }
 
 //===================================================================================

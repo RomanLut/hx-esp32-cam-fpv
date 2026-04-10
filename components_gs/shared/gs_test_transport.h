@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <deque>
 #include <vector>
 
 #include "core/transport_base.h"
+#include "fec_block_decoder.h"
 
 //===================================================================================
 //===================================================================================
@@ -11,6 +13,7 @@
 class GSTestTransport final : public gs::core::TransportBase
 {
 public:
+    ~GSTestTransport() override;
     bool init(const gs::core::RXDescriptor& rx_descriptor,
               const gs::core::TXDescriptor& tx_descriptor) override;
     void process() override;
@@ -21,6 +24,8 @@ public:
 
 private:
     void resetStreamState();
+    bool initLoopbackCodec();
+    void encodePendingPackets(Clock::time_point now);
     bool loadStaticJpeg();
     void queueConnectConfigPacket();
     void scheduleDuePackets(Clock::time_point now);
@@ -29,7 +34,7 @@ private:
     size_t maxVideoPayloadSize() const;
 
     std::vector<uint8_t> m_static_jpeg;
-    std::deque<std::vector<uint8_t>> m_ready_packets;
+    std::deque<std::vector<uint8_t>> m_pending_packets;
     Clock::time_point m_next_frame_tp = Clock::time_point::min();
     Clock::time_point m_next_packet_tp = Clock::time_point::min();
     Clock::duration m_frame_period = std::chrono::microseconds(33333);
@@ -37,4 +42,10 @@ private:
     uint32_t m_next_frame_index = 1;
     size_t m_data_rate = 0;
     bool m_config_pending = true;
+    FecBlockDecoder m_rx_decoder;
+    fec_t* m_tx_fec = nullptr;
+    uint32_t m_next_transport_block_index = 1;
+    uint8_t m_effective_coding_k = FEC_K;
+    uint8_t m_effective_coding_n = FEC_N;
+    uint16_t m_transport_payload_size = AIR2GROUND_MAX_MTU;
 };

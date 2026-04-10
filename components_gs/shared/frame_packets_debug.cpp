@@ -47,7 +47,12 @@ void FramePacketsDebug::clearBuffer()
 void FramePacketsDebug::off()
 {
     m_state = State::Off;
+    m_need_broken = false;
+    m_retry_count = 0;
+    m_first_block = 0;
     clearBuffer();
+    copyToOSD();
+    clear();
 }
 
 //===================================================================================

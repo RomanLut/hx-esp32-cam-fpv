@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <mutex>
 
-#include "Clock.h"
+#include "../../../components/common/Clock.h"
 #include "core/gs_protocol.h"
 #include "core/transport.h"
 #include "hx_mavlink_parser.h"
