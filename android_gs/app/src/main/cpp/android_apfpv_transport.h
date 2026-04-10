@@ -11,7 +11,19 @@
 
 //===================================================================================
 //===================================================================================
-// Implements the current Android APFPV transport adapter used by the native bridge.
+// Implements the Android APFPV transport adapter used by the native bridge.
+// Packet flow:
+// - The UDP backend thread receives APFPV transport packets from the camera and forwards
+//   each packet immediately through the native `processTransportPacket` callback.
+// - That callback updates shared transport counters, pushes the packet into the shared
+//   RX FEC block decoder, and drains any fully decoded transport payloads right away.
+// - Every decoded payload is passed through the shared GS session/event pipeline, which
+//   parses telemetry/config/video packets and feeds completed JPEG frame buffers into
+//   the Android JPEG decoder workers as soon as a full video frame is assembled.
+// - The Android JPEG decoder worker threads decode those JPEG frame buffers to RGB565
+//   bitmaps and submit the decoded pixel buffers to `GsVideoRenderer`.
+// - The renderer thread uploads the latest decoded frame into the GL texture and then
+//   displays that ready texture during the next render pass together with overlay/menu UI.
 class AndroidAPFPVTransport final : public gs::core::TransportBase
 {
 public:
