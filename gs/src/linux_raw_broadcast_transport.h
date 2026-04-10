@@ -64,7 +64,7 @@ private:
     void stopBackend();
     bool prepare_pcap(std::string const& interface, PCap& pcap, RX_Descriptor const& rx_descriptor);
 
-    bool prepare_filter(PCap& pcap);
+    bool prepareCaptureMetadata(PCap& pcap);
     void prepare_radiotap_header(size_t rate_hz);
     void prepare_tx_packet_header(uint8_t* buffer);
     bool process_rx_packet(PCap& pcap);

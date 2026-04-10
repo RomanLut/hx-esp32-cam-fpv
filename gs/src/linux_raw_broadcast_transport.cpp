@@ -397,7 +397,7 @@ LinuxRawBroadcastTransport::~LinuxRawBroadcastTransport()
 
 //===================================================================================
 //===================================================================================
-bool LinuxRawBroadcastTransport::prepare_filter(PCap& pcap)
+bool LinuxRawBroadcastTransport::prepareCaptureMetadata(PCap& pcap)
 {
     int link_encap = pcap_datalink(pcap.pcap);
     const char* datalink_name = pcap_datalink_val_to_name(link_encap);
@@ -801,7 +801,7 @@ bool LinuxRawBroadcastTransport::prepare_pcap(std::string const& interface, PCap
         return false;
     }
 
-    if (!prepare_filter(pcap))
+    if (!prepareCaptureMetadata(pcap))
         return false;
 
     return true;
