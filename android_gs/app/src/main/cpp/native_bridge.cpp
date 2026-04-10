@@ -1006,7 +1006,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
                                                                jobject /* thiz */,
                                                                jlong handle,
                                                                jobjectArray discovered_ssids,
-                                                               jstring active_ssid)
+                                                               jstring active_ssid,
+                                                               jint gs_rssi_dbm)
 {
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
@@ -1043,11 +1044,15 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
     if (!active_ssid_value.empty())
     {
         setApfpvActiveCamera(active_ssid_value);
+        s_runtimeCore.gs_stats.rssiDbm[0] = static_cast<int8_t>(std::clamp(static_cast<int>(gs_rssi_dbm), -127, 0));
     }
     else
     {
         clearApfpvActiveCamera();
+        s_runtimeCore.gs_stats.rssiDbm[0] = 0;
     }
+    s_runtimeCore.gs_stats.rssiDbm[1] = 0;
+    s_runtimeCore.gs_stats.noiseFloorDbm = 0;
 
     native_handle->transport_manager.apfpvTransport().syncCameraState(
         discovered_cameras.size(),

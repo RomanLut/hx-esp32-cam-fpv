@@ -26,6 +26,9 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
         core.gs_stats.pingMinMS = link_status.ping_min_ms;
         core.gs_stats.pingMaxMS = link_status.ping_max_ms;
+        const int8_t gs_rssi0 = core.gs_stats.rssiDbm[0];
+        const int8_t gs_rssi1 = core.gs_stats.rssiDbm[1];
+        const int8_t gs_noise_floor = core.gs_stats.noiseFloorDbm;
 
         const gs::core::VideoFrameAssembler::Stats assembler_stats = core.assembler.consumeStats();
         core.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(params.decode_stats.broken_frames, 255));
@@ -51,6 +54,9 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_ground_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
         GSStats next_stats = {};
         next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;
+        next_stats.rssiDbm[0] = gs_rssi0;
+        next_stats.rssiDbm[1] = gs_rssi1;
+        next_stats.noiseFloorDbm = gs_noise_floor;
         core.gs_stats = next_stats;
         core.restored_transport_packets = 0;
         core.restored_video_parts = 0;
@@ -65,8 +71,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.air_overheat = core.session.lastAirStats().overheatTrottling != 0;
     overlay_input.air_suspended = core.session.lastAirStats().suspended == 1;
     overlay_input.has_gs_stats = true;
-    overlay_input.gs_rssi_dbm0 = 0;
-    overlay_input.gs_rssi_dbm1 = 0;
+    overlay_input.gs_rssi_dbm0 = core.last_ground_stats.rssiDbm[0];
+    overlay_input.gs_rssi_dbm1 = core.last_ground_stats.rssiDbm[1];
     overlay_input.is_ov5640 = core.session.lastAirStats().isOV5640 != 0;
     overlay_input.is_dual = params.is_dual;
     overlay_input.wifi_queue_percent = core.session.lastAirStats().wifi_queue_max;

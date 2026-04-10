@@ -37,7 +37,7 @@ object NativeCore {
     external fun isApfpvMenuSearchActive(handle: Long): Boolean
     external fun consumeApfpvReconnectRequest(handle: Long): Boolean
     external fun hasSeenApfpvUdpPackets(handle: Long): Boolean
-    external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?)
+    external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?, gsRssiDbm: Int)
     external fun startUdpClient(
         handle: Long,
         peerHost: String = "192.168.4.1",

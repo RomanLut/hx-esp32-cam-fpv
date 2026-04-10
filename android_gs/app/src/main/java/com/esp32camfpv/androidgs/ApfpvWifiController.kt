@@ -393,14 +393,29 @@ class ApfpvWifiController(
         }
 
         val discoveredSsids = networks.map { it.ssid }.toTypedArray()
+        val gsRssiDbm = currentConnectedCameraRssiDbm(activeSsid)
         activity.lifecycleScope.launch(Dispatchers.Default) {
-            NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid)
+            NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid, gsRssiDbm)
         }
     }
 
     private fun currentConnectedCameraSsid(): String? {
         val currentSsid = wifiManager.connectionInfo?.ssid?.trim('"') ?: return null
         return if (currentSsid.startsWith(CAMERA_SSID_PREFIX)) currentSsid else null
+    }
+
+    private fun currentConnectedCameraRssiDbm(activeSsid: String?): Int {
+        if (activeSsid.isNullOrEmpty()) {
+            return 0
+        }
+
+        @Suppress("DEPRECATION")
+        val connectionInfo = wifiManager.connectionInfo ?: return 0
+        val connectedSsid = connectionInfo.ssid?.trim('"') ?: return 0
+        if (connectedSsid != activeSsid) {
+            return 0
+        }
+        return connectionInfo.rssi
     }
 
     private fun parseCameraId(ssid: String): Int? {
