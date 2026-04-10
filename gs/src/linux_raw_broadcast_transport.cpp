@@ -576,10 +576,6 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
 
             case IEEE80211_RADIOTAP_DBM_ANTSIGNAL:
                 prh.input_dBm = *(int8_t*)rti.this_arg;
-                {
-                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-                    s_gs_stats.rssiDbm[pcap.index] = *(int8_t*)rti.this_arg;
-                }
                 break;
 
             case IEEE80211_RADIOTAP_DBM_ANTNOISE:
@@ -678,6 +674,11 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
         {
             std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
             s_gs_stats.inPacketCounter[pcap.index]++;
+            // Keep displayed GS RSSI tied to packets that survived MAC and packet-header filtering.
+            if (prh.input_dBm > -1000)
+            {
+                s_gs_stats.rssiDbm[pcap.index] = static_cast<int8_t>(prh.input_dBm);
+            }
         }
         {
             if (prh.input_dBm > -1000)

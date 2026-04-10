@@ -12,12 +12,63 @@
 #include <unistd.h>
 #include <utility>
 
+#include "fec.h"
 #include "gs_runtime_state.h"
 
 namespace
 {
 
 constexpr const char* kAndroidApfpvLogTag = "AndroidAPFPVTransport";
+
+//===================================================================================
+//===================================================================================
+// Logs when Android physically sends an APFPV config transport packet whose channel
+// differs from the previously logged value so menu-triggered channel changes can be
+// traced all the way to the UDP sendto() call without flooding logcat every 250 ms.
+void logConfigTransportSendIfNeeded(const std::vector<uint8_t>& packet, ssize_t sent)
+{
+    static uint32_t s_last_logged_block_index = 0;
+    static uint8_t s_last_logged_packet_index = 0;
+    static uint8_t s_last_logged_channel = 0;
+    static bool s_last_logged_channel_valid = false;
+
+    if (sent <= 0 || packet.size() < (sizeof(Packet_Header) + sizeof(Ground2Air_Config_Packet)))
+    {
+        return;
+    }
+
+    const auto* transport_header = reinterpret_cast<const Packet_Header*>(packet.data());
+    const auto* config_packet =
+        reinterpret_cast<const Ground2Air_Config_Packet*>(packet.data() + sizeof(Packet_Header));
+    if (config_packet->type != Ground2Air_Header::Type::Config)
+    {
+        return;
+    }
+
+    const uint8_t channel = config_packet->dataChannel.wifi_channel;
+    if (s_last_logged_channel_valid &&
+        s_last_logged_channel == channel &&
+        s_last_logged_block_index == transport_header->block_index &&
+        s_last_logged_packet_index == transport_header->packet_index)
+    {
+        return;
+    }
+
+    s_last_logged_channel = channel;
+    s_last_logged_block_index = transport_header->block_index;
+    s_last_logged_packet_index = transport_header->packet_index;
+    s_last_logged_channel_valid = true;
+
+    __android_log_print(ANDROID_LOG_INFO,
+                        kAndroidApfpvLogTag,
+                        "udp_send config channel=%u air=%u gs=%u block=%u packet=%u sent=%zd",
+                        static_cast<unsigned int>(channel),
+                        static_cast<unsigned int>(config_packet->airDeviceId),
+                        static_cast<unsigned int>(config_packet->gsDeviceId),
+                        static_cast<unsigned int>(transport_header->block_index),
+                        static_cast<unsigned int>(transport_header->packet_index),
+                        sent);
+}
 
 }
 
@@ -504,12 +555,13 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
             {
                 if (!packet.empty())
                 {
-                    sendto(socket_fd,
-                           packet.data(),
-                           packet.size(),
-                           0,
-                           addrinfo_result->ai_addr,
-                           static_cast<socklen_t>(addrinfo_result->ai_addrlen));
+                    const ssize_t sent = sendto(socket_fd,
+                                                packet.data(),
+                                                packet.size(),
+                                                0,
+                                                addrinfo_result->ai_addr,
+                                                static_cast<socklen_t>(addrinfo_result->ai_addrlen));
+                    logConfigTransportSendIfNeeded(packet, sent);
                 }
             }
             next_control_send = now + std::chrono::milliseconds(250);

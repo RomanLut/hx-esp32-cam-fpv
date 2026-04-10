@@ -738,10 +738,31 @@ int processTransportPacket(NativeHandle& handle,
 
 std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandle& handle)
 {
+    static uint8_t s_last_logged_config_channel = 0;
+    static bool s_last_logged_config_channel_valid = false;
+
     std::vector<uint8_t> payload;
     if (!tryBuildControlPacketPayload(s_runtimeCore.gs_device_id, payload))
     {
         return {};
+    }
+
+    if (payload.size() == sizeof(Ground2Air_Config_Packet))
+    {
+        const auto* config_packet = reinterpret_cast<const Ground2Air_Config_Packet*>(payload.data());
+        const uint8_t channel = config_packet->dataChannel.wifi_channel;
+        if (!s_last_logged_config_channel_valid || s_last_logged_config_channel != channel)
+        {
+            s_last_logged_config_channel = channel;
+            s_last_logged_config_channel_valid = true;
+            __android_log_print(ANDROID_LOG_INFO,
+                                kNativeLogTag,
+                                "APFPV control config channel=%u air=%u gs=%u apfpv=%d",
+                                static_cast<unsigned int>(channel),
+                                static_cast<unsigned int>(config_packet->airDeviceId),
+                                static_cast<unsigned int>(config_packet->gsDeviceId),
+                                static_cast<int>(config_packet->misc.apfpv));
+        }
     }
 
     auto packets = buildTransportPacketsForControl(handle, payload.data(), payload.size());

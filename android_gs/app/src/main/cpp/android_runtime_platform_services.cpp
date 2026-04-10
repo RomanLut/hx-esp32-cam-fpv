@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 
+#include <android/log.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -18,6 +19,8 @@
 
 namespace
 {
+
+constexpr const char* kAndroidRuntimeLogTag = "AndroidRuntime";
 
 //===================================================================================
 //===================================================================================
@@ -171,9 +174,18 @@ void AndroidRuntimePlatformServices::invalidateDisplayedVideoFrame()
 
 //===================================================================================
 //===================================================================================
-// Applies the selected GS Wi-Fi channel by committing the Android config packet immediately.
+// Applies the selected GS Wi-Fi channel through the shared session helper before
+// persisting the Android config packet so APFPV control packets always inherit the
+// exact channel that the GS menu committed.
 void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Config_Packet& config)
 {
+    __android_log_print(ANDROID_LOG_INFO,
+                        kAndroidRuntimeLogTag,
+                        "applyGroundStationWifiChannel menu=%u gs=%d apfpv=%d",
+                        static_cast<unsigned int>(config.dataChannel.wifi_channel),
+                        s_groundstation_config.wifi_channel,
+                        static_cast<int>(config.misc.apfpv));
+    applyWifiChannelToSession(config);
     s_runtimeCore.config_packet = config;
     commitGround2AirConfig(s_runtimeCore.config_packet);
 }

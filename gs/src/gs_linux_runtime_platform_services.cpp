@@ -10,6 +10,7 @@
 #include "gs_recordings_storage.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_config.h"
+#include "core/transport_manager.h"
 
 namespace
 {
@@ -120,11 +121,17 @@ void LinuxRuntimePlatformServices::invalidateDisplayedVideoFrame()
 
 //===================================================================================
 //===================================================================================
-// Applies the selected GS Wi-Fi channel through the deferred Linux channel-switch path.
+// Applies the selected GS Wi-Fi channel by committing the new config immediately and
+// deferring only the local raw-broadcast monitor retune when needed.
 void LinuxRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Config_Packet& config)
 {
     applyWifiChannelToSession(config);
-    s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+
+    if (s_transportManager != nullptr &&
+        s_transportManager->activeKind() == gs::core::TransportKind::RawBroadcast)
+    {
+        s_change_channel = Clock::now() + std::chrono::milliseconds(3000);
+    }
 }
 
 //===================================================================================
