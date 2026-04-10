@@ -63,7 +63,7 @@ struct GsRuntimeCore
     uint32_t last_video_payload_size = 0;
     Clock::time_point last_packet_tp = Clock::now();
     TGroundstationConfig& groundstation_config;
-    gs::stats::GroundStatsSnapshot last_ground_stats = {};
+    GSStats last_ground_stats = {};
     GSStats gs_stats = {};
     GSStats last_gs_stats = {};
     int restored_transport_packets = 0;

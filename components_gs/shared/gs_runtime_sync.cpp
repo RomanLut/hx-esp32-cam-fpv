@@ -14,14 +14,14 @@ namespace
 //===================================================================================
 // Returns whether the current one-second GS receive stats indicate heavy on-channel interference
 // while valid transport traffic is high enough to make the ratio meaningful.
-bool shouldShowInterferenceChip(const gs::stats::GroundStatsSnapshot& ground_stats)
+bool shouldShowInterferenceChip(const GSStats& ground_stats)
 {
     const int valid_packets =
-        static_cast<int>(ground_stats.in_packet_counter[0]) +
-        static_cast<int>(ground_stats.in_packet_counter[1]);
+        static_cast<int>(ground_stats.inPacketCounter[0]) +
+        static_cast<int>(ground_stats.inPacketCounter[1]);
     const int all_packets =
-        static_cast<int>(ground_stats.in_packet_counter_all[0]) +
-        static_cast<int>(ground_stats.in_packet_counter_all[1]);
+        static_cast<int>(ground_stats.inPacketCounterAll[0]) +
+        static_cast<int>(ground_stats.inPacketCounterAll[1]);
 
     return valid_packets > 100 && all_packets > 0 && valid_packets * 10 < all_packets * 7;
 }
@@ -51,27 +51,27 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         const gs::core::VideoFrameAssembler::Stats assembler_stats = core.assembler.consumeStats();
         core.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(params.decode_stats.broken_frames, 255));
 
-        core.last_ground_stats = gs::stats::buildGroundStatsSnapshot(core.gs_stats);
-        core.last_ground_stats.decoded_jpeg_count = static_cast<int>(params.decode_stats.decoded_count);
-        core.last_ground_stats.decoded_jpeg_time_total_ms = static_cast<int>(params.decode_stats.decoded_total_ms);
-        core.last_ground_stats.decoded_jpeg_time_min_ms = static_cast<int>(params.decode_stats.decoded_min_ms);
-        core.last_ground_stats.decoded_jpeg_time_max_ms = static_cast<int>(params.decode_stats.decoded_max_ms);
-        core.last_ground_stats.texture_upload_count = static_cast<int>(params.renderer_stats.upload_count);
-        core.last_ground_stats.texture_upload_time_total_ms = static_cast<int>(params.renderer_stats.upload_total_ms);
-        core.last_ground_stats.texture_upload_time_min_ms = static_cast<int>(params.renderer_stats.upload_min_ms);
-        core.last_ground_stats.texture_upload_time_max_ms = static_cast<int>(params.renderer_stats.upload_max_ms);
-        core.last_ground_stats.discarded_frames_assembler_pool_overflow =
+        core.last_ground_stats = core.gs_stats;
+        core.last_ground_stats.decodedJpegCount = static_cast<int>(params.decode_stats.decoded_count);
+        core.last_ground_stats.decodedJpegTimeTotalMS = static_cast<int>(params.decode_stats.decoded_total_ms);
+        core.last_ground_stats.decodedJpegTimeMinMS = static_cast<int>(params.decode_stats.decoded_min_ms);
+        core.last_ground_stats.decodedJpegTimeMaxMS = static_cast<int>(params.decode_stats.decoded_max_ms);
+        core.last_ground_stats.textureUploadCount = static_cast<int>(params.renderer_stats.upload_count);
+        core.last_ground_stats.textureUploadTimeTotalMS = static_cast<int>(params.renderer_stats.upload_total_ms);
+        core.last_ground_stats.textureUploadTimeMinMS = static_cast<int>(params.renderer_stats.upload_min_ms);
+        core.last_ground_stats.textureUploadTimeMaxMS = static_cast<int>(params.renderer_stats.upload_max_ms);
+        core.last_ground_stats.discardedFramesAssemblerPoolOverflow =
             static_cast<int>(assembler_stats.discarded_frames);
-        core.last_ground_stats.discarded_frames_decoder_input =
+        core.last_ground_stats.discardedFramesDecoderInput =
             static_cast<int>(params.decode_stats.overwritten_pending_count);
-        core.last_ground_stats.discarded_frames_decoded_output =
+        core.last_ground_stats.discardedFramesDecodedOutput =
             static_cast<int>(params.renderer_stats.discarded_pending_count);
-        core.last_ground_stats.restored_transport_packets = core.restored_transport_packets;
-        core.last_ground_stats.restored_video_parts = core.restored_video_parts;
-        core.last_ground_stats.received_completed_frames = periodic_stats.received_completed_frames;
-        core.last_ground_stats.restored_completed_frames = periodic_stats.restored_completed_frames;
+        core.last_ground_stats.restoredTransportPackets = core.restored_transport_packets;
+        core.last_ground_stats.restoredVideoParts = core.restored_video_parts;
+        core.last_ground_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
+        core.last_ground_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
         GSStats next_stats = {};
-        next_stats.statsPacketIndex = core.last_ground_stats.last_packet_index;
+        next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;
         core.gs_stats = next_stats;
         core.restored_transport_packets = 0;
         core.restored_video_parts = 0;

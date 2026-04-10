@@ -118,7 +118,7 @@ void comms_thread_proc()
 
                 s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;
                 s_last_gs_stats = s_gs_stats;
-                s_runtimeCore.last_ground_stats = gs::stats::buildGroundStatsSnapshot(s_last_gs_stats);
+                s_runtimeCore.last_ground_stats = s_last_gs_stats;
                 s_gs_stats = GSStats();
                 s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
                 s_gs_stats.rssiDbm[0] = rssi0;
@@ -293,7 +293,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             overlay_stats_snapshot.wifi_queue_max = s_wifi_queue_max;
             overlay_stats_snapshot.cpu_temp_c = static_cast<int>(s_RuntimePlatformServices->getCpuTemperatureCelsius() + 0.5f);
             overlay_stats_snapshot.air_stats = s_last_airStats;
-            overlay_stats_snapshot.ground_stats = gs::stats::buildGroundStatsSnapshot(last_gs_stats);
+            overlay_stats_snapshot.ground_stats = last_gs_stats;
             overlay_stats_snapshot.frame_stats = frame_stats.frame_stats;
             overlay_stats_snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
             overlay_stats_snapshot.frame_time_stats = frame_stats.frame_time_stats;
