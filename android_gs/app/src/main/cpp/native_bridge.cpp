@@ -729,7 +729,10 @@ int processTransportPacket(NativeHandle& handle,
 
     s_runtimeCore.transport_packets_passed_filter++;
     s_runtimeCore.rx_decoder.pushPacket(data, size, 0, Clock::now());
-    syncRxDecoderStatsLocked(handle);
+    // Android APFPV uses a dedicated UDP RX thread. Drain the decoder and dispatch the
+    // resulting session/video events here so completed frames reach the renderer queue
+    // immediately instead of waiting for the next render/UI sync tick.
+    processDecodedTransportPacketsLocked(handle);
     return static_cast<int>(s_runtimeCore.last_event_kind);
 }
 
@@ -1357,8 +1360,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     applyPendingRendererInvalidation(*native_handle);
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
-        pollActiveTransportPacketsLocked(*native_handle);
-        processDecodedTransportPacketsLocked(*native_handle);
+        if (native_handle->transport_manager.activeKind() != gs::core::TransportKind::APFPV)
+        {
+            pollActiveTransportPacketsLocked(*native_handle);
+        }
         const AndroidBitmapJpegDecoder::DecodeStats decode_stats = native_handle->jpeg_decoder.consumeStats();
         RuntimeSyncParams sync_params = {};
         sync_params.decode_stats.input_submitted_count = decode_stats.input_submitted_count;
