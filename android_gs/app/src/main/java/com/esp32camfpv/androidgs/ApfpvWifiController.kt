@@ -98,22 +98,66 @@ class ApfpvWifiController(
             return
         }
 
+        val currentSsid = currentConnectedCameraSsid()
         val cameraNetworks = withContext(Dispatchers.Default) {
             findCameraNetworks()
         }
-        syncCameraState(cameraNetworks, currentConnectedCameraSsid())
+        syncCameraState(cameraNetworks, currentSsid)
 
-        val preferredCameraId = withContext(Dispatchers.Default) {
-            NativeCore.getPreferredApfpvCameraId(handle)
+        val nativeState = withContext(Dispatchers.Default) {
+            listOf(
+                NativeCore.getPreferredApfpvCameraId(handle),
+                if (NativeCore.isApfpvMenuSearchActive(handle)) 1 else 0,
+                if (NativeCore.consumeApfpvReconnectRequest(handle)) 1 else 0,
+                if (NativeCore.hasSeenApfpvUdpPackets(handle)) 1 else 0
+            )
         }
-        val matchingNetwork = selectTargetCamera(cameraNetworks, preferredCameraId)
-        if (matchingNetwork == null) {
+        val preferredCameraId = nativeState[0]
+        val searchActive = nativeState[1] != 0
+        val reconnectRequested = nativeState[2] != 0
+        val hasSeenUdpPackets = nativeState[3] != 0
+
+        if (searchActive) {
+            handleMenuSearch(handle, cameraNetworks, currentSsid)
+            return
+        }
+
+        val preferredNetwork = cameraNetworks.firstOrNull { it.deviceId == preferredCameraId }
+        if (currentSsid != null) {
+            if (reconnectRequested) {
+                if (preferredNetwork != null && preferredNetwork.ssid != currentSsid) {
+                    connectToCameraNetwork(handle, preferredNetwork.ssid)
+                    return
+                }
+
+                val currentCameraId = parseCameraId(currentSsid)
+                if (preferredCameraId != 0 && currentCameraId != preferredCameraId) {
+                    disconnectFromCurrentCamera(handle)
+                    updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
+                    wifiManager.startScan()
+                    return
+                }
+            }
+
+            updateLinkState(
+                if (hasSeenUdpPackets) NativeCore.LINK_STATE_NONE
+                else NativeCore.LINK_STATE_CONNECTING_TO_STREAM
+            )
+            return
+        }
+
+        if (preferredNetwork != null) {
+            connectToCameraNetwork(handle, preferredNetwork.ssid)
+            return
+        }
+
+        if (preferredCameraId != 0 || reconnectRequested) {
             updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
             wifiManager.startScan()
             return
         }
 
-        connectToCameraNetwork(handle, matchingNetwork.ssid)
+        updateLinkState(NativeCore.LINK_STATE_NONE)
     }
 
     private fun findCameraNetworks(): List<CameraNetwork> {
@@ -138,11 +182,48 @@ class ApfpvWifiController(
         return bestResults
     }
 
-    private fun selectTargetCamera(networks: List<CameraNetwork>, preferredCameraId: Int): CameraNetwork? {
-        if (preferredCameraId != 0) {
-            return networks.firstOrNull { it.deviceId == preferredCameraId }
+    private suspend fun handleMenuSearch(
+        handle: Long,
+        cameraNetworks: List<CameraNetwork>,
+        currentSsid: String?
+    ) {
+        if (currentSsid != null) {
+            disconnectFromCurrentCamera(handle)
+            syncCameraState(cameraNetworks, null)
+            wifiManager.startScan()
+            return
         }
-        return networks.maxByOrNull { it.level }
+
+        if (cameraNetworks.size >= 2) {
+            updateLinkState(NativeCore.LINK_STATE_NONE)
+            return
+        }
+
+        if (cameraNetworks.size == 1) {
+            val target = cameraNetworks.first()
+            withContext(Dispatchers.Default) {
+                NativeCore.setPreferredApfpvCameraId(handle, target.deviceId)
+            }
+            connectToCameraNetwork(handle, target.ssid)
+            return
+        }
+
+        updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
+        wifiManager.startScan()
+    }
+
+    private suspend fun disconnectFromCurrentCamera(handle: Long) {
+        releaseRequestedNetwork()
+        bindToNetwork(null)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            wifiManager.disconnect()
+        }
+        withContext(Dispatchers.Default) {
+            NativeCore.stopUdpClient(handle)
+            NativeCore.resetSession(handle)
+            NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
+        }
     }
 
     private suspend fun connectToCameraNetwork(handle: Long, ssid: String) {

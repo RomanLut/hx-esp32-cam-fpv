@@ -33,6 +33,10 @@ object NativeCore {
     external fun describeHandle(handle: Long): String
     external fun getActiveTransportKind(handle: Long): Int
     external fun getPreferredApfpvCameraId(handle: Long): Int
+    external fun setPreferredApfpvCameraId(handle: Long, deviceId: Int)
+    external fun isApfpvMenuSearchActive(handle: Long): Boolean
+    external fun consumeApfpvReconnectRequest(handle: Long): Boolean
+    external fun hasSeenApfpvUdpPackets(handle: Long): Boolean
     external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?)
     external fun startUdpClient(
         handle: Long,

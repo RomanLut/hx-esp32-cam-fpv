@@ -27,9 +27,18 @@ public:
 
     bool init(const gs::core::RXDescriptor& rx_descriptor,
               const gs::core::TXDescriptor& tx_descriptor) override;
+    void activate() override;
+    void deactivate() override;
+    bool requestImmediateReconnect() override;
+    bool supportsMenuSearchOrConnect() const override;
     void process() override;
+    void reset_rx_state() override;
+    void beginMenuSearchOrConnect() override;
+    bool advanceMenuSearchOrConnect() override;
+    void cancelMenuSearchOrConnect() override;
     void send(const void* data, size_t size, bool flush) override;
     bool receive(void* data, size_t& size, bool& restoredByFEC) override;
+    size_t get_data_rate() const override;
     int get_input_dBm() const override;
     void setInputDbm(int input_dbm);
     void configureUdpEndpoint(std::string peer_host, int peer_port, int local_port);
@@ -38,6 +47,7 @@ public:
     int udpLocalPort() const;
     void updateUdpStats(uint64_t packets_received, float throughput_mbps, float video_fps);
     uint64_t udpPacketsReceived() const;
+    bool hasSeenUdpPackets() const;
     float udpThroughputMbps() const;
     float udpVideoFps() const;
     void clearUdpError();
@@ -52,6 +62,9 @@ public:
     void setUdpThread(std::thread thread);
     bool startUdpClient(UdpLoopCallbacks callbacks);
     void stopUdpClient();
+    bool isMenuSearchActive() const;
+    bool consumeReconnectRequest();
+    void syncCameraState(size_t discovered_camera_count, bool has_active_camera);
 
 private:
     void runUdpClientLoop(UdpLoopCallbacks callbacks);
@@ -59,6 +72,7 @@ private:
     std::vector<uint8_t> m_last_sent_packet;
     int m_input_dbm = 0;
     uint64_t m_udp_packets_received = 0;
+    std::atomic<bool> m_udp_packets_seen = false;
     float m_udp_throughput_mbps = 0.0f;
     float m_udp_video_fps = 0.0f;
     std::string m_udp_peer_host = "192.168.4.1";
@@ -67,6 +81,9 @@ private:
     std::string m_udp_last_error;
     std::atomic<bool> m_udp_stop_requested = false;
     std::atomic<bool> m_udp_running = false;
+    std::atomic<bool> m_reconnect_requested = false;
+    std::atomic<bool> m_menu_search_active = false;
+    std::atomic<bool> m_menu_search_done = false;
     mutable std::mutex m_udp_thread_mutex;
     std::mutex m_udp_lifecycle_mutex;
     std::thread m_udp_thread;

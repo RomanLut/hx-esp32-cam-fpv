@@ -33,9 +33,90 @@ bool AndroidAPFPVTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
+// Activates the Android APFPV transport and requests preferred-camera reconnect flow.
+void AndroidAPFPVTransport::activate()
+{
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(false);
+    m_reconnect_requested.store(true);
+}
+
+//===================================================================================
+//===================================================================================
+// Deactivates the Android APFPV transport and clears transient APFPV menu state.
+void AndroidAPFPVTransport::deactivate()
+{
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(false);
+    m_reconnect_requested.store(false);
+    clearApfpvCameraRuntimeState();
+    setLinkState(LinkState::None);
+}
+
+//===================================================================================
+//===================================================================================
+// Requests an immediate reconnect to the currently preferred APFPV camera on Android.
+bool AndroidAPFPVTransport::requestImmediateReconnect()
+{
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(false);
+    m_reconnect_requested.store(true);
+    clearApfpvActiveCamera();
+    setLinkState(LinkState::LookingForWifiNetwork);
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports that Android APFPV supports the shared menu-driven search/connect flow.
+bool AndroidAPFPVTransport::supportsMenuSearchOrConnect() const
+{
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
 // Performs no background work because the UDP client is driven by the transport thread.
 void AndroidAPFPVTransport::process()
 {
+}
+
+//===================================================================================
+//===================================================================================
+// Resets Android APFPV receive/runtime state after a transport or Wi-Fi reconnect.
+void AndroidAPFPVTransport::reset_rx_state()
+{
+    m_menu_search_done.store(false);
+}
+
+//===================================================================================
+//===================================================================================
+// Starts the shared APFPV menu search flow and clears stale discovered-camera state.
+void AndroidAPFPVTransport::beginMenuSearchOrConnect()
+{
+    m_menu_search_active.store(true);
+    m_menu_search_done.store(false);
+    m_reconnect_requested.store(false);
+    updateApfpvDiscoveredCameras({});
+    clearApfpvActiveCamera();
+    setLinkState(LinkState::LookingForWifiNetwork);
+}
+
+//===================================================================================
+//===================================================================================
+// Advances the shared Android APFPV menu search flow until the controller marks it done.
+bool AndroidAPFPVTransport::advanceMenuSearchOrConnect()
+{
+    return m_menu_search_done.load();
+}
+
+//===================================================================================
+//===================================================================================
+// Cancels the shared Android APFPV menu search flow without changing saved preference.
+void AndroidAPFPVTransport::cancelMenuSearchOrConnect()
+{
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(false);
 }
 
 //===================================================================================
@@ -53,6 +134,14 @@ void AndroidAPFPVTransport::send(const void* data, size_t size, bool /* flush */
 bool AndroidAPFPVTransport::receive(void* /* data */, size_t& /* size */, bool& /* restoredByFEC */)
 {
     return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the latest measured APFPV transport throughput in bytes per second.
+size_t AndroidAPFPVTransport::get_data_rate() const
+{
+    return static_cast<size_t>(m_udp_throughput_mbps * 1000.0f * 1000.0f / 8.0f);
 }
 
 //===================================================================================
@@ -125,6 +214,14 @@ void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received, float thro
 uint64_t AndroidAPFPVTransport::udpPacketsReceived() const
 {
     return m_udp_packets_received;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether the Android APFPV backend has already received any UDP packets.
+bool AndroidAPFPVTransport::hasSeenUdpPackets() const
+{
+    return m_udp_packets_seen.load();
 }
 
 //===================================================================================
@@ -287,6 +384,44 @@ void AndroidAPFPVTransport::stopUdpClient()
 
 //===================================================================================
 //===================================================================================
+// Returns whether the shared Android APFPV menu search flow is currently active.
+bool AndroidAPFPVTransport::isMenuSearchActive() const
+{
+    return m_menu_search_active.load();
+}
+
+//===================================================================================
+//===================================================================================
+// Returns and clears one queued Android APFPV reconnect request for the Wi-Fi controller.
+bool AndroidAPFPVTransport::consumeReconnectRequest()
+{
+    return m_reconnect_requested.exchange(false);
+}
+
+//===================================================================================
+//===================================================================================
+// Updates shared Android APFPV search state from the latest Wi-Fi discovery snapshot.
+void AndroidAPFPVTransport::syncCameraState(size_t discovered_camera_count, bool has_active_camera)
+{
+    if (has_active_camera)
+    {
+        m_reconnect_requested.store(false);
+        if (m_menu_search_active.exchange(false))
+        {
+            m_menu_search_done.store(true);
+        }
+        return;
+    }
+
+    if (m_menu_search_active.load() && discovered_camera_count >= 2)
+    {
+        m_menu_search_active.store(false);
+        m_menu_search_done.store(true);
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Runs the Android APFPV UDP backend loop for control TX, media RX, and transport stats.
 void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
 {
@@ -343,6 +478,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
 
     setUdpRunning(true);
     clearUdpError();
+    m_udp_packets_seen.store(false);
     updateUdpStats(0, 0.0f, 0.0f);
     __android_log_print(ANDROID_LOG_INFO,
                         kAndroidApfpvLogTag,
@@ -384,6 +520,13 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
         {
             packets_received++;
             bytes_window += static_cast<uint64_t>(received);
+            if (!m_udp_packets_seen.exchange(true))
+            {
+                // The Wi-Fi controller only knows that Android is associated to the APFPV SSID.
+                // Clear the transient "Connecting to stream..." banner as soon as real UDP
+                // payloads arrive so the overlay reflects active camera traffic immediately.
+                setLinkState(LinkState::None);
+            }
             if (packets_received == 1)
             {
                 __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "udp_first_packet size=%zd", received);

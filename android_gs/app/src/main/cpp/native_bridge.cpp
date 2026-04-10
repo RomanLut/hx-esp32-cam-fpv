@@ -718,6 +718,7 @@ int processTransportPacket(NativeHandle& handle,
     {
         const auto* header = reinterpret_cast<const Packet_Header*>(data);
         s_runtimeCore.transport_packets_seen++;
+        s_runtimeCore.gs_stats.inPacketCounterAll[0]++;
         s_runtimeCore.gs_stats.inPacketCounter[0]++;
         s_runtimeCore.last_transport_block = header->block_index;
         s_runtimeCore.last_transport_packet_index = header->packet_index;
@@ -924,6 +925,81 @@ Java_com_esp32camfpv_androidgs_NativeCore_getPreferredApfpvCameraId(JNIEnv* /* e
 
 //===================================================================================
 //===================================================================================
+// Stores the selected APFPV preferred camera id used by shared menu and reconnect logic.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setPreferredApfpvCameraId(JNIEnv* /* env */,
+                                                                    jobject /* thiz */,
+                                                                    jlong handle,
+                                                                    jint device_id)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    s_groundstation_config.apfpvPreferredCameraId = static_cast<uint16_t>(device_id);
+    setApfpvPreferredCameraId(s_groundstation_config.apfpvPreferredCameraId);
+    s_settingsStorage.saveGroundStationConfig();
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether the shared Android APFPV menu search flow is currently active.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_isApfpvMenuSearchActive(JNIEnv* /* env */,
+                                                                  jobject /* thiz */,
+                                                                  jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return native_handle->transport_manager.apfpvTransport().isMenuSearchActive() ? JNI_TRUE : JNI_FALSE;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns and clears one queued Android APFPV reconnect request for the Wi-Fi controller.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_consumeApfpvReconnectRequest(JNIEnv* /* env */,
+                                                                       jobject /* thiz */,
+                                                                       jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return native_handle->transport_manager.apfpvTransport().consumeReconnectRequest() ? JNI_TRUE : JNI_FALSE;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether Android APFPV has already received any UDP packets from the camera.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_hasSeenApfpvUdpPackets(JNIEnv* /* env */,
+                                                                 jobject /* thiz */,
+                                                                 jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return native_handle->transport_manager.apfpvTransport().hasSeenUdpPackets() ? JNI_TRUE : JNI_FALSE;
+}
+
+//===================================================================================
+//===================================================================================
 // Synchronizes discovered and active APFPV camera SSIDs from the Android Wi-Fi controller.
 extern "C" JNIEXPORT void JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
@@ -972,6 +1048,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
     {
         clearApfpvActiveCamera();
     }
+
+    native_handle->transport_manager.apfpvTransport().syncCameraState(
+        discovered_cameras.size(),
+        !active_ssid_value.empty());
 }
 
 extern "C" JNIEXPORT jint JNICALL
