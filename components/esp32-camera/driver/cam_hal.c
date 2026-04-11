@@ -204,7 +204,6 @@ static void cam_task(void *arg)
                     const uint8_t b = *pData2;
                     if ( (b == 0xd9) && (lastByte == 0xff) )
                     {
-                        pk2++;
                         cam_obj->state = CAM_STATE_IDLE;
                         frameBytes = (pData2 - pData) + 1;  //include 0xd9
                         lastByte = b;
