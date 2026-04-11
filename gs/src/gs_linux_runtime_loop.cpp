@@ -321,8 +321,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.is_dual = s_isDual;
             input.wifi_queue_percent = s_wifi_queue_max;
             input.wifi_queue_alert = s_wifi_ovf;
-            input.throughput_total_bytes = s_total_data;
-            input.use_megabit_total = true;
+            input.throughput_mbps = static_cast<float>(s_total_data) * 8.0f / (1024.0f * 1024.0f);
             input.video_fps = static_cast<int>(video_fps);
             input.video_fps_alert = had_loss;
             input.no_ping = s_noPing;

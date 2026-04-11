@@ -202,14 +202,32 @@ int AndroidAPFPVTransport::udpLocalPort() const
 //===================================================================================
 //===================================================================================
 // Updates the latest UDP receive counters and derived APFPV transport stats.
-void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received, float throughput_mbps, float video_fps)
+void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received,
+                                           float throughput_mbps,
+                                           int received_completed_frames,
+                                           int restored_completed_frames)
 {
     m_udp_packets_received = packets_received;
     m_udp_throughput_mbps = throughput_mbps;
-    m_udp_video_fps = video_fps;
+    m_received_completed_frames = received_completed_frames;
+    m_restored_completed_frames = restored_completed_frames;
     if (packets_received > 0)
     {
         setLinkState(LinkState::None);
+    }
+    m_udp_stats_log_count++;
+    if ((m_udp_stats_log_count % 4U) == 1U)
+    {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kAndroidApfpvLogTag,
+                            "udp_stats peer=%s:%d packets=%llu mbps=%.2f frames=%d restored=%d error=%s",
+                            m_udp_peer_host.c_str(),
+                            m_udp_peer_port,
+                            static_cast<unsigned long long>(m_udp_packets_received),
+                            static_cast<double>(m_udp_throughput_mbps),
+                            m_received_completed_frames,
+                            m_restored_completed_frames,
+                            m_udp_last_error.empty() ? "-" : m_udp_last_error.c_str());
     }
 }
 
@@ -240,9 +258,17 @@ float AndroidAPFPVTransport::udpThroughputMbps() const
 //===================================================================================
 //===================================================================================
 // Returns the latest measured video FPS for the Android APFPV backend.
-float AndroidAPFPVTransport::udpVideoFps() const
+int AndroidAPFPVTransport::receivedCompletedFrames() const
 {
-    return m_udp_video_fps;
+    return m_received_completed_frames;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the APFPV frame count restored through transport redundancy in the last window.
+int AndroidAPFPVTransport::restoredCompletedFrames() const
+{
+    return m_restored_completed_frames;
 }
 
 //===================================================================================
@@ -513,7 +539,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     setUdpRunning(true);
     clearUdpError();
     m_udp_packets_seen.store(false);
-    updateUdpStats(0, 0.0f, 0.0f);
+    updateUdpStats(0, 0.0f, 0, 0);
     __android_log_print(ANDROID_LOG_INFO,
                         kAndroidApfpvLogTag,
                         "udp_start ok peer=%s:%d local=%d",
@@ -641,9 +667,10 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
             const uint64_t frame_count_now = callbacks.submittedFrameCount ? callbacks.submittedFrameCount() : frame_count_start;
             const float throughput_mbps = static_cast<float>(bytes_window * 8.0) /
                                           static_cast<float>(elapsed_ms * 1000.0);
-            const float video_fps = static_cast<float>((frame_count_now - frame_count_start) * 1000.0) /
-                                    static_cast<float>(elapsed_ms);
-            updateUdpStats(packets_received, throughput_mbps, video_fps);
+            const int received_completed_frames = static_cast<int>(
+                ((frame_count_now - frame_count_start) * 1000ULL) /
+                static_cast<uint64_t>(elapsed_ms));
+            updateUdpStats(packets_received, throughput_mbps, received_completed_frames, 0);
 
             bytes_window = 0;
             frame_count_start = frame_count_now;

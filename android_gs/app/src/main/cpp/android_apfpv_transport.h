@@ -59,11 +59,15 @@ public:
     const std::string& udpPeerHost() const;
     int udpPeerPort() const;
     int udpLocalPort() const;
-    void updateUdpStats(uint64_t packets_received, float throughput_mbps, float video_fps);
+    void updateUdpStats(uint64_t packets_received,
+                        float throughput_mbps,
+                        int received_completed_frames,
+                        int restored_completed_frames);
     uint64_t udpPacketsReceived() const;
     bool hasSeenUdpPackets() const;
     float udpThroughputMbps() const;
-    float udpVideoFps() const;
+    int receivedCompletedFrames() const;
+    int restoredCompletedFrames() const;
     void clearUdpError();
     void setUdpError(std::string error);
     const std::string& udpLastError() const;
@@ -88,7 +92,8 @@ private:
     uint64_t m_udp_packets_received = 0;
     std::atomic<bool> m_udp_packets_seen = false;
     float m_udp_throughput_mbps = 0.0f;
-    float m_udp_video_fps = 0.0f;
+    int m_received_completed_frames = 0;
+    int m_restored_completed_frames = 0;
     std::string m_udp_peer_host = "192.168.4.1";
     int m_udp_peer_port = 5600;
     int m_udp_local_port = 5600;
@@ -98,6 +103,7 @@ private:
     std::atomic<bool> m_reconnect_requested = false;
     std::atomic<bool> m_menu_search_active = false;
     std::atomic<bool> m_menu_search_done = false;
+    uint32_t m_udp_stats_log_count = 0;
     mutable std::mutex m_udp_thread_mutex;
     std::mutex m_udp_lifecycle_mutex;
     std::thread m_udp_thread;

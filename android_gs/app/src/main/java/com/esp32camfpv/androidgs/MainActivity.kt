@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
     private lateinit var apfpvWifiController: ApfpvWifiController
+    private lateinit var rawBroadcastUsbController: RawBroadcastUsbController
 
     private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
+        rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         enableEdgeToEdge()
         applyImmersiveFullscreen()
@@ -73,15 +75,18 @@ class MainActivity : ComponentActivity() {
         }
 
         apfpvWifiController.start()
+        rawBroadcastUsbController.start()
     }
 
     override fun onResume() {
         super.onResume()
         applyImmersiveFullscreen()
         apfpvWifiController.start()
+        rawBroadcastUsbController.start()
     }
 
     override fun onDestroy() {
+        rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
         super.onDestroy()
     }
@@ -151,6 +156,7 @@ private fun AndroidGsApp(
             }
             val needsFastPoll = withContext(Dispatchers.Default) {
                 NativeCore.isUdpClientRunning(nativeHandle) ||
+                    NativeCore.isRawBroadcastUsbRunning(nativeHandle) ||
                     NativeCore.getActiveTransportKind(nativeHandle) == NativeCore.TRANSPORT_TEST
             }
             delay(if (needsFastPoll) 16 else 250)

@@ -154,14 +154,7 @@ void drawTopOverlayStatus(const TopOverlayData& input)
         }
     }
 
-    if (input.use_megabit_total)
-    {
-        std::snprintf(buf, sizeof(buf), "%.1fMb", input.throughput_total_bytes * 8.0f / (1024.0f * 1024.0f));
-    }
-    else
-    {
-        std::snprintf(buf, sizeof(buf), "%.1fMb", input.throughput_mbps);
-    }
+    std::snprintf(buf, sizeof(buf), "%.1fMb", input.throughput_mbps);
     throughput_text = buf;
 
     if (input.gs_temp_celsius >= 80.0f)

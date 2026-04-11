@@ -97,16 +97,35 @@ struct NativeHandle
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
         s_runtimeCore.gs_device_id = s_groundstation_config.deviceId;
         s_transportManager = &transport_manager;
-        transport_manager.init(s_groundstation_config.transportKind, gs::core::RXDescriptor{}, gs::core::TXDescriptor{});
+        {
+            gs::core::RXDescriptor rx_descriptor;
+            rx_descriptor.coding_k = FEC_K;
+            rx_descriptor.coding_n = FEC_N;
+            rx_descriptor.mtu = AIR2GROUND_MAX_MTU;
+
+            gs::core::TXDescriptor tx_descriptor;
+            tx_descriptor.coding_k = 2;
+            tx_descriptor.coding_n = 3;
+            tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
+
+            transport_manager.init(s_groundstation_config.transportKind, rx_descriptor, tx_descriptor);
+        }
         s_runtimeCore.resetTransportRuntime(*s_transport, Clock::now());
+        last_control_packet_tp = Clock::now();
         renderer.setMenuBinding(&gs::menu::g_osdMenuController, &s_runtimeCore.config_packet, &mutex);
         gs::mcp::GsMcpServer::instance().start();
     }
 
     ~NativeHandle()
     {
+        stop_background.store(true);
+        if (background_runtime_thread && background_runtime_thread->joinable())
+        {
+            background_runtime_thread->join();
+        }
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
+        transport_manager.rawBroadcastTransport().stopUsbAdapter();
         gs::mcp::GsMcpServer::instance().stop();
     }
 
@@ -121,6 +140,9 @@ struct NativeHandle
     AndroidTransportManager transport_manager;
     GsVideoRenderer renderer;
     AndroidBitmapJpegDecoder jpeg_decoder;
+    Clock::time_point last_control_packet_tp = Clock::now();
+    std::atomic<bool> stop_background = false;
+    std::unique_ptr<std::thread> background_runtime_thread;
 };
 
 //===================================================================================
@@ -135,6 +157,11 @@ void processSessionPacketLocked(NativeHandle& handle,
 //===================================================================================
 // Polls the active transport directly for session packets used by shared in-process transports.
 void pollActiveTransportPacketsLocked(NativeHandle& handle);
+
+//===================================================================================
+//===================================================================================
+// Periodically sends the shared connect/config control packet on in-process transports.
+void pumpSharedControlPacketLocked(NativeHandle& handle, Clock::time_point now);
 
 //===================================================================================
 //===================================================================================
@@ -262,14 +289,15 @@ std::string buildInfoString()
     return out.str();
 }
 
-std::string sanitizeStatusValue(std::string value);
-
+//===================================================================================
+//===================================================================================
+// Builds a transport-agnostic runtime status summary for the JNI debug surface.
 std::string describeHandleString(const NativeHandle& handle)
 {
-    const AndroidAPFPVTransport& apfpv_transport = handle.transport_manager.apfpvTransport();
     std::ostringstream out;
     out << "Session ready"
         << " | gs_id=" << s_runtimeCore.gs_device_id
+        << " | transport=" << static_cast<int>(handle.transport_manager.activeKind())
         << " | connected_air=" << s_runtimeCore.session.connectedAirDeviceId()
         << " | frame_index=" << s_runtimeCore.assembler.currentFrameIndex()
         << " | got_config=" << (s_runtimeCore.session.gotConfigPacket() ? "yes" : "no")
@@ -292,12 +320,6 @@ std::string describeHandleString(const NativeHandle& handle)
         << " | vid_part=" << s_runtimeCore.last_video_part_index
         << " | vid_last=" << s_runtimeCore.last_video_last_part
         << " | vid_payload=" << s_runtimeCore.last_video_payload_size
-        << " | udp_running=" << (apfpv_transport.isUdpRunning() ? 1 : 0)
-        << " | udp_peer=" << sanitizeStatusValue(apfpv_transport.udpPeerHost() + ":" + std::to_string(apfpv_transport.udpPeerPort()))
-        << " | udp_packets=" << apfpv_transport.udpPacketsReceived()
-        << " | udp_mbps=" << std::fixed << std::setprecision(2) << apfpv_transport.udpThroughputMbps()
-        << " | udp_fps=" << std::fixed << std::setprecision(2) << apfpv_transport.udpVideoFps()
-        << " | udp_error=" << sanitizeStatusValue(apfpv_transport.udpLastError())
         << " | air_rssi=" << -static_cast<int>(s_runtimeCore.session.lastAirStats().rssiDbm)
         << " | queue_max=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_queue_max)
         << " | wifi_ovf=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_ovf)
@@ -318,14 +340,6 @@ uint32_t readLe32(const uint8_t* data)
            (static_cast<uint32_t>(data[1]) << 8) |
            (static_cast<uint32_t>(data[2]) << 16) |
            (static_cast<uint32_t>(data[3]) << 24);
-}
-
-std::string sanitizeStatusValue(std::string value)
-{
-    std::replace(value.begin(), value.end(), '|', '/');
-    std::replace(value.begin(), value.end(), '\n', ' ');
-    std::replace(value.begin(), value.end(), '\r', ' ');
-    return value;
 }
 
 bool tryParseVideoPacketWire(const uint8_t* packet_data,
@@ -521,6 +535,10 @@ void processSessionPacketLocked(NativeHandle& handle,
                                 size_t packet_size,
                                 bool restored_by_fec)
 {
+    static gs::core::SessionEventKind s_last_logged_event_kind = gs::core::SessionEventKind::Ignore;
+    static uint16_t s_last_logged_connected_air = 0;
+    static bool s_last_logged_got_config = false;
+
     if (packet_size >= sizeof(Air2Ground_Header))
     {
         const auto* header = reinterpret_cast<const Air2Ground_Header*>(packet_data);
@@ -543,6 +561,27 @@ void processSessionPacketLocked(NativeHandle& handle,
     s_runtimeCore.last_event_kind = session_event.kind;
     s_runtimeCore.last_packet_tp = processed_packet.processed_tp;
     s_last_packet_tp = processed_packet.processed_tp;
+
+    const uint16_t connected_air = s_runtimeCore.session.connectedAirDeviceId();
+    const bool got_config = s_runtimeCore.session.gotConfigPacket();
+    if (session_event.kind != s_last_logged_event_kind ||
+        connected_air != s_last_logged_connected_air ||
+        got_config != s_last_logged_got_config)
+    {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kNativeLogTag,
+                            "Session event=%d connected_air=0x%04x got_config=%d decoded_type=%u decoded_size=%u restored=%d",
+                            static_cast<int>(session_event.kind),
+                            static_cast<unsigned int>(connected_air),
+                            got_config ? 1 : 0,
+                            static_cast<unsigned int>(s_runtimeCore.last_decoded_type),
+                            static_cast<unsigned int>(s_runtimeCore.last_decoded_size),
+                            restored_by_fec ? 1 : 0);
+        s_last_logged_event_kind = session_event.kind;
+        s_last_logged_connected_air = connected_air;
+        s_last_logged_got_config = got_config;
+    }
+
     const SessionEventPipelineDispatch dispatch = {
         {},
         {},
@@ -579,8 +618,6 @@ void processSessionPacketLocked(NativeHandle& handle,
                                    s_runtimeCore.session,
                                    restored_by_fec,
                                    dispatch);
-
-    s_runtimeCore.session.addReceivedBytes(packet_size);
     if (s_runtimeCore.session.syncConfigPacket(s_runtimeCore.config_packet))
     {
         pendingOsdFontReload();
@@ -607,6 +644,48 @@ void pollActiveTransportPacketsLocked(NativeHandle& handle)
         }
 
         processSessionPacketLocked(handle, packet_buffer.data(), packet_size, restored_by_fec);
+    }
+    transport.contributeGroundStats(s_runtimeCore.gs_stats);
+}
+
+//===================================================================================
+//===================================================================================
+// Periodically sends the shared connect/config control packet on in-process transports.
+void pumpSharedControlPacketLocked(NativeHandle& handle, Clock::time_point now)
+{
+    static uint32_t s_control_send_count = 0;
+
+    if (handle.transport_manager.activeKind() == gs::core::TransportKind::APFPV)
+    {
+        return;
+    }
+
+    if (now - handle.last_control_packet_tp < std::chrono::milliseconds(500))
+    {
+        return;
+    }
+
+    std::vector<uint8_t> control_payload;
+    if (!tryBuildControlPacketPayload(s_runtimeCore.gs_device_id, control_payload))
+    {
+        handle.last_control_packet_tp = now;
+        return;
+    }
+
+    handle.transport_manager.activeTransport().send(control_payload.data(), control_payload.size(), true);
+    s_runtimeCore.session.addSentPackets(1);
+    s_runtimeCore.session.onPingSent(now);
+    handle.last_control_packet_tp = now;
+    s_control_send_count++;
+    if ((s_control_send_count % 4U) == 1U)
+    {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kNativeLogTag,
+                            "Sent control packet count=%u size=%zu connected_air=0x%04x got_config=%d",
+                            static_cast<unsigned int>(s_control_send_count),
+                            control_payload.size(),
+                            static_cast<unsigned int>(s_runtimeCore.session.connectedAirDeviceId()),
+                            s_runtimeCore.session.gotConfigPacket() ? 1 : 0);
     }
 }
 
@@ -707,6 +786,8 @@ int processTransportPacket(NativeHandle& handle,
                            bool /* restored_by_fec */,
                            int input_dbm)
 {
+    static uint32_t s_transport_process_log_count = 0;
+
     if (data == nullptr || size == 0)
     {
         s_runtimeCore.last_event_kind = gs::core::SessionEventKind::Ignore;
@@ -735,6 +816,21 @@ int processTransportPacket(NativeHandle& handle,
     // resulting session/video events here so completed frames reach the renderer queue
     // immediately instead of waiting for the next render/UI sync tick.
     processDecodedTransportPacketsLocked(handle);
+    s_transport_process_log_count++;
+    if ((s_transport_process_log_count % 200U) == 1U)
+    {
+        const FecBlockDecoder::Stats stats = s_runtimeCore.rx_decoder.getStats();
+        __android_log_print(ANDROID_LOG_INFO,
+                            kNativeLogTag,
+                            "Transport packets=%u decoded=%u unique=%u duplicate=%u fec_blocks=%u runtime_last_block=%u last_packet=%u",
+                            static_cast<unsigned int>(s_transport_process_log_count),
+                            static_cast<unsigned int>(s_runtimeCore.decoded_packets_seen),
+                            static_cast<unsigned int>(stats.unique_packet_count),
+                            static_cast<unsigned int>(stats.duplicate_packet_count),
+                            static_cast<unsigned int>(stats.fec_blocks_count),
+                            static_cast<unsigned int>(s_runtimeCore.last_transport_block),
+                            static_cast<unsigned int>(stats.last_packet_index));
+    }
     return static_cast<int>(s_runtimeCore.last_event_kind);
 }
 
@@ -898,6 +994,33 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                                                        jint gsDeviceId)
 {
     auto* handle = new NativeHandle(static_cast<uint16_t>(gsDeviceId));
+    handle->transport_manager.rawBroadcastTransport().setTransportPacketCallback(
+        [handle](const uint8_t* data, size_t size, int input_dbm)
+        {
+            if (handle == nullptr || data == nullptr || size == 0)
+            {
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(handle->mutex);
+            processTransportPacket(*handle, data, size, false, input_dbm);
+        });
+    handle->background_runtime_thread = std::make_unique<std::thread>(
+        [handle]()
+        {
+            while (!handle->stop_background.load())
+            {
+                {
+                    std::lock_guard<std::mutex> lock(handle->mutex);
+                    if (handle->transport_manager.activeKind() == gs::core::TransportKind::RawBroadcast &&
+                        handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning())
+                    {
+                        pumpSharedControlPacketLocked(*handle, Clock::now());
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            }
+        });
     return toJLong(handle);
 }
 
@@ -1253,6 +1376,61 @@ Java_com_esp32camfpv_androidgs_NativeCore_stopUdpClient(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_startRawBroadcastUsb(JNIEnv* /* env */,
+                                                               jobject /* thiz */,
+                                                               jlong handle,
+                                                               jint fd)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    bool should_start = false;
+    {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
+        should_start =
+            native_handle->transport_manager.activeKind() == gs::core::TransportKind::RawBroadcast;
+    }
+
+    if (!should_start)
+    {
+        return JNI_FALSE;
+    }
+
+    return native_handle->transport_manager.rawBroadcastTransport().startUsbAdapter(fd) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_stopRawBroadcastUsb(JNIEnv* /* env */,
+                                                              jobject /* thiz */,
+                                                              jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->transport_manager.rawBroadcastTransport().stopUsbAdapter();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* env */,
+                                                                   jobject /* thiz */,
+                                                                   jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    return native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
                                                             jobject /* thiz */,
                                                             jlong /* handle */,
@@ -1370,6 +1548,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
                                                               jlong handle,
                                                               jstring build_info)
 {
+    static uint32_t s_sync_overlay_call_count = 0;
+
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
     {
@@ -1379,10 +1559,21 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     const std::string info = fromJString(env, build_info);
     RuntimeSyncState sync_state;
     gs::imgui::TopOverlayData overlay_input = {};
+    s_sync_overlay_call_count++;
+    if ((s_sync_overlay_call_count % 60U) == 1U)
+    {
+        __android_log_print(ANDROID_LOG_INFO,
+                            kNativeLogTag,
+                            "syncRendererOverlay calls=%u transport=%d raw_usb=%d",
+                            static_cast<unsigned int>(s_sync_overlay_call_count),
+                            static_cast<int>(native_handle->transport_manager.activeKind()),
+                            native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? 1 : 0);
+    }
     syncApfpvUdpClient(*native_handle);
     applyPendingRendererInvalidation(*native_handle);
     {
         std::lock_guard<std::mutex> lock(native_handle->mutex);
+        pumpSharedControlPacketLocked(*native_handle, Clock::now());
         if (native_handle->transport_manager.activeKind() != gs::core::TransportKind::APFPV)
         {
             pollActiveTransportPacketsLocked(*native_handle);
@@ -1408,8 +1599,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.renderer_stats.discarded_pending_count = renderer_stats.discarded_pending_count;
         sync_params.build_info = info;
         sync_params.osd_font_name = s_flightOSD.currentFontName();
-        sync_params.throughput_mbps = native_handle->transport_manager.apfpvTransport().udpThroughputMbps();
-        sync_params.udp_video_fps = native_handle->transport_manager.apfpvTransport().udpVideoFps();
+        const AndroidAPFPVTransport& apfpv_transport = native_handle->transport_manager.apfpvTransport();
+        if (native_handle->transport_manager.activeKind() == gs::core::TransportKind::APFPV)
+        {
+            s_runtimeCore.session.setCompletedFrameCounts(
+                apfpv_transport.receivedCompletedFrames(),
+                apfpv_transport.restoredCompletedFrames());
+        }
         sync_params.is_dual = false;
         sync_params.osd_font_error = s_flightOSD.isFontError();
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
@@ -1585,6 +1781,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
     s_runtimeCore.resetTransportRuntime(native_handle->transport_manager.activeTransport(), Clock::now());
+    native_handle->last_control_packet_tp = Clock::now();
     gs::menu::g_osdMenuController.close();
 }
 

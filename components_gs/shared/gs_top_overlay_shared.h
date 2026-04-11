@@ -25,9 +25,7 @@ struct TopOverlayData
     bool is_dual = false;
     int wifi_queue_percent = 0;
     bool wifi_queue_alert = false;
-    int throughput_total_bytes = 0;
     float throughput_mbps = 0.0f;
-    bool use_megabit_total = false;
     int video_fps = 0;
     bool video_fps_alert = false;
     bool no_ping = false;

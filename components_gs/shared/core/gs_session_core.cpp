@@ -673,6 +673,17 @@ void GsSessionCore::addReceivedBytes(size_t bytes)
 
 //===================================================================================
 //===================================================================================
+// Overrides the current 1-second completed-frame counters for transports that do not
+// report them through the normal session completion path.
+void GsSessionCore::setCompletedFrameCounts(int received_completed_frames, int restored_completed_frames)
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_periodic_stats.received_completed_frames = received_completed_frames;
+    m_periodic_stats.restored_completed_frames = restored_completed_frames;
+}
+
+//===================================================================================
+//===================================================================================
 // Atomically returns and resets the periodic stats snapshot.
 PeriodicStatsSnapshot GsSessionCore::consumePeriodicStats()
 {

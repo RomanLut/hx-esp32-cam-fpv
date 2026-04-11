@@ -69,6 +69,7 @@ struct GsRuntimeCore
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
     Stats data_size_stats = {};
+    float last_throughput_mbps = 0.0f;
 
     // Decode and upload stats accumulated across every frame, flushed once per second.
     uint32_t acc_decode_count = 0;
@@ -85,6 +86,7 @@ struct GsRuntimeCore
     uint64_t last_udp_packets_sample = 0;
     bool exit_requested = false;
     bool osd_font_reload_pending = false;
+    bool last_had_frame_loss = false;
 };
 
 void pendingOsdFontReload();

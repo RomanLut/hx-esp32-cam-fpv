@@ -40,6 +40,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     {
         const gs::core::LinkStatusSnapshot link_status = core.session.consumeLinkStatus(now);
         const gs::core::PeriodicStatsSnapshot periodic_stats = core.session.consumePeriodicStats();
+        core.last_throughput_mbps = static_cast<float>(periodic_stats.total_data) * 8.0f / (1024.0f * 1024.0f);
         core.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
         core.gs_stats.pingMinMS = link_status.ping_min_ms;
         core.gs_stats.pingMaxMS = link_status.ping_max_ms;
@@ -49,16 +50,28 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
 
         const gs::core::VideoFrameAssembler::Stats assembler_stats = core.assembler.consumeStats();
         core.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(params.decode_stats.broken_frames, 255));
+        core.gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
+        core.gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
+        core.gs_stats.decodedJpegCount = static_cast<int>(core.acc_decode_count);
+        core.gs_stats.decodedJpegTimeTotalMS = static_cast<int>(core.acc_decode_total_ms);
+        core.gs_stats.decodedJpegTimeMinMS =
+            static_cast<int>(core.acc_decode_count > 0 ? core.acc_decode_min_ms : 0);
+        core.gs_stats.decodedJpegTimeMaxMS = static_cast<int>(core.acc_decode_max_ms);
+        core.gs_stats.textureUploadCount = static_cast<int>(core.acc_upload_count);
+        core.gs_stats.textureUploadTimeTotalMS = static_cast<int>(core.acc_upload_total_ms);
+        core.gs_stats.textureUploadTimeMinMS =
+            static_cast<int>(core.acc_upload_count > 0 ? core.acc_upload_min_ms : 0);
+        core.gs_stats.textureUploadTimeMaxMS = static_cast<int>(core.acc_upload_max_ms);
+        core.gs_stats.discardedFramesAssemblerPoolOverflow =
+            static_cast<int>(assembler_stats.discarded_frames);
+        core.gs_stats.discardedFramesDecoderInput =
+            static_cast<int>(params.decode_stats.overwritten_pending_count);
+        core.gs_stats.discardedFramesDecodedOutput =
+            static_cast<int>(params.renderer_stats.discarded_pending_count);
+        core.gs_stats.restoredTransportPackets = core.restored_transport_packets;
+        core.gs_stats.restoredVideoParts = core.restored_video_parts;
 
         core.last_ground_stats = core.gs_stats;
-        core.last_ground_stats.decodedJpegCount = static_cast<int>(core.acc_decode_count);
-        core.last_ground_stats.decodedJpegTimeTotalMS = static_cast<int>(core.acc_decode_total_ms);
-        core.last_ground_stats.decodedJpegTimeMinMS = static_cast<int>(core.acc_decode_count > 0 ? core.acc_decode_min_ms : 0);
-        core.last_ground_stats.decodedJpegTimeMaxMS = static_cast<int>(core.acc_decode_max_ms);
-        core.last_ground_stats.textureUploadCount = static_cast<int>(core.acc_upload_count);
-        core.last_ground_stats.textureUploadTimeTotalMS = static_cast<int>(core.acc_upload_total_ms);
-        core.last_ground_stats.textureUploadTimeMinMS = static_cast<int>(core.acc_upload_count > 0 ? core.acc_upload_min_ms : 0);
-        core.last_ground_stats.textureUploadTimeMaxMS = static_cast<int>(core.acc_upload_max_ms);
 
         core.acc_decode_count = 0;
         core.acc_decode_total_ms = 0;
@@ -68,16 +81,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.acc_upload_total_ms = 0;
         core.acc_upload_min_ms = 9999;
         core.acc_upload_max_ms = 0;
-        core.last_ground_stats.discardedFramesAssemblerPoolOverflow =
-            static_cast<int>(assembler_stats.discarded_frames);
-        core.last_ground_stats.discardedFramesDecoderInput =
-            static_cast<int>(params.decode_stats.overwritten_pending_count);
-        core.last_ground_stats.discardedFramesDecodedOutput =
-            static_cast<int>(params.renderer_stats.discarded_pending_count);
-        core.last_ground_stats.restoredTransportPackets = core.restored_transport_packets;
-        core.last_ground_stats.restoredVideoParts = core.restored_video_parts;
-        core.last_ground_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
-        core.last_ground_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
+        core.last_had_frame_loss = core.session.consumeLostFrameCount() != 0;
         GSStats next_stats = {};
         next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;
         next_stats.rssiDbm[0] = gs_rssi0;
@@ -103,8 +107,10 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.is_dual = params.is_dual;
     overlay_input.wifi_queue_percent = core.session.lastAirStats().wifi_queue_max;
     overlay_input.wifi_queue_alert = core.session.lastAirStats().wifi_ovf != 0;
-    overlay_input.throughput_mbps = params.throughput_mbps;
-    overlay_input.video_fps = static_cast<int>(std::round(params.udp_video_fps));
+    overlay_input.throughput_mbps = core.last_throughput_mbps;
+    overlay_input.video_fps = core.last_ground_stats.receivedCompletedFrames +
+        core.last_ground_stats.restoredCompletedFrames;
+    overlay_input.video_fps_alert = core.last_had_frame_loss;
     overlay_input.air_record = core.session.lastAirStats().air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();
     overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;

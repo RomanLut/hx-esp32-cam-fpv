@@ -189,6 +189,7 @@ public:
     void addInboundTelemetryBytes(size_t bytes);
     void addOutboundTelemetryBytes(size_t bytes);
     void addReceivedBytes(size_t bytes);
+    void setCompletedFrameCounts(int received_completed_frames, int restored_completed_frames);
     PeriodicStatsSnapshot consumePeriodicStats();
     uint8_t consumeDataRateSample();
     void onLostPartialFrame(uint8_t lost_partial_parts, uint8_t queue_usage);

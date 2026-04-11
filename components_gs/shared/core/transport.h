@@ -8,6 +8,7 @@
 
 #include "../../../components/common/Clock.h"
 #include "fec.h"
+#include "gs_stats.h"
 #include "packet_filter.h"
 #include "structures.h"
 
@@ -74,6 +75,7 @@ public:
 
     virtual size_t get_data_rate() const = 0;
     virtual int get_input_dBm() const = 0;
+    virtual void contributeGroundStats(GSStats& stats) = 0;
 
     virtual PacketFilter& getPacketFilter() = 0;
 };

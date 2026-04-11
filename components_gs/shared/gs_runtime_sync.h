@@ -62,7 +62,6 @@ struct RuntimeSyncParams
     std::string build_info;
     std::string osd_font_name;
     float throughput_mbps = 0.0f;
-    float udp_video_fps = 0.0f;
     bool is_dual = false;
     bool osd_font_error = false;
 };

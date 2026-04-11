@@ -46,6 +46,9 @@ object NativeCore {
     ): Boolean
     external fun stopUdpClient(handle: Long)
     external fun isUdpClientRunning(handle: Long): Boolean
+    external fun startRawBroadcastUsb(handle: Long, fd: Int): Boolean
+    external fun stopRawBroadcastUsb(handle: Long)
+    external fun isRawBroadcastUsbRunning(handle: Long): Boolean
     external fun setVideoUdpOutput(handle: Long, addr: String, port: Int): Boolean
     external fun getLastEventKind(handle: Long): Int
     external fun getScreenAspectRatio(handle: Long): Int

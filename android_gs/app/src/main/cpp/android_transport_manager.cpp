@@ -18,13 +18,29 @@ const AndroidAPFPVTransport& AndroidTransportManager::apfpvTransport() const
 
 //===================================================================================
 //===================================================================================
+// Returns the concrete Android raw-broadcast transport for USB adapter control.
+AndroidRawBroadcastTransport& AndroidTransportManager::rawBroadcastTransport()
+{
+    return m_raw_broadcast_transport;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the concrete Android raw-broadcast transport for read-only state access.
+const AndroidRawBroadcastTransport& AndroidTransportManager::rawBroadcastTransport() const
+{
+    return m_raw_broadcast_transport;
+}
+
+//===================================================================================
+//===================================================================================
 // Resolves the transport instance that should back a given transport kind on Android.
 gs::core::ITransport& AndroidTransportManager::resolveTransport(gs::core::TransportKind kind)
 {
     switch (kind)
     {
     case gs::core::TransportKind::RawBroadcast:
-        return m_raw_broadcast_stub;
+        return m_raw_broadcast_transport;
 
     case gs::core::TransportKind::APFPV:
         return m_apfpv_transport;
@@ -44,7 +60,7 @@ bool AndroidTransportManager::isTransportInitialized(gs::core::TransportKind kin
     switch (kind)
     {
     case gs::core::TransportKind::RawBroadcast:
-        return m_raw_broadcast_stub_initialized;
+        return m_raw_broadcast_transport_initialized;
 
     case gs::core::TransportKind::APFPV:
         return m_apfpv_initialized;
@@ -64,7 +80,7 @@ void AndroidTransportManager::setTransportInitialized(gs::core::TransportKind ki
     switch (kind)
     {
     case gs::core::TransportKind::RawBroadcast:
-        m_raw_broadcast_stub_initialized = initialized;
+        m_raw_broadcast_transport_initialized = initialized;
         break;
 
     case gs::core::TransportKind::APFPV:
@@ -85,7 +101,7 @@ const gs::core::ITransport& AndroidTransportManager::resolveTransport(gs::core::
     switch (kind)
     {
     case gs::core::TransportKind::RawBroadcast:
-        return m_raw_broadcast_stub;
+        return m_raw_broadcast_transport;
 
     case gs::core::TransportKind::APFPV:
         return m_apfpv_transport;

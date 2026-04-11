@@ -63,6 +63,10 @@ public:
         return 0;
     }
 
+    void contributeGroundStats(GSStats& /* stats */) override
+    {
+    }
+
     PacketFilter& getPacketFilter() override
     {
         return m_packet_filter;

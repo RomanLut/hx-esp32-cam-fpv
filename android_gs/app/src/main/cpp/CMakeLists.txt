@@ -3,6 +3,7 @@ project(android_gs_core)
 
 add_library(android_gs_core SHARED
     android_apfpv_transport.cpp
+    android_raw_broadcast_transport.cpp
     android_surface_backend.cpp
     android_bitmap_jpeg_decoder.cpp
     android_osd_font_storage.cpp
@@ -60,6 +61,18 @@ add_library(android_gs_core SHARED
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
     ../../../../../components/common/hx_mavlink_parser.cpp
+    third_party/devourer/hal/Hal8812PwrSeq.c
+    third_party/devourer/hal/hal8812a_fw.c
+    third_party/devourer/src/Radiotap.c
+    third_party/devourer/src/EepromManager.cpp
+    third_party/devourer/src/FirmwareManager.cpp
+    third_party/devourer/src/FrameParser.cpp
+    third_party/devourer/src/HalModule.cpp
+    third_party/devourer/src/ParsedRadioPacket.cpp
+    third_party/devourer/src/RadioManagementModule.cpp
+    third_party/devourer/src/Rtl8812aDevice.cpp
+    third_party/devourer/src/RtlUsbAdapter.cpp
+    third_party/devourer/src/WiFiDriver.cpp
 )
 
 set_source_files_properties(
@@ -69,12 +82,20 @@ set_source_files_properties(
 
 target_include_directories(android_gs_core PRIVATE
     .
+    third_party/include
+    third_party/devourer/src
+    third_party/devourer/hal
     ../../../../../components_gs
     ../../../../../components_gs/shared
     ../../../../../components_gs/utils
     ../../../../../components_gs/imgui
     ../../../../../components_gs/imgui/backends
     ../../../../../components/common
+)
+
+add_library(libusb_prebuilt SHARED IMPORTED)
+set_target_properties(libusb_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/prebuilt/${ANDROID_ABI}/libusb1.0.so
 )
 
 target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2)
@@ -88,5 +109,6 @@ target_link_libraries(android_gs_core
     ${android-lib}
     ${egl-lib}
     ${gles-lib}
+    libusb_prebuilt
     ${log-lib}
 )
