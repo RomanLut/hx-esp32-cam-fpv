@@ -79,6 +79,8 @@ constexpr const char* kNativeLogTag = "AndroidNativeBridge";
 
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
 
+struct NativeHandle;
+
 struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)

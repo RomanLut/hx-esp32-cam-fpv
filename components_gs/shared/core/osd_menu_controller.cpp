@@ -432,7 +432,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
     const bool vr_mode = s_groundstation_config.vrMode;
     const float primary_width = vr_mode ? (screenSize.x * 0.5f) : screenSize.x;
     const auto primary_layout = offsetMenuLayout(
-        gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, false, 29.0f),
+        gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, true, 29.0f),
         0.0f);
 
     drawMenuWindow("OSD_MENU", primary_layout, config, DrawMode::Interactive);
@@ -450,7 +450,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
     if (vr_mode)
     {
         const auto clone_layout = offsetMenuLayout(
-            gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, false, 29.0f),
+            gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, true, 29.0f),
             primary_width);
         drawMenuWindow("OSD_MENU_VR_CLONE",
                        clone_layout,

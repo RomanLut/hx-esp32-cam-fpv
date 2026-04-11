@@ -13,8 +13,10 @@
 //===================================================================================
 // Implements the Android APFPV transport adapter used by the native bridge.
 // Packet flow:
-// - The UDP backend thread receives APFPV transport packets from the camera and forwards
-//   each packet immediately through the native `processTransportPacket` callback.
+// - The UDP backend thread receives APFPV transport packets from the camera and enqueues
+//   them into a bounded native packet queue as fast as possible.
+// - A dedicated native packet-processing worker drains that queue in order, then calls
+//   the shared `processTransportPacket` callback for each queued transport packet.
 // - That callback updates shared transport counters, pushes the packet into the shared
 //   RX FEC block decoder, and drains any fully decoded transport payloads right away.
 // - Every decoded payload is passed through the shared GS session/event pipeline, which

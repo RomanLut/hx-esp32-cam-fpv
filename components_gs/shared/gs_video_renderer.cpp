@@ -1074,6 +1074,7 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
+    io.FontGlobalScale = kLinuxMenuFontGlobalScale * gs::menu::imgui::calcOsdScale(static_cast<float>(m_surface_height));
     io.DeltaTime = 1.0f / 60.0f;
     gs::mcp::drainInjectedKeysToImGui();
     m_touch_action = {};

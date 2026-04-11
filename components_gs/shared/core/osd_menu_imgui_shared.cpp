@@ -9,8 +9,6 @@ namespace gs::menu::imgui
 namespace
 {
 
-constexpr float kLinuxMenuRefWidth = 1280.0f;
-constexpr float kLinuxMenuRefHeight = 720.0f;
 constexpr float kLinuxMenuWindowWidth = 500.0f;
 constexpr float kLinuxMenuWindowHeight = 600.0f;
 constexpr float kLinuxMenuButtonWidth = 442.0f;
@@ -25,12 +23,12 @@ constexpr float kLinuxMenuGapSmall = 8.0f;
 // Computes the UI scale factor to fit the reference menu size onto the surface.
 float computeScale(float surface_width, float surface_height, bool scale_to_surface)
 {
-    if (!scale_to_surface || surface_width <= 0.0f || surface_height <= 0.0f)
+    if (!scale_to_surface || surface_height <= 0.0f)
     {
         return 1.0f;
     }
 
-    return std::min(surface_width / kLinuxMenuRefWidth, surface_height / kLinuxMenuRefHeight);
+    return calcOsdScale(surface_height);
 }
 
 //===================================================================================

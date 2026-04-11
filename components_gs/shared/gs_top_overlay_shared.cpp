@@ -8,6 +8,7 @@
 
 #include "gs_runtime_state.h"
 #include "core/osd_menu_common.h"
+#include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
 #include "utils/utils.h"
 
@@ -34,6 +35,7 @@ struct OverlayChipSpec
 // Draws the top overlay chips in a single horizontal strip.
 float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y)
 {
+    const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
     const float resolved_height = std::max(20.0f, ImGui::GetIO().DisplaySize.y * 0.04f);
     float x = 0.0f;
 
@@ -46,7 +48,7 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
         }
 
         const ImVec2 text_size = ImGui::CalcTextSize(chip.text.c_str());
-        const float chip_width = chip.width > 0.0f ? chip.width : std::max(44.0f, 16.0f + text_size.x);
+        const float chip_width = chip.width > 0.0f ? chip.width * osd_scale : std::max(44.0f, 16.0f + text_size.x);
         const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
                                      : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
 
@@ -59,7 +61,7 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
         ImGui::PopStyleColor(3);
         ImGui::PopID();
 
-        x += chip_width + kOverlayChipGap;
+        x += chip_width + kOverlayChipGap * osd_scale;
     }
 
     return resolved_height;

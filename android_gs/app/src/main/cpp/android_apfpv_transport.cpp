@@ -5,7 +5,9 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -19,56 +21,8 @@ namespace
 {
 
 constexpr const char* kAndroidApfpvLogTag = "AndroidAPFPVTransport";
-
-//===================================================================================
-//===================================================================================
-// Logs when Android physically sends an APFPV config transport packet whose channel
-// differs from the previously logged value so menu-triggered channel changes can be
-// traced all the way to the UDP sendto() call without flooding logcat every 250 ms.
-void logConfigTransportSendIfNeeded(const std::vector<uint8_t>& packet, ssize_t sent)
-{
-    static uint32_t s_last_logged_block_index = 0;
-    static uint8_t s_last_logged_packet_index = 0;
-    static uint8_t s_last_logged_channel = 0;
-    static bool s_last_logged_channel_valid = false;
-
-    if (sent <= 0 || packet.size() < (sizeof(Packet_Header) + sizeof(Ground2Air_Config_Packet)))
-    {
-        return;
-    }
-
-    const auto* transport_header = reinterpret_cast<const Packet_Header*>(packet.data());
-    const auto* config_packet =
-        reinterpret_cast<const Ground2Air_Config_Packet*>(packet.data() + sizeof(Packet_Header));
-    if (config_packet->type != Ground2Air_Header::Type::Config)
-    {
-        return;
-    }
-
-    const uint8_t channel = config_packet->dataChannel.wifi_channel;
-    if (s_last_logged_channel_valid &&
-        s_last_logged_channel == channel &&
-        s_last_logged_block_index == transport_header->block_index &&
-        s_last_logged_packet_index == transport_header->packet_index)
-    {
-        return;
-    }
-
-    s_last_logged_channel = channel;
-    s_last_logged_block_index = transport_header->block_index;
-    s_last_logged_packet_index = transport_header->packet_index;
-    s_last_logged_channel_valid = true;
-
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidApfpvLogTag,
-                        "udp_send config channel=%u air=%u gs=%u block=%u packet=%u sent=%zd",
-                        static_cast<unsigned int>(channel),
-                        static_cast<unsigned int>(config_packet->airDeviceId),
-                        static_cast<unsigned int>(config_packet->gsDeviceId),
-                        static_cast<unsigned int>(transport_header->block_index),
-                        static_cast<unsigned int>(transport_header->packet_index),
-                        sent);
-}
+constexpr int kAndroidApfpvReceiveBufferSizeBytes = 256 * 1024;
+constexpr size_t kAndroidApfpvMaxQueuedPackets = 2048;
 
 }
 
@@ -509,6 +463,35 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEPORT, &reuse_opt, sizeof(reuse_opt));
 #endif
 
+    // Android socket defaults vary by device/kernel. Pin the receive buffer so short
+    // packet-processing stalls have more room before the kernel starts dropping bursts.
+    int receive_buffer_size = kAndroidApfpvReceiveBufferSizeBytes;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer_size, sizeof(receive_buffer_size)) != 0)
+    {
+        __android_log_print(ANDROID_LOG_WARN,
+                            kAndroidApfpvLogTag,
+                            "setsockopt SO_RCVBUF=%d failed: %s",
+                            receive_buffer_size,
+                            std::strerror(errno));
+    }
+    else
+    {
+        int effective_receive_buffer_size = 0;
+        socklen_t effective_receive_buffer_size_len = sizeof(effective_receive_buffer_size);
+        if (getsockopt(socket_fd,
+                       SOL_SOCKET,
+                       SO_RCVBUF,
+                       &effective_receive_buffer_size,
+                       &effective_receive_buffer_size_len) == 0)
+        {
+            __android_log_print(ANDROID_LOG_INFO,
+                                kAndroidApfpvLogTag,
+                                "SO_RCVBUF requested=%d effective=%d",
+                                receive_buffer_size,
+                                effective_receive_buffer_size);
+        }
+    }
+
     sockaddr_in local_address = {};
     local_address.sin_family = AF_INET;
     local_address.sin_port = htons(static_cast<uint16_t>(m_udp_local_port));
@@ -544,6 +527,45 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     uint64_t frame_count_start = callbacks.submittedFrameCount ? callbacks.submittedFrameCount() : 0;
     auto stats_window_start = ClockType::now();
     auto next_control_send = ClockType::now();
+    std::mutex queued_packet_mutex;
+    std::condition_variable queued_packet_cv;
+    std::deque<std::vector<uint8_t>> queued_packets;
+    std::atomic<bool> packet_worker_exit = false;
+    std::atomic<uint32_t> dropped_queued_packets = 0;
+
+    // The UDP receive thread should stay close to recvfrom() so Android scheduler jitter
+    // does not immediately turn into kernel-buffer loss. A separate worker keeps the
+    // shared FEC/session processing off the socket-consumption critical path.
+    std::thread packet_worker_thread([&]()
+    {
+        while (true)
+        {
+            std::vector<uint8_t> queued_packet;
+            {
+                std::unique_lock<std::mutex> lock(queued_packet_mutex);
+                queued_packet_cv.wait(lock, [&]()
+                {
+                    return packet_worker_exit.load() || !queued_packets.empty();
+                });
+                if (packet_worker_exit.load() && queued_packets.empty())
+                {
+                    break;
+                }
+                if (queued_packets.empty())
+                {
+                    continue;
+                }
+
+                queued_packet = std::move(queued_packets.front());
+                queued_packets.pop_front();
+            }
+
+            if (!queued_packet.empty() && callbacks.processTransportPacket)
+            {
+                callbacks.processTransportPacket(queued_packet.data(), queued_packet.size());
+            }
+        }
+    });
 
     while (!udpStopRequested())
     {
@@ -561,7 +583,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
                                                 0,
                                                 addrinfo_result->ai_addr,
                                                 static_cast<socklen_t>(addrinfo_result->ai_addrlen));
-                    logConfigTransportSendIfNeeded(packet, sent);
+                    (void)sent;
                 }
             }
             next_control_send = now + std::chrono::milliseconds(250);
@@ -583,9 +605,26 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
             {
                 __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "udp_first_packet size=%zd", received);
             }
-            if (callbacks.processTransportPacket)
+
             {
-                callbacks.processTransportPacket(rx_buffer.data(), static_cast<size_t>(received));
+                bool dropped_packet = false;
+                {
+                    std::lock_guard<std::mutex> lock(queued_packet_mutex);
+                    if (queued_packets.size() >= kAndroidApfpvMaxQueuedPackets)
+                    {
+                        dropped_packet = true;
+                        dropped_queued_packets.fetch_add(1);
+                    }
+                    else
+                    {
+                        queued_packets.emplace_back(rx_buffer.begin(), rx_buffer.begin() + received);
+                    }
+                }
+
+                if (!dropped_packet)
+                {
+                    queued_packet_cv.notify_one();
+                }
             }
         }
         else if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
@@ -610,6 +649,13 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
             frame_count_start = frame_count_now;
             stats_window_start = stats_now;
         }
+    }
+
+    packet_worker_exit.store(true);
+    queued_packet_cv.notify_all();
+    if (packet_worker_thread.joinable())
+    {
+        packet_worker_thread.join();
     }
 
     close(socket_fd);

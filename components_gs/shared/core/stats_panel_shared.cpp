@@ -1,4 +1,5 @@
 #include "core/stats_panel_shared.h"
+#include "core/osd_menu_imgui_shared.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -50,9 +51,11 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     const int received_frames = ground_stats.receivedCompletedFrames;
     const int restored_frames = ground_stats.restoredCompletedFrames;
 
+    const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
+
     ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
     std::snprintf(overlay, sizeof(overlay), "Frames %d+%d", received_frames, restored_frames);
-    ImGui::PlotHistogram(overlay, Stats::getter, const_cast<Stats*>(&frame_stats), frame_stats.count(), 0, nullptr, 0, 4.0f, ImVec2(0, 24));
+    ImGui::PlotHistogram(overlay, Stats::getter, const_cast<Stats*>(&frame_stats), frame_stats.count(), 0, nullptr, 0, 4.0f, ImVec2(0, 24.0f * osd_scale));
 
     std::snprintf(
         overlay,
@@ -61,30 +64,30 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
         static_cast<int>(frame_parts_stats.max()),
         received_parts,
         restored_parts);
-    ImGui::PlotHistogram("Parts", Stats::getter, const_cast<Stats*>(&frame_parts_stats), frame_parts_stats.count(), 0, overlay, 0, frame_parts_stats.average() * 2 + 1.0f, ImVec2(0, 60));
-    ImGui::PlotHistogram("Period", Stats::getter, const_cast<Stats*>(&frame_time_stats), frame_time_stats.count(), 0, nullptr, 0, 100.0f, ImVec2(0, 60));
+    ImGui::PlotHistogram("Parts", Stats::getter, const_cast<Stats*>(&frame_parts_stats), frame_parts_stats.count(), 0, overlay, 0, frame_parts_stats.average() * 2 + 1.0f, ImVec2(0, 60.0f * osd_scale));
+    ImGui::PlotHistogram("Period", Stats::getter, const_cast<Stats*>(&frame_time_stats), frame_time_stats.count(), 0, nullptr, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
     std::snprintf(overlay, sizeof(overlay), "cur: %d", current_quality);
-    ImGui::PlotHistogram("Quality", Stats::getter, const_cast<Stats*>(&frame_quality_stats), frame_quality_stats.count(), 0, overlay, 0, 64.0f, ImVec2(0, 60));
+    ImGui::PlotHistogram("Quality", Stats::getter, const_cast<Stats*>(&frame_quality_stats), frame_quality_stats.count(), 0, overlay, 0, 64.0f, ImVec2(0, 60.0f * osd_scale));
 
     std::snprintf(overlay, sizeof(overlay), "avg: %d KB/sec", static_cast<int>(data_size_stats.average() + 0.5f) * 10);
-    ImGui::PlotHistogram("DataSize", Stats::getter, const_cast<Stats*>(&data_size_stats), data_size_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+    ImGui::PlotHistogram("DataSize", Stats::getter, const_cast<Stats*>(&data_size_stats), data_size_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
     std::snprintf(overlay, sizeof(overlay), "%d%%", wifi_queue_max);
-    ImGui::PlotHistogram("Wifi Load", Stats::getter, const_cast<Stats*>(&queue_usage_stats), queue_usage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60));
+    ImGui::PlotHistogram("Wifi Load", Stats::getter, const_cast<Stats*>(&queue_usage_stats), queue_usage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
     ImGui::PopItemWidth();
 
-    const float table_width = 420.0f;
+    const float table_width = 420.0f * osd_scale;
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - table_width);
-    ImGui::SetCursorPosY(10);
+    ImGui::SetCursorPosY(10.0f * osd_scale);
 
-    if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f)))
+    if (ImGui::BeginTable("table1", 2, 0, ImVec2(table_width, 24.0f * osd_scale)))
     {
         ImGuiStyle& style = ImGui::GetStyle();
         const ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg]);
 
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f * osd_scale);
 
         auto row = [&](const char* name, auto draw_value)
         {
@@ -133,15 +136,15 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
         ImGui::EndTable();
     }
 
-    ImGui::SetCursorPosX(10);
-    ImGui::SetCursorPosY(340);
+    ImGui::SetCursorPosX(10.0f * osd_scale);
+    ImGui::SetCursorPosY(340.0f * osd_scale);
 
-    if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 220.0f)))
+    if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 220.0f * osd_scale)))
     {
         ImGuiStyle& style = ImGui::GetStyle();
         const ImU32 c = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_FrameBg]);
 
-        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 270.0f * osd_scale);
 
         auto row = [&](const char* name, auto draw_value)
         {

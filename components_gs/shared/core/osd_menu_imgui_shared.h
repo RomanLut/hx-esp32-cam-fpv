@@ -1,9 +1,23 @@
 #pragma once
 
 #include "imgui.h"
+#include <algorithm>
 
 namespace gs::menu::imgui
 {
+
+constexpr float kOsdRefHeight = 720.0f;
+
+//===================================================================================
+//===================================================================================
+// Returns the OSD UI scale coefficient for the given surface height.
+// Values above 1.0 upscale the UI on high-resolution screens;
+// values below 1.0 shrink it on small screens.
+inline float calcOsdScale(float surface_height)
+{
+    return std::max(1.0f, surface_height / kOsdRefHeight);
+}
+
 
 //===================================================================================
 //===================================================================================

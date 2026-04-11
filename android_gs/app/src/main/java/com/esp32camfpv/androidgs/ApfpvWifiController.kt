@@ -35,6 +35,10 @@ class ApfpvWifiController(
         activity.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val connectivityManager =
         activity.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val wifiStreamingLock =
+        wifiManager.createWifiLock(getWifiStreamingLockMode(), "$LOG_TAG:Streaming").apply {
+            setReferenceCounted(false)
+        }
 
     private val permissionLauncher =
         activity.registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -71,6 +75,7 @@ class ApfpvWifiController(
         updateLinkState(NativeCore.LINK_STATE_NONE)
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
+        releaseWifiStreamingLock()
         bindToNetwork(null)
     }
 
@@ -78,6 +83,7 @@ class ApfpvWifiController(
         val handle = currentNativeHandle()
         if (handle == 0L) {
             releaseRequestedNetwork()
+            releaseWifiStreamingLock()
             bindToNetwork(null)
             return
         }
@@ -89,9 +95,12 @@ class ApfpvWifiController(
             updateLinkState(NativeCore.LINK_STATE_NONE)
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
+            releaseWifiStreamingLock()
             bindToNetwork(null)
             return
         }
+
+        acquireWifiStreamingLock()
 
         if (!hasRequiredPermissions()) {
             requestRequiredPermissions()
@@ -337,6 +346,24 @@ class ApfpvWifiController(
         connectivityManager.bindProcessToNetwork(network)
     }
 
+    private fun acquireWifiStreamingLock() {
+        if (wifiStreamingLock.isHeld) {
+            return
+        }
+
+        wifiStreamingLock.acquire()
+        Log.i(LOG_TAG, "Acquired APFPV Wi-Fi streaming lock")
+    }
+
+    private fun releaseWifiStreamingLock() {
+        if (!wifiStreamingLock.isHeld) {
+            return
+        }
+
+        wifiStreamingLock.release()
+        Log.i(LOG_TAG, "Released APFPV Wi-Fi streaming lock")
+    }
+
     private fun releaseRequestedNetwork() {
         val callback = requestedNetworkCallback ?: return
         try {
@@ -429,5 +456,14 @@ class ApfpvWifiController(
         const val LOG_TAG = "ApfpvWifiController"
         const val CAMERA_SSID_PREFIX = "esp32cam-fpv-"
         const val SCAN_INTERVAL_MS = 3_000L
+    }
+
+    private fun getWifiStreamingLockMode(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            @Suppress("DEPRECATION")
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
     }
 }
