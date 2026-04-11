@@ -19,6 +19,23 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_data_rate_sample_tp = now;
     }
 
+    // Accumulate decode and upload stats every call so the 1-second snapshot
+    // reflects the full window instead of only the last frame's slice.
+    if (params.decode_stats.decoded_count > 0)
+    {
+        core.acc_decode_count += params.decode_stats.decoded_count;
+        core.acc_decode_total_ms += params.decode_stats.decoded_total_ms;
+        core.acc_decode_min_ms = std::min(core.acc_decode_min_ms, params.decode_stats.decoded_min_ms);
+        core.acc_decode_max_ms = std::max(core.acc_decode_max_ms, params.decode_stats.decoded_max_ms);
+    }
+    if (params.renderer_stats.upload_count > 0)
+    {
+        core.acc_upload_count += params.renderer_stats.upload_count;
+        core.acc_upload_total_ms += params.renderer_stats.upload_total_ms;
+        core.acc_upload_min_ms = std::min(core.acc_upload_min_ms, params.renderer_stats.upload_min_ms);
+        core.acc_upload_max_ms = std::max(core.acc_upload_max_ms, params.renderer_stats.upload_max_ms);
+    }
+
     if (now - core.last_periodic_stats_tp >= std::chrono::milliseconds(1000))
     {
         const gs::core::LinkStatusSnapshot link_status = core.session.consumeLinkStatus(now);
@@ -34,14 +51,23 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(params.decode_stats.broken_frames, 255));
 
         core.last_ground_stats = core.gs_stats;
-        core.last_ground_stats.decodedJpegCount = static_cast<int>(params.decode_stats.decoded_count);
-        core.last_ground_stats.decodedJpegTimeTotalMS = static_cast<int>(params.decode_stats.decoded_total_ms);
-        core.last_ground_stats.decodedJpegTimeMinMS = static_cast<int>(params.decode_stats.decoded_min_ms);
-        core.last_ground_stats.decodedJpegTimeMaxMS = static_cast<int>(params.decode_stats.decoded_max_ms);
-        core.last_ground_stats.textureUploadCount = static_cast<int>(params.renderer_stats.upload_count);
-        core.last_ground_stats.textureUploadTimeTotalMS = static_cast<int>(params.renderer_stats.upload_total_ms);
-        core.last_ground_stats.textureUploadTimeMinMS = static_cast<int>(params.renderer_stats.upload_min_ms);
-        core.last_ground_stats.textureUploadTimeMaxMS = static_cast<int>(params.renderer_stats.upload_max_ms);
+        core.last_ground_stats.decodedJpegCount = static_cast<int>(core.acc_decode_count);
+        core.last_ground_stats.decodedJpegTimeTotalMS = static_cast<int>(core.acc_decode_total_ms);
+        core.last_ground_stats.decodedJpegTimeMinMS = static_cast<int>(core.acc_decode_count > 0 ? core.acc_decode_min_ms : 0);
+        core.last_ground_stats.decodedJpegTimeMaxMS = static_cast<int>(core.acc_decode_max_ms);
+        core.last_ground_stats.textureUploadCount = static_cast<int>(core.acc_upload_count);
+        core.last_ground_stats.textureUploadTimeTotalMS = static_cast<int>(core.acc_upload_total_ms);
+        core.last_ground_stats.textureUploadTimeMinMS = static_cast<int>(core.acc_upload_count > 0 ? core.acc_upload_min_ms : 0);
+        core.last_ground_stats.textureUploadTimeMaxMS = static_cast<int>(core.acc_upload_max_ms);
+
+        core.acc_decode_count = 0;
+        core.acc_decode_total_ms = 0;
+        core.acc_decode_min_ms = 9999;
+        core.acc_decode_max_ms = 0;
+        core.acc_upload_count = 0;
+        core.acc_upload_total_ms = 0;
+        core.acc_upload_min_ms = 9999;
+        core.acc_upload_max_ms = 0;
         core.last_ground_stats.discardedFramesAssemblerPoolOverflow =
             static_cast<int>(assembler_stats.discarded_frames);
         core.last_ground_stats.discardedFramesDecoderInput =

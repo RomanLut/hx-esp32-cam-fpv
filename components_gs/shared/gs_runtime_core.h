@@ -69,6 +69,17 @@ struct GsRuntimeCore
     int restored_transport_packets = 0;
     int restored_video_parts = 0;
     Stats data_size_stats = {};
+
+    // Decode and upload stats accumulated across every frame, flushed once per second.
+    uint32_t acc_decode_count = 0;
+    uint32_t acc_decode_total_ms = 0;
+    uint32_t acc_decode_min_ms = 9999;
+    uint32_t acc_decode_max_ms = 0;
+    uint32_t acc_upload_count = 0;
+    uint32_t acc_upload_total_ms = 0;
+    uint32_t acc_upload_min_ms = 9999;
+    uint32_t acc_upload_max_ms = 0;
+
     Clock::time_point last_periodic_stats_tp = Clock::now();
     Clock::time_point last_data_rate_sample_tp = Clock::now();
     uint64_t last_udp_packets_sample = 0;
