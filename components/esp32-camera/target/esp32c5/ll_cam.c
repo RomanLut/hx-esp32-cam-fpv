@@ -50,8 +50,6 @@ static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_uni
     uint32_t received_bytes = edata->recv_bytes;
     BaseType_t HPTaskAwoken = pdFALSE;
 
-    pk++;
-
     //send event to cam_task
     cam_event_t event = { .kind = CAM_PARLIO_DATA, .data = data, .length = (uint16_t)received_bytes, .timestamp = esp_timer_get_time() };
     ll_cam_send_event(cam_obj, &event, &HPTaskAwoken);
