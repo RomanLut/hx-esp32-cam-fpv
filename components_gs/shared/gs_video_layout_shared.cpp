@@ -4,9 +4,9 @@
 
 namespace
 {
-constexpr float kTouchNavButtonSize = 72.0f;
-constexpr float kTouchNavGap = 10.0f;
-constexpr float kTouchNavMargin = 18.0f;
+constexpr float kTouchNavButtonSize = 108.0f;
+constexpr float kTouchNavGap = 15.0f;
+constexpr float kTouchNavMargin = 27.0f;
 }
 
 namespace gs::render

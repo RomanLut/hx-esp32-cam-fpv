@@ -76,6 +76,7 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     std::snprintf(overlay, sizeof(overlay), "%d%%", wifi_queue_max);
     ImGui::PlotHistogram("Wifi Load", Stats::getter, const_cast<Stats*>(&queue_usage_stats), queue_usage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
+    const float graphs_bottom_y = ImGui::GetCursorPosY();
     ImGui::PopItemWidth();
 
     const float table_width = 420.0f * osd_scale;
@@ -137,7 +138,7 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     }
 
     ImGui::SetCursorPosX(10.0f * osd_scale);
-    ImGui::SetCursorPosY(340.0f * osd_scale);
+    ImGui::SetCursorPosY(graphs_bottom_y + 3.0f);
 
     if (ImGui::BeginTable("table2", 2, 0, ImVec2(table_width, 220.0f * osd_scale)))
     {
