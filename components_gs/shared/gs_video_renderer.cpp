@@ -7,6 +7,7 @@
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/stats_panel_shared.h"
+#include "gs_recordings_storage.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_video_layout_shared.h"
@@ -589,6 +590,14 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     {
         return {MenuActionKind::Activate, -1};
     }
+    if (pointInRect(x, y, m_nav_gs_rec_bounds))
+    {
+        return {MenuActionKind::GsRec, -1};
+    }
+    if (pointInRect(x, y, m_nav_air_rec_bounds))
+    {
+        return {MenuActionKind::AirRec, -1};
+    }
 
     for (size_t index = 0; index < m_menu_item_bounds.size(); ++index)
     {
@@ -1044,6 +1053,8 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     menu_ui.touch_nav_enabled = true;
     menu_ui.surface_width = static_cast<float>(m_surface_width);
     menu_ui.surface_height = static_cast<float>(m_surface_height);
+    menu_ui.gs_recording = (s_recordingsStorage != nullptr) && s_recordingsStorage->isRecording();
+    menu_ui.air_recording = m_overlay_input.air_record;
     const float layout_width = m_vr_mode ? (menu_ui.surface_width * 0.5f) : menu_ui.surface_width;
     const gs::render::NavPadLayout nav =
         gs::render::buildTouchNavPadLayout(static_cast<int>(layout_width), static_cast<int>(menu_ui.surface_height));
@@ -1051,6 +1062,8 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
     m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
     m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
+    m_nav_air_rec_bounds = {nav.margin, nav.mid_y, nav.size, nav.size};
+    m_nav_gs_rec_bounds = {nav.margin, nav.down_y, nav.size, nav.size};
     drawRuntimeMenuOverlay(menu_ui);
     if (m_menu_mutex != nullptr)
     {

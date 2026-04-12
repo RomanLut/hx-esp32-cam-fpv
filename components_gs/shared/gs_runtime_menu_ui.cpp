@@ -116,6 +116,25 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
         draw_nav_pad(layout_width, false);
     }
 
+    {
+        const ImVec4 rec_active_bg = toImGuiColor(0.55f, 0.10f, 0.10f, 0.92f);
+        const ImVec4 rec_idle_bg   = toImGuiColor(0.20f, 0.20f, 0.20f, 0.92f);
+
+        auto draw_rec_button = [&](const char* label, float x, float y, bool recording)
+        {
+            const ImVec4& bg = recording ? rec_active_bg : rec_idle_bg;
+            ImGui::SetCursorPos(ImVec2(x, y));
+            ImGui::PushStyleColor(ImGuiCol_Button, bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
+            ImGui::Button(label, nav_size);
+            ImGui::PopStyleColor(3);
+        };
+
+        draw_rec_button("AIR\nREC", nav.margin, nav.mid_y,  state.air_recording);
+        draw_rec_button("GS\nREC",  nav.margin, nav.down_y, state.gs_recording);
+    }
+
     ImGui::End();
     ImGui::PopStyleVar(2);
 }

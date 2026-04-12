@@ -27,6 +27,7 @@
 #include "android_jni_shared.h"
 #include "android_osd_font_storage.h"
 #include "android_recordings_storage.h"
+#include "../../../../../components/common/avi.h"
 #include "android_runtime_platform_services.h"
 #include "android_transport_manager.h"
 #include "gs_video_renderer.h"
@@ -93,6 +94,7 @@ struct NativeHandle
         s_recordingsStorage = &getAndroidRecordingsStorage();
         s_runtimeCore.resetState(gs_device_id_value);
         loadSharedSettings(s_runtimeCore.gs_device_id);
+        prepAviBuffers();
         s_recordingsStorage->refreshGroundStorageStatus();
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
         s_runtimeCore.gs_device_id = s_groundstation_config.deviceId;
@@ -912,6 +914,15 @@ bool handleTapLocked(NativeHandle& handle,
         return false;
     case GsVideoRenderer::MenuActionKind::Activate:
         handle.renderer.queueKeyPress(ImGuiKey_RightArrow);
+        return false;
+    case GsVideoRenderer::MenuActionKind::GsRec:
+        if (s_recordingsStorage != nullptr)
+        {
+            s_recordingsStorage->toggleRecording(0, 0, "touch_btn");
+        }
+        return false;
+    case GsVideoRenderer::MenuActionKind::AirRec:
+        s_ground2air_config_packet.misc.air_record_btn++;
         return false;
     default:
         return true;

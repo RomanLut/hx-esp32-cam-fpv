@@ -50,6 +50,8 @@ public:
         Down,
         Back,
         Activate,
+        GsRec,
+        AirRec,
     };
 
 //===================================================================================
@@ -243,6 +245,8 @@ private:
     Rect m_nav_down_bounds;
     Rect m_nav_left_bounds;
     Rect m_nav_right_bounds;
+    Rect m_nav_gs_rec_bounds;
+    Rect m_nav_air_rec_bounds;
     bool m_menu_visible = false;
     bool m_open_menu_requested = false;
     bool m_close_menu_requested = false;
