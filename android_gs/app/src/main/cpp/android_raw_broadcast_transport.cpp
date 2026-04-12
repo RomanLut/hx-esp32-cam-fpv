@@ -199,10 +199,21 @@ void AndroidRawBroadcastTransport::activate()
 
 //===================================================================================
 //===================================================================================
-// Deactivates Android raw-broadcast mode and releases any attached USB adapter.
+// Deactivates Android raw-broadcast mode and signals the USB adapter to stop.
+// Does NOT join the rx thread — deactivate() is called from the OSD menu render path
+// which holds handle->mutex, and the rx thread callback also acquires handle->mutex.
+// Joining here would deadlock. The actual thread join and libusb teardown are deferred
+// to stopUsbAdapter(), which is called from Java (without handle->mutex held) or the destructor.
 void AndroidRawBroadcastTransport::deactivate()
 {
-    stopUsbAdapter();
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_transport_packet_callback = nullptr;
+        if (m_device)
+        {
+            m_device->should_stop = true;
+        }
+    }
     setLinkStateDetailText({});
 }
 
@@ -467,8 +478,12 @@ void AndroidRawBroadcastTransport::contributeGroundStats(GSStats& stats)
     }
     stats.rssiDbm[1] = 0;
     stats.noiseFloorDbm = 0;
-    stats.inPacketCounterAll[0] += static_cast<uint16_t>(consumeAllFrameCount());
-    stats.inPacketCounter[0] += static_cast<uint16_t>(consumeFilteredFrameCount());
+    const uint32_t all_frames = consumeAllFrameCount();
+    const uint32_t filtered_frames = consumeFilteredFrameCount();
+    // Filtered frames are already counted per-packet by processTransportPacket via the callback.
+    // Only add the frames that did NOT pass the filter (unmatched MAC / packet filter rejects)
+    // so that inPacketCounterAll reflects total frames seen by the radio without double-counting.
+    stats.inPacketCounterAll[0] += static_cast<uint16_t>(all_frames - filtered_frames);
 }
 
 //===================================================================================
