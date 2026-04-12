@@ -89,7 +89,7 @@ NavPadLayout buildTouchNavPadLayout(int surface_width, int surface_height)
     layout.margin = kTouchNavMargin * control_scale;
     layout.right_x = static_cast<float>(surface_width) - layout.margin - layout.size;
     layout.left_x = layout.right_x - layout.size - layout.gap - layout.size;
-    layout.center_x = layout.left_x + layout.size + layout.gap;
+    layout.center_x = layout.left_x + layout.size + layout.gap * 0.5f;
     layout.down_y = static_cast<float>(surface_height) - layout.margin - layout.size;
     layout.mid_y = layout.down_y - layout.gap - layout.size;
     layout.up_y = layout.mid_y - layout.gap - layout.size;
