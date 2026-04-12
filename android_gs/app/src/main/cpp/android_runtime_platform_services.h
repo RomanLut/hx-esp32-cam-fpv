@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../../../components/common/Clock.h"
+#include "core/transport.h"
 #include "gs_runtime_platform_services.h"
 
 #include <atomic>
@@ -43,3 +44,9 @@ void bindAndroidRuntimeRenderer(GsVideoRenderer* renderer);
 //===================================================================================
 // Consumes the deferred Android renderer invalidation request flag.
 bool consumeAndroidRendererInvalidateRequest();
+
+//===================================================================================
+//===================================================================================
+// Retunes the RTL8812AU adapter once the air unit has had time to switch channels.
+// Must be called each background loop tick when raw-broadcast is active.
+void processPendingRawBroadcastChannelChange(gs::core::ITransport& transport);

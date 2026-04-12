@@ -1016,6 +1016,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                         handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning())
                     {
                         pumpSharedControlPacketLocked(*handle, Clock::now());
+                        processPendingRawBroadcastChannelChange(
+                            handle->transport_manager.rawBroadcastTransport());
                     }
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));

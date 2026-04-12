@@ -22,6 +22,8 @@ namespace
 
 constexpr const char* kAndroidRuntimeLogTag = "AndroidRuntime";
 
+Clock::time_point s_pending_channel_change_tp = Clock::now() + std::chrono::hours(10000);
+
 //===================================================================================
 //===================================================================================
 // Owns the Android runtime platform services instance for explicit shared binding.
@@ -188,6 +190,11 @@ void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Co
     applyWifiChannelToSession(config);
     s_runtimeCore.config_packet = config;
     commitGround2AirConfig(s_runtimeCore.config_packet);
+
+    if (currentTransportKind() == gs::core::TransportKind::RawBroadcast)
+    {
+        s_pending_channel_change_tp = Clock::now() + std::chrono::milliseconds(3000);
+    }
 }
 
 //===================================================================================
@@ -197,4 +204,34 @@ void AndroidRuntimePlatformServices::applyGroundStationTxPower(Ground2Air_Config
 {
     s_runtimeCore.config_packet = config;
     commitGround2AirConfig(s_runtimeCore.config_packet);
+}
+
+//===================================================================================
+//===================================================================================
+// Retunes the RTL8812AU adapter once the air unit has had time to switch channels.
+// Called each background loop tick: waits 3 s after a channel change for config
+// packets to reach the air unit, then defers until the link goes quiet (< 300 ms
+// since the last received packet), then applies the new channel to the adapter.
+void processPendingRawBroadcastChannelChange(gs::core::ITransport& transport)
+{
+    if (Clock::now() <= s_pending_channel_change_tp)
+    {
+        return;
+    }
+
+    const auto silence_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now() - s_runtimeCore.last_packet_tp).count();
+    if (silence_ms < 300)
+    {
+        s_pending_channel_change_tp = Clock::now() + std::chrono::milliseconds(3000);
+        return;
+    }
+
+    s_pending_channel_change_tp = Clock::now() + std::chrono::hours(10000);
+    __android_log_print(ANDROID_LOG_INFO,
+                        kAndroidRuntimeLogTag,
+                        "Applying deferred channel change to %d (silence=%lld ms)",
+                        s_groundstation_config.wifi_channel,
+                        static_cast<long long>(silence_ms));
+    transport.setChannel(s_groundstation_config.wifi_channel);
 }
