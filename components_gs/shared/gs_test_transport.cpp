@@ -17,7 +17,9 @@
 #include "crc.h"
 #include "packets.h"
 #include "frame_packets_debug.h"
+#include "gs_runtime_core.h"
 #include "gs_shared_state.h"
+#include "gs_stats.h"
 
 namespace
 {
@@ -77,6 +79,7 @@ void GSTestTransport::resetStreamState()
     m_pending_packets.clear();
     m_next_frame_tp = Clock::time_point::min();
     m_next_packet_tp = Clock::time_point::min();
+    m_next_stats_tp = Clock::time_point::min();
     m_frame_period = kTargetFramePeriod;
     m_packet_period = kTargetFramePeriod;
     m_next_frame_index = 1;
@@ -264,6 +267,15 @@ void GSTestTransport::encodePendingPackets(Clock::time_point now)
                                     now);
         }
 
+        const uint16_t block_packet_count =
+            static_cast<uint16_t>(m_effective_coding_k) + static_cast<uint16_t>(fec_count);
+        {
+            std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+            s_gs_stats.inPacketCounterAll[0] += block_packet_count;
+            s_gs_stats.inPacketCounter[0] += block_packet_count;
+            s_gs_stats.rssiDbm[0] = -50;
+        }
+
         for (uint8_t packet_index = 0; packet_index < m_effective_coding_k; ++packet_index)
         {
             m_pending_packets.pop_front();
@@ -401,6 +413,45 @@ void GSTestTransport::queueConnectConfigPacket()
 
 //===================================================================================
 //===================================================================================
+// Queues a simulated OSD/stats packet once per second to exercise the stats overlay.
+void GSTestTransport::queueStatsOsdPacket(Clock::time_point now)
+{
+    m_next_stats_tp = now + std::chrono::milliseconds(1000);
+
+    Air2Ground_OSD_Packet osd_packet = {};
+    osd_packet.type = Air2Ground_Header::Type::OSD;
+    osd_packet.size = sizeof(Air2Ground_OSD_Packet);
+    osd_packet.pong = 0;
+    osd_packet.version = PACKET_VERSION;
+    osd_packet.airDeviceId = kTestAirDeviceId;
+    osd_packet.gsDeviceId = currentGsDeviceId();
+
+    AirStats& stats = osd_packet.stats;
+    stats.rssiDbm = 50;             // -50 dBm
+    stats.noiseFloorDbm = 85;       // -85 dBm
+    stats.temperature = 45;         // degrees C
+    stats.captureFPS = 30;
+    stats.curr_quality = 40;
+    stats.wifi_queue_max = 20;
+    stats.wifi_queue_min = 5;
+    stats.curr_wifi_rate = static_cast<uint8_t>(WIFI_Rate::RATE_N_26M_MCS3);
+    {
+        std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
+        stats.outPacketRate = s_gs_stats.inPacketCounter[0];
+    }
+    stats.inPacketRate = 3;
+    stats.in_session = 1;
+    osd_packet.osd_enc_start = 0;
+    s_runtimeCore.session.addSentPackets(1);
+    sealFixedHeaderPacket(osd_packet);
+
+    std::vector<uint8_t> raw_packet(sizeof(osd_packet));
+    std::memcpy(raw_packet.data(), &osd_packet, sizeof(osd_packet));
+    m_pending_packets.push_back(std::move(raw_packet));
+}
+
+//===================================================================================
+//===================================================================================
 // Schedules transport packets for the next frame when the next 30 FPS slot is due.
 void GSTestTransport::scheduleDuePackets(Clock::time_point now)
 {
@@ -409,9 +460,20 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
         queueConnectConfigPacket();
     }
 
+    if (m_next_stats_tp == Clock::time_point::min() || now >= m_next_stats_tp)
+    {
+        queueStatsOsdPacket(now);
+    }
+
     if (m_next_frame_tp == Clock::time_point::min())
     {
         m_next_frame_tp = now;
+    }
+
+    // Skip past any missed frame slots so lateness does not accumulate into the next deadline.
+    while (m_next_frame_tp + kTargetFramePeriod < now)
+    {
+        m_next_frame_tp += kTargetFramePeriod;
     }
 
     if (now >= m_next_frame_tp && m_pending_packets.size() < m_effective_coding_k)
@@ -435,7 +497,7 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
             }
         }
 
-        m_next_frame_tp = now + kTargetFramePeriod;
+        m_next_frame_tp += kTargetFramePeriod;
         m_next_packet_tp = now;
     }
 }

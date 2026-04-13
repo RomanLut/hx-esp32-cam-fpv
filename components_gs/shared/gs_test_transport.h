@@ -28,6 +28,7 @@ private:
     void encodePendingPackets(Clock::time_point now);
     bool loadStaticJpeg();
     void queueConnectConfigPacket();
+    void queueStatsOsdPacket(Clock::time_point now);
     void scheduleDuePackets(Clock::time_point now);
     std::vector<std::vector<uint8_t>> buildFramePackets(uint32_t frame_index) const;
     uint16_t currentGsDeviceId() const;
@@ -37,6 +38,7 @@ private:
     std::deque<std::vector<uint8_t>> m_pending_packets;
     Clock::time_point m_next_frame_tp = Clock::time_point::min();
     Clock::time_point m_next_packet_tp = Clock::time_point::min();
+    Clock::time_point m_next_stats_tp = Clock::time_point::min();
     Clock::duration m_frame_period = std::chrono::microseconds(33333);
     Clock::duration m_packet_period = std::chrono::microseconds(33333);
     uint32_t m_next_frame_index = 1;
