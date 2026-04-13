@@ -59,6 +59,7 @@ private:
 
     mutable std::mutex m_mutex;
     std::atomic<bool> m_active = {false};
+    Clock::time_point m_activate_time = Clock::time_point::min();
     std::vector<uint8_t> m_radiotap_header;
     std::vector<uint8_t> m_tx_current_packet;
     std::vector<std::vector<uint8_t>> m_tx_block_packets;

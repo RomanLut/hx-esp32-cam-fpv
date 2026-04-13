@@ -192,6 +192,7 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
 // Activates Android raw-broadcast mode and updates the shared link-state banner.
 void AndroidRawBroadcastTransport::activate()
 {
+    m_activate_time = Clock::now();
     m_active = true;
 }
 
@@ -491,7 +492,11 @@ std::string AndroidRawBroadcastTransport::getTransportMessage() const
 {
     if (m_active && !isUsbAdapterRunning())
     {
-        return "RTL8812AU USB ADAPTER NOT FOUND!";
+        using namespace std::chrono_literals;
+        if (Clock::now() - m_activate_time >= 3s)
+        {
+            return "RTL8812AU USB ADAPTER NOT FOUND!";
+        }
     }
     return {};
 }

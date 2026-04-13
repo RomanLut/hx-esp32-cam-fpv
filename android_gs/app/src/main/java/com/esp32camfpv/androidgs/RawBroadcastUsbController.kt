@@ -130,7 +130,19 @@ class RawBroadcastUsbController(
             return
         }
 
-        stopCurrentAdapter(handle)
+        // Stop synchronously before opening the new connection.
+        // stopCurrentAdapter() launches stopRawBroadcastUsb() as a fire-and-forget coroutine on
+        // Dispatchers.Default, which races with the startRawBroadcastUsb() call below (also on
+        // Dispatchers.Default). If the stop wins the race after the start, it kills the freshly
+        // started adapter, leaving m_device null, the "NOT FOUND" message stuck, and activeDeviceName
+        // set so no retry ever fires.
+        val oldConnection = activeConnection
+        activeConnection = null
+        activeDeviceName = null
+        oldConnection?.close()
+        withContext(Dispatchers.Default) {
+            NativeCore.stopRawBroadcastUsb(handle)
+        }
 
         val connection = usbManager.openDevice(targetDevice)
         if (connection == null) {

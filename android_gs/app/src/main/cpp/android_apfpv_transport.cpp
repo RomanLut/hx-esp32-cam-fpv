@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "fec.h"
+#include "gs_runtime_state.h"
 
 namespace
 {
