@@ -15,7 +15,6 @@
 #include <utility>
 
 #include "fec.h"
-#include "gs_runtime_state.h"
 
 namespace
 {
@@ -54,8 +53,12 @@ void AndroidAPFPVTransport::deactivate()
     m_menu_search_active.store(false);
     m_menu_search_done.store(false);
     m_reconnect_requested.store(false);
+    m_has_active_camera.store(false);
+    {
+        std::lock_guard<std::mutex> lock(m_connecting_ssid_mutex);
+        m_connecting_ssid.clear();
+    }
     clearApfpvCameraRuntimeState();
-    setLinkState(LinkState::None);
 }
 
 //===================================================================================
@@ -67,7 +70,6 @@ bool AndroidAPFPVTransport::requestImmediateReconnect()
     m_menu_search_done.store(false);
     m_reconnect_requested.store(true);
     clearApfpvActiveCamera();
-    setLinkState(LinkState::LookingForWifiNetwork);
     return true;
 }
 
@@ -104,7 +106,6 @@ void AndroidAPFPVTransport::beginMenuSearchOrConnect()
     m_reconnect_requested.store(false);
     updateApfpvDiscoveredCameras({});
     clearApfpvActiveCamera();
-    setLinkState(LinkState::LookingForWifiNetwork);
 }
 
 //===================================================================================
@@ -213,7 +214,7 @@ void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received,
     m_restored_completed_frames = restored_completed_frames;
     if (packets_received > 0)
     {
-        setLinkState(LinkState::None);
+        m_udp_packets_seen.store(true);
     }
     m_udp_stats_log_count++;
     if ((m_udp_stats_log_count % 4U) == 1U)
@@ -432,8 +433,37 @@ bool AndroidAPFPVTransport::consumeReconnectRequest()
 //===================================================================================
 //===================================================================================
 // Updates shared Android APFPV search state from the latest Wi-Fi discovery snapshot.
-void AndroidAPFPVTransport::syncCameraState(size_t discovered_camera_count, bool has_active_camera)
+//===================================================================================
+//===================================================================================
+// Returns a user-facing connection progress string while the APFPV link is establishing.
+// Derives the message entirely from the state passed via syncCameraState.
+std::string AndroidAPFPVTransport::getTransportMessage() const
 {
+    {
+        std::lock_guard<std::mutex> lock(m_connecting_ssid_mutex);
+        if (!m_connecting_ssid.empty())
+        {
+            return "Connecting to WiFi network " + m_connecting_ssid + "...";
+        }
+    }
+    if (m_has_active_camera.load() && !m_udp_packets_seen.load())
+    {
+        return "Connecting to stream...";
+    }
+    return {};
+}
+
+//===================================================================================
+//===================================================================================
+void AndroidAPFPVTransport::syncCameraState(size_t discovered_camera_count, bool has_active_camera,
+                                            std::string connecting_ssid)
+{
+    m_has_active_camera.store(has_active_camera);
+    {
+        std::lock_guard<std::mutex> lock(m_connecting_ssid_mutex);
+        m_connecting_ssid = std::move(connecting_ssid);
+    }
+
     if (has_active_camera)
     {
         m_reconnect_requested.store(false);
@@ -620,13 +650,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
         {
             packets_received++;
             bytes_window += static_cast<uint64_t>(received);
-            if (!m_udp_packets_seen.exchange(true))
-            {
-                // The Wi-Fi controller only knows that Android is associated to the APFPV SSID.
-                // Clear the transient "Connecting to stream..." banner as soon as real UDP
-                // payloads arrive so the overlay reflects active camera traffic immediately.
-                setLinkState(LinkState::None);
-            }
+            m_udp_packets_seen.store(true);
             if (packets_received == 1)
             {
                 __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "udp_first_packet size=%zd", received);

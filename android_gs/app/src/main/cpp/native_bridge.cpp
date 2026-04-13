@@ -1169,7 +1169,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
                                                                jlong handle,
                                                                jobjectArray discovered_ssids,
                                                                jstring active_ssid,
-                                                               jint gs_rssi_dbm)
+                                                               jint gs_rssi_dbm,
+                                                               jstring connecting_ssid)
 {
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
@@ -1216,9 +1217,11 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
     s_runtimeCore.gs_stats.rssiDbm[1] = 0;
     s_runtimeCore.gs_stats.noiseFloorDbm = 0;
 
+    const std::string connecting_ssid_value = fromJString(env, connecting_ssid);
     native_handle->transport_manager.apfpvTransport().syncCameraState(
         discovered_cameras.size(),
-        !active_ssid_value.empty());
+        !active_ssid_value.empty(),
+        connecting_ssid_value);
 }
 
 extern "C" JNIEXPORT jint JNICALL
@@ -1624,6 +1627,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
         processPendingSelectedTransportReconnect();
     }
+    overlay_input.transport_message =
+        native_handle->transport_manager.activeTransport().getTransportMessage();
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     processPendingOsdFontReload(s_runtimeCore.config_packet);
     native_handle->renderer.setOverlayInput(overlay_input);
@@ -1798,24 +1803,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
     gs::menu::g_osdMenuController.close();
 }
 
-//===================================================================================
-//===================================================================================
-// Updates the shared runtime link state exposed through the top overlay.
-extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setLinkState(JNIEnv* /* env */,
-                                                       jobject /* thiz */,
-                                                       jlong handle,
-                                                       jint state)
-{
-    NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(native_handle->mutex);
-    setLinkState(static_cast<LinkState>(state));
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_destroyHandle(JNIEnv* /* env */,

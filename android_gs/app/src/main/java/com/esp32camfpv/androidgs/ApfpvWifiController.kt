@@ -72,7 +72,6 @@ class ApfpvWifiController(
     fun stop() {
         syncJob?.cancel()
         syncJob = null
-        updateLinkState(NativeCore.LINK_STATE_NONE)
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         releaseWifiStreamingLock()
@@ -92,7 +91,6 @@ class ApfpvWifiController(
             NativeCore.getActiveTransportKind(handle)
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
-            updateLinkState(NativeCore.LINK_STATE_NONE)
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             releaseWifiStreamingLock()
@@ -118,13 +116,11 @@ class ApfpvWifiController(
                 NativeCore.getPreferredApfpvCameraId(handle),
                 if (NativeCore.isApfpvMenuSearchActive(handle)) 1 else 0,
                 if (NativeCore.consumeApfpvReconnectRequest(handle)) 1 else 0,
-                if (NativeCore.hasSeenApfpvUdpPackets(handle)) 1 else 0
             )
         }
         val preferredCameraId = nativeState[0]
         val searchActive = nativeState[1] != 0
         val reconnectRequested = nativeState[2] != 0
-        val hasSeenUdpPackets = nativeState[3] != 0
 
         if (searchActive) {
             handleMenuSearch(handle, cameraNetworks, currentSsid)
@@ -142,16 +138,12 @@ class ApfpvWifiController(
                 val currentCameraId = parseCameraId(currentSsid)
                 if (preferredCameraId != 0 && currentCameraId != preferredCameraId) {
                     disconnectFromCurrentCamera(handle)
-                    updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
                     wifiManager.startScan()
                     return
                 }
             }
 
-            updateLinkState(
-                if (hasSeenUdpPackets) NativeCore.LINK_STATE_NONE
-                else NativeCore.LINK_STATE_CONNECTING_TO_STREAM
-            )
+            syncCameraState(cameraNetworks, currentSsid)
             return
         }
 
@@ -161,12 +153,11 @@ class ApfpvWifiController(
         }
 
         if (preferredCameraId != 0 || reconnectRequested) {
-            updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
             wifiManager.startScan()
             return
         }
 
-        updateLinkState(NativeCore.LINK_STATE_NONE)
+        syncCameraState(cameraNetworks, null)
     }
 
     private fun findCameraNetworks(): List<CameraNetwork> {
@@ -204,7 +195,7 @@ class ApfpvWifiController(
         }
 
         if (cameraNetworks.size >= 2) {
-            updateLinkState(NativeCore.LINK_STATE_NONE)
+            syncCameraState(cameraNetworks, null)
             return
         }
 
@@ -217,7 +208,6 @@ class ApfpvWifiController(
             return
         }
 
-        updateLinkState(NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
         wifiManager.startScan()
     }
 
@@ -231,7 +221,6 @@ class ApfpvWifiController(
         withContext(Dispatchers.Default) {
             NativeCore.stopUdpClient(handle)
             NativeCore.resetSession(handle)
-            NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
         }
     }
 
@@ -249,7 +238,6 @@ class ApfpvWifiController(
             return
         }
 
-        updateLinkState(NativeCore.LINK_STATE_CONNECTING_TO_WIFI)
         releaseRequestedNetwork()
 
         val specifier = WifiNetworkSpecifier.Builder()
@@ -267,7 +255,6 @@ class ApfpvWifiController(
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
-                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
                 }
             }
 
@@ -283,7 +270,6 @@ class ApfpvWifiController(
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
-                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
                 }
             }
 
@@ -296,7 +282,6 @@ class ApfpvWifiController(
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
-                    NativeCore.setLinkState(handle, NativeCore.LINK_STATE_LOOKING_FOR_WIFI)
                 }
             }
         }
@@ -312,13 +297,9 @@ class ApfpvWifiController(
         val currentSsid = wifiManager.connectionInfo?.ssid?.trim('"')
         if (currentSsid == ssid) {
             syncCameraState(findCameraNetworks(), ssid)
-            activity.lifecycleScope.launch(Dispatchers.Default) {
-                NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
-            }
             return
         }
 
-        updateLinkState(NativeCore.LINK_STATE_CONNECTING_TO_WIFI)
         val configuration = WifiConfiguration().apply {
             SSID = "\"$ssid\""
             allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE)
@@ -336,7 +317,6 @@ class ApfpvWifiController(
         activity.lifecycleScope.launch(Dispatchers.Default) {
             NativeCore.stopUdpClient(handle)
             NativeCore.resetSession(handle)
-            NativeCore.setLinkState(handle, NativeCore.LINK_STATE_CONNECTING_TO_STREAM)
         }
         Log.i(LOG_TAG, "Connected to legacy APFPV Wi-Fi network: $ssid")
     }
@@ -402,17 +382,6 @@ class ApfpvWifiController(
         permissionLauncher.launch(permissions.toTypedArray())
     }
 
-    private fun updateLinkState(state: Int) {
-        val handle = currentNativeHandle()
-        if (handle == 0L) {
-            return
-        }
-
-        activity.lifecycleScope.launch(Dispatchers.Default) {
-            NativeCore.setLinkState(handle, state)
-        }
-    }
-
     private fun syncCameraState(networks: List<CameraNetwork>, activeSsid: String?) {
         val handle = currentNativeHandle()
         if (handle == 0L) {
@@ -421,8 +390,9 @@ class ApfpvWifiController(
 
         val discoveredSsids = networks.map { it.ssid }.toTypedArray()
         val gsRssiDbm = currentConnectedCameraRssiDbm(activeSsid)
+        val connectingSsid = if (activeSsid == null) requestedSsid else null
         activity.lifecycleScope.launch(Dispatchers.Default) {
-            NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid, gsRssiDbm)
+            NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid, gsRssiDbm, connectingSsid)
         }
     }
 

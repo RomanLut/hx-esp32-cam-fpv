@@ -118,7 +118,6 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.osd_font_error = params.osd_font_error;
     overlay_input.incompatible_firmware_time = Clock::time_point{};
     overlay_input.now = now;
-    overlay_input.link_state = getLinkState();
 
     if (core.groundstation_config.stats)
     {

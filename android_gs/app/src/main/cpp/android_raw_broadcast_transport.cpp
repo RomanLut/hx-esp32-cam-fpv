@@ -10,7 +10,6 @@
 #include <libusb.h>
 
 #include "fec.h"
-#include "gs_runtime_state.h"
 #include "gs_shared_state.h"
 #include "structures.h"
 #include "third_party/devourer/src/FrameParser.h"
@@ -193,8 +192,7 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
 // Activates Android raw-broadcast mode and updates the shared link-state banner.
 void AndroidRawBroadcastTransport::activate()
 {
-    setLinkState(LinkState::LookingForWifiNetwork);
-    setLinkStateDetailText("Waiting for RTL8812AU adapter...");
+    m_active = true;
 }
 
 //===================================================================================
@@ -206,6 +204,7 @@ void AndroidRawBroadcastTransport::activate()
 // to stopUsbAdapter(), which is called from Java (without handle->mutex held) or the destructor.
 void AndroidRawBroadcastTransport::deactivate()
 {
+    m_active = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_transport_packet_callback = nullptr;
@@ -214,7 +213,6 @@ void AndroidRawBroadcastTransport::deactivate()
             m_device->should_stop = true;
         }
     }
-    setLinkStateDetailText({});
 }
 
 //===================================================================================
@@ -488,6 +486,18 @@ void AndroidRawBroadcastTransport::contributeGroundStats(GSStats& stats)
 
 //===================================================================================
 //===================================================================================
+// Returns a status message for the top overlay when the adapter is missing while active.
+std::string AndroidRawBroadcastTransport::getTransportMessage() const
+{
+    if (m_active && !isUsbAdapterRunning())
+    {
+        return "RTL8812AU USB ADAPTER NOT FOUND!";
+    }
+    return {};
+}
+
+//===================================================================================
+//===================================================================================
 // Starts the Android RTL8812AU adapter from one already-open USB file descriptor.
 bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 {
@@ -625,7 +635,6 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
             makeSelectedChannel(s_groundstation_config.wifi_channel));
     });
 
-    setLinkStateDetailText({});
     return true;
 }
 
@@ -877,5 +886,4 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
                             transport_size,
                             input_dbm);
     }
-    setLinkState(LinkState::None);
 }

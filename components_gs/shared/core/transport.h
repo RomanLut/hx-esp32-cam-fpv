@@ -76,6 +76,7 @@ public:
     virtual size_t get_data_rate() const = 0;
     virtual int get_input_dBm() const = 0;
     virtual void contributeGroundStats(GSStats& stats) = 0;
+    virtual std::string getTransportMessage() const { return {}; }
 
     virtual PacketFilter& getPacketFilter() = 0;
 };

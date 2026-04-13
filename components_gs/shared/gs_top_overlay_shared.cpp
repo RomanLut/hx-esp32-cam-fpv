@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,7 +31,7 @@ struct OverlayChipSpec
 
 //===================================================================================
 //===================================================================================
-// Draws the top overlay chips in a single horizontal strip.
+// Draws the top overlay chips in a single horizontal strip. Returns the row height.
 float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y)
 {
     const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
@@ -65,59 +64,6 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
     }
 
     return resolved_height;
-}
-
-//===================================================================================
-//===================================================================================
-// Maps the shared link state to the user-facing top overlay text.
-std::string getLinkStateText(LinkState state)
-{
-    const std::string detail_text = getLinkStateDetailText();
-    if (!detail_text.empty() && state != LinkState::None)
-    {
-        return detail_text;
-    }
-
-    switch (state)
-    {
-    case LinkState::LookingForWifiNetwork:
-        return {};
-
-    case LinkState::ConnectingToWifiNetwork:
-    {
-        const uint16_t preferred_camera_id = getApfpvPreferredCameraId();
-        if (preferred_camera_id != 0)
-        {
-            return "Connecting to WiFi network " + formatApfpvCameraId(preferred_camera_id) + "...";
-        }
-        return "Connecting to WiFi network...";
-    }
-
-    case LinkState::ConnectingToStream:
-        return "Connecting to stream...";
-
-    case LinkState::None:
-        break;
-    }
-
-    return {};
-}
-
-//===================================================================================
-//===================================================================================
-// Builds the optional top overlay link-state chip shown while the link is still connecting.
-std::optional<OverlayChipSpec> makeLinkStateChip(LinkState state)
-{
-    const std::string text = getLinkStateText(state);
-    if (text.empty())
-    {
-        return std::nullopt;
-    }
-
-    OverlayChipSpec chip = {};
-    chip.text = text;
-    chip.alert = true;
-    return chip;
 }
 
 } // namespace
@@ -200,10 +146,9 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     if (input.air_suspended) chips.push_back({"OFF", true, 0.0f});
 
     const float main_row_height = drawOverlayChipStrip(chips, 0.0f);
-    const std::optional<OverlayChipSpec> link_state_chip = makeLinkStateChip(input.link_state);
-    if (link_state_chip.has_value())
+    if (!input.transport_message.empty())
     {
-        drawOverlayChipStrip({*link_state_chip}, main_row_height + kOverlayBannerGap);
+        drawOverlayChipStrip({{input.transport_message, true, 0.0f}}, main_row_height + kOverlayBannerGap);
     }
 }
 }

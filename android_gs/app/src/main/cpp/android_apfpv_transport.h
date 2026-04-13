@@ -82,7 +82,9 @@ public:
     void stopUdpClient();
     bool isMenuSearchActive() const;
     bool consumeReconnectRequest();
-    void syncCameraState(size_t discovered_camera_count, bool has_active_camera);
+    void syncCameraState(size_t discovered_camera_count, bool has_active_camera,
+                         std::string connecting_ssid);
+    std::string getTransportMessage() const override;
 
 private:
     void runUdpClientLoop(UdpLoopCallbacks callbacks);
@@ -103,8 +105,11 @@ private:
     std::atomic<bool> m_reconnect_requested = false;
     std::atomic<bool> m_menu_search_active = false;
     std::atomic<bool> m_menu_search_done = false;
+    std::atomic<bool> m_has_active_camera = false;
     uint32_t m_udp_stats_log_count = 0;
     mutable std::mutex m_udp_thread_mutex;
     std::mutex m_udp_lifecycle_mutex;
     std::thread m_udp_thread;
+    mutable std::mutex m_connecting_ssid_mutex;
+    std::string m_connecting_ssid;
 };

@@ -299,10 +299,28 @@ FecBlockDecoder::Callbacks makeApfpvDecoderCallbacks()
 
 //===================================================================================
 //===================================================================================
+// Stores a new transport message visible to the render thread via getTransportMessage().
+void LinuxApfpvTransport::setMessage(std::string message)
+{
+    std::lock_guard<std::mutex> lock(m_message_mutex);
+    m_transport_message = std::move(message);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the current user-facing transport status message for the top overlay.
+std::string LinuxApfpvTransport::getTransportMessage() const
+{
+    std::lock_guard<std::mutex> lock(m_message_mutex);
+    return m_transport_message;
+}
+
+//===================================================================================
+//===================================================================================
 // Resets the same USB Wi-Fi adapter in place and brings the managed interface back up.
 bool resetUsbBackedWifiInterface(const std::string& interface)
 {
-    setLinkStateDetailText("Resetting USB interface...");
+    setMessage("Resetting USB interface...");
     std::error_code ec;
     const std::filesystem::path interface_device_path =
         std::filesystem::read_symlink(std::filesystem::path("/sys/class/net") / interface / "device", ec);
@@ -453,7 +471,7 @@ void LinuxApfpvTransport::activate()
     else
     {
         m_wifi_state = WifiState::Idle;
-        setLinkState(LinkState::LookingForWifiNetwork);
+        setMessage("");
     }
 }
 
@@ -510,7 +528,7 @@ void LinuxApfpvTransport::beginMenuSearchOrConnect()
 {
     // Immediately clear the user-facing connect overlay while the comms thread
     // is still unwinding any in-flight APFPV reconnect attempt.
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
     m_menu_search_done.store(false);
     m_menu_search_cancel_requested.store(false);
     m_menu_search_active.store(true);
@@ -544,7 +562,7 @@ void LinuxApfpvTransport::process()
     advanceWifiStateMachine();
     if (!m_connected_interface.empty() && s_runtimeCore.session.connectedAirDeviceId() != 0)
     {
-        setLinkState(LinkState::None);
+        setMessage("");
         if (m_menu_search_active.load())
         {
             m_menu_search_active.store(false);
@@ -607,7 +625,7 @@ void LinuxApfpvTransport::handleCameraWifiDisconnect()
     {
         m_next_search_scan_tp = Clock::now();
         m_wifi_state = WifiState::Searching;
-        setLinkState(LinkState::LookingForWifiNetwork);
+        setMessage("");
         return;
     }
 
@@ -639,7 +657,7 @@ void LinuxApfpvTransport::resetWifiAutoconnectState()
     m_menu_search_done.store(false);
     clearApfpvCameraRuntimeState();
     updateApfpvDiscoveredCameras({});
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
     m_wifi_state = WifiState::Inactive;
 }
 
@@ -716,19 +734,18 @@ bool configureStaticApfpvAddress(const std::string& interface)
 // Assigns a random static APFPV subnet address immediately after a successful association.
 bool LinuxApfpvTransport::configureApfpvLocalAddress(const std::string& interface, const std::string& ssid)
 {
-    setLinkStateDetailText(buildApfpvProgressText(ssid, "Configuring IP..."));
+    setMessage(buildApfpvProgressText(ssid, "Configuring IP..."));
     // APFPV runs on a fixed camera subnet and the Linux DHCP tools have proven unstable
     // on reconnect, so the transport assigns its local address directly instead.
     if (configureStaticApfpvAddress(interface))
     {
-        setLinkStateDetailText(buildApfpvProgressText(ssid, "Waiting for stream..."));
+        setMessage(buildApfpvProgressText(ssid, "Waiting for stream..."));
         m_stream_connect_deadline_tp = Clock::now() + kApfpvStreamConnectTimeout;
-        setLinkState(LinkState::ConnectingToStream);
         return true;
     }
 
     LOGW("Linux APFPV failed to configure a static local address on {}", interface);
-    setLinkStateDetailText({});
+    setMessage("");
     return false;
 }
 
@@ -740,8 +757,7 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
                                                  int frequency_mhz)
 {
     LOGI("Connecting {} to APFPV camera network {}", interface, ssid);
-    setLinkState(LinkState::ConnectingToWifiNetwork);
-    setLinkStateDetailText(buildApfpvProgressText(ssid, "Associating..."));
+    setMessage(buildApfpvProgressText(ssid, "Associating..."));
     runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
 
     std::string connect_output;
@@ -792,7 +808,7 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             // Reset the consecutive-failure counter once the USB adapter reset has run.
             m_associate_failure_count = 0;
             connect_output.clear();
-            setLinkStateDetailText(buildApfpvProgressText(ssid, "Associating..."));
+            setMessage(buildApfpvProgressText(ssid, "Associating..."));
             if (attemptApfpvWifiConnect(interface, ssid, frequency_mhz, &connect_output))
             {
                 m_associate_failure_count = 0;
@@ -819,8 +835,7 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
     {
         LOGI("Linux APFPV aborting successful connect to {} because menu search is pending", ssid);
         runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
-        setLinkStateDetailText({});
-        setLinkState(LinkState::LookingForWifiNetwork);
+        setMessage("");
         return false;
     }
 
@@ -858,7 +873,7 @@ void LinuxApfpvTransport::handlePendingMenuRequests(Clock::time_point now)
 // Starts an explicit APFPV menu search by dropping the current link and clearing old results.
 void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
 {
-    setLinkStateDetailText({});
+    setMessage("");
     disconnectCurrentWifiLink();
     setManagedMode(selectApfpvConnectInterfaces(m_apfpv_interfaces));
     clearApfpvActiveCamera();
@@ -878,7 +893,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
     m_wifi_state = WifiState::Searching;
     m_menu_search_active.store(true);
     m_menu_search_done.store(false);
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
 }
 
 //===================================================================================
@@ -886,8 +901,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
 // Advances one explicit APFPV camera search pass and reacts to the resulting candidate count.
 void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
 {
-    setLinkStateDetailText({});
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
     if (now < m_next_search_scan_tp)
     {
         return;
@@ -938,7 +952,7 @@ void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
     m_target_ssid = candidate->camera.ssid;
     m_target_frequency_mhz = candidate->frequency_mhz;
     m_wifi_state = WifiState::Connecting;
-    setLinkState(LinkState::ConnectingToWifiNetwork);
+    setMessage("Connecting to WiFi network...");
 }
 
 //===================================================================================
@@ -951,8 +965,7 @@ void LinuxApfpvTransport::waitForPreferredCameraVisibility(Clock::time_point now
     if (preferred_camera_id == 0 || connect_interfaces.empty())
     {
         m_wifi_state = WifiState::Idle;
-        setLinkStateDetailText({});
-        setLinkState(LinkState::LookingForWifiNetwork);
+        setMessage("");
         return;
     }
 
@@ -968,8 +981,7 @@ void LinuxApfpvTransport::waitForPreferredCameraVisibility(Clock::time_point now
     m_next_search_scan_tp = now;
     m_search_started_tp = now;
     m_wifi_state = WifiState::Searching;
-    setLinkStateDetailText("Connecting to " + formatApfpvCameraId(preferred_camera_id) + ": Searching...");
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("Connecting to " + formatApfpvCameraId(preferred_camera_id) + ": Searching...");
 }
 
 //===================================================================================
@@ -1014,7 +1026,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
                     LOGW("Linux APFPV failed to recover late link on {}", recovered_interface);
                     disconnectCurrentWifiLink();
                     m_next_retry_tp = now + kApfpvWifiRetryInterval;
-                    setLinkState(LinkState::LookingForWifiNetwork);
+                    setMessage("");
                     return;
                 }
 
@@ -1063,7 +1075,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
                         m_next_retry_tp = now + kApfpvWifiRetryInterval;
                         m_wifi_state = m_menu_search_active.load() || preferred_camera_id != 0 ? WifiState::Searching
                                                                                                 : WifiState::Idle;
-                        setLinkState(LinkState::LookingForWifiNetwork);
+                        setMessage("");
                         return;
                     }
                 }
@@ -1081,10 +1093,6 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
 
     if (m_wifi_state == WifiState::Connected)
     {
-        if (s_runtimeCore.session.connectedAirDeviceId() == 0)
-        {
-            setLinkState(LinkState::ConnectingToStream);
-        }
         return;
     }
 
@@ -1092,8 +1100,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
     {
         if (!m_menu_search_active.load() && preferred_camera_id != 0)
         {
-            setLinkStateDetailText("Connecting to " + formatApfpvCameraId(preferred_camera_id) + ": Searching...");
-            setLinkState(LinkState::LookingForWifiNetwork);
+            setMessage("Connecting to " + formatApfpvCameraId(preferred_camera_id) + ": Searching...");
             if (now < m_next_search_scan_tp)
             {
                 return;
@@ -1112,8 +1119,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
             m_target_ssid = preferred_candidate->camera.ssid;
             m_target_frequency_mhz = preferred_candidate->frequency_mhz;
             m_wifi_state = WifiState::Connecting;
-            setLinkStateDetailText(buildApfpvProgressText(m_target_ssid, "Associating..."));
-            setLinkState(LinkState::ConnectingToWifiNetwork);
+            setMessage(buildApfpvProgressText(m_target_ssid, "Associating..."));
             return;
         }
 
@@ -1123,7 +1129,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
 
     if (m_wifi_state == WifiState::Connecting)
     {
-        setLinkState(LinkState::ConnectingToWifiNetwork);
+        setMessage("Connecting to WiFi network...");
         if (connectToCameraNetwork(m_target_interface, m_target_ssid, m_target_frequency_mhz))
         {
             m_wifi_state = WifiState::WaitingForLink;
@@ -1136,13 +1142,12 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
         m_next_retry_tp = now + kApfpvWifiRetryInterval;
         m_wifi_state = m_menu_search_active.load() || preferred_camera_id != 0 ? WifiState::Searching
                                                                                 : WifiState::Idle;
-        setLinkState(LinkState::LookingForWifiNetwork);
+        setMessage("");
         return;
     }
 
     if (m_wifi_state == WifiState::WaitingForLink)
     {
-        setLinkState(LinkState::ConnectingToWifiNetwork);
         // APFPV packets can arrive before the driver reports a stable managed-mode link via `iw link`.
         // Once the session is already bound to an air device, keep the current target latched instead of
         // falling back to search on the Wi-Fi link timeout path.
@@ -1161,7 +1166,7 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
             m_next_retry_tp = now + kApfpvWifiRetryInterval;
             m_wifi_state = m_menu_search_active.load() || preferred_camera_id != 0 ? WifiState::Searching
                                                                                     : WifiState::Idle;
-            setLinkState(LinkState::LookingForWifiNetwork);
+            setMessage("");
         }
         return;
     }
@@ -1171,21 +1176,8 @@ void LinuxApfpvTransport::advanceWifiStateMachine()
         m_wifi_state = WifiState::Idle;
     }
 
-    if (now < m_next_retry_tp)
+    if (now < m_next_retry_tp || preferred_camera_id == 0 || m_waiting_for_search_selection)
     {
-        setLinkState(LinkState::LookingForWifiNetwork);
-        return;
-    }
-
-    if (preferred_camera_id == 0)
-    {
-        setLinkState(LinkState::LookingForWifiNetwork);
-        return;
-    }
-
-    if (m_waiting_for_search_selection)
-    {
-        setLinkState(LinkState::LookingForWifiNetwork);
         return;
     }
 
@@ -1218,7 +1210,7 @@ void LinuxApfpvTransport::transitionToIdle(Clock::time_point now, bool preserve_
     m_next_link_poll_tp = now;
     m_next_search_scan_tp = now;
     m_wifi_state = WifiState::Idle;
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
 }
 
 //===================================================================================
@@ -1251,7 +1243,6 @@ void LinuxApfpvTransport::latchConnectedCamera(const std::string& interface,
     m_associate_failure_count = 0;
     m_wifi_state = WifiState::Connected;
     m_next_link_poll_tp = Clock::now() + kApfpvWifiNoPacketsBeforeHealthPoll;
-    setLinkStateDetailText(buildApfpvProgressText(ssid, "Waiting for stream..."));
     setApfpvActiveCamera(ssid);
     if (s_runtimeCore.session.connectedAirDeviceId() == 0)
     {
@@ -1259,11 +1250,11 @@ void LinuxApfpvTransport::latchConnectedCamera(const std::string& interface,
         {
             m_stream_connect_deadline_tp = Clock::now() + kApfpvStreamConnectTimeout;
         }
-        setLinkState(LinkState::ConnectingToStream);
+        setMessage(buildApfpvProgressText(ssid, "Waiting for stream..."));
     }
     else
     {
-        setLinkStateDetailText({});
+        setMessage("");
     }
 }
 
@@ -1461,7 +1452,7 @@ void LinuxApfpvTransport::reset_rx_state()
     m_last_rx_decoded_bytes_total = 0;
     m_data_stats_last_tp = Clock::now();
     syncRxDecoderStats();
-    setLinkState(LinkState::LookingForWifiNetwork);
+    setMessage("");
 }
 
 //===================================================================================

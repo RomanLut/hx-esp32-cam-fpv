@@ -112,8 +112,11 @@ public:
     bool receive(void* data, size_t& size, bool& restoredByFEC) override;
     size_t get_data_rate() const override;
     int get_input_dBm() const override;
+    std::string getTransportMessage() const override;
 
 private:
+    void setMessage(std::string message);
+
     void advanceWifiStateMachine();
     void transitionToIdle(Clock::time_point now, bool preserve_apfpv_state);
     void startConnectToPreferredCamera(Clock::time_point now);
@@ -184,4 +187,6 @@ private:
     std::atomic<bool> m_menu_search_cancel_requested = false;
     std::atomic<bool> m_menu_search_active = false;
     std::atomic<bool> m_menu_search_done = false;
+    mutable std::mutex m_message_mutex;
+    std::string m_transport_message;
 };

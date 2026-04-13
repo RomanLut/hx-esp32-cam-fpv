@@ -17,11 +17,6 @@ object NativeCore {
     const val TRANSPORT_RAW_BROADCAST = 0
     const val TRANSPORT_APFPV = 1
     const val TRANSPORT_TEST = 2
-    const val LINK_STATE_NONE = 0
-    const val LINK_STATE_LOOKING_FOR_WIFI = 1
-    const val LINK_STATE_CONNECTING_TO_WIFI = 2
-    const val LINK_STATE_CONNECTING_TO_STREAM = 3
-
     init {
         System.loadLibrary("android_gs_core")
     }
@@ -37,7 +32,7 @@ object NativeCore {
     external fun isApfpvMenuSearchActive(handle: Long): Boolean
     external fun consumeApfpvReconnectRequest(handle: Long): Boolean
     external fun hasSeenApfpvUdpPackets(handle: Long): Boolean
-    external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?, gsRssiDbm: Int)
+    external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?, gsRssiDbm: Int, connectingSsid: String?)
     external fun startUdpClient(
         handle: Long,
         peerHost: String = "192.168.4.1",
@@ -58,7 +53,6 @@ object NativeCore {
     external fun syncRendererOverlay(handle: Long, buildInfo: String)
     external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
     external fun handleKey(handle: Long, keyCode: Int): Boolean
-    external fun setLinkState(handle: Long, state: Int)
     external fun setRenderSurface(handle: Long, surface: Surface)
     external fun clearRenderSurface(handle: Long)
     external fun consumeExitRequested(handle: Long): Boolean

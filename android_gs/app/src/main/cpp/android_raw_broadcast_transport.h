@@ -41,6 +41,8 @@ public:
     int get_input_dBm() const override;
     void contributeGroundStats(GSStats& stats) override;
 
+    std::string getTransportMessage() const override;
+
     bool startUsbAdapter(int fd);
     void stopUsbAdapter();
     bool isUsbAdapterRunning() const;
@@ -56,6 +58,7 @@ private:
     void queueReceivedPacket(const uint8_t* data, size_t size, int input_dbm);
 
     mutable std::mutex m_mutex;
+    std::atomic<bool> m_active = {false};
     std::vector<uint8_t> m_radiotap_header;
     std::vector<uint8_t> m_tx_current_packet;
     std::vector<std::vector<uint8_t>> m_tx_block_packets;

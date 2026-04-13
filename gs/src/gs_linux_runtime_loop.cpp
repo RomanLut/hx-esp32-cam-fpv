@@ -334,7 +334,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
             input.now = Clock::now();
-            input.link_state = getLinkState();
+            input.transport_message = s_transport->getTransportMessage();
 
             gs::imgui::drawTopOverlayStatus(input);
             //------------------------------------------------
