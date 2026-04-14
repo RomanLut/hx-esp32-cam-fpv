@@ -432,6 +432,9 @@ void GSTestTransport::queueStatsOsdPacket(Clock::time_point now)
     stats.noiseFloorDbm = 85;       // -85 dBm
     stats.temperature = 45;         // degrees C
     stats.captureFPS = 30;
+    const uint16_t jpeg_size = static_cast<uint16_t>(std::min<size_t>(m_static_jpeg.size(), 65535u));
+    stats.cam_frame_size_min = jpeg_size;
+    stats.cam_frame_size_max = jpeg_size;
     stats.curr_quality = 40;
     stats.wifi_queue_max = 20;
     stats.wifi_queue_min = 5;
