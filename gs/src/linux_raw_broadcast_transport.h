@@ -52,6 +52,7 @@ public:
 
     size_t get_data_rate() const override;
     int get_input_dBm() const override;
+    void contributeGroundStats(GSStats& stats) override;
 
     PacketFilter& getPacketFilter() override;
 

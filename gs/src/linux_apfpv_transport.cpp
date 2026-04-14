@@ -297,6 +297,8 @@ FecBlockDecoder::Callbacks makeApfpvDecoderCallbacks()
     return callbacks;
 }
 
+} // namespace
+
 //===================================================================================
 //===================================================================================
 // Stores a new transport message visible to the render thread via getTransportMessage().
@@ -318,9 +320,8 @@ std::string LinuxApfpvTransport::getTransportMessage() const
 //===================================================================================
 //===================================================================================
 // Resets the same USB Wi-Fi adapter in place and brings the managed interface back up.
-bool resetUsbBackedWifiInterface(const std::string& interface)
+static bool resetUsbBackedWifiInterface(const std::string& interface)
 {
-    setMessage("Resetting USB interface...");
     std::error_code ec;
     const std::filesystem::path interface_device_path =
         std::filesystem::read_symlink(std::filesystem::path("/sys/class/net") / interface / "device", ec);
@@ -403,8 +404,6 @@ bool attemptApfpvWifiConnect(const std::string& interface, const std::string& ss
                     frequency_suffix,
                     static_cast<int>(kApfpvWifiConnectTimeout.count())),
         output);
-}
-
 }
 
 //===================================================================================
@@ -803,6 +802,7 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             return false;
         }
 
+        setMessage("Resetting USB interface...");
         if (resetUsbBackedWifiInterface(interface))
         {
             // Reset the consecutive-failure counter once the USB adapter reset has run.

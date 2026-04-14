@@ -1349,6 +1349,13 @@ int LinuxRawBroadcastTransport::get_input_dBm() const
 
 //===================================================================================
 //===================================================================================
+// Stats are written directly to s_gs_stats during packet processing; nothing to do here.
+void LinuxRawBroadcastTransport::contributeGroundStats(GSStats& /* stats */)
+{
+}
+
+//===================================================================================
+//===================================================================================
 void LinuxRawBroadcastTransport::reset_rx_state()
 {
     if (!m_impl)
