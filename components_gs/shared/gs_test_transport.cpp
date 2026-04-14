@@ -83,6 +83,7 @@ void GSTestTransport::resetStreamState()
     m_frame_period = kTargetFramePeriod;
     m_packet_period = kTargetFramePeriod;
     m_next_frame_index = 1;
+    m_pre_sent_for_fill = 0;
     m_data_rate = 0;
     m_config_pending = true;
     m_next_transport_block_index = 1;
@@ -437,7 +438,8 @@ void GSTestTransport::queueStatsOsdPacket(Clock::time_point now)
     stats.curr_wifi_rate = static_cast<uint8_t>(WIFI_Rate::RATE_N_26M_MCS3);
     {
         std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-        stats.outPacketRate = s_gs_stats.inPacketCounter[0];
+        stats.outPacketRate = s_runtimeCore.last_ground_stats.inPacketCounter[0];
+        s_gs_stats.outPacketCounter += 3;
     }
     stats.inPacketRate = 3;
     stats.in_session = 1;
@@ -481,13 +483,35 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
         std::vector<std::vector<uint8_t>> frame_packets = buildFramePackets(m_next_frame_index++);
         if (!frame_packets.empty())
         {
+            // Skip packets already pre-sent at the end of the previous frame period
+            // to fill the last FEC block so that the previous frame's last_part encoded immediately.
+            const size_t skip = std::min(m_pre_sent_for_fill, frame_packets.size() - 1);
+            m_pre_sent_for_fill = 0;
+
             size_t total_bytes = 0;
-            for (auto& packet : frame_packets)
+            for (size_t i = skip; i < frame_packets.size(); i++)
             {
-                total_bytes += packet.size();
-                m_pending_packets.push_back(std::move(packet));
+                total_bytes += frame_packets[i].size();
+                m_pending_packets.push_back(std::move(frame_packets[i]));
             }
             m_data_rate = total_bytes * 30;
+
+            // Pre-send the beginning of the next frame to fill the last partial FEC block.
+            // This ensures the current frame's last_part is in a complete block and encodes
+            // immediately, so both frames complete one period apart rather than in a burst.
+            const size_t remainder = m_pending_packets.size() % m_effective_coding_k;
+            if (remainder != 0)
+            {
+                const size_t needed = m_effective_coding_k - remainder;
+                std::vector<std::vector<uint8_t>> next_packets = buildFramePackets(m_next_frame_index);
+                // Never pre-send the last_part so the next frame always completes at its own deadline.
+                const size_t can_prefill = next_packets.size() > 1 ? next_packets.size() - 1 : 0;
+                m_pre_sent_for_fill = std::min(needed, can_prefill);
+                for (size_t i = 0; i < m_pre_sent_for_fill; i++)
+                {
+                    m_pending_packets.push_back(std::move(next_packets[i]));
+                }
+            }
 
             const size_t packet_count = std::max<size_t>(1, m_pending_packets.size());
             m_packet_period = kTargetFramePeriod / packet_count;

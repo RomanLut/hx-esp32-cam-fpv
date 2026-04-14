@@ -42,6 +42,7 @@ private:
     Clock::duration m_frame_period = std::chrono::microseconds(33333);
     Clock::duration m_packet_period = std::chrono::microseconds(33333);
     uint32_t m_next_frame_index = 1;
+    size_t m_pre_sent_for_fill = 0;
     size_t m_data_rate = 0;
     bool m_config_pending = true;
     FecBlockDecoder m_rx_decoder;
