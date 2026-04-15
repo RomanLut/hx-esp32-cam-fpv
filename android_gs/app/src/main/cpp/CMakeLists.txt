@@ -10,6 +10,7 @@ add_library(android_gs_core SHARED
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
     android_transport_manager.cpp
+    android_wifi_scan_transport.cpp
     native_bridge.cpp
     ../../../../../components_gs/mcp/gs_mcp_server.cpp
     ../../../../../components_gs/shared/frame_packets_debug.cpp
@@ -24,8 +25,10 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
     ../../../../../components_gs/shared/gs_recordings_storage.cpp
+    ../../../../../components_gs/shared/gs_asset_loader.cpp
     ../../../../../components_gs/shared/gs_stub_transport.cpp
     ../../../../../components_gs/shared/gs_test_transport.cpp
+    ../../../../../components_gs/shared/gs_wifi_scan_transport.cpp
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp

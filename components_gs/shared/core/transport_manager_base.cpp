@@ -63,6 +63,9 @@ const char* TransportManagerBase::transportModeLabel(TransportKind kind)
 
     case TransportKind::TestTransport:
         return "Test";
+
+    case TransportKind::WifiChannelScan:
+        return "Wifi Channel Scan";
     }
 
     return "RAW Broadcast";

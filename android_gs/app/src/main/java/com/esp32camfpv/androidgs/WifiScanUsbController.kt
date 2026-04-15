@@ -20,14 +20,14 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-class RawBroadcastUsbController(
+class WifiScanUsbController(
     private val activity: ComponentActivity,
     private val currentNativeHandle: () -> Long
 ) {
     private enum class ControllerState {
         IDLE,
         NO_HANDLE,
-        NOT_RAW_TRANSPORT,
+        NOT_SCAN_TRANSPORT,
         NO_ADAPTER,
         WAITING_PERMISSION,
         RUNNING
@@ -111,8 +111,8 @@ class RawBroadcastUsbController(
             val activeTransportKind = withContext(Dispatchers.Default) {
                 NativeCore.getActiveTransportKind(handle)
             }
-            if (activeTransportKind != NativeCore.TRANSPORT_RAW_BROADCAST) {
-                updateState(ControllerState.NOT_RAW_TRANSPORT, "Active transport is not RawBroadcast")
+            if (activeTransportKind != NativeCore.TRANSPORT_WIFI_SCAN) {
+                updateState(ControllerState.NOT_SCAN_TRANSPORT, "Active transport is not WifiChannelScan")
                 stopCurrentAdapterSync(handle)
                 return
             }
@@ -150,18 +150,18 @@ class RawBroadcastUsbController(
             }
 
             val started = withContext(Dispatchers.Default) {
-                NativeCore.startRawBroadcastUsb(handle, connection.fileDescriptor)
+                NativeCore.startWifiScanUsb(handle, connection.fileDescriptor)
             }
             if (!started) {
                 connection.close()
-                Log.w(LOG_TAG, "Native raw-broadcast start failed for ${targetDevice.deviceName}")
+                Log.w(LOG_TAG, "Native wifi-scan start failed for ${targetDevice.deviceName}")
                 return
             }
 
             activeConnection = connection
             activeDeviceName = targetDevice.deviceName
-            updateState(ControllerState.RUNNING, "Started raw-broadcast adapter ${targetDevice.deviceName}")
-            Log.i(LOG_TAG, "Started raw-broadcast USB adapter ${targetDevice.deviceName}")
+            updateState(ControllerState.RUNNING, "Started wifi-scan adapter ${targetDevice.deviceName}")
+            Log.i(LOG_TAG, "Started wifi-scan USB adapter ${targetDevice.deviceName}")
         }
     }
 
@@ -187,7 +187,7 @@ class RawBroadcastUsbController(
         activeDeviceName = null
         if (handle != 0L) {
             withContext(Dispatchers.Default) {
-                NativeCore.stopRawBroadcastUsb(handle)
+                NativeCore.stopWifiScanUsb(handle)
             }
         }
         oldConnection?.close()
@@ -203,8 +203,8 @@ class RawBroadcastUsbController(
     }
 
     private companion object {
-        const val LOG_TAG = "RawBroadcastUsb"
-        const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.USB_PERMISSION"
+        const val LOG_TAG = "WifiScanUsb"
+        const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.WIFI_SCAN_USB_PERMISSION"
         const val RTL_VENDOR_ID = 0x0BDA
     }
 }

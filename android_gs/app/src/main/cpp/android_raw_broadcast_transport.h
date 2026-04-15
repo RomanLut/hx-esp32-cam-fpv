@@ -58,6 +58,8 @@ private:
     void queueReceivedPacket(const uint8_t* data, size_t size, int input_dbm);
 
     mutable std::mutex m_mutex;
+    mutable std::mutex m_stop_mutex;
+    mutable std::mutex m_device_io_mutex;
     std::atomic<bool> m_active = {false};
     Clock::time_point m_activate_time = Clock::time_point::min();
     std::vector<uint8_t> m_radiotap_header;

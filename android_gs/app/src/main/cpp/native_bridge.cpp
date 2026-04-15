@@ -1447,6 +1447,61 @@ Java_com_esp32camfpv_androidgs_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* en
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_startWifiScanUsb(JNIEnv* /* env */,
+                                                           jobject /* thiz */,
+                                                           jlong handle,
+                                                           jint fd)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    bool should_start = false;
+    {
+        std::lock_guard<std::mutex> lock(native_handle->mutex);
+        should_start =
+            native_handle->transport_manager.activeKind() == gs::core::TransportKind::WifiChannelScan;
+    }
+
+    if (!should_start)
+    {
+        return JNI_FALSE;
+    }
+
+    return native_handle->transport_manager.wifiScanTransport().startUsbAdapter(fd) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_stopWifiScanUsb(JNIEnv* /* env */,
+                                                          jobject /* thiz */,
+                                                          jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->transport_manager.wifiScanTransport().stopUsbAdapter();
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_isWifiScanUsbRunning(JNIEnv* /* env */,
+                                                               jobject /* thiz */,
+                                                               jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    return native_handle->transport_manager.wifiScanTransport().isUsbAdapterRunning() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
                                                             jobject /* thiz */,
                                                             jlong /* handle */,

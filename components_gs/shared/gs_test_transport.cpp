@@ -3,16 +3,9 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 #include <limits>
-#include <string>
 
-#ifdef __ANDROID__
-#include <android/asset_manager.h>
-#include "android_jni_shared.h"
-#endif
-
+#include "gs_asset_loader.h"
 #include "Log.h"
 #include "crc.h"
 #include "packets.h"
@@ -25,7 +18,6 @@ namespace
 {
 
 constexpr uint16_t kTestAirDeviceId = 0x7777;
-constexpr auto kTargetFramePeriod = std::chrono::microseconds(33333);
 
 //===================================================================================
 //===================================================================================
@@ -54,20 +46,6 @@ void sealFixedHeaderPacket(T& packet)
     packet.crc = crc8(0, &packet, sizeof(T));
 }
 
-//===================================================================================
-//===================================================================================
-// Loads a binary file from disk into memory for Linux-side shared test transport assets.
-bool loadBinaryFile(const char* path, std::vector<uint8_t>& bytes)
-{
-    std::ifstream input(path, std::ios::binary);
-    if (!input.is_open())
-    {
-        return false;
-    }
-
-    bytes.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
-    return !bytes.empty();
-}
 
 } // namespace
 
@@ -80,8 +58,8 @@ void GSTestTransport::resetStreamState()
     m_next_frame_tp = Clock::time_point::min();
     m_next_packet_tp = Clock::time_point::min();
     m_next_stats_tp = Clock::time_point::min();
-    m_frame_period = kTargetFramePeriod;
-    m_packet_period = kTargetFramePeriod;
+    m_frame_period = m_target_frame_period;
+    m_packet_period = m_target_frame_period;
     m_next_frame_index = 1;
     m_pre_sent_for_fill = 0;
     m_data_rate = 0;
@@ -335,48 +313,7 @@ bool GSTestTransport::loadStaticJpeg()
     {
         return true;
     }
-
-#ifdef __ANDROID__
-    AAssetManager* asset_manager = androidGetAssetManager();
-    if (asset_manager == nullptr)
-    {
-        return false;
-    }
-
-    AAsset* asset = AAssetManager_open(asset_manager, "nosignal.jpg", AASSET_MODE_BUFFER);
-    if (asset == nullptr)
-    {
-        return false;
-    }
-
-    const off_t asset_size = AAsset_getLength(asset);
-    if (asset_size <= 0)
-    {
-        AAsset_close(asset);
-        return false;
-    }
-
-    m_static_jpeg.resize(static_cast<size_t>(asset_size));
-    const int read_size = AAsset_read(asset, m_static_jpeg.data(), m_static_jpeg.size());
-    AAsset_close(asset);
-    return read_size == static_cast<int>(m_static_jpeg.size());
-#else
-    static constexpr const char* kCandidatePaths[] = {
-        "../assets_gs/nosignal.jpg",
-        "assets_gs/nosignal.jpg",
-        "./assets_gs/nosignal.jpg"
-    };
-
-    for (const char* path : kCandidatePaths)
-    {
-        if (loadBinaryFile(path, m_static_jpeg))
-        {
-            return true;
-        }
-    }
-
-    return false;
-#endif
+    return loadAssetJpeg("nosignal.jpg", m_static_jpeg);
 }
 
 //===================================================================================
@@ -476,9 +413,9 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
     }
 
     // Skip past any missed frame slots so lateness does not accumulate into the next deadline.
-    while (m_next_frame_tp + kTargetFramePeriod < now)
+    while (m_next_frame_tp + m_target_frame_period < now)
     {
-        m_next_frame_tp += kTargetFramePeriod;
+        m_next_frame_tp += m_target_frame_period;
     }
 
     if (now >= m_next_frame_tp && m_pending_packets.size() < m_effective_coding_k)
@@ -517,14 +454,14 @@ void GSTestTransport::scheduleDuePackets(Clock::time_point now)
             }
 
             const size_t packet_count = std::max<size_t>(1, m_pending_packets.size());
-            m_packet_period = kTargetFramePeriod / packet_count;
+            m_packet_period = m_target_frame_period / packet_count;
             if (m_packet_period <= Clock::duration::zero())
             {
                 m_packet_period = std::chrono::microseconds(1);
             }
         }
 
-        m_next_frame_tp += kTargetFramePeriod;
+        m_next_frame_tp += m_target_frame_period;
         m_next_packet_tp = now;
     }
 }

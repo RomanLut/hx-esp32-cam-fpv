@@ -224,6 +224,7 @@ private:
     unsigned int m_texture = 0;
     unsigned int m_white_texture = 0;
     void* m_imgui_context = nullptr;
+    bool m_imgui_backend_initialized = false;
     int m_surface_width = 0;
     int m_surface_height = 0;
     int m_uploaded_width = 0;

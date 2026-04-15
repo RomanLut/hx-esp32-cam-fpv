@@ -4,6 +4,7 @@ import android.content.res.AssetManager
 import android.view.Surface
 
 object NativeCore {
+
     const val EVENT_IGNORE = 0
     const val EVENT_CONNECT_ACCEPTED = 1
     const val EVENT_CONFIG_RECEIVED = 2
@@ -14,9 +15,12 @@ object NativeCore {
     const val EVENT_INVALID_TELEMETRY_PACKET = 7
     const val EVENT_INVALID_OSD_PACKET = 8
     const val EVENT_UNSUPPORTED_PACKET = 9
+
     const val TRANSPORT_RAW_BROADCAST = 0
     const val TRANSPORT_APFPV = 1
     const val TRANSPORT_TEST = 2
+    const val TRANSPORT_WIFI_SCAN = 3
+
     init {
         System.loadLibrary("android_gs_core")
     }
@@ -44,6 +48,9 @@ object NativeCore {
     external fun startRawBroadcastUsb(handle: Long, fd: Int): Boolean
     external fun stopRawBroadcastUsb(handle: Long)
     external fun isRawBroadcastUsbRunning(handle: Long): Boolean
+    external fun startWifiScanUsb(handle: Long, fd: Int): Boolean
+    external fun stopWifiScanUsb(handle: Long)
+    external fun isWifiScanUsbRunning(handle: Long): Boolean
     external fun setVideoUdpOutput(handle: Long, addr: String, port: Int): Boolean
     external fun getLastEventKind(handle: Long): Int
     external fun getScreenAspectRatio(handle: Long): Int

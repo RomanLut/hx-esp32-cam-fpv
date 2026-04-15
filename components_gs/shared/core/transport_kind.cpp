@@ -19,6 +19,9 @@ TransportKind transportKindFromInt(int value, TransportKind fallback)
     case 2:
         return TransportKind::TestTransport;
 
+    case 3:
+        return TransportKind::WifiChannelScan;
+
     default:
         return fallback;
     }
@@ -39,6 +42,9 @@ int transportKindToInt(TransportKind kind)
 
     case TransportKind::TestTransport:
         return 2;
+
+    case TransportKind::WifiChannelScan:
+        return 3;
     }
 
     return transportKindToInt(TransportKind::RawBroadcast);

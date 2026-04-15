@@ -823,6 +823,11 @@ void GsVideoRenderer::releaseFrameRefLocked(PendingFrame& frame)
 // Initializes the ImGui context for overlay rendering.
 bool GsVideoRenderer::initImGuiLocked()
 {
+    if (m_imgui_context != nullptr)
+    {
+        destroyImGuiLocked();
+    }
+
     IMGUI_CHECKVERSION();
     ImGuiContext* context = ImGui::CreateContext();
     if (context == nullptr)
@@ -845,12 +850,24 @@ bool GsVideoRenderer::initImGuiLocked()
     style.ItemInnerSpacing = ImVec2(style.ItemSpacing.x / 2.0f, style.ItemSpacing.y / 2.0f);
     io.FontGlobalScale = kLinuxMenuFontGlobalScale;
 
+    // Android surface reattach can re-enter renderer setup while Dear ImGui's
+    // GL backend still thinks it is live. Reset the backend before re-init so
+    // the attach path does not trip the backend's double-init assertion.
+    if (m_imgui_backend_initialized || io.BackendRendererUserData != nullptr)
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        m_imgui_backend_initialized = false;
+        io.BackendRendererUserData = nullptr;
+        io.BackendRendererName = nullptr;
+    }
+
     if (!ImGui_ImplOpenGL3_Init("#version 100"))
     {
         destroyImGuiLocked();
         return false;
     }
 
+    m_imgui_backend_initialized = true;
     return true;
 }
 
@@ -861,11 +878,20 @@ void GsVideoRenderer::destroyImGuiLocked()
 {
     if (m_imgui_context == nullptr)
     {
+        if (m_imgui_backend_initialized)
+        {
+            ImGui_ImplOpenGL3_Shutdown();
+            m_imgui_backend_initialized = false;
+        }
         return;
     }
 
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    ImGui_ImplOpenGL3_Shutdown();
+    if (m_imgui_backend_initialized)
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        m_imgui_backend_initialized = false;
+    }
     ImGui::DestroyContext(static_cast<ImGuiContext*>(m_imgui_context));
     m_imgui_context = nullptr;
 }
@@ -1112,22 +1138,25 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
-    ImGui::Begin("FULLSCREEN_OVERLAY",
-                 nullptr,
-                 ImGuiWindowFlags_NoDecoration |
-                     ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoBackground |
-                     ImGuiWindowFlags_NoInputs |
-                     ImGuiWindowFlags_NoNav |
-                     ImGuiWindowFlags_NoFocusOnAppearing);
+    const bool overlay_window_open = ImGui::Begin("FULLSCREEN_OVERLAY",
+                                                  nullptr,
+                                                  ImGuiWindowFlags_NoDecoration |
+                                                      ImGuiWindowFlags_NoResize |
+                                                      ImGuiWindowFlags_NoBackground |
+                                                      ImGuiWindowFlags_NoInputs |
+                                                      ImGuiWindowFlags_NoNav |
+                                                      ImGuiWindowFlags_NoFocusOnAppearing);
 
-    s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
-    gs::imgui::drawTopOverlayStatus(m_overlay_input);
-    if (m_frame_ui_state.overlay_stats_visible)
+    if (overlay_window_open)
     {
-        gs::stats::drawFullscreenStatsPanel(m_overlay_stats_snapshot);
+        s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
+        gs::imgui::drawTopOverlayStatus(m_overlay_input);
+        if (m_frame_ui_state.overlay_stats_visible)
+        {
+            gs::stats::drawFullscreenStatsPanel(m_overlay_stats_snapshot);
+        }
+        drawMenuLocked();
     }
-    drawMenuLocked();
 
     if (m_touch_pending)
     {

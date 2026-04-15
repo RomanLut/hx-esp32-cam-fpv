@@ -15,8 +15,10 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
 	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_recordings_storage.cpp \
+	../components_gs/shared/gs_asset_loader.cpp \
 	../components_gs/shared/gs_stub_transport.cpp \
 	../components_gs/shared/gs_test_transport.cpp \
+	../components_gs/shared/gs_wifi_scan_transport.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	src/gs_linux_bootstrap.cpp \
@@ -25,6 +27,7 @@ SRCS := src/main.cpp \
 	src/gs_linux_runtime_loop.cpp \
 	src/gs_linux_transport_manager.cpp \
 	src/linux_apfpv_transport.cpp \
+	src/linux_wifi_scan_transport.cpp \
 	src/gs_linux_startup.cpp \
 	src/gs_linux_runtime_sink.cpp \
 	src/gs_linux_udp_broadcast.cpp \

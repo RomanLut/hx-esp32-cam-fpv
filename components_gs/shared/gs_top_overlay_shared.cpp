@@ -9,6 +9,7 @@
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "utils/utils.h"
 
 namespace gs::imgui
@@ -34,6 +35,13 @@ struct OverlayChipSpec
 // Draws the top overlay chips in a single horizontal strip. Returns the row height.
 float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y)
 {
+    if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
+    {
+        // Android surface reattach can briefly leave the overlay draw path with
+        // no active ImGui window/font while the renderer rebuilds state.
+        return 0.0f;
+    }
+
     const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
     const float resolved_height = std::max(20.0f, ImGui::GetIO().DisplaySize.y * 0.04f);
     float x = 0.0f;
@@ -73,6 +81,11 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
 // Builds and draws the runtime top overlay status chips.
 void drawTopOverlayStatus(const TopOverlayData& input)
 {
+    if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
+    {
+        return;
+    }
+
     std::vector<OverlayChipSpec> chips;
     char buf[64];
     std::string air_link_text;

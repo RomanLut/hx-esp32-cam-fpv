@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
     private lateinit var apfpvWifiController: ApfpvWifiController
     private lateinit var rawBroadcastUsbController: RawBroadcastUsbController
+    private lateinit var wifiScanUsbController: WifiScanUsbController
 
     private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
         rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
+        wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         enableEdgeToEdge()
         applyImmersiveFullscreen()
@@ -76,6 +78,7 @@ class MainActivity : ComponentActivity() {
 
         apfpvWifiController.start()
         rawBroadcastUsbController.start()
+        wifiScanUsbController.start()
     }
 
     override fun onResume() {
@@ -83,9 +86,17 @@ class MainActivity : ComponentActivity() {
         applyImmersiveFullscreen()
         apfpvWifiController.start()
         rawBroadcastUsbController.start()
+        wifiScanUsbController.start()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyImmersiveFullscreen()
     }
 
     override fun onDestroy() {
+        wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
         super.onDestroy()

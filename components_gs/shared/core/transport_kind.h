@@ -10,7 +10,9 @@ enum class TransportKind
 {
     RawBroadcast = 0,
     APFPV = 1,
-    TestTransport = 2
+    TestTransport = 2,
+    WifiChannelScan = 3,
+    Count = 4
 };
 
 //===================================================================================

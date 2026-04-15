@@ -116,6 +116,9 @@ int OSDMenuController::getTransportModeMenuIndex(gs::core::TransportKind kind)
 
     case gs::core::TransportKind::TestTransport:
         return 2;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return 3;
     }
 
     return 0;
@@ -136,6 +139,9 @@ gs::core::TransportKind OSDMenuController::getTransportKindForMenuIndex(int menu
 
     case 2:
         return gs::core::TransportKind::TestTransport;
+
+    case 3:
+        return gs::core::TransportKind::WifiChannelScan;
 
     default:
         return gs::core::TransportKind::RawBroadcast;
@@ -1875,7 +1881,7 @@ void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
     this->drawMenuTitle("Search -> Mode");
     drawSpacing();
 
-    for (int item_index = 0; item_index < 3; ++item_index)
+    for (int item_index = 0; item_index < static_cast<int>(gs::core::TransportKind::Count); ++item_index)
     {
         const gs::core::TransportKind kind = OSDMenuController::getTransportKindForMenuIndex(item_index);
         if (this->drawMenuItem(gs::core::TransportManagerBase::transportModeLabel(kind), item_index))

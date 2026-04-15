@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <limits>
 
 #include <android/log.h>
@@ -399,8 +400,13 @@ bool AndroidRawBroadcastTransport::receive(void* data, size_t& size, bool& resto
 // Retunes the active RTL adapter to the requested monitor-mode channel when running.
 void AndroidRawBroadcastTransport::setChannel(int ch)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_device)
+    std::shared_ptr<Rtl8812aDevice> device;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        device = m_device;
+    }
+
+    if (!device)
     {
         __android_log_print(ANDROID_LOG_INFO,
                             kAndroidRawBroadcastLogTag,
@@ -409,11 +415,35 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
         return;
     }
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRawBroadcastLogTag,
-                        "Setting monitor channel to %d",
-                        ch);
-    m_device->SetMonitorChannel(makeSelectedChannel(ch));
+    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    try
+    {
+        if (device->should_stop)
+        {
+            return;
+        }
+
+        __android_log_print(ANDROID_LOG_INFO,
+                            kAndroidRawBroadcastLogTag,
+                            "Setting monitor channel to %d",
+                            ch);
+        device->SetMonitorChannel(makeSelectedChannel(ch));
+    }
+    catch (const std::exception& e)
+    {
+        __android_log_print(ANDROID_LOG_WARN,
+                            kAndroidRawBroadcastLogTag,
+                            "SetMonitorChannel failed after USB detach: %s",
+                            e.what());
+        device->should_stop = true;
+    }
+    catch (...)
+    {
+        __android_log_print(ANDROID_LOG_WARN,
+                            kAndroidRawBroadcastLogTag,
+                            "SetMonitorChannel failed after USB detach with unknown exception");
+        device->should_stop = true;
+    }
 }
 
 //===================================================================================
@@ -437,15 +467,44 @@ uint32_t AndroidRawBroadcastTransport::consumeFilteredFrameCount()
 // Sets the TX power level on the active RTL adapter (0 = driver default, 1..63 = dBm scale).
 void AndroidRawBroadcastTransport::setTxPower(int txPower)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
-    if (m_device)
+    std::shared_ptr<Rtl8812aDevice> device;
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "Setting TX power to %d",
-                            m_tx_power);
-        m_device->SetTxPower(m_tx_power);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
+        device = m_device;
+    }
+
+    if (device)
+    {
+        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+        try
+        {
+            if (device->should_stop)
+            {
+                return;
+            }
+
+            __android_log_print(ANDROID_LOG_INFO,
+                                kAndroidRawBroadcastLogTag,
+                                "Setting TX power to %d",
+                                m_tx_power);
+            device->SetTxPower(m_tx_power);
+        }
+        catch (const std::exception& e)
+        {
+            __android_log_print(ANDROID_LOG_WARN,
+                                kAndroidRawBroadcastLogTag,
+                                "SetTxPower failed after USB detach: %s",
+                                e.what());
+            device->should_stop = true;
+        }
+        catch (...)
+        {
+            __android_log_print(ANDROID_LOG_WARN,
+                                kAndroidRawBroadcastLogTag,
+                                "SetTxPower failed after USB detach with unknown exception");
+            device->should_stop = true;
+        }
     }
 }
 
@@ -506,6 +565,7 @@ std::string AndroidRawBroadcastTransport::getTransportMessage() const
 // Starts the Android RTL8812AU adapter from one already-open USB file descriptor.
 bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 {
+    std::lock_guard<std::mutex> stop_lock(m_stop_mutex);
     if (fd < 0)
     {
         __android_log_print(ANDROID_LOG_ERROR,
@@ -515,7 +575,46 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    stopUsbAdapter();
+    std::shared_ptr<Rtl8812aDevice> old_device;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        old_device = m_device;
+        if (old_device)
+        {
+            old_device->should_stop = true;
+        }
+    }
+
+    if (m_rx_thread && m_rx_thread->joinable())
+    {
+        m_rx_thread->join();
+    }
+    if (m_usb_event_thread && m_usb_event_thread->joinable())
+    {
+        m_usb_event_thread->join();
+    }
+    m_rx_thread.reset();
+    m_usb_event_thread.reset();
+
+    {
+        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_device.reset();
+        m_active_usb_fd = -1;
+        resetTxAssemblerLocked();
+        m_tx_block_packets.clear();
+    }
+
+    if (m_usb_handle != nullptr)
+    {
+        libusb_release_interface(m_usb_handle, 0);
+        m_usb_handle = nullptr;
+    }
+    if (m_libusb_context != nullptr)
+    {
+        libusb_exit(m_libusb_context);
+        m_libusb_context = nullptr;
+    }
 
     libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
     if (libusb_init(&m_libusb_context) < 0)
@@ -578,7 +677,10 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         m_last_rx_decoded_bytes_total = 0;
         m_next_block_index = 1;
         if (m_tx_power > 0)
+        {
+            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
             m_device->SetTxPower(m_tx_power);
+        }
     }
 
     __android_log_print(ANDROID_LOG_INFO,
@@ -648,6 +750,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 // Stops the active Android RTL8812AU adapter and releases its USB/libusb resources.
 void AndroidRawBroadcastTransport::stopUsbAdapter()
 {
+    std::lock_guard<std::mutex> stop_lock(m_stop_mutex);
     std::shared_ptr<Rtl8812aDevice> device;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -669,6 +772,10 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
     m_rx_thread.reset();
     m_usb_event_thread.reset();
 
+    // Hot-unplug can leave queued TX work still trying to touch libusb while Java is stopping
+    // the transport. Hold the device I/O gate while clearing the shared device pointer and
+    // releasing libusb so no send/control path can race teardown with a stale device handle.
+    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_device.reset();
@@ -779,12 +886,38 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<Rtl8812aD
         return false;
     }
 
-    if (!device->send_packet(packet.data(), packet.size()))
+    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    if (device->should_stop)
+    {
+        return false;
+    }
+
+    try
+    {
+        if (!device->send_packet(packet.data(), packet.size()))
+        {
+            __android_log_print(ANDROID_LOG_WARN,
+                                kAndroidRawBroadcastLogTag,
+                                "send_packet failed size=%zu",
+                                packet.size());
+            return false;
+        }
+    }
+    catch (const std::exception& e)
     {
         __android_log_print(ANDROID_LOG_WARN,
                             kAndroidRawBroadcastLogTag,
-                            "send_packet failed size=%zu",
-                            packet.size());
+                            "send_packet threw after USB detach: %s",
+                            e.what());
+        device->should_stop = true;
+        return false;
+    }
+    catch (...)
+    {
+        __android_log_print(ANDROID_LOG_WARN,
+                            kAndroidRawBroadcastLogTag,
+                            "send_packet threw after USB detach with unknown exception");
+        device->should_stop = true;
         return false;
     }
 

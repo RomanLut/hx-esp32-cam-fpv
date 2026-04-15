@@ -47,6 +47,9 @@ gs::core::ITransport& AndroidTransportManager::resolveTransport(gs::core::Transp
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport;
     }
 
     return m_apfpv_transport;
@@ -67,6 +70,9 @@ bool AndroidTransportManager::isTransportInitialized(gs::core::TransportKind kin
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport_initialized;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport_initialized;
     }
 
     return false;
@@ -90,6 +96,10 @@ void AndroidTransportManager::setTransportInitialized(gs::core::TransportKind ki
     case gs::core::TransportKind::TestTransport:
         m_test_transport_initialized = initialized;
         break;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        m_wifi_scan_transport_initialized = initialized;
+        break;
     }
 }
 
@@ -108,7 +118,24 @@ const gs::core::ITransport& AndroidTransportManager::resolveTransport(gs::core::
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport;
     }
 
     return m_apfpv_transport;
+}
+
+//===================================================================================
+//===================================================================================
+AndroidWifiScanTransport& AndroidTransportManager::wifiScanTransport()
+{
+    return m_wifi_scan_transport;
+}
+
+//===================================================================================
+//===================================================================================
+const AndroidWifiScanTransport& AndroidTransportManager::wifiScanTransport() const
+{
+    return m_wifi_scan_transport;
 }

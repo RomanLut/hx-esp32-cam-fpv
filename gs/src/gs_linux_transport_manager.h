@@ -2,6 +2,7 @@
 
 #include "linux_apfpv_transport.h"
 #include "linux_raw_broadcast_transport.h"
+#include "linux_wifi_scan_transport.h"
 #include "core/transport_manager_base.h"
 #include "gs_test_transport.h"
 
@@ -18,11 +19,13 @@ private:
     void setTransportInitialized(gs::core::TransportKind kind, bool initialized) override;
 
     LinuxRawBroadcastTransport m_raw_broadcast;
-    LinuxApfpvTransport m_apfpv_transport;
-    GSTestTransport m_test_transport;
-    bool m_raw_broadcast_initialized = false;
-    bool m_apfpv_transport_initialized = false;
-    bool m_test_transport_initialized = false;
+    LinuxApfpvTransport        m_apfpv_transport;
+    GSTestTransport            m_test_transport;
+    LinuxWifiScanTransport     m_wifi_scan_transport;
+    bool m_raw_broadcast_initialized      = false;
+    bool m_apfpv_transport_initialized    = false;
+    bool m_test_transport_initialized     = false;
+    bool m_wifi_scan_transport_initialized = false;
 };
 
 LinuxTransportManager& getLinuxTransportManager();

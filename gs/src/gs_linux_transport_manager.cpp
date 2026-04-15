@@ -15,6 +15,9 @@ gs::core::ITransport& LinuxTransportManager::resolveTransport(gs::core::Transpor
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport;
     }
 
     return m_raw_broadcast;
@@ -35,6 +38,9 @@ bool LinuxTransportManager::isTransportInitialized(gs::core::TransportKind kind)
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport_initialized;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport_initialized;
     }
 
     return false;
@@ -58,6 +64,10 @@ void LinuxTransportManager::setTransportInitialized(gs::core::TransportKind kind
     case gs::core::TransportKind::TestTransport:
         m_test_transport_initialized = initialized;
         break;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        m_wifi_scan_transport_initialized = initialized;
+        break;
     }
 }
 
@@ -76,6 +86,9 @@ const gs::core::ITransport& LinuxTransportManager::resolveTransport(gs::core::Tr
 
     case gs::core::TransportKind::TestTransport:
         return m_test_transport;
+
+    case gs::core::TransportKind::WifiChannelScan:
+        return m_wifi_scan_transport;
     }
 
     return m_raw_broadcast;
