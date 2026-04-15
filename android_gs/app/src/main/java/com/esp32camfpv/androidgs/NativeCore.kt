@@ -57,6 +57,7 @@ object NativeCore {
     external fun isVrModeEnabled(handle: Long): Boolean
     external fun setRendererScreenMode(handle: Long, screenMode: Int)
     external fun setRendererVrMode(handle: Long, enabled: Boolean)
+    external fun setThermalStatus(handle: Long, thermalStatus: Int)
     external fun syncRendererOverlay(handle: Long, buildInfo: String)
     external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
     external fun handleKey(handle: Long, keyCode: Int): Boolean

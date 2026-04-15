@@ -143,6 +143,7 @@ struct NativeHandle
     GsVideoRenderer renderer;
     AndroidBitmapJpegDecoder jpeg_decoder;
     Clock::time_point last_control_packet_tp = Clock::now();
+    int gs_thermal_status = 0;
     std::atomic<bool> stop_background = false;
     std::unique_ptr<std::thread> background_runtime_thread;
 };
@@ -1684,11 +1685,31 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     }
     overlay_input.transport_message =
         native_handle->transport_manager.activeTransport().getTransportMessage();
+    overlay_input.gs_thermal_status = native_handle->gs_thermal_status;
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     processPendingOsdFontReload(s_runtimeCore.config_packet);
     native_handle->renderer.setOverlayInput(overlay_input);
     native_handle->renderer.setFrameUiState(sync_state.frame_ui_state);
     native_handle->renderer.setOverlayStatsSnapshot(sync_state.overlay_stats_snapshot);
+}
+
+//===================================================================================
+//===================================================================================
+// Stores the latest Android thermal status enum for overlay rendering and legacy stats.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setThermalStatus(JNIEnv* /* env */,
+                                                           jobject /* thiz */,
+                                                           jlong handle,
+                                                           jint thermal_status)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->gs_thermal_status = std::max(0, static_cast<int>(thermal_status));
+    setAndroidThermalStatus(native_handle->gs_thermal_status);
 }
 
 extern "C" JNIEXPORT void JNICALL

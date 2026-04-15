@@ -5,6 +5,7 @@
 
 #include "frame_packets_debug.h"
 #include "gs_recordings_storage.h"
+#include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
 
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
@@ -114,6 +115,9 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.air_record = core.session.lastAirStats().air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();
     overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;
+    overlay_input.gs_temp_celsius = s_RuntimePlatformServices != nullptr
+        ? s_RuntimePlatformServices->getCpuTemperatureCelsius()
+        : 0.0f;
     overlay_input.interference = shouldShowInterferenceChip(core.last_ground_stats);
     overlay_input.osd_font_error = params.osd_font_error;
     overlay_input.incompatible_firmware_time = Clock::time_point{};
@@ -127,7 +131,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         stats_snapshot.fec_codec_n = core.config_packet.dataChannel.fec_codec_n;
         stats_snapshot.current_quality = core.session.lastAirStats().curr_quality;
         stats_snapshot.wifi_queue_max = core.session.lastAirStats().wifi_queue_max;
-        stats_snapshot.cpu_temp_c = 0;
+        stats_snapshot.cpu_temp_c = static_cast<int>(overlay_input.gs_temp_celsius + 0.5f);
         stats_snapshot.air_stats = core.session.lastAirStats();
         stats_snapshot.ground_stats = core.last_ground_stats;
         stats_snapshot.frame_stats = frame_stats.frame_stats;

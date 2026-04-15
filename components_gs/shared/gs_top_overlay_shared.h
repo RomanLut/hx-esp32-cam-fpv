@@ -35,6 +35,7 @@ struct TopOverlayData
     bool air_record = false;
     bool gs_record = false;
     bool hq_dvr = false;
+    int gs_thermal_status = 0;
     float gs_temp_celsius = 0.0f;
     bool osd_font_error = false;
     Clock::time_point incompatible_firmware_time = Clock::time_point{};

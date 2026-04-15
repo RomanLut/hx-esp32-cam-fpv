@@ -1,5 +1,6 @@
 #include "android_runtime_platform_services.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -30,6 +31,7 @@ Clock::time_point s_pending_channel_change_tp = Clock::now() + std::chrono::hour
 AndroidRuntimePlatformServices s_android_runtime_platform_services;
 GsVideoRenderer* s_android_runtime_renderer = nullptr;
 std::atomic<bool> s_android_renderer_invalidate_requested = false;
+std::atomic<int> s_android_thermal_status = 0;
 
 //===================================================================================
 //===================================================================================
@@ -115,10 +117,21 @@ bool consumeAndroidRendererInvalidateRequest()
 
 //===================================================================================
 //===================================================================================
+// Stores the latest Android thermal status for shared UI and stats rendering.
+void setAndroidThermalStatus(int thermal_status)
+{
+    s_android_thermal_status.store(std::max(0, thermal_status));
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the Android ground-station CPU temperature when available.
 float AndroidRuntimePlatformServices::getCpuTemperatureCelsius() const
 {
-    return 0.0f;
+    // Android currently reuses the legacy GS temperature field to display the
+    // thermal severity id in the existing stats panel until that UI gets a
+    // dedicated thermal-status label.
+    return static_cast<float>(s_android_thermal_status.load());
 }
 
 //===================================================================================

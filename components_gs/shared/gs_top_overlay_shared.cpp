@@ -152,6 +152,8 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     if (input.gs_record) chips.push_back({"GS", true, 0.0f});
     if (input.hq_dvr) chips.push_back({"HQ DVR", true, 0.0f});
     if (show_gs_temp && !gs_temp_text.empty()) chips.push_back({gs_temp_text, true, 110.0f});
+    if (input.gs_thermal_status == 3) chips.push_back({"GS HOT", true, 0.0f});
+    if (input.gs_thermal_status >= 4) chips.push_back({"GS OVERHEAT!", true, 0.0f});
     if (show_air_temp && !air_temp_text.empty()) chips.push_back({air_temp_text, true, 137.0f});
     if (input.air_overheat) chips.push_back({"OVERHEAT!", true, 0.0f});
     if (input.now - input.incompatible_firmware_time < std::chrono::milliseconds(5000)) chips.push_back({"Incompatible Air Unit firmware. Please update!", true, 0.0f});

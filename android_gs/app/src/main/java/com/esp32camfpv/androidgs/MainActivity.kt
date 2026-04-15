@@ -1,7 +1,9 @@
 package com.esp32camfpv.androidgs
 
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.view.MotionEvent
 import android.view.KeyEvent
 import android.view.SurfaceHolder
@@ -29,6 +31,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -39,9 +42,12 @@ private val VideoBackgroundColor = Color(0xFF0A0D14)
 class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
+    private val currentThermalStatus = AtomicInteger(0)
     private lateinit var apfpvWifiController: ApfpvWifiController
     private lateinit var rawBroadcastUsbController: RawBroadcastUsbController
     private lateinit var wifiScanUsbController: WifiScanUsbController
+    private var powerManager: PowerManager? = null
+    private var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
 
     private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -55,6 +61,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        setupThermalStatusMonitoring()
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
@@ -69,6 +76,7 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AndroidGsApp(
                         onHandleChanged = { inputNativeHandle = it },
+                        thermalStatusProvider = { currentThermalStatusValue() },
                         onUserInteraction = { applyImmersiveFullscreen() },
                         onExitApp = { finishAffinity() }
                     )
@@ -96,6 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        teardownThermalStatusMonitoring()
         wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
@@ -122,11 +131,44 @@ class MainActivity : ComponentActivity() {
         }
         return super.dispatchKeyEvent(event)
     }
+
+    private fun currentThermalStatusValue(): Int {
+        return currentThermalStatus.get()
+    }
+
+    private fun setupThermalStatusMonitoring() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            currentThermalStatus.set(0)
+            return
+        }
+
+        val manager = getSystemService(PowerManager::class.java) ?: return
+        powerManager = manager
+        currentThermalStatus.set(manager.currentThermalStatus)
+        val listener = PowerManager.OnThermalStatusChangedListener { status ->
+            currentThermalStatus.set(status)
+        }
+        thermalStatusListener = listener
+        manager.addThermalStatusListener(mainExecutor, listener)
+    }
+
+    private fun teardownThermalStatusMonitoring() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return
+        }
+
+        val manager = powerManager ?: return
+        val listener = thermalStatusListener ?: return
+        manager.removeThermalStatusListener(listener)
+        thermalStatusListener = null
+        powerManager = null
+    }
 }
 
 @Composable
 private fun AndroidGsApp(
     onHandleChanged: (Long) -> Unit,
+    thermalStatusProvider: () -> Int,
     onUserInteraction: () -> Unit,
     onExitApp: () -> Unit
 ) {
@@ -145,6 +187,7 @@ private fun AndroidGsApp(
     fun refreshNativeState() {
         NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
         NativeCore.setRendererVrMode(nativeHandle, NativeCore.isVrModeEnabled(nativeHandle))
+        NativeCore.setThermalStatus(nativeHandle, thermalStatusProvider())
         NativeCore.syncRendererOverlay(nativeHandle, buildInfo)
     }
 
