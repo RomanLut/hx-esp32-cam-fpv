@@ -37,6 +37,7 @@ struct TopOverlayData
     bool hq_dvr = false;
     int gs_thermal_status = 0;
     float gs_temp_celsius = 0.0f;
+    int battery_percent = -1;   // -1 = unknown (Android-only)
     bool osd_font_error = false;
     Clock::time_point incompatible_firmware_time = Clock::time_point{};
     Clock::time_point now = Clock::time_point::max();

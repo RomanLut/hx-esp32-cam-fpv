@@ -144,6 +144,7 @@ struct NativeHandle
     AndroidBitmapJpegDecoder jpeg_decoder;
     Clock::time_point last_control_packet_tp = Clock::now();
     int gs_thermal_status = 0;
+    int gs_battery_percent = -1;
     std::atomic<bool> stop_background = false;
     std::unique_ptr<std::thread> background_runtime_thread;
 };
@@ -1686,6 +1687,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     overlay_input.transport_message =
         native_handle->transport_manager.activeTransport().getTransportMessage();
     overlay_input.gs_thermal_status = native_handle->gs_thermal_status;
+    overlay_input.battery_percent = native_handle->gs_battery_percent;
     native_handle->renderer.setFlightOsdFont(sync_state.osd_font_name);
     processPendingOsdFontReload(s_runtimeCore.config_packet);
     native_handle->renderer.setOverlayInput(overlay_input);
@@ -1710,6 +1712,24 @@ Java_com_esp32camfpv_androidgs_NativeCore_setThermalStatus(JNIEnv* /* env */,
 
     native_handle->gs_thermal_status = std::max(0, static_cast<int>(thermal_status));
     setAndroidThermalStatus(native_handle->gs_thermal_status);
+}
+
+//===================================================================================
+//===================================================================================
+// Stores the latest Android battery level for overlay rendering.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setBatteryPercent(JNIEnv* /* env */,
+                                                            jobject /* thiz */,
+                                                            jlong handle,
+                                                            jint battery_percent)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    native_handle->gs_battery_percent = battery_percent;
 }
 
 extern "C" JNIEXPORT void JNICALL

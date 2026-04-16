@@ -1,6 +1,11 @@
 package com.esp32camfpv.androidgs
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -43,6 +48,8 @@ class MainActivity : ComponentActivity() {
     private var inputNativeHandle: Long = 0L
     private val inputBuildInfo: String by lazy { NativeCore.getBuildInfo() }
     private val currentThermalStatus = AtomicInteger(0)
+    private val currentBatteryPercent = AtomicInteger(-1)
+    private var batteryReceiver: BroadcastReceiver? = null
     private lateinit var apfpvWifiController: ApfpvWifiController
     private lateinit var rawBroadcastUsbController: RawBroadcastUsbController
     private lateinit var wifiScanUsbController: WifiScanUsbController
@@ -62,6 +69,7 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         setupThermalStatusMonitoring()
+        setupBatteryMonitoring()
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
@@ -77,6 +85,7 @@ class MainActivity : ComponentActivity() {
                     AndroidGsApp(
                         onHandleChanged = { inputNativeHandle = it },
                         thermalStatusProvider = { currentThermalStatusValue() },
+                        batteryPercentProvider = { currentBatteryPercentValue() },
                         onUserInteraction = { applyImmersiveFullscreen() },
                         onExitApp = { finishAffinity() }
                     )
@@ -105,6 +114,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         teardownThermalStatusMonitoring()
+        teardownBatteryMonitoring()
         wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
@@ -134,6 +144,34 @@ class MainActivity : ComponentActivity() {
 
     private fun currentThermalStatusValue(): Int {
         return currentThermalStatus.get()
+    }
+
+    private fun currentBatteryPercentValue(): Int {
+        return currentBatteryPercent.get()
+    }
+
+    private fun setupBatteryMonitoring() {
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                currentBatteryPercent.set(if (level >= 0 && scale > 0) level * 100 / scale else -1)
+            }
+        }
+        batteryReceiver = receiver
+        // ACTION_BATTERY_CHANGED is a sticky broadcast — registerReceiver returns the last intent
+        val sticky = registerReceiver(receiver, filter)
+        if (sticky != null) {
+            val level = sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = sticky.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            currentBatteryPercent.set(if (level >= 0 && scale > 0) level * 100 / scale else -1)
+        }
+    }
+
+    private fun teardownBatteryMonitoring() {
+        batteryReceiver?.let { unregisterReceiver(it) }
+        batteryReceiver = null
     }
 
     private fun setupThermalStatusMonitoring() {
@@ -169,6 +207,7 @@ class MainActivity : ComponentActivity() {
 private fun AndroidGsApp(
     onHandleChanged: (Long) -> Unit,
     thermalStatusProvider: () -> Int,
+    batteryPercentProvider: () -> Int,
     onUserInteraction: () -> Unit,
     onExitApp: () -> Unit
 ) {
@@ -188,6 +227,7 @@ private fun AndroidGsApp(
         NativeCore.setRendererScreenMode(nativeHandle, NativeCore.getScreenAspectRatio(nativeHandle))
         NativeCore.setRendererVrMode(nativeHandle, NativeCore.isVrModeEnabled(nativeHandle))
         NativeCore.setThermalStatus(nativeHandle, thermalStatusProvider())
+        NativeCore.setBatteryPercent(nativeHandle, batteryPercentProvider())
         NativeCore.syncRendererOverlay(nativeHandle, buildInfo)
     }
 

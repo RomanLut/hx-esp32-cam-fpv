@@ -145,6 +145,12 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     std::snprintf(buf, sizeof(buf), "%02d", input.video_fps);
     chips.push_back({buf, input.video_fps_alert, 45.0f});
 
+    if (input.battery_percent >= 0)
+    {
+        std::snprintf(buf, sizeof(buf), "BAT:%d%%", input.battery_percent);
+        chips.push_back({buf, input.battery_percent < 30, 0.0f});
+    }
+
     if (input.no_ping) chips.push_back({"NO PING!", true, 0.0f});
     if (input.interference) chips.push_back({"CHANNEL CONGESTED!", true, 0.0f});
     if (input.sd_slow) chips.push_back({"SD SLOW!", true, 0.0f});
