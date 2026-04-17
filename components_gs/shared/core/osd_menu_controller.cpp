@@ -1612,6 +1612,16 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    {
+        char buf[256];
+        sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 3) )
+        {
+            gs_config.screenFlipV = !gs_config.screenFlipV;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
     if ( this->exitKeyPressed())
     {
         this->goBack();

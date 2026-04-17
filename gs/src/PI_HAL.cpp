@@ -601,7 +601,33 @@ bool PI_HAL::update_display()
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImDrawData* draw_data = ImGui::GetDrawData();
+    if (s_groundstation_config.screenFlipV && draw_data != nullptr)
+    {
+        const float sw = io.DisplaySize.x;
+        const float sh = io.DisplaySize.y;
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
+        {
+            ImDrawList* cmd_list = draw_data->CmdLists[n];
+            for (ImDrawVert& v : cmd_list->VtxBuffer)
+            {
+                v.pos.x = sw - v.pos.x;
+                v.pos.y = sh - v.pos.y;
+            }
+            for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
+            {
+                const float x1 = cmd.ClipRect.x;
+                const float y1 = cmd.ClipRect.y;
+                const float x2 = cmd.ClipRect.z;
+                const float y2 = cmd.ClipRect.w;
+                cmd.ClipRect.x = sw - x2;
+                cmd.ClipRect.y = sh - y2;
+                cmd.ClipRect.z = sw - x1;
+                cmd.ClipRect.w = sh - y1;
+            }
+        }
+    }
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     SDL_GL_SwapWindow(m_impl->window);
     
     return true;

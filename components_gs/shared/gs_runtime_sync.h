@@ -19,6 +19,7 @@ struct RuntimeFrameUiState
     ScreenAspectRatio screen_mode = ScreenAspectRatio::LETTERBOX;
     bool vsync = true;
     bool vr_mode = false;
+    bool screen_flip_v = false;
     bool flight_osd_is_16x9 = false;
 };
 

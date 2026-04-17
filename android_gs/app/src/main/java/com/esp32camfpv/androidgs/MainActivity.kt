@@ -87,7 +87,13 @@ class MainActivity : ComponentActivity() {
                         thermalStatusProvider = { currentThermalStatusValue() },
                         batteryPercentProvider = { currentBatteryPercentValue() },
                         onUserInteraction = { applyImmersiveFullscreen() },
-                        onExitApp = { finishAffinity() }
+                        onExitApp = { finishAffinity() },
+                        onScreenFlipVChanged = { flipV ->
+                            requestedOrientation = if (flipV)
+                                ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                            else
+                                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                        }
                     )
                 }
             }
@@ -209,7 +215,8 @@ private fun AndroidGsApp(
     thermalStatusProvider: () -> Int,
     batteryPercentProvider: () -> Int,
     onUserInteraction: () -> Unit,
-    onExitApp: () -> Unit
+    onExitApp: () -> Unit,
+    onScreenFlipVChanged: (Boolean) -> Unit = {}
 ) {
     val nativeHandle = remember { NativeCore.createHandle(1) }
     val scope = rememberCoroutineScope()
@@ -229,6 +236,7 @@ private fun AndroidGsApp(
         NativeCore.setThermalStatus(nativeHandle, thermalStatusProvider())
         NativeCore.setBatteryPercent(nativeHandle, batteryPercentProvider())
         NativeCore.syncRendererOverlay(nativeHandle, buildInfo)
+        onScreenFlipVChanged(NativeCore.isScreenFlipVEnabled(nativeHandle))
     }
 
     LaunchedEffect(nativeHandle) {

@@ -217,6 +217,7 @@ private:
     int m_screen_mode = 1;
     bool m_vsync = true;
     bool m_vr_mode = false;
+    bool m_screen_flip_v = false;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
 

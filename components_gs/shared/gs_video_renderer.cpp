@@ -448,6 +448,7 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     m_screen_mode = std::clamp(static_cast<int>(frame_ui_state.screen_mode), 0, 2);
     m_vsync = frame_ui_state.vsync;
     m_vr_mode = frame_ui_state.vr_mode;
+    m_screen_flip_v = frame_ui_state.screen_flip_v;
     m_menu_footer = frame_ui_state.menu_footer;
     m_surface_backend.setVsync(m_vsync);
     m_overlay_dirty = true;
@@ -573,6 +574,14 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     {
         return {};
     }
+
+#ifndef __ANDROID__
+    if (m_screen_flip_v)
+    {
+        x = static_cast<float>(m_surface_width)  - x;
+        y = static_cast<float>(m_surface_height) - y;
+    }
+#endif
 
     if (pointInRect(x, y, m_nav_up_bounds))
     {
@@ -998,11 +1007,18 @@ void GsVideoRenderer::drawTexturedQuadLocked(float x,
         return;
     }
 
+    const float sw = static_cast<float>(m_surface_width);
+    const float sh = static_cast<float>(m_surface_height);
+#ifndef __ANDROID__
+    const float flip = m_screen_flip_v ? -1.0f : 1.0f;
+#else
+    const float flip = 1.0f;
+#endif
     const GLfloat vertices[] = {
-        toNdcX(x, static_cast<float>(m_surface_width)),         toNdcY(y + height, static_cast<float>(m_surface_height)), u0, v1,
-        toNdcX(x + width, static_cast<float>(m_surface_width)), toNdcY(y + height, static_cast<float>(m_surface_height)), u1, v1,
-        toNdcX(x, static_cast<float>(m_surface_width)),         toNdcY(y, static_cast<float>(m_surface_height)),          u0, v0,
-        toNdcX(x + width, static_cast<float>(m_surface_width)), toNdcY(y, static_cast<float>(m_surface_height)),          u1, v0
+        flip * toNdcX(x,         sw), flip * toNdcY(y + height, sh), u0, v1,
+        flip * toNdcX(x + width, sw), flip * toNdcY(y + height, sh), u1, v1,
+        flip * toNdcX(x,         sw), flip * toNdcY(y,           sh), u0, v0,
+        flip * toNdcX(x + width, sw), flip * toNdcY(y,           sh), u1, v0
     };
 
     glUseProgram(m_program);
@@ -1119,7 +1135,14 @@ void GsVideoRenderer::drawOverlayLocked()
     m_touch_action = {};
     if (m_touch_pending)
     {
-        io.AddMousePosEvent(m_touch_x, m_touch_y);
+#ifndef __ANDROID__
+        const float touch_x = m_screen_flip_v ? (static_cast<float>(m_surface_width)  - m_touch_x) : m_touch_x;
+        const float touch_y = m_screen_flip_v ? (static_cast<float>(m_surface_height) - m_touch_y) : m_touch_y;
+#else
+        const float touch_x = m_touch_x;
+        const float touch_y = m_touch_y;
+#endif
+        io.AddMousePosEvent(touch_x, touch_y);
         io.AddMouseButtonEvent(0, true);
         io.AddMouseButtonEvent(0, false);
     }
@@ -1171,7 +1194,35 @@ void GsVideoRenderer::drawOverlayLocked()
         ImGui::End();
         ImGui::PopStyleVar(4);
         ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        ImDrawData* draw_data = ImGui::GetDrawData();
+#ifndef __ANDROID__
+        if (m_screen_flip_v && draw_data != nullptr)
+        {
+            const float sw = static_cast<float>(m_surface_width);
+            const float sh = static_cast<float>(m_surface_height);
+            for (int n = 0; n < draw_data->CmdListsCount; n++)
+            {
+                ImDrawList* cmd_list = draw_data->CmdLists[n];
+                for (ImDrawVert& v : cmd_list->VtxBuffer)
+                {
+                    v.pos.x = sw - v.pos.x;
+                    v.pos.y = sh - v.pos.y;
+                }
+                for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
+                {
+                    const float x1 = cmd.ClipRect.x;
+                    const float y1 = cmd.ClipRect.y;
+                    const float x2 = cmd.ClipRect.z;
+                    const float y2 = cmd.ClipRect.w;
+                    cmd.ClipRect.x = sw - x2;
+                    cmd.ClipRect.y = sh - y2;
+                    cmd.ClipRect.z = sw - x1;
+                    cmd.ClipRect.w = sh - y1;
+                }
+            }
+        }
+#endif
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     }
 }
 

@@ -55,6 +55,7 @@ object NativeCore {
     external fun getLastEventKind(handle: Long): Int
     external fun getScreenAspectRatio(handle: Long): Int
     external fun isVrModeEnabled(handle: Long): Boolean
+    external fun isScreenFlipVEnabled(handle: Long): Boolean
     external fun setRendererScreenMode(handle: Long, screenMode: Int)
     external fun setRendererVrMode(handle: Long, enabled: Boolean)
     external fun setThermalStatus(handle: Long, thermalStatus: Int)
