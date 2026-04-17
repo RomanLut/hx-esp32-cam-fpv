@@ -1622,7 +1622,32 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->exitKeyPressed())
+    bool zoom_handled = false;
+    {
+        const bool zoom_focused = (this->selectedItem == 4);
+        if (zoom_focused && !this->keyHandled)
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))
+            {
+                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom + 0.05f, 0.5f, 1.5f) * 20.0f) / 20.0f;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                zoom_handled = true;
+            }
+            else if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+            {
+                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom - 0.05f, 0.5f, 1.5f) * 20.0f) / 20.0f;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                zoom_handled = true;
+            }
+        }
+        char buf[256];
+        sprintf(buf, "Zoom: %d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
+        this->drawMenuItem( buf, 4);
+    }
+
+    if (!zoom_handled && this->exitKeyPressed())
     {
         this->goBack();
     }

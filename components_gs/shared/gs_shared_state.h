@@ -28,6 +28,7 @@ struct TGroundstationConfig
     bool vrMode = false;
     bool vsync = true;
     bool screenFlipV = false;
+    float screenZoom = 1.0f;
     std::string txInterface = "";
     std::string apfpvInterface = "";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;

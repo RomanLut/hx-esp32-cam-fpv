@@ -80,6 +80,7 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(surface_width, surface_height), ImGuiCond_Always);
+    ImGui::SetNextWindowFocus();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
     ImGui::Begin("RUNTIME_MENU_NAV_PAD",
@@ -113,7 +114,7 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
     draw_nav_pad(0.0f, true);
     if (state.vr_mode)
     {
-        draw_nav_pad(layout_width, false);
+        draw_nav_pad(layout_width, true);
     }
 
     {

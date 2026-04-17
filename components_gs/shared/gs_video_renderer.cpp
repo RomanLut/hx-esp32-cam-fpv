@@ -449,6 +449,7 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     m_vsync = frame_ui_state.vsync;
     m_vr_mode = frame_ui_state.vr_mode;
     m_screen_flip_v = frame_ui_state.screen_flip_v;
+    m_zoom = frame_ui_state.screen_zoom;
     m_menu_footer = frame_ui_state.menu_footer;
     m_surface_backend.setVsync(m_vsync);
     m_overlay_dirty = true;
@@ -582,6 +583,13 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
         y = static_cast<float>(m_surface_height) - y;
     }
 #endif
+
+    // In VR mode the right half mirrors the left half — translate right-half taps
+    // to their left-half equivalents so all bounds checks work for both eyes.
+    if (m_vr_mode && x >= static_cast<float>(m_surface_width) * 0.5f)
+    {
+        x -= static_cast<float>(m_surface_width) * 0.5f;
+    }
 
     if (pointInRect(x, y, m_nav_up_bounds))
     {
@@ -1254,6 +1262,16 @@ void GsVideoRenderer::drawFrameLocked()
                                            m_screen_mode);
             std::swap(quad.v0, quad.v1);
 
+            if (m_zoom != 1.0f)
+            {
+                const float cx = quad.x + quad.width * 0.5f;
+                const float cy = quad.y + quad.height * 0.5f;
+                quad.width *= m_zoom;
+                quad.height *= m_zoom;
+                quad.x = cx - quad.width * 0.5f;
+                quad.y = cy - quad.height * 0.5f;
+            }
+
             drawTexturedQuadLocked(
                 quad.x,
                 quad.y,
@@ -1269,9 +1287,13 @@ void GsVideoRenderer::drawFrameLocked()
 
         if (m_vr_mode)
         {
-            const float half_width = static_cast<float>(m_surface_width) * 0.5f;
-            drawVideoCopy(0.0f, 0.0f, half_width, static_cast<float>(m_surface_height));
-            drawVideoCopy(half_width, 0.0f, static_cast<float>(m_surface_width) - half_width, static_cast<float>(m_surface_height));
+            const int half_width = m_surface_width / 2;
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(0, 0, half_width, m_surface_height);
+            drawVideoCopy(0.0f, 0.0f, static_cast<float>(half_width), static_cast<float>(m_surface_height));
+            glScissor(half_width, 0, m_surface_width - half_width, m_surface_height);
+            drawVideoCopy(static_cast<float>(half_width), 0.0f, static_cast<float>(m_surface_width - half_width), static_cast<float>(m_surface_height));
+            glDisable(GL_SCISSOR_TEST);
         }
         else
         {
