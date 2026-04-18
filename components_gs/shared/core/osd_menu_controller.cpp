@@ -602,7 +602,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Camera Settings...", 5) )
+    if ( this->drawMenuItem( "Camera...", 5) )
     {
         this->goForward( OSDMenuId::CameraSettings, 0 );
 
@@ -613,7 +613,7 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Ground Station Settings...", 6) )
+    if ( this->drawMenuItem( "Ground Station...", 6) )
     {
         this->goForward( OSDMenuId::GSSettings, 0 );
     }
@@ -1580,6 +1580,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         this->goForward( OSDMenuId::Debug, 0 );
     }
 
+    if (s_RuntimePlatformServices->supportsGPIOKeys())
     {
         char buf[256];
         const char* layout = gs_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
