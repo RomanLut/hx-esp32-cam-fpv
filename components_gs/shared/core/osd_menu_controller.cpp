@@ -1773,7 +1773,8 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         }
         item_index++;
     }
-    else if (gs_config.transportKind == gs::core::TransportKind::APFPV)
+    else if (gs_config.transportKind == gs::core::TransportKind::APFPV &&
+             (!s_transport || s_transport->supportsApfpvInterfaceSelection()))
     {
         char buf[256];
         sprintf(buf, "APFPV Interface: %s##1", gs_config.apfpvInterface.c_str());
@@ -1792,6 +1793,7 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         item_index++;
     }
 
+    if (!s_transport || s_transport->supportsTxPowerControl())
     {
         char buf[256];
         sprintf(buf, "TX Power: %d##2", gs_config.txPower);
@@ -1803,18 +1805,21 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 
     drawLargeGapIfTallScreen();
 
-    if ( interfaces.empty() )
+    if (!s_transport || s_transport->supportsNetworkInterfaceStatus())
     {
-        this->drawStatus("No network interfaces detected##if_status_empty");
-    }
-    else
-    {
-        for (size_t i = 0; i < interfaces.size(); i++)
+        if ( interfaces.empty() )
         {
-            std::string summary = getInterfaceSummary(interfaces[i]);
-            char buf[512];
-            snprintf(buf, sizeof(buf), "%s##if_status_%zu", summary.c_str(), i);
-            this->drawStatus(buf);
+            this->drawStatus("No network interfaces detected##if_status_empty");
+        }
+        else
+        {
+            for (size_t i = 0; i < interfaces.size(); i++)
+            {
+                std::string summary = getInterfaceSummary(interfaces[i]);
+                char buf[512];
+                snprintf(buf, sizeof(buf), "%s##if_status_%zu", summary.c_str(), i);
+                this->drawStatus(buf);
+            }
         }
     }
 

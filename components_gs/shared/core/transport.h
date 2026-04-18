@@ -66,6 +66,10 @@ public:
     virtual void send(const void* data, size_t size, bool flush) = 0;
     virtual bool receive(void* data, size_t& size, bool& restoredByFEC) = 0;
 
+    virtual bool supportsTxPowerControl() const { return true; }
+    virtual bool supportsApfpvInterfaceSelection() const { return true; }
+    virtual bool supportsNetworkInterfaceStatus() const { return true; }
+
     virtual void setChannel(int ch) = 0;
     virtual void setTxPower(int txPower) = 0;
     virtual void setMonitorMode(const std::vector<std::string> interfaces) = 0;

@@ -45,6 +45,9 @@ public:
     void deactivate() override;
     bool requestImmediateReconnect() override;
     bool supportsMenuSearchOrConnect() const override;
+    bool supportsTxPowerControl() const override { return false; }
+    bool supportsApfpvInterfaceSelection() const override { return false; }
+    bool supportsNetworkInterfaceStatus() const override { return false; }
     void process() override;
     void reset_rx_state() override;
     void beginMenuSearchOrConnect() override;
