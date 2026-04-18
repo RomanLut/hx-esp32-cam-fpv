@@ -148,6 +148,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     state.frame_ui_state.vr_mode = core.groundstation_config.vrMode;
     state.frame_ui_state.screen_flip_v = core.groundstation_config.screenFlipV;
     state.frame_ui_state.screen_zoom = core.groundstation_config.screenZoom;
+    state.frame_ui_state.vr_separation = core.groundstation_config.screenVrSeparation;
     state.build_info = params.build_info;
     state.osd_font_name = params.osd_font_name;
     return state;

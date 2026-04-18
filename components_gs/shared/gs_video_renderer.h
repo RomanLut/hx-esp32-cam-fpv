@@ -219,6 +219,7 @@ private:
     bool m_vr_mode = false;
     bool m_screen_flip_v = false;
     float m_zoom = 1.0f;
+    float m_vr_separation = 0.0f;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
 

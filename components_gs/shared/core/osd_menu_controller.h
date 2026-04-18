@@ -92,6 +92,10 @@ private:
     std::string formatGroundStorageStatusLine(const GroundStorageStatus& status) const;
 
     static bool isMenuItemActivatePressed();
+    static bool isMenuAdjustIncreasePressed();
+    static bool isMenuAdjustDecreasePressed();
+    static bool isMenuUpPressed();
+    static bool isMenuDownPressed();
     static bool isMenuOpenPressed();
     static bool isMenuRightClickPressed();
     bool exitKeyPressed();

@@ -22,6 +22,7 @@ struct RuntimeFrameUiState
     bool screen_flip_v = false;
     bool flight_osd_is_16x9 = false;
     float screen_zoom = 1.0f;
+    float vr_separation = 0.0f;
 };
 
 //===================================================================================

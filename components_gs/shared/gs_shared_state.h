@@ -29,6 +29,7 @@ struct TGroundstationConfig
     bool vsync = true;
     bool screenFlipV = false;
     float screenZoom = 1.0f;
+    float screenVrSeparation = 0.0f; // -30%...+30%, default 0
     std::string txInterface = "";
     std::string apfpvInterface = "";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;

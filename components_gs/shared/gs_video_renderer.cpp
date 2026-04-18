@@ -450,6 +450,7 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     m_vr_mode = frame_ui_state.vr_mode;
     m_screen_flip_v = frame_ui_state.screen_flip_v;
     m_zoom = frame_ui_state.screen_zoom;
+    m_vr_separation = frame_ui_state.vr_separation;
     m_menu_footer = frame_ui_state.menu_footer;
     m_surface_backend.setVsync(m_vsync);
     m_overlay_dirty = true;
@@ -561,6 +562,11 @@ void GsVideoRenderer::queueMouseTap(float x, float y)
 void GsVideoRenderer::queueKeyPress(ImGuiKey key)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    // Android/touch navigation can report the same logical key through more than one path before the next frame.
+    if (std::find(m_pending_key_presses.begin(), m_pending_key_presses.end(), key) != m_pending_key_presses.end())
+    {
+        return;
+    }
     m_pending_key_presses.push_back(key);
     m_cv.notify_all();
 }
@@ -586,9 +592,20 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
 
     // In VR mode the right half mirrors the left half — translate right-half taps
     // to their left-half equivalents so all bounds checks work for both eyes.
-    if (m_vr_mode && x >= static_cast<float>(m_surface_width) * 0.5f)
+    // Also undo the VR separation offset so hit regions match the shifted visuals.
+    if (m_vr_mode)
     {
-        x -= static_cast<float>(m_surface_width) * 0.5f;
+        const float half_w = static_cast<float>(m_surface_width) * 0.5f;
+        const float offset = m_vr_separation * half_w;
+        if (x >= half_w)
+        {
+            x -= half_w;
+            x += offset;  // right eye content shifted left by offset
+        }
+        else
+        {
+            x -= offset;  // left eye content shifted right by offset
+        }
     }
 
     if (pointInRect(x, y, m_nav_up_bounds))
@@ -1163,8 +1180,9 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
+    const float overlay_width = m_vr_mode ? (static_cast<float>(m_surface_width) * 0.5f) : static_cast<float>(m_surface_width);
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(overlay_width, static_cast<float>(m_surface_height)), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
@@ -1180,7 +1198,7 @@ void GsVideoRenderer::drawOverlayLocked()
 
     if (overlay_window_open)
     {
-        s_flightOSD.draw(m_surface_width, m_surface_height, m_frame_width, m_frame_height, m_screen_mode, m_vr_mode);
+        s_flightOSD.draw(static_cast<int>(overlay_width), m_surface_height, m_frame_width, m_frame_height, m_screen_mode, false);
         gs::imgui::drawTopOverlayStatus(m_overlay_input);
         if (m_frame_ui_state.overlay_stats_visible)
         {
@@ -1230,7 +1248,66 @@ void GsVideoRenderer::drawOverlayLocked()
             }
         }
 #endif
-        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        if (m_vr_mode && draw_data != nullptr)
+        {
+            const float half_w = static_cast<float>(m_surface_width) * 0.5f;
+            const float full_w = static_cast<float>(m_surface_width);
+            const float offset = m_vr_separation * half_w;
+
+            struct SavedList
+            {
+                std::vector<float> vx;
+                std::vector<ImVec4> clips;
+            };
+            std::vector<SavedList> saved(draw_data->CmdListsCount);
+            for (int n = 0; n < draw_data->CmdListsCount; n++)
+            {
+                const auto* cl = draw_data->CmdLists[n];
+                saved[n].vx.resize(cl->VtxBuffer.Size);
+                for (int i = 0; i < cl->VtxBuffer.Size; i++)
+                    saved[n].vx[i] = cl->VtxBuffer[i].pos.x;
+                saved[n].clips.resize(cl->CmdBuffer.Size);
+                for (int i = 0; i < cl->CmdBuffer.Size; i++)
+                    saved[n].clips[i] = cl->CmdBuffer[i].ClipRect;
+            }
+
+            const auto applyEye = [&](float dx, float x_min, float x_max) {
+                for (int n = 0; n < draw_data->CmdListsCount; n++)
+                {
+                    auto* cl = draw_data->CmdLists[n];
+                    for (int i = 0; i < cl->VtxBuffer.Size; i++)
+                        cl->VtxBuffer[i].pos.x = saved[n].vx[i] + dx;
+                    for (int i = 0; i < cl->CmdBuffer.Size; i++)
+                    {
+                        const auto& s = saved[n].clips[i];
+                        auto& c = cl->CmdBuffer[i].ClipRect;
+                        c.y = s.y;
+                        c.w = s.w;
+                        // VR UI is authored once in the left half, then rendered into both eyes.
+                        // Ignore any draw command that starts outside the canonical left-half copy.
+                        const bool excluded = s.x >= half_w;
+                        if (excluded)
+                        {
+                            c.x = c.z = x_min;  // degenerate — nothing drawn
+                        }
+                        else
+                        {
+                            c.x = std::clamp(s.x + dx, x_min, x_max);
+                            c.z = std::clamp(s.z + dx, x_min, x_max);
+                        }
+                    }
+                }
+            };
+
+            applyEye(+offset, 0.0f, half_w);
+            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+            applyEye(half_w - offset, half_w, full_w);
+            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        }
+        else
+        {
+            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        }
     }
 }
 
@@ -1288,11 +1365,12 @@ void GsVideoRenderer::drawFrameLocked()
         if (m_vr_mode)
         {
             const int half_width = m_surface_width / 2;
+            const float offset = m_vr_separation * static_cast<float>(half_width);
             glEnable(GL_SCISSOR_TEST);
             glScissor(0, 0, half_width, m_surface_height);
-            drawVideoCopy(0.0f, 0.0f, static_cast<float>(half_width), static_cast<float>(m_surface_height));
+            drawVideoCopy(offset, 0.0f, static_cast<float>(half_width), static_cast<float>(m_surface_height));
             glScissor(half_width, 0, m_surface_width - half_width, m_surface_height);
-            drawVideoCopy(static_cast<float>(half_width), 0.0f, static_cast<float>(m_surface_width - half_width), static_cast<float>(m_surface_height));
+            drawVideoCopy(static_cast<float>(half_width) - offset, 0.0f, static_cast<float>(m_surface_width - half_width), static_cast<float>(m_surface_height));
             glDisable(GL_SCISSOR_TEST);
         }
         else

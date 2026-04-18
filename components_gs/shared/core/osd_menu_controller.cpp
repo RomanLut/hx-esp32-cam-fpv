@@ -20,6 +20,17 @@
 
 #define SEARCH_TIME_STEP_MS 1000
 
+namespace
+{
+constexpr float kScreenZoomStep = 0.05f;
+constexpr float kScreenZoomStepScale = 20.0f;
+constexpr float kScreenVrSeparationMin = -0.30f;
+constexpr float kScreenVrSeparationMax = 0.30f;
+constexpr float kScreenVrSeparationStep = 0.02f;
+constexpr float kScreenVrSeparationStepScale = 50.0f;
+constexpr float kScreenVrSeparationDisplayScale = 100.0f;
+}
+
 using OSDMenuController = gs::menu::OSDMenuController;
 
 namespace gs::menu
@@ -177,7 +188,44 @@ bool OSDMenuController::isMenuItemActivatePressed()
 {
     return ImGui::IsKeyPressed(ImGuiKey_Enter) ||
            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter) ||
-           ImGui::IsKeyPressed(ImGuiKey_RightArrow);
+           ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains an increase action for an inline value.
+bool OSDMenuController::isMenuAdjustIncreasePressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a decrease action for an inline value.
+bool OSDMenuController::isMenuAdjustDecreasePressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains an upward navigation action.
+bool OSDMenuController::isMenuUpPressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when the current frame contains a downward navigation action.
+bool OSDMenuController::isMenuDownPressed()
+{
+    return ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, false);
 }
 
 //===================================================================================
@@ -292,14 +340,14 @@ std::string OSDMenuController::sanitizeCapturedCaption(const char* caption)
 
 //===================================================================================
 //===================================================================================
-// Draws the menu title bar and resets per-frame item and key tracking state.
+// Draws the menu title bar and refreshes interactive capture/key tracking state.
 void OSDMenuController::drawMenuTitle( const char* caption )
 {
     gs::menu::imgui::drawMenuTitle(caption, m_imgui_layout);
     this->itemsCount = 0;
-    this->keyHandled = false;
     if (m_draw_mode == DrawMode::Interactive)
     {
+        this->keyHandled = false;
         std::lock_guard<std::mutex> lock(m_capture_mutex);
         m_captured_menu_buffer.visible = visible;
         m_captured_menu_buffer.menu_id = menuId;
@@ -393,7 +441,10 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
     m_imgui_layout = layout;
 
     this->itemsCount = 0;
-    this->keyHandled = false;
+    if (mode == DrawMode::Interactive)
+    {
+        this->keyHandled = false;
+    }
     this->m_draw_mode = mode;
     if (mode == DrawMode::Interactive)
     {
@@ -416,7 +467,7 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 
 //===================================================================================
 //===================================================================================
-// Main draw entry point; handles menu open/close logic and VR mode cloning.
+// Main draw entry point; handles menu open/close logic and draws one canonical UI copy.
 void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
     if (!this->visible)
@@ -443,28 +494,14 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 
     drawMenuWindow("OSD_MENU", primary_layout, config, DrawMode::Interactive);
 
-    if ( ImGui::IsKeyPressed(ImGuiKey_UpArrow) && this->selectedItem > 0 )
+    if ( isMenuUpPressed() && this->selectedItem > 0 )
     {
         this->selectedItem--;
     }
 
-    if ( ImGui::IsKeyPressed(ImGuiKey_DownArrow) && this->selectedItem < (this->itemsCount - 1) )
+    if ( isMenuDownPressed() && this->selectedItem < (this->itemsCount - 1) )
     {
         this->selectedItem++;
-    }
-
-    if (vr_mode)
-    {
-        const auto clone_layout = offsetMenuLayout(
-            gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, true, 29.0f),
-            primary_width);
-        drawMenuWindow("OSD_MENU_VR_CLONE",
-                       clone_layout,
-                       config,
-                       DrawMode::Passive,
-                       ImGuiWindowFlags_NoInputs |
-                           ImGuiWindowFlags_NoFocusOnAppearing |
-                           ImGuiWindowFlags_NoSavedSettings);
     }
 }
 
@@ -852,6 +889,7 @@ bool OSDMenuController::exitKeyPressed()
     }
 
     return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, false) ||
            ImGui::IsKeyPressed(ImGuiKey_R) ||
            ImGui::IsKeyPressed(ImGuiKey_G) ||
            ImGui::IsKeyPressed(ImGuiKey_Escape) ||
@@ -1593,18 +1631,8 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 1) )
-        {
-            gs_config.vrMode = !gs_config.vrMode;
-            s_settingsStorage.saveGroundStationConfig();
-        }
-    }
-
-    {
-        char buf[256];
         sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 1) )
         {
             gs_config.vsync = !gs_config.vsync;
             s_RuntimePlatformServices->setVsync(gs_config.vsync);
@@ -1615,7 +1643,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             gs_config.screenFlipV = !gs_config.screenFlipV;
             s_settingsStorage.saveGroundStationConfig();
@@ -1624,30 +1652,65 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool zoom_handled = false;
     {
-        const bool zoom_focused = (this->selectedItem == 4);
-        if (zoom_focused && !this->keyHandled)
+        const bool zoom_focused = (this->selectedItem == 3);
+        if (m_draw_mode == DrawMode::Interactive && zoom_focused && !this->keyHandled)
         {
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow))
+            if (isMenuAdjustIncreasePressed())
             {
-                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom + 0.05f, 0.5f, 1.5f) * 20.0f) / 20.0f;
+                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom + kScreenZoomStep, 0.5f, 1.5f) * kScreenZoomStepScale) / kScreenZoomStepScale;
                 s_settingsStorage.saveGroundStationConfig();
                 this->keyHandled = true;
                 zoom_handled = true;
             }
-            else if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+            else if (isMenuAdjustDecreasePressed())
             {
-                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom - 0.05f, 0.5f, 1.5f) * 20.0f) / 20.0f;
+                gs_config.screenZoom = std::roundf(std::clamp(gs_config.screenZoom - kScreenZoomStep, 0.5f, 1.5f) * kScreenZoomStepScale) / kScreenZoomStepScale;
                 s_settingsStorage.saveGroundStationConfig();
                 this->keyHandled = true;
                 zoom_handled = true;
             }
         }
         char buf[256];
-        sprintf(buf, "Zoom: %d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
-        this->drawMenuItem( buf, 4);
+        sprintf(buf, "Zoom: <>%d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
+        this->drawMenuItem( buf, 3);
     }
 
-    if (!zoom_handled && this->exitKeyPressed())
+    {
+        char buf[256];
+        sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 4) )
+        {
+            gs_config.vrMode = !gs_config.vrMode;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
+    bool vr_separation_handled = false;
+    {
+        const bool vr_sep_focused = (this->selectedItem == 5);
+        if (m_draw_mode == DrawMode::Interactive && vr_sep_focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                gs_config.screenVrSeparation = std::roundf(std::clamp(gs_config.screenVrSeparation + kScreenVrSeparationStep, kScreenVrSeparationMin, kScreenVrSeparationMax) * kScreenVrSeparationStepScale) / kScreenVrSeparationStepScale;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                vr_separation_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                gs_config.screenVrSeparation = std::roundf(std::clamp(gs_config.screenVrSeparation - kScreenVrSeparationStep, kScreenVrSeparationMin, kScreenVrSeparationMax) * kScreenVrSeparationStepScale) / kScreenVrSeparationStepScale;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                vr_separation_handled = true;
+            }
+        }
+        char buf[256];
+        sprintf(buf, "VR Separation: <>%+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
+        this->drawMenuItem( buf, 5);
+    }
+
+    if (!zoom_handled && !vr_separation_handled && this->exitKeyPressed())
     {
         this->goBack();
     }

@@ -152,6 +152,14 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["vr_separation"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.screenVrSeparation = std::clamp(std::stof(temp), -0.30f, 0.30f);
+        }
+    }
+
+    {
         std::string& temp = (*this)["gs"]["transport_kind"];
         if (!temp.empty())
         {
@@ -257,6 +265,7 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["vsync"] = std::to_string(s_groundstation_config.vsync ? 1 : 0);
     (*this)["gs"]["screen_flip_v"] = std::to_string(s_groundstation_config.screenFlipV ? 1 : 0);
     (*this)["gs"]["screen_zoom"] = std::to_string(s_groundstation_config.screenZoom);
+    (*this)["gs"]["vr_separation"] = std::to_string(s_groundstation_config.screenVrSeparation);
     (*this)["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     (*this)["gs"]["tx_interface"] = s_groundstation_config.txInterface;
     (*this)["gs"]["apfpv_interface"] = s_groundstation_config.apfpvInterface;
