@@ -1,5 +1,14 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+fun readDefine(file: File, name: String): String {
+    val regex = Regex("""#define\s+$name\s+"?([^\s"]+)"?""")
+    return file.useLines { lines -> lines.mapNotNull { regex.find(it)?.groupValues?.get(1) }.first() }
+}
+
+val fwVersion = readDefine(rootProject.file("../../components/common/packets.h"), "FW_VERSION")
+val packetVersion = readDefine(rootProject.file("../../components/common/fec.h"), "PACKET_VERSION")
+val appVersion = "$fwVersion.$packetVersion"
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,7 +24,7 @@ android {
         minSdk = 23
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

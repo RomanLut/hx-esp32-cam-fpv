@@ -25,7 +25,7 @@ jobs:
       id: version
       run: |
         fw=$(grep '#define FW_VERSION' components/common/packets.h | sed 's/.*"\(.*\)".*/\1/')
-        pkt=$(grep '#define PACKET_VERSION' components/common/fec.h | awk '{print $3}')
+        pkt=$(grep -oP '(?<=#define PACKET_VERSION\s)\d+' components/common/fec.h)
         echo "version=$fw.$pkt" >> $GITHUB_OUTPUT
 
     - name: Build debug APK
