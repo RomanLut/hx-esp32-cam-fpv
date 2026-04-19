@@ -5,8 +5,8 @@ fun readDefine(file: File, name: String): String {
     return file.useLines { lines -> lines.mapNotNull { regex.find(it)?.groupValues?.get(1) }.first() }
 }
 
-val fwVersion = readDefine(rootProject.file("../../components/common/packets.h"), "FW_VERSION")
-val packetVersion = readDefine(rootProject.file("../../components/common/fec.h"), "PACKET_VERSION")
+val fwVersion = readDefine(rootProject.file("../components/common/packets.h"), "FW_VERSION")
+val packetVersion = readDefine(rootProject.file("../components/common/fec.h"), "PACKET_VERSION")
 val appVersion = "$fwVersion.$packetVersion"
 
 plugins {
