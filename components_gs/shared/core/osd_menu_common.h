@@ -35,7 +35,8 @@ enum class OSDMenuId
     GSApfpvInterface,
     Image,
     CameraStopCH,
-    Debug
+    Debug,
+    Playback
 };
 
 namespace gs::menu

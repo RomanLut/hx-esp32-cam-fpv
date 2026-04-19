@@ -4,6 +4,8 @@
 #include <array>
 #include <cstring>
 #include <ctime>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "Log.h"
 #include "avi.h"
@@ -310,4 +312,61 @@ std::string RecordingsStorage::buildRecordingPath(const char* extension) const
     path += '.';
     path += extension;
     return path;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns a sorted list of recording files found in the recordings directory.
+std::vector<RecordingEntry> RecordingsStorage::listRecordings() const
+{
+    std::vector<RecordingEntry> entries;
+    const std::string dir = recordingsListDirectory();
+
+    DIR* dp = opendir(dir.c_str());
+    if (!dp)
+    {
+        return entries;
+    }
+
+    struct dirent* de;
+    while ((de = readdir(dp)) != nullptr)
+    {
+        const std::string filename = de->d_name;
+        const size_t dot = filename.rfind('.');
+        if (dot == std::string::npos)
+        {
+            continue;
+        }
+
+        const std::string ext = filename.substr(dot + 1);
+        if (ext != "avi" && ext != "mjpeg")
+        {
+            continue;
+        }
+
+        std::string filepath = dir;
+        if (!filepath.empty() && filepath.back() != '/' && filepath.back() != '\\')
+        {
+            filepath += '/';
+        }
+        filepath += filename;
+
+        struct stat st = {};
+        if (stat(filepath.c_str(), &st) != 0)
+        {
+            continue;
+        }
+
+        RecordingEntry entry;
+        entry.name = filename.substr(0, dot);
+        entry.size_kb = static_cast<size_t>(st.st_size / 1024);
+        entries.push_back(std::move(entry));
+    }
+    closedir(dp);
+
+    std::sort(entries.begin(), entries.end(), [](const RecordingEntry& a, const RecordingEntry& b) {
+        return a.name > b.name;
+    });
+
+    return entries;
 }

@@ -4,8 +4,18 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "packets.h"
+
+//===================================================================================
+//===================================================================================
+// Describes a single recording file available for playback.
+struct RecordingEntry
+{
+    std::string name;   // filename without extension
+    size_t size_kb = 0;
+};
 
 //===================================================================================
 //===================================================================================
@@ -29,10 +39,12 @@ public:
     bool isRecording() const;
     void toggleRecording(int width, int height, const char* reason);
     void writeVideoFrame(const uint8_t* frame_data, size_t frame_size);
+    std::vector<RecordingEntry> listRecordings() const;
 
 protected:
     virtual bool queryGroundStorageStatus(GroundStorageStatus& status) const = 0;
     virtual std::string recordingDirectory() const = 0;
+    virtual std::string recordingsListDirectory() const { return recordingDirectory(); }
     virtual bool openRecordingFile(const std::string& path) = 0;
     virtual bool writeRecordingData(const void* data, size_t size) = 0;
     virtual bool seekRecordingFile(long offset, int origin) = 0;

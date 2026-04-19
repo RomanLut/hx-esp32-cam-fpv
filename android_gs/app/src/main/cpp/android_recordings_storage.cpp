@@ -89,6 +89,19 @@ std::string AndroidRecordingsStorage::recordingDirectory() const
 }
 
 //===================================================================================
+// Returns the Android directory where recording files can be listed.
+std::string AndroidRecordingsStorage::recordingsListDirectory() const
+{
+    std::string dir = getAndroidRecordingsDirectory();
+    if (!dir.empty() && dir.back() != '/' && dir.back() != '\\')
+    {
+        dir += '/';
+    }
+    dir += "Movies/esp32-cam-fpv";
+    return dir;
+}
+
+//===================================================================================
 //===================================================================================
 // Opens an Android recording file via MediaStore and wraps the returned FD.
 bool AndroidRecordingsStorage::openRecordingFile(const std::string& path)

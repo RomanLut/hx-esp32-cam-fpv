@@ -539,6 +539,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
+        case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
     }
 }
 
@@ -1557,10 +1558,15 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     this->drawMenuTitle( "Menu -> GS Settings" );
     drawSpacing();
 
+    if ( this->drawMenuItem( "Playback...", 0) )
+    {
+        this->goForward( OSDMenuId::Playback, 0 );
+    }
+
     {
         char buf[256];
         sprintf(buf, "Screen Settings...##1");
-        if ( this->drawMenuItem( buf, 0) )
+        if ( this->drawMenuItem( buf, 1) )
         {
             this->goForward( OSDMenuId::GSScreen, 0 );
         }
@@ -1569,13 +1575,13 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Wifi Settings...##2");
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::GSWifiSettings, 0 );
         }
     }
 
-    if ( this->drawMenuItem( "Debuging...", 2) )
+    if ( this->drawMenuItem( "Debuging...", 3) )
     {
         this->goForward( OSDMenuId::Debug, 0 );
     }
@@ -1585,7 +1591,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         char buf[256];
         const char* layout = gs_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
         sprintf(buf, "GPIO Keys Layout: %s##4", layout);
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
             s_settingsStorage.saveGroundStationConfig();
@@ -1593,7 +1599,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if ( this->drawMenuItem( "Exit To Shell##7", 4) )
+    if ( this->drawMenuItem( "Exit To Shell##7", 5) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
@@ -2104,6 +2110,34 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
 }
 
 //===================================================================================
+//===================================================================================
+//===================================================================================
+// Draws the playback menu listing recordings in the GS recordings directory.
+void OSDMenuController::drawPlaybackMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    this->drawMenuTitle("Menu -> Playback");
+    drawSpacing();
+
+    const auto recordings = s_recordingsStorage->listRecordings();
+
+    if (recordings.empty())
+    {
+        this->drawStatus("No recordings found");
+    }
+
+    for (unsigned int i = 0; i < recordings.size(); i++)
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s (%zu KB)", recordings[i].name.c_str(), recordings[i].size_kb);
+        this->drawMenuItem(buf, static_cast<int>(i), true);
+    }
+
+    if (this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
 //===================================================================================
 // Draws the debugging tools menu.
 void OSDMenuController::drawDebugMenu(Ground2Air_Config_Packet& config)

@@ -129,6 +129,7 @@ private:
     void drawImageSettingsMenu(Ground2Air_Config_Packet& config);
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
     void drawDebugMenu(Ground2Air_Config_Packet& config);
+    void drawPlaybackMenu(Ground2Air_Config_Packet& config);
     void drawSearchModeMenu(Ground2Air_Config_Packet& config);
     void drawSearchRunMenu(Ground2Air_Config_Packet& config);
     void drawCurrentMenu(Ground2Air_Config_Packet& config);

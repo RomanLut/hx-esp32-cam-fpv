@@ -12,6 +12,7 @@ class AndroidRecordingsStorage final : public RecordingsStorage
 protected:
     bool queryGroundStorageStatus(GroundStorageStatus& status) const override;
     std::string recordingDirectory() const override;
+    std::string recordingsListDirectory() const override;
     bool openRecordingFile(const std::string& path) override;
     bool writeRecordingData(const void* data, size_t size) override;
     bool seekRecordingFile(long offset, int origin) override;
