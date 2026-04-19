@@ -26,3 +26,8 @@ private:
 //===================================================================================
 // Returns the shared Android recordings storage instance for explicit binding.
 RecordingsStorage& getAndroidRecordingsStorage();
+
+//===================================================================================
+//===================================================================================
+// Sets the directory where Android recordings are written.
+void setAndroidRecordingsDirectory(const std::string& directory);

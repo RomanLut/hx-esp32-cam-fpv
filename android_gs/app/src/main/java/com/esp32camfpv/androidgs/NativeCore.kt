@@ -1,9 +1,74 @@
 package com.esp32camfpv.androidgs
 
+import android.Manifest
+import android.app.Activity
+import android.content.ContentValues
+import android.content.pm.PackageManager
 import android.content.res.AssetManager
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.Surface
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import java.io.File
+import java.lang.ref.WeakReference
 
 object NativeCore {
+
+    @Volatile private var activityRef: WeakReference<Activity>? = null
+
+    fun setActivity(activity: Activity?) {
+        activityRef = if (activity != null) WeakReference(activity) else null
+    }
+
+    @JvmStatic
+    fun createRecordingFd(filename: String): Int {
+        val activity = activityRef?.get() ?: return -1
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(activity, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                activity.runOnUiThread {
+                    ActivityCompat.requestPermissions(
+                        activity, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 0)
+                }
+                return -1
+            }
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+                "esp32-cam-fpv"
+            )
+            dir.mkdirs()
+            @Suppress("DEPRECATION")
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/x-msvideo")
+                put(MediaStore.Video.Media.DATA, File(dir, filename).absolutePath)
+            }
+            val resolver = activity.contentResolver
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return -1
+            return resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
+                resolver.delete(uri, null, null)
+                -1
+            }
+        }
+
+        @Suppress("InlinedApi")
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/x-msvideo")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/esp32-cam-fpv")
+        }
+        val resolver = activity.contentResolver
+        val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return -1
+        return resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
+            resolver.delete(uri, null, null)
+            -1
+        }
+    }
 
     const val EVENT_IGNORE = 0
     const val EVENT_CONNECT_ACCEPTED = 1
@@ -28,6 +93,7 @@ object NativeCore {
     external fun getBuildInfo(): String
     external fun setAssetManager(assetManager: AssetManager)
     external fun setSettingsPath(path: String)
+    external fun setRecordingsPath(path: String)
     external fun createHandle(gsDeviceId: Int = 1): Long
     external fun describeHandle(handle: Long): String
     external fun getActiveTransportKind(handle: Long): Int

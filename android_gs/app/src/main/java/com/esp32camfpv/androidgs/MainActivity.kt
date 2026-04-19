@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
 import android.view.MotionEvent
 import android.view.KeyEvent
@@ -70,8 +71,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setupThermalStatusMonitoring()
         setupBatteryMonitoring()
+        NativeCore.setActivity(this)
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
+        NativeCore.setRecordingsPath(Environment.getExternalStorageDirectory().absolutePath)
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
         rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
         wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
@@ -119,6 +122,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        NativeCore.setActivity(null)
         teardownThermalStatusMonitoring()
         teardownBatteryMonitoring()
         wifiScanUsbController.stop()

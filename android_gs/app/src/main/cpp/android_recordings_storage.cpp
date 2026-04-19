@@ -1,9 +1,13 @@
 #include "android_recordings_storage.h"
 
 #include <sys/statvfs.h>
+#include <unistd.h>
 
 #include "gs_shared_runtime.h"
 #include "settings_storage.h"
+
+// Implemented in native_bridge.cpp — creates a MediaStore file and returns its FD.
+int createRecordingFdFromNative(const std::string& path);
 
 namespace
 {
@@ -15,9 +19,20 @@ AndroidRecordingsStorage s_android_recordings_storage;
 
 //===================================================================================
 //===================================================================================
+// Holds the externally configured recordings directory, or empty to use the
+// settings file directory as a fallback.
+std::string s_recordings_directory;
+
+//===================================================================================
+//===================================================================================
 // Returns the parent directory of the configured Android settings path.
 std::string getAndroidRecordingsDirectory()
 {
+    if (!s_recordings_directory.empty())
+    {
+        return s_recordings_directory;
+    }
+
     const std::string settings_path = s_settingsStorage.path();
     const size_t separator = settings_path.find_last_of("/\\");
     if (separator == std::string::npos)
@@ -37,6 +52,14 @@ std::string getAndroidRecordingsDirectory()
 RecordingsStorage& getAndroidRecordingsStorage()
 {
     return s_android_recordings_storage;
+}
+
+//===================================================================================
+//===================================================================================
+// Sets the directory where Android recordings are written.
+void setAndroidRecordingsDirectory(const std::string& directory)
+{
+    s_recordings_directory = directory;
 }
 
 //===================================================================================
@@ -67,11 +90,21 @@ std::string AndroidRecordingsStorage::recordingDirectory() const
 
 //===================================================================================
 //===================================================================================
-// Opens an Android recording file for shared recording output.
+// Opens an Android recording file via MediaStore and wraps the returned FD.
 bool AndroidRecordingsStorage::openRecordingFile(const std::string& path)
 {
-    m_record_file = std::fopen(path.c_str(), "wb+");
-    return m_record_file != nullptr;
+    const int fd = createRecordingFdFromNative(path);
+    if (fd < 0)
+    {
+        return false;
+    }
+    m_record_file = ::fdopen(fd, "wb+");
+    if (m_record_file == nullptr)
+    {
+        ::close(fd);
+        return false;
+    }
+    return true;
 }
 
 //===================================================================================

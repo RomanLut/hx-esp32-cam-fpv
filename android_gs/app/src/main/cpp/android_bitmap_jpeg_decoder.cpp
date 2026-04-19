@@ -145,6 +145,11 @@ void androidSetAssetManager(AAssetManager* asset_manager)
 
 //===================================================================================
 //===================================================================================
+// Defined in native_bridge.cpp — looks up NativeCore.createRecordingFd for MediaStore recording.
+void initRecordingJniRefs(JNIEnv* env);
+
+//===================================================================================
+//===================================================================================
 // Called by the JVM when the native library is loaded. Stores the JavaVM pointer
 // and looks up all JNI class and method references needed for JPEG decoding.
 jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
@@ -204,6 +209,8 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     {
         return JNI_ERR;
     }
+
+    initRecordingJniRefs(env);
 
     return JNI_VERSION_1_6;
 }

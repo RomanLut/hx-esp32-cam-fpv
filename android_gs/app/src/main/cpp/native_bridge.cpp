@@ -62,6 +62,61 @@
 #include "android_udp_broadcast.h"
 #include "../../../../../components_gs/mcp/gs_mcp_server.h"
 
+static jclass s_nativeCoreClass = nullptr;
+static jmethodID s_createRecordingFdMethod = nullptr;
+
+void initRecordingJniRefs(JNIEnv* env)
+{
+    jclass localClass = env->FindClass("com/esp32camfpv/androidgs/NativeCore");
+    if (localClass == nullptr)
+    {
+        return;
+    }
+    s_nativeCoreClass = static_cast<jclass>(env->NewGlobalRef(localClass));
+    env->DeleteLocalRef(localClass);
+    s_createRecordingFdMethod = env->GetStaticMethodID(
+        s_nativeCoreClass, "createRecordingFd", "(Ljava/lang/String;)I");
+}
+
+int createRecordingFdFromNative(const std::string& path)
+{
+    JavaVM* javaVm = androidGetJavaVm();
+    if (javaVm == nullptr || s_nativeCoreClass == nullptr || s_createRecordingFdMethod == nullptr)
+    {
+        return -1;
+    }
+
+    JNIEnv* env = nullptr;
+    bool didAttach = false;
+    const jint getEnvResult = javaVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (getEnvResult == JNI_EDETACHED)
+    {
+        if (javaVm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        {
+            return -1;
+        }
+        didAttach = true;
+    }
+    else if (getEnvResult != JNI_OK || env == nullptr)
+    {
+        return -1;
+    }
+
+    const size_t sep = path.find_last_of("/\\");
+    const std::string filename = (sep == std::string::npos) ? path : path.substr(sep + 1);
+
+    jstring jFilename = env->NewStringUTF(filename.c_str());
+    const jint fd = env->CallStaticIntMethod(s_nativeCoreClass, s_createRecordingFdMethod, jFilename);
+    env->DeleteLocalRef(jFilename);
+
+    if (didAttach)
+    {
+        javaVm->DetachCurrentThread();
+    }
+
+    return static_cast<int>(fd);
+}
+
 static AndroidSerialTelemetry s_androidSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
 
@@ -999,6 +1054,18 @@ Java_com_esp32camfpv_androidgs_NativeCore_setSettingsPath(JNIEnv* env,
     }
 
     s_settingsStorage.setPath(settings_path);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setRecordingsPath(JNIEnv* env,
+                                                             jobject /* thiz */,
+                                                             jstring path)
+{
+    const std::string directory = fromJString(env, path);
+    if (!directory.empty())
+    {
+        setAndroidRecordingsDirectory(directory);
+    }
 }
 
 extern "C" JNIEXPORT jlong JNICALL
