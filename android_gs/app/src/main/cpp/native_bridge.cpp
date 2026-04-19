@@ -663,6 +663,11 @@ void processSessionPacketLocked(NativeHandle& handle,
                 {
                     handle.jpeg_decoder.submitJpeg(completed_frame.frame_data,
                                                    completed_frame.frame_index);
+                    if (s_recordingsStorage != nullptr && s_recordingsStorage->isRecording())
+                    {
+                        s_recordingsStorage->writeVideoFrame(completed_frame.data,
+                                                             completed_frame.size);
+                    }
                     if (g_gsUDPBroadcast && g_gsUDPBroadcast->isOpen())
                     {
                         g_gsUDPBroadcast->sendVideoFrame(completed_frame.data,
