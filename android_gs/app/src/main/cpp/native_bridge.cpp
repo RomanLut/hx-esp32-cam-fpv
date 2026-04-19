@@ -666,7 +666,8 @@ void processSessionPacketLocked(NativeHandle& handle,
                     if (s_recordingsStorage != nullptr && s_recordingsStorage->isRecording())
                     {
                         s_recordingsStorage->writeVideoFrame(completed_frame.data,
-                                                             completed_frame.size);
+                                                             completed_frame.size,
+                                                             completed_frame.frame_index);
                     }
                     if (g_gsUDPBroadcast && g_gsUDPBroadcast->isOpen())
                     {

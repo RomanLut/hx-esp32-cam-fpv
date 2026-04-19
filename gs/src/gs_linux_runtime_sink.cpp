@@ -32,6 +32,9 @@ void logInvalidLinuxSessionEvent(const gs::core::SessionEvent& event, uint32_t c
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Dispatches a completed Linux GS video frame to decoder, recording, and UDP sinks.
 void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
 {
     if (video_decision.restored_video_part)
@@ -52,7 +55,9 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
     s_decoder.decode_data(video_frame, completed_frame.frame_index);
     if (s_recordingsStorage->isRecording())
     {
-        s_recordingsStorage->writeVideoFrame(video_frame_data, video_frame->data.size());
+        s_recordingsStorage->writeVideoFrame(video_frame_data,
+                                             video_frame->data.size(),
+                                             completed_frame.frame_index);
     }
 
     if (g_gsUDPBroadcast && g_gsUDPBroadcast->isOpen())

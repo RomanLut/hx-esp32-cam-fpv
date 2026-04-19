@@ -16,6 +16,28 @@
 #include "jpeg_parser.h"
 #include "packets.h"
 
+namespace
+{
+
+constexpr uint32_t kMaxRepeatedMissingFrames = 40;
+
+//===================================================================================
+//===================================================================================
+// Counts skipped frame indexes between two increasing completed-frame numbers,
+// clamped to the repeat cap. Lower numbers are treated as stream resets.
+uint32_t countMissingFramesToRepeat(uint32_t current_frame_index, uint32_t previous_frame_index)
+{
+    if (current_frame_index <= previous_frame_index)
+    {
+        return 0;
+    }
+
+    const uint32_t skipped_frames = current_frame_index - previous_frame_index - 1u;
+    return std::min(skipped_frames, kMaxRepeatedMissingFrames);
+}
+
+}
+
 //===================================================================================
 //===================================================================================
 // Refreshes cached ground storage statistics from the platform-specific backend.
@@ -68,8 +90,9 @@ void RecordingsStorage::toggleRecording(int width, int height, const char* reaso
 
 //===================================================================================
 //===================================================================================
-// Appends a completed video frame to the current recording and handles restarts/splits.
-void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_size)
+// Appends a completed video frame to the current recording and repeats the previous
+// frame for short frame-index gaps before writing the newly arrived frame.
+void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_size, uint32_t frame_index)
 {
     if (frame_data == nullptr || frame_size == 0)
     {
@@ -83,10 +106,27 @@ void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_
     }
 
 #ifdef WRITE_RAW_MJPEG_STREAM
+    const uint32_t missing_frames = m_has_previous_video_frame
+        ? countMissingFramesToRepeat(frame_index, m_previous_video_frame_index)
+        : 0;
+    for (uint32_t repeat_index = 0; repeat_index < missing_frames; ++repeat_index)
+    {
+        if (!writeRecordingData(m_previous_video_frame.data(), m_previous_video_frame.size()))
+        {
+            stopRecordingLocked("raw_repeat_write_failed");
+            return;
+        }
+    }
+
     if (!writeRecordingData(frame_data, frame_size))
     {
         stopRecordingLocked("raw_write_failed");
+        return;
     }
+
+    m_previous_video_frame.assign(frame_data, frame_data + frame_size);
+    m_previous_video_frame_index = frame_index;
+    m_has_previous_video_frame = true;
 #else
     int width = 0;
     int height = 0;
@@ -97,6 +137,23 @@ void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_
     }
 
     const Ground2Air_Config_Packet config_snapshot = s_runtimeCore.session.copyConfigPacket();
+    const uint32_t missing_frames = m_has_previous_video_frame
+        ? countMissingFramesToRepeat(frame_index, m_previous_video_frame_index)
+        : 0;
+    // Repeating happens before applying the newly arrived frame's mode. If the
+    // new frame changes resolution/FPS, the gap is filled in the old AVI segment.
+    for (uint32_t repeat_index = 0; repeat_index < missing_frames; ++repeat_index)
+    {
+        if (!writeAviFrameLocked(m_previous_video_frame.data(),
+                                 m_previous_video_frame.size(),
+                                 m_previous_video_frame_width,
+                                 m_previous_video_frame_height))
+        {
+            stopRecordingLocked("avi_repeat_write_failed");
+            return;
+        }
+    }
+
     if (!updateRecordingModeLocked(width, height, config_snapshot))
     {
         return;
@@ -107,6 +164,12 @@ void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_
         stopRecordingLocked("avi_write_failed");
         return;
     }
+
+    m_previous_video_frame.assign(frame_data, frame_data + frame_size);
+    m_previous_video_frame_index = frame_index;
+    m_previous_video_frame_width = width;
+    m_previous_video_frame_height = height;
+    m_has_previous_video_frame = true;
 
     if ((m_avi_frame_count == (DVR_MAX_FRAMES - 1)) || (moviSize > 50 * 1024 * 1024))
     {
@@ -181,6 +244,11 @@ bool RecordingsStorage::startRecordingLocked(int width, int height, const char* 
     }
 
     m_is_recording = true;
+    m_has_previous_video_frame = false;
+    m_previous_video_frame_index = 0;
+    m_previous_video_frame_width = 0;
+    m_previous_video_frame_height = 0;
+    m_previous_video_frame.clear();
 
 #ifndef WRITE_RAW_MJPEG_STREAM
     LOGI("{}x{} {}fps", m_avi_frame_width, m_avi_frame_height, m_avi_fps);
@@ -236,6 +304,11 @@ void RecordingsStorage::stopRecordingLocked(const char* reason)
     flushRecordingFile();
     closeRecordingFile();
     m_is_recording = false;
+    m_has_previous_video_frame = false;
+    m_previous_video_frame_index = 0;
+    m_previous_video_frame_width = 0;
+    m_previous_video_frame_height = 0;
+    m_previous_video_frame.clear();
     LOGI("stop record: reason:{}", reason ? reason : "unknown");
     GroundStorageStatus status = {};
     if (queryGroundStorageStatus(status))

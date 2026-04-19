@@ -38,7 +38,7 @@ public:
     GroundStorageStatus groundStorageStatus() const;
     bool isRecording() const;
     void toggleRecording(int width, int height, const char* reason);
-    void writeVideoFrame(const uint8_t* frame_data, size_t frame_size);
+    void writeVideoFrame(const uint8_t* frame_data, size_t frame_size, uint32_t frame_index);
     std::vector<RecordingEntry> listRecordings() const;
 
 protected:
@@ -65,6 +65,11 @@ private:
     uint16_t m_avi_frame_width = 0;
     uint16_t m_avi_frame_height = 0;
     uint32_t m_avi_frame_count = 0;
+    bool m_has_previous_video_frame = false;
+    uint32_t m_previous_video_frame_index = 0;
+    int m_previous_video_frame_width = 0;
+    int m_previous_video_frame_height = 0;
+    std::vector<uint8_t> m_previous_video_frame;
     bool m_avi_ov2640_high_fps = false;
     bool m_avi_ov5640_high_fps = false;
 };
