@@ -31,6 +31,7 @@ jobs:
     - name: Build debug APK
       run: |
         cd android_gs
+        sed -i '/org.gradle.java.home/d' gradle.properties
         chmod +x gradlew
         ./gradlew assembleDebug
 
