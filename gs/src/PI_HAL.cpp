@@ -13,6 +13,8 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <cfloat>
+#include <utility>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -155,6 +157,11 @@ struct PI_HAL::Impl
         bool is_pressed = false;
     };
     std::array<Touch, MAX_TOUCHES> touches;
+    bool touch_was_pressed = false;
+    bool pointer_tap_pending = false;
+    float pointer_tap_x = 0.0f;
+    float pointer_tap_y = 0.0f;
+    std::function<void(float, float)> pointer_tap_callback;
 
     bool pigpio_is_isitialized = false;
     float target_backlight = 1.0f;
@@ -515,29 +522,46 @@ bool PI_HAL::update_display()
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     while (SDL_PollEvent(&event))
     {
-        ImGui_ImplSDL2_ProcessEvent(&event);
+        // Runtime pointer input is captured as semantic taps instead of being
+        // forwarded to ImGui mouse routing. VR/menu controls are hit-tested in
+        // canonical overlay coordinates so both eyes and platforms behave alike.
         switch(event.type){
+        case SDL_MOUSEBUTTONUP:
+            if (event.button.button == SDL_BUTTON_LEFT || event.button.button == SDL_BUTTON_RIGHT)
+            {
+                queue_pointer_tap(static_cast<float>(event.button.x),
+                                  static_cast<float>(event.button.y));
+            }
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEMOTION:
+        case SDL_MOUSEWHEEL:
+            break;
         case SDL_FINGERMOTION:
         case SDL_FINGERDOWN:
+            break;
         case SDL_FINGERUP:
-        {
-            //SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
-            //io.MousePos = ImVec2(ev.x * m_impl->width, ev.y * m_impl->height);
-            //io.MouseDown[0] = event.type == SDL_FINGERUP ? false : true;
-            if(event.type == SDL_FINGERMOTION || event.type == SDL_FINGERDOWN ){
-                io.MouseDown[0] = true;
+            queue_pointer_tap(event.tfinger.x * static_cast<float>(m_impl->width),
+                              event.tfinger.y * static_cast<float>(m_impl->height));
+            break;
+        default:
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT)
+            {
+                shutdown_display();
             }
-        }
-        break;
-        case SDL_QUIT:
-            shutdown_display();
             break;
         }
     }
+    dispatch_pending_pointer_tap();
 
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
+    io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    io.AddMouseButtonEvent(0, false);
+    io.AddMouseButtonEvent(1, false);
+    io.AddMouseButtonEvent(2, false);
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -710,15 +734,13 @@ void PI_HAL::update_ts()
 
     Impl::Touch& touch = m_impl->touches[0];
 
-    // Update buttons
-    ImGuiIO& io = ImGui::GetIO();
-    io.MouseDown[0] = touch.is_pressed;
-
-    // Update mouse position
-    io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
     float mouse_x = touch.y;
-    float mouse_y = s_height - touch.x;
-    io.MousePos = ImVec2(mouse_x, mouse_y);
+    float mouse_y = static_cast<float>(m_impl->height) - static_cast<float>(touch.x);
+    if (m_impl->touch_was_pressed && !touch.is_pressed)
+    {
+        queue_pointer_tap(mouse_x, mouse_y);
+    }
+    m_impl->touch_was_pressed = touch.is_pressed;
 #endif
 }
 
@@ -848,6 +870,47 @@ void PI_HAL::set_vsync( bool b, bool apply )
         SDL_GL_SetSwapInterval(m_impl->vsync ? 1 : 0 ); // Enable vsync
     }
 
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Sets the callback used to translate pointer taps into runtime semantic actions.
+void PI_HAL::set_pointer_tap_callback(std::function<void(float, float)> func)
+{
+    m_impl->pointer_tap_callback = std::move(func);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Stores one pending semantic pointer tap for runtime overlay dispatch.
+void PI_HAL::queue_pointer_tap(float x, float y)
+{
+    m_impl->pointer_tap_pending = true;
+    m_impl->pointer_tap_x = x;
+    m_impl->pointer_tap_y = y;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Invokes the runtime tap callback once before ImGui starts the next frame.
+void PI_HAL::dispatch_pending_pointer_tap()
+{
+    if (!m_impl->pointer_tap_pending)
+    {
+        return;
+    }
+
+    m_impl->pointer_tap_pending = false;
+    if (m_impl->pointer_tap_callback)
+    {
+        m_impl->pointer_tap_callback(m_impl->pointer_tap_x, m_impl->pointer_tap_y);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

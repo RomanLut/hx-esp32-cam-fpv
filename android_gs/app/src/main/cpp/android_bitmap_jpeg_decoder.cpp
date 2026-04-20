@@ -3,7 +3,6 @@
 
 #include <jni.h>
 #include <android/asset_manager.h>
-#include <android/log.h>
 
 #include <algorithm>
 #include <array>
@@ -11,10 +10,11 @@
 #include <limits>
 #include <string>
 
+#include "Log.h"
+
 namespace
 {
 
-constexpr const char* kLogTag = "AndroidBitmapJpegDecoder";
 constexpr uint32_t kDefaultMinDecodeMs = 99;
 constexpr size_t kWorkerCount = 2;
 
@@ -274,6 +274,15 @@ void AndroidBitmapJpegDecoder::submitJpeg(gs::core::VideoFrameAssembler::FrameBu
 
 //===================================================================================
 //===================================================================================
+// Drops queued JPEG frames that have not yet reached a decoder worker.
+void AndroidBitmapJpegDecoder::clearPending()
+{
+    std::lock_guard<std::mutex> lock(m_input_mutex);
+    m_input_queue.clear();
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the total number of decoded frames submitted to the renderer since construction.
 uint64_t AndroidBitmapJpegDecoder::submittedFrameCount() const
 {
@@ -325,7 +334,7 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
     AttachGuard jni;
     if (!jni.attach())
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "Failed to attach decoder thread to JVM");
+        LOGE("Failed to attach decoder thread to JVM");
         m_broken_frames.fetch_add(1);
         return;
     }

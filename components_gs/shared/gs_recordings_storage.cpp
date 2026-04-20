@@ -330,6 +330,37 @@ bool RecordingsStorage::updateRecordingModeLocked(int width, int height, const G
         return true;
     }
 
+    if (m_avi_frame_count == 0 && (m_avi_frame_width == 0 || m_avi_frame_height == 0))
+    {
+        const TVMode* mode = &vmodes[std::clamp(static_cast<int>(config_snapshot.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1)];
+        for (size_t index = 0; index < static_cast<size_t>(Resolution::COUNT); ++index)
+        {
+            if (vmodes[index].width == width && vmodes[index].height == height)
+            {
+                mode = &vmodes[index];
+                break;
+            }
+        }
+
+        if (s_isOV5640)
+        {
+            m_avi_fps = config_snapshot.camera.ov5640HighFPS ? mode->highFPS5640 : mode->FPS5640;
+        }
+        else
+        {
+            m_avi_fps = config_snapshot.camera.ov2640HighFPS ? mode->highFPS2640 : mode->FPS2640;
+        }
+
+        // Manual recording can start before the first JPEG has revealed dimensions.
+        // Keep the header-only file open and finalize its real dimensions later
+        // instead of creating an immediate "(1)" duplicate.
+        m_avi_frame_width = static_cast<uint16_t>(width);
+        m_avi_frame_height = static_cast<uint16_t>(height);
+        m_avi_ov2640_high_fps = config_snapshot.camera.ov2640HighFPS;
+        m_avi_ov5640_high_fps = config_snapshot.camera.ov5640HighFPS;
+        return true;
+    }
+
     stopRecordingLocked("auto_restart_resolution_change_stop");
     return startRecordingLocked(width, height, "auto_restart_resolution_change_start");
 }
@@ -339,13 +370,13 @@ bool RecordingsStorage::updateRecordingModeLocked(int width, int height, const G
 // Writes one MJPEG frame chunk into the current AVI recording.
 bool RecordingsStorage::writeAviFrameLocked(const uint8_t* frame_data, size_t frame_size, int /*width*/, int /*height*/)
 {
-    const uint16_t jpeg_size = static_cast<uint16_t>(frame_size);
-    const uint16_t filler = static_cast<uint16_t>((4 - (jpeg_size & 0x3)) & 0x3);
-    const size_t padded_size = static_cast<size_t>(jpeg_size) + filler;
+    const uint32_t jpeg_size = static_cast<uint32_t>(frame_size);
+    const uint32_t filler = (4U - (jpeg_size & 0x3U)) & 0x3U;
+    const uint32_t padded_size = jpeg_size + filler;
 
     std::array<uint8_t, 8> header = {};
     std::memcpy(header.data(), dcBuf, 4);
-    std::memcpy(header.data() + 4, &padded_size, 4);
+    std::memcpy(header.data() + 4, &padded_size, sizeof(padded_size));
 
     if (!writeRecordingData(header.data(), header.size()))
     {
@@ -357,7 +388,7 @@ bool RecordingsStorage::writeAviFrameLocked(const uint8_t* frame_data, size_t fr
     }
 
     std::array<uint8_t, 4> padding = {};
-    if (filler != 0 && !writeRecordingData(padding.data(), filler))
+    if (filler != 0 && !writeRecordingData(padding.data(), static_cast<size_t>(filler)))
     {
         return false;
     }
@@ -432,6 +463,8 @@ std::vector<RecordingEntry> RecordingsStorage::listRecordings() const
 
         RecordingEntry entry;
         entry.name = filename.substr(0, dot);
+        entry.extension = ext;
+        entry.path = filepath;
         entry.size_kb = static_cast<size_t>(st.st_size / 1024);
         entries.push_back(std::move(entry));
     }

@@ -4,6 +4,7 @@
 #include "flight_osd.h"
 #include "shared/frame_packets_debug.h"
 #include "gs_recordings_storage.h"
+#include "gs_playback_manager.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
@@ -52,7 +53,11 @@ void handleLinuxVideoDispatch(const VideoDispatchDecision& video_decision)
 
     auto video_frame = completed_frame.frame_data;
     uint8_t* video_frame_data = completed_frame.data;
-    s_decoder.decode_data(video_frame, completed_frame.frame_index);
+    const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
+    if (!playback_active)
+    {
+        s_decoder.decode_data(video_frame, completed_frame.frame_index);
+    }
     if (s_recordingsStorage->isRecording())
     {
         s_recordingsStorage->writeVideoFrame(video_frame_data,

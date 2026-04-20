@@ -1,7 +1,12 @@
 #include "gs_runtime_menu_ui.h"
 
+#include "core/osd_menu_imgui_shared.h"
+#include "gs_playback_manager.h"
 #include "gs_video_layout_shared.h"
 #include "imgui.h"
+
+#include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -19,6 +24,43 @@ void emitMenuKey(ImGuiKey key)
 }
 
 } // namespace
+
+//===================================================================================
+//===================================================================================
+// Draws the active recording playback progress bar and timing/error label.
+void drawPlaybackProgressOverlay(float overlay_width, float surface_height)
+{
+    if (s_playbackManager == nullptr)
+    {
+        return;
+    }
+
+    const PlaybackStatus status = s_playbackManager->status();
+    if (!status.active || overlay_width <= 0.0f || surface_height <= 0.0f)
+    {
+        return;
+    }
+
+    const float scale = gs::menu::imgui::calcOsdScale(surface_height);
+    const float bar_width = std::min(overlay_width * 0.76f, 920.0f * scale);
+    const float bar_height = std::max(4.0f, 5.0f * scale);
+    const float x = std::floor((overlay_width - bar_width) * 0.5f);
+    const float y = std::floor(surface_height - 70.0f * scale);
+    const float progress = status.total_frames > 0
+        ? std::clamp(static_cast<float>(status.current_frame) / static_cast<float>(status.total_frames), 0.0f, 1.0f)
+        : 0.0f;
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    const ImU32 dark_blue = IM_COL32(37, 51, 88, 255);
+    const ImU32 blue = IM_COL32(77, 137, 205, 255);
+    const ImU32 text_color = IM_COL32(255, 255, 255, 255);
+
+    draw_list->AddRectFilled(ImVec2(x, y), ImVec2(x + bar_width, y + bar_height), dark_blue);
+    draw_list->AddRectFilled(ImVec2(x, y), ImVec2(x + bar_width * progress, y + bar_height), blue);
+
+    const char* label = status.broken ? "Broken Video Sequence" : status.message.c_str();
+    draw_list->AddText(ImVec2(x, y + bar_height + 8.0f * scale), text_color, label);
+}
 
 //===================================================================================
 //===================================================================================
@@ -76,7 +118,7 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
     const ImVec2 nav_size(nav.size, nav.size);
     const ImVec4 active_bg = toImGuiColor(0.16f, 0.20f, 0.26f, 0.92f);
     const ImVec4 back_bg = toImGuiColor(0.22f, 0.18f, 0.18f, 0.92f);
-    const ImVec4 enter_bg = toImGuiColor(0.18f, 0.27f, 0.18f, 0.92f);
+    const ImVec4 right_bg = toImGuiColor(0.18f, 0.27f, 0.18f, 0.92f);
 
     auto draw_nav_pad_window = [&](const char* window_name, float origin_x, bool interactive)
     {
@@ -107,8 +149,15 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
 
         draw_button("UP", nav.center_x, nav.up_y, active_bg, ImGuiKey_UpArrow);
         draw_button("LEFT", nav.left_x, nav.mid_y, back_bg, ImGuiKey_LeftArrow);
-        draw_button("RIGHT", nav.right_x, nav.mid_y, enter_bg, ImGuiKey_RightArrow);
+        draw_button("RIGHT", nav.right_x, nav.mid_y, right_bg, ImGuiKey_RightArrow);
         draw_button("DOWN", nav.center_x, nav.down_y, active_bg, ImGuiKey_DownArrow);
+
+        // The center cell stays visually empty; renderer tap dispatch treats the same region as Enter.
+        ImGui::SetCursorPos(ImVec2(nav.center_x, nav.mid_y));
+        if (ImGui::InvisibleButton("CENTER_ENTER", nav_size) && interactive)
+        {
+            emitMenuKey(ImGuiKey_Enter);
+        }
 
         ImGui::End();
         ImGui::PopStyleVar(2);

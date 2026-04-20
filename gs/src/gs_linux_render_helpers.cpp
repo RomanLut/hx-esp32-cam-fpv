@@ -5,7 +5,9 @@
 
 #include "imgui.h"
 #include "flight_osd.h"
+#include "gs_playback_manager.h"
 #include "gs_recordings_storage.h"
+#include "gs_runtime_input.h"
 #include "gs_linux_runtime.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_platform_services.h"
@@ -19,6 +21,18 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
     if (ImGui::IsKeyPressed(ImGuiKey_S))
     {
         s_groundstation_config.stats = !s_groundstation_config.stats;
+    }
+
+    if (!ignore_keys && s_playbackManager != nullptr && s_playbackManager->status().active)
+    {
+        if (gs::runtime::handlePlaybackKeysFromImGui(s_playbackManager,
+                                                     []()
+                                                     {
+                                                         gs::menu::g_osdMenuController.openPlaybackMenu();
+                                                     }))
+        {
+            return;
+        }
     }
 
     bool reset_resolution = false;
@@ -76,14 +90,9 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
         config.misc.profile2_btn++;
     }
 
-    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_R, false))
+    if (!ignore_keys)
     {
-        config.misc.air_record_btn++;
-    }
-
-    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_G, false))
-    {
-        s_recordingsStorage->toggleRecording(0, 0, "keyboard_g");
+        gs::runtime::handleRecordingKeysFromImGui(config, "keyboard_g");
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape)))

@@ -27,6 +27,7 @@ public:
     void add_render_callback(std::function<void()> func){
         render_callbacks.push_back(func);
     }
+    void set_pointer_tap_callback(std::function<void(float, float)> func) override;
 
     void set_width( int w );
     void set_height( int h );
@@ -52,4 +53,6 @@ private:
     bool init_ts();
     void shutdown_ts();
     void update_ts();
+    void queue_pointer_tap(float x, float y);
+    void dispatch_pending_pointer_tap();
 };

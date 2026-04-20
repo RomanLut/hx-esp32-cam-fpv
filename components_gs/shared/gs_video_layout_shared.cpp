@@ -76,7 +76,7 @@ RectI buildLetterboxedRect(int origin_x,
 
 //===================================================================================
 //===================================================================================
-// Computes scaled positions and sizes for the touch navigation pad buttons
+// Computes scaled positions and sizes for the touch navigation pad cells
 // based on the surface dimensions.
 NavPadLayout buildTouchNavPadLayout(int surface_width, int surface_height)
 {

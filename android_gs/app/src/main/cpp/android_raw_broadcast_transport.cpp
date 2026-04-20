@@ -7,10 +7,10 @@
 #include <exception>
 #include <limits>
 
-#include <android/log.h>
 #include <libusb.h>
 
 #include "fec.h"
+#include "Log.h"
 #include "gs_shared_state.h"
 #include "structures.h"
 #include "third_party/devourer/src/FrameParser.h"
@@ -20,7 +20,6 @@
 namespace
 {
 
-constexpr const char* kAndroidRawBroadcastLogTag = "AndroidRawBroadcast";
 constexpr size_t kTxRateHz = 26000000;
 constexpr uint32_t kRxRestartBackjumpBlocks = 64;
 
@@ -120,11 +119,9 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     if (m_tx_descriptor.coding_k == 0 ||
         m_tx_descriptor.coding_n < m_tx_descriptor.coding_k)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "Invalid TX coding params k=%u n=%u",
-                            static_cast<unsigned int>(m_tx_descriptor.coding_k),
-                            static_cast<unsigned int>(m_tx_descriptor.coding_n));
+        LOGE("Invalid TX coding params k={} n={}",
+             static_cast<unsigned int>(m_tx_descriptor.coding_k),
+             static_cast<unsigned int>(m_tx_descriptor.coding_n));
         return false;
     }
 
@@ -138,11 +135,9 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     m_tx_fec = fec_new(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
     if (m_tx_fec == nullptr)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "fec_new failed k=%u n=%u",
-                            static_cast<unsigned int>(m_tx_descriptor.coding_k),
-                            static_cast<unsigned int>(m_tx_descriptor.coding_n));
+        LOGE("fec_new failed k={} n={}",
+             static_cast<unsigned int>(m_tx_descriptor.coding_k),
+             static_cast<unsigned int>(m_tx_descriptor.coding_n));
         return false;
     }
 
@@ -164,26 +159,22 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     decoder_descriptor.interface_count = 1;
     if (!m_rx_decoder.init(decoder_descriptor))
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "RX decoder init failed k=%u n=%u mtu=%u",
-                            static_cast<unsigned int>(decoder_descriptor.coding_k),
-                            static_cast<unsigned int>(decoder_descriptor.coding_n),
-                            static_cast<unsigned int>(decoder_descriptor.mtu));
+        LOGE("RX decoder init failed k={} n={} mtu={}",
+             static_cast<unsigned int>(decoder_descriptor.coding_k),
+             static_cast<unsigned int>(decoder_descriptor.coding_n),
+             static_cast<unsigned int>(decoder_descriptor.mtu));
         fec_free(m_tx_fec);
         m_tx_fec = nullptr;
         return false;
     }
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRawBroadcastLogTag,
-                        "Initialized raw transport channel=%d mtu=%zu tx_k=%u tx_n=%u rx_k=%u rx_n=%u",
-                        s_groundstation_config.wifi_channel,
-                        m_tx_descriptor.mtu,
-                        static_cast<unsigned int>(m_tx_descriptor.coding_k),
-                        static_cast<unsigned int>(m_tx_descriptor.coding_n),
-                        static_cast<unsigned int>(m_rx_descriptor.coding_k),
-                        static_cast<unsigned int>(m_rx_descriptor.coding_n));
+    LOGI("Initialized raw transport channel={} mtu={} tx_k={} tx_n={} rx_k={} rx_n={}",
+         s_groundstation_config.wifi_channel,
+         m_tx_descriptor.mtu,
+         static_cast<unsigned int>(m_tx_descriptor.coding_k),
+         static_cast<unsigned int>(m_tx_descriptor.coding_n),
+         static_cast<unsigned int>(m_rx_descriptor.coding_k),
+         static_cast<unsigned int>(m_rx_descriptor.coding_n));
 
     return true;
 }
@@ -408,10 +399,7 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
 
     if (!device)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "Ignoring channel change to %d because no adapter is running",
-                            ch);
+        LOGI("Ignoring channel change to {} because no adapter is running", ch);
         return;
     }
 
@@ -423,25 +411,17 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
             return;
         }
 
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "Setting monitor channel to %d",
-                            ch);
+        LOGI("Setting monitor channel to {}", ch);
         device->SetMonitorChannel(makeSelectedChannel(ch));
     }
     catch (const std::exception& e)
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kAndroidRawBroadcastLogTag,
-                            "SetMonitorChannel failed after USB detach: %s",
-                            e.what());
+        LOGW("SetMonitorChannel failed after USB detach: {}", e.what());
         device->should_stop = true;
     }
     catch (...)
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kAndroidRawBroadcastLogTag,
-                            "SetMonitorChannel failed after USB detach with unknown exception");
+        LOGW("SetMonitorChannel failed after USB detach with unknown exception");
         device->should_stop = true;
     }
 }
@@ -484,25 +464,17 @@ void AndroidRawBroadcastTransport::setTxPower(int txPower)
                 return;
             }
 
-            __android_log_print(ANDROID_LOG_INFO,
-                                kAndroidRawBroadcastLogTag,
-                                "Setting TX power to %d",
-                                m_tx_power);
+            LOGI("Setting TX power to {}", m_tx_power);
             device->SetTxPower(m_tx_power);
         }
         catch (const std::exception& e)
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kAndroidRawBroadcastLogTag,
-                                "SetTxPower failed after USB detach: %s",
-                                e.what());
+            LOGW("SetTxPower failed after USB detach: {}", e.what());
             device->should_stop = true;
         }
         catch (...)
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kAndroidRawBroadcastLogTag,
-                                "SetTxPower failed after USB detach with unknown exception");
+            LOGW("SetTxPower failed after USB detach with unknown exception");
             device->should_stop = true;
         }
     }
@@ -568,10 +540,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     std::lock_guard<std::mutex> stop_lock(m_stop_mutex);
     if (fd < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "Refusing to start adapter with invalid fd=%d",
-                            fd);
+        LOGE("Refusing to start adapter with invalid fd={}", fd);
         return false;
     }
 
@@ -619,19 +588,14 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
     if (libusb_init(&m_libusb_context) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "libusb_init failed");
+        LOGE("libusb_init failed");
         m_libusb_context = nullptr;
         return false;
     }
 
     if (libusb_wrap_sys_device(m_libusb_context, static_cast<intptr_t>(fd), &m_usb_handle) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "libusb_wrap_sys_device failed fd=%d",
-                            fd);
+        LOGE("libusb_wrap_sys_device failed fd={}", fd);
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
         m_usb_handle = nullptr;
@@ -645,9 +609,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 
     if (libusb_claim_interface(m_usb_handle, 0) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "libusb_claim_interface failed on interface 0");
+        LOGE("libusb_claim_interface failed on interface 0");
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
         m_usb_handle = nullptr;
@@ -657,9 +619,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     std::unique_ptr<Rtl8812aDevice> created_device = m_wifi_driver->CreateRtlDevice(m_usb_handle);
     if (!created_device)
     {
-        __android_log_print(ANDROID_LOG_ERROR,
-                            kAndroidRawBroadcastLogTag,
-                            "CreateRtlDevice failed");
+        LOGE("CreateRtlDevice failed");
         libusb_release_interface(m_usb_handle, 0);
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
@@ -683,11 +643,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         }
     }
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRawBroadcastLogTag,
-                        "Started RTL adapter fd=%d channel=%d",
-                        fd,
-                        s_groundstation_config.wifi_channel);
+    LOGI("Started RTL adapter fd={} channel={}", fd, s_groundstation_config.wifi_channel);
 
     m_usb_event_thread = std::make_unique<std::thread>([this]()
     {
@@ -709,10 +665,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
             const int rc = libusb_handle_events_timeout(m_libusb_context, &timeout);
             if (rc < 0)
             {
-                __android_log_print(ANDROID_LOG_WARN,
-                                    kAndroidRawBroadcastLogTag,
-                                    "libusb_handle_events_timeout rc=%d",
-                                    rc);
+                LOGW("libusb_handle_events_timeout rc={}", rc);
             }
         }
     });
@@ -795,9 +748,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
         m_libusb_context = nullptr;
     }
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRawBroadcastLogTag,
-                        "Stopped RTL adapter");
+    LOGI("Stopped RTL adapter");
 }
 
 //===================================================================================
@@ -825,10 +776,7 @@ void AndroidRawBroadcastTransport::setTransportPacketCallback(std::function<void
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_transport_packet_callback = std::move(callback);
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRawBroadcastLogTag,
-                        "Transport packet callback installed=%d",
-                        m_transport_packet_callback ? 1 : 0);
+    LOGI("Transport packet callback installed={}", m_transport_packet_callback ? 1 : 0);
 }
 
 //===================================================================================
@@ -896,27 +844,19 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<Rtl8812aD
     {
         if (!device->send_packet(packet.data(), packet.size()))
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kAndroidRawBroadcastLogTag,
-                                "send_packet failed size=%zu",
-                                packet.size());
+            LOGW("send_packet failed size={}", packet.size());
             return false;
         }
     }
     catch (const std::exception& e)
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kAndroidRawBroadcastLogTag,
-                            "send_packet threw after USB detach: %s",
-                            e.what());
+        LOGW("send_packet threw after USB detach: {}", e.what());
         device->should_stop = true;
         return false;
     }
     catch (...)
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kAndroidRawBroadcastLogTag,
-                            "send_packet threw after USB detach with unknown exception");
+        LOGW("send_packet threw after USB detach with unknown exception");
         device->should_stop = true;
         return false;
     }
@@ -943,18 +883,16 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
     const uint32_t seen_count = s_rx_seen_count.fetch_add(1) + 1;
     if ((seen_count % 500) == 1)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "RX raw frame count=%u size=%zu rssi=%d mac=%02X:%02X:%02X:%02X:%02X:%02X",
-                            seen_count,
-                            size,
-                            input_dbm,
-                            static_cast<unsigned int>(data[10]),
-                            static_cast<unsigned int>(data[11]),
-                            static_cast<unsigned int>(data[12]),
-                            static_cast<unsigned int>(data[13]),
-                            static_cast<unsigned int>(data[14]),
-                            static_cast<unsigned int>(data[15]));
+        LOGI("RX raw frame count={} size={} rssi={} mac={:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+             seen_count,
+             size,
+             input_dbm,
+             static_cast<unsigned int>(data[10]),
+             static_cast<unsigned int>(data[11]),
+             static_cast<unsigned int>(data[12]),
+             static_cast<unsigned int>(data[13]),
+             static_cast<unsigned int>(data[14]),
+             static_cast<unsigned int>(data[15]));
     }
 
     if (!matchesLegacyAir2GroundMacSignature(data, size))
@@ -1007,21 +945,17 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
     const uint32_t rx_count = s_rx_pass_count.fetch_add(1) + 1;
     if (callback && rx_count == 1U)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "Dispatching filtered packet through direct callback");
+        LOGI("Dispatching filtered packet through direct callback");
     }
     if ((rx_count % 100) == 1)
     {
         const Packet_Header* packet_header =
             reinterpret_cast<const Packet_Header*>(transport_packet);
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidRawBroadcastLogTag,
-                            "RX packet count=%u block=%u packet=%u size=%zu rssi=%d",
-                            rx_count,
-                            packet_header->block_index,
-                            static_cast<unsigned int>(packet_header->packet_index),
-                            transport_size,
-                            input_dbm);
+        LOGI("RX packet count={} block={} packet={} size={} rssi={}",
+             rx_count,
+             packet_header->block_index,
+             static_cast<unsigned int>(packet_header->packet_index),
+             transport_size,
+             input_dbm);
     }
 }

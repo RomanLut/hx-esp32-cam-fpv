@@ -18,9 +18,9 @@ code style and comments:
 - if testing or debugging reveals a non-obvious behavior, constraint, race, ordering requirement, or hardware/platform quirk, add a short English comment near the relevant implementation that explains the behavior and why the code is written that way
 - do not leave important debug findings only in chat, commit messages, or temporary notes; preserve them in the code where a future engineer would otherwise repeat the same mistake
 
-components_gs logging rule:
-- in first-party `components_gs` code, always use shared `LOGD` / `LOGI` / `LOGW` / `LOGE` macros for logging
-- do not use `__android_log_print`, `printf`, `fprintf`, or ad-hoc logging macros in first-party `components_gs` code
+first-party GS logging rule:
+- in first-party GS code, including `components_gs`, `gs/src`, and `android_gs/app/src/main/cpp`, always use shared `LOGD` / `LOGI` / `LOGW` / `LOGE` macros from `components_gs/shared/Log.h` for logging
+- do not use `__android_log_print`, `printf`, `fprintf`, or ad-hoc logging macros in first-party GS code
 - if platform-specific logging behavior is needed, implement it inside `components_gs/shared/Log.h`, not at call sites
-- treat vendored third-party code under `components_gs/imgui`, `components_gs/fmt`, and similar imported libraries as exceptions unless explicitly asked to modify them
+- treat vendored third-party code under `components_gs/imgui`, `components_gs/fmt`, `android_gs/app/src/main/cpp/third_party`, and similar imported libraries as exceptions unless explicitly asked to modify them
 

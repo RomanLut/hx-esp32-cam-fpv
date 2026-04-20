@@ -13,3 +13,4 @@ struct RuntimeMenuUiState
 
 void drawRuntimeMenuOverlay(const RuntimeMenuUiState& state);
 void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state);
+void drawPlaybackProgressOverlay(float overlay_width, float surface_height);

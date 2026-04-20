@@ -1,7 +1,9 @@
 #include "gs_linux_runtime_loop.h"
 
 #include <cerrno>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <string>
 #include <thread>
@@ -20,12 +22,15 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_event_pipeline.h"
 #include "gs_recordings_storage.h"
+#include "gs_playback_manager.h"
 #include "gs_runtime_frame_ui.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
 #include "gs_top_overlay_shared.h"
+#include "gs_video_layout_shared.h"
 #include "core/osd_menu_controller.h"
+#include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "jpeg_parser.h"
@@ -38,6 +43,113 @@ namespace
 {
 
 std::thread s_comms_thread;
+
+//===================================================================================
+//===================================================================================
+// Queues one ImGui key press before the next frame consumes input state.
+void queueLinuxPointerKey(ImGuiKey key)
+{
+    if (key == ImGuiKey_None)
+    {
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(key, true);
+    io.AddKeyEvent(key, false);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns true when a canonical-space tap falls inside the supplied rectangle.
+bool linuxPointerInRect(float x, float y, float rect_x, float rect_y, float rect_w, float rect_h)
+{
+    return rect_w > 0.0f &&
+           rect_h > 0.0f &&
+           x >= rect_x &&
+           x <= rect_x + rect_w &&
+           y >= rect_y &&
+           y <= rect_y + rect_h;
+}
+
+//===================================================================================
+//===================================================================================
+// Translates Linux pointer taps into the same semantic key actions used by Android.
+void handleLinuxPointerTap(float tap_x, float tap_y)
+{
+    const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+    if (display_size.x <= 0.0f || display_size.y <= 0.0f)
+    {
+        return;
+    }
+
+    const bool controls_visible =
+        gs::menu::g_osdMenuController.isVisible() ||
+        (s_playbackManager != nullptr && s_playbackManager->status().active);
+    if (!controls_visible)
+    {
+        queueLinuxPointerKey(ImGuiKey_Enter);
+        return;
+    }
+
+    if (s_groundstation_config.screenFlipV)
+    {
+        tap_x = display_size.x - tap_x;
+        tap_y = display_size.y - tap_y;
+    }
+
+    if (s_groundstation_config.vrMode)
+    {
+        const float half_w = display_size.x * 0.5f;
+        const float offset = s_groundstation_config.screenVrSeparation * half_w;
+        if (tap_x >= half_w)
+        {
+            tap_x -= half_w;
+            tap_x += offset;
+        }
+        else
+        {
+            tap_x -= offset;
+        }
+    }
+
+    const float layout_width = s_groundstation_config.vrMode ? (display_size.x * 0.5f) : display_size.x;
+    const gs::render::NavPadLayout nav =
+        gs::render::buildTouchNavPadLayout(static_cast<int>(layout_width), static_cast<int>(display_size.y));
+    const auto in_nav = [&](float x, float y)
+    {
+        return linuxPointerInRect(tap_x, tap_y, x, y, nav.size, nav.size);
+    };
+
+    if (in_nav(nav.center_x, nav.up_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_UpArrow);
+    }
+    else if (in_nav(nav.center_x, nav.down_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_DownArrow);
+    }
+    else if (in_nav(nav.left_x, nav.mid_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_LeftArrow);
+    }
+    else if (in_nav(nav.right_x, nav.mid_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_RightArrow);
+    }
+    else if (in_nav(nav.center_x, nav.mid_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_Enter);
+    }
+    else if (in_nav(nav.margin, nav.mid_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_R);
+    }
+    else if (in_nav(nav.margin, nav.down_y))
+    {
+        queueLinuxPointerKey(ImGuiKey_G);
+    }
+}
 
 //===================================================================================
 //===================================================================================
@@ -259,6 +371,11 @@ void signalHandler(int signal)
 // The callback draws the OSD, top overlay, stats panel, menu, and processes hotkeys.
 void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
 {
+    s_hal->set_pointer_tap_callback([](float tap_x, float tap_y)
+    {
+        handleLinuxPointerTap(tap_x, tap_y);
+    });
+
     auto render_callback = [&config, argv]
     {
         RuntimeFrameUiState frame_ui = {};
@@ -343,19 +460,27 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             {
                 gs::stats::drawFullscreenStatsPanel(overlay_stats_snapshot);
             }
+
+            drawPlaybackProgressOverlay(display_size.x, display_size.y);
         }
         ImGui::End();
         ImGui::PopStyleVar();
 
+        const bool menu_visible = gs::menu::g_osdMenuController.isVisible();
+        const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
         RuntimeMenuUiState menu_ui = {};
-        menu_ui.visible = gs::menu::g_osdMenuController.isVisible();
+        menu_ui.visible = menu_visible;
         menu_ui.vr_mode = s_groundstation_config.vrMode;
-        menu_ui.touch_nav_enabled = false;
+        // touch_nav_enabled intentionally left false for Linux/WSL (keyboard-driven, no DPAD/REC buttons)
         menu_ui.surface_width = ImGui::GetIO().DisplaySize.x;
         menu_ui.surface_height = ImGui::GetIO().DisplaySize.y;
         drawRuntimeMenuOverlay(menu_ui);
         gs::menu::g_osdMenuController.draw(config);
-        drawRuntimeMenuTouchNav(menu_ui);
+        RuntimeMenuUiState touch_nav_ui = menu_ui;
+        touch_nav_ui.visible = menu_visible || playback_active;
+        touch_nav_ui.gs_recording = s_recordingsStorage != nullptr && s_recordingsStorage->isRecording();
+        touch_nav_ui.air_recording = s_air_record;
+        drawRuntimeMenuTouchNav(touch_nav_ui);
 
         handleRenderHotkeys(config, ignore_keys);
         processPendingRestart(argv);

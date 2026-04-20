@@ -5,7 +5,6 @@
 #include <chrono>
 #include <cstring>
 
-#include <android/log.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -13,6 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "Log.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_config.h"
 #include "gs_shared_state.h"
@@ -20,8 +20,6 @@
 
 namespace
 {
-
-constexpr const char* kAndroidRuntimeLogTag = "AndroidRuntime";
 
 Clock::time_point s_pending_channel_change_tp = Clock::now() + std::chrono::hours(10000);
 
@@ -194,12 +192,10 @@ void AndroidRuntimePlatformServices::invalidateDisplayedVideoFrame()
 // exact channel that the GS menu committed.
 void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Config_Packet& config)
 {
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRuntimeLogTag,
-                        "applyGroundStationWifiChannel menu=%u gs=%d apfpv=%d",
-                        static_cast<unsigned int>(config.dataChannel.wifi_channel),
-                        s_groundstation_config.wifi_channel,
-                        static_cast<int>(config.misc.apfpv));
+    LOGI("applyGroundStationWifiChannel menu={} gs={} apfpv={}",
+         static_cast<unsigned int>(config.dataChannel.wifi_channel),
+         s_groundstation_config.wifi_channel,
+         static_cast<int>(config.misc.apfpv));
     applyWifiChannelToSession(config);
     s_runtimeCore.config_packet = config;
     commitGround2AirConfig(s_runtimeCore.config_packet);
@@ -241,10 +237,8 @@ void processPendingRawBroadcastChannelChange(gs::core::ITransport& transport)
     }
 
     s_pending_channel_change_tp = Clock::now() + std::chrono::hours(10000);
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidRuntimeLogTag,
-                        "Applying deferred channel change to %d (silence=%lld ms)",
-                        s_groundstation_config.wifi_channel,
-                        static_cast<long long>(silence_ms));
+    LOGI("Applying deferred channel change to {} (silence={} ms)",
+         s_groundstation_config.wifi_channel,
+         static_cast<long long>(silence_ms));
     transport.setChannel(s_groundstation_config.wifi_channel);
 }

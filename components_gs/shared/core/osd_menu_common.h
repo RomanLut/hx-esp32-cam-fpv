@@ -36,7 +36,8 @@ enum class OSDMenuId
     Image,
     CameraStopCH,
     Debug,
-    Playback
+    Playback,
+    PlaybackRun
 };
 
 namespace gs::menu

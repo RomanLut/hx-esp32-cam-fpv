@@ -8,6 +8,7 @@
 #include "flight_osd.h"
 #include "lodepng.h"
 #include "gs_recordings_storage.h"
+#include "gs_playback_manager.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
@@ -273,6 +274,19 @@ void OSDMenuController::open()
 
 //===================================================================================
 //===================================================================================
+// Opens the Playback menu without changing its current selected file.
+void OSDMenuController::openPlaybackMenu()
+{
+    this->visible = true;
+    this->menuId = OSDMenuId::Playback;
+    this->backMenuIds.clear();
+    this->backMenuItems.clear();
+    this->backMenuIds.push_back(OSDMenuId::GSSettings);
+    this->backMenuItems.push_back(0);
+}
+
+//===================================================================================
+//===================================================================================
 // Closes the OSD menu.
 void OSDMenuController::close()
 {
@@ -492,7 +506,12 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
         gs::menu::imgui::buildMenuFrameLayout(primary_width, screenSize.y, true, 29.0f),
         0.0f);
 
+    const OSDMenuId drawn_menu_id = this->menuId;
     drawMenuWindow("OSD_MENU", primary_layout, config, DrawMode::Interactive);
+    if (this->menuId == drawn_menu_id && this->itemsCount > 0)
+    {
+        this->selectedItem = std::clamp(this->selectedItem, 0, this->itemsCount - 1);
+    }
 
     if ( isMenuUpPressed() && this->selectedItem > 0 )
     {
@@ -540,6 +559,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
+        case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
     }
 }
 
@@ -1586,20 +1606,23 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         this->goForward( OSDMenuId::Debug, 0 );
     }
 
+    int next_item_index = 4;
     if (s_RuntimePlatformServices->supportsGPIOKeys())
     {
         char buf[256];
         const char* layout = gs_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
-        sprintf(buf, "GPIO Keys Layout: %s##4", layout);
-        if ( this->drawMenuItem( buf, 4) )
+        sprintf(buf, "GPIO Keys Layout: %s##gpio_keys", layout);
+        if ( this->drawMenuItem( buf, next_item_index) )
         {
             gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
             s_settingsStorage.saveGroundStationConfig();
             s_RuntimePlatformServices->restartGPIOButtons();
         }
+        next_item_index++;
     }
 
-    if ( this->drawMenuItem( "Exit To Shell##7", 5) )
+    // Keep indices contiguous when GPIO controls are hidden, otherwise up/down can focus an invisible slot.
+    if ( this->drawMenuItem( "Exit To Shell##exit_shell", next_item_index) )
     {
         this->goForward( OSDMenuId::ExitToShell, 0 );
     }
@@ -2015,7 +2038,15 @@ void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
 
     if (this->exitKeyPressed())
     {
-        this->goBack();
+        if (this->backMenuIds.empty())
+        {
+            this->menuId = OSDMenuId::Main;
+            this->selectedItem = 0;
+        }
+        else
+        {
+            this->goBack();
+        }
     }
 }
 
@@ -2129,11 +2160,52 @@ void OSDMenuController::drawPlaybackMenu(Ground2Air_Config_Packet& /*config*/)
     {
         char buf[256];
         snprintf(buf, sizeof(buf), "%s (%zu KB)", recordings[i].name.c_str(), recordings[i].size_kb);
-        this->drawMenuItem(buf, static_cast<int>(i), true);
+        if (this->drawMenuItem(buf, static_cast<int>(i), true))
+        {
+            if (s_playbackManager != nullptr)
+            {
+                s_playbackManager->startPlayback(recordings[i]);
+                this->close();
+            }
+        }
     }
 
     if (this->exitKeyPressed())
     {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the active playback screen and lets Up/Down return to the Playback file list.
+void OSDMenuController::drawPlaybackRunMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    this->drawMenuTitle("Menu -> Playback");
+    drawSpacing();
+
+    PlaybackStatus status = {};
+    if (s_playbackManager != nullptr)
+    {
+        status = s_playbackManager->status();
+    }
+
+    if (status.broken)
+    {
+        this->drawStatus("Broken Video Sequence");
+    }
+    else
+    {
+        this->drawStatus("Playing...");
+    }
+
+    if (isMenuUpPressed() || isMenuDownPressed() || this->exitKeyPressed())
+    {
+        if (s_playbackManager != nullptr)
+        {
+            s_playbackManager->stopPlayback();
+        }
+        this->keyHandled = true;
         this->goBack();
     }
 }

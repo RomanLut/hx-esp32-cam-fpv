@@ -48,12 +48,16 @@ struct InputQueueState
     std::vector<QueuedKeyPress> pending;
 };
 
+//===================================================================================
+//===================================================================================
+// Stores the MCP listener thread state and the currently served client socket.
 struct GsMcpServerImpl
 {
     std::mutex mutex;
     std::thread thread;
     std::atomic<bool> running = false;
     int listen_fd = -1;
+    int active_client_fd = -1;
     uint16_t port = kDefaultPort;
 };
 
@@ -154,10 +158,27 @@ void GsMcpServer::stop()
     }
 
     int listen_fd = -1;
+    int active_client_fd = -1;
     {
         std::lock_guard<std::mutex> lock(g_server_impl.mutex);
         listen_fd = g_server_impl.listen_fd;
         g_server_impl.listen_fd = -1;
+        active_client_fd = g_server_impl.active_client_fd;
+    }
+    // Exit To Shell can be triggered through MCP while the server thread is still
+    // waiting in recv() on that client. Shutdown wakes the thread so Activity
+    // destruction is not left stuck in GsMcpServer::stop(). The server thread
+    // remains responsible for closing the client fd it owns.
+    if (active_client_fd >= 0)
+    {
+        shutdown(active_client_fd, SHUT_RDWR);
+    }
+    // Android can leave accept() blocked when another thread only closes the
+    // listening descriptor. Shutdown first so the server thread observes the
+    // stop request and NativeHandle destruction can complete.
+    if (listen_fd >= 0)
+    {
+        shutdown(listen_fd, SHUT_RDWR);
     }
     closeSocketFd(listen_fd);
 
@@ -920,7 +941,18 @@ void serverThreadProc()
             LOGW("Failed to mark MCP client socket close-on-exec");
         }
 
+        {
+            std::lock_guard<std::mutex> lock(g_server_impl.mutex);
+            g_server_impl.active_client_fd = client_fd;
+        }
         serveClient(client_fd);
+        {
+            std::lock_guard<std::mutex> lock(g_server_impl.mutex);
+            if (g_server_impl.active_client_fd == client_fd)
+            {
+                g_server_impl.active_client_fd = -1;
+            }
+        }
         int fd_to_close = client_fd;
         closeSocketFd(fd_to_close);
     }

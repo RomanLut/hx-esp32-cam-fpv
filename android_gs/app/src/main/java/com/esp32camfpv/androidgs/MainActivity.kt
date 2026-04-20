@@ -57,6 +57,10 @@ class MainActivity : ComponentActivity() {
     private var powerManager: PowerManager? = null
     private var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
 
+    private fun exitFromRuntimeMenu() {
+        finishAndRemoveTask()
+    }
+
     private fun applyImmersiveFullscreen() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).let { controller ->
@@ -90,7 +94,7 @@ class MainActivity : ComponentActivity() {
                         thermalStatusProvider = { currentThermalStatusValue() },
                         batteryPercentProvider = { currentBatteryPercentValue() },
                         onUserInteraction = { applyImmersiveFullscreen() },
-                        onExitApp = { finishAffinity() },
+                        onExitApp = { exitFromRuntimeMenu() },
                         onScreenFlipVChanged = { flipV ->
                             requestedOrientation = if (flipV)
                                 ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
@@ -144,7 +148,7 @@ class MainActivity : ComponentActivity() {
             applyImmersiveFullscreen()
             if (NativeCore.handleKey(nativeHandle, event.keyCode)) {
                 if (NativeCore.consumeExitRequested(nativeHandle)) {
-                    finishAffinity()
+                    exitFromRuntimeMenu()
                 }
                 return true
             }

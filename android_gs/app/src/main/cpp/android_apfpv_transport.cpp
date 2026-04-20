@@ -1,7 +1,6 @@
 #include "android_apfpv_transport.h"
 #include "../../../../../components/common/Clock.h"
 
-#include <android/log.h>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
@@ -15,12 +14,12 @@
 #include <utility>
 
 #include "fec.h"
+#include "Log.h"
 #include "gs_runtime_state.h"
 
 namespace
 {
 
-constexpr const char* kAndroidApfpvLogTag = "AndroidAPFPVTransport";
 constexpr int kAndroidApfpvReceiveBufferSizeBytes = 256 * 1024;
 constexpr size_t kAndroidApfpvMaxQueuedPackets = 2048;
 
@@ -220,16 +219,14 @@ void AndroidAPFPVTransport::updateUdpStats(uint64_t packets_received,
     m_udp_stats_log_count++;
     if ((m_udp_stats_log_count % 4U) == 1U)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kAndroidApfpvLogTag,
-                            "udp_stats peer=%s:%d packets=%llu mbps=%.2f frames=%d restored=%d error=%s",
-                            m_udp_peer_host.c_str(),
-                            m_udp_peer_port,
-                            static_cast<unsigned long long>(m_udp_packets_received),
-                            static_cast<double>(m_udp_throughput_mbps),
-                            m_received_completed_frames,
-                            m_restored_completed_frames,
-                            m_udp_last_error.empty() ? "-" : m_udp_last_error.c_str());
+        LOGI("udp_stats peer={}:{} packets={} mbps={:.2f} frames={} restored={} error={}",
+             m_udp_peer_host,
+             m_udp_peer_port,
+             static_cast<unsigned long long>(m_udp_packets_received),
+             static_cast<double>(m_udp_throughput_mbps),
+             m_received_completed_frames,
+             m_restored_completed_frames,
+             m_udp_last_error.empty() ? "-" : m_udp_last_error);
     }
 }
 
@@ -378,13 +375,13 @@ bool AndroidAPFPVTransport::startUdpClient(UdpLoopCallbacks callbacks)
 
     if (isUdpRunning())
     {
-        __android_log_print(ANDROID_LOG_WARN, kAndroidApfpvLogTag, "startUdpClient ignored: already running");
+        LOGW("startUdpClient ignored: already running");
         return false;
     }
 
     if (hasJoinableUdpThread())
     {
-        __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "startUdpClient joining stale thread before restart");
+        LOGI("startUdpClient joining stale thread before restart");
         requestUdpStop(true);
         joinUdpThread();
         setUdpRunning(false);
@@ -405,11 +402,7 @@ void AndroidAPFPVTransport::stopUdpClient()
 {
     std::lock_guard<std::mutex> lifecycle_lock(m_udp_lifecycle_mutex);
 
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidApfpvLogTag,
-                        "stopUdpClient running=%d joinable=%d",
-                        isUdpRunning() ? 1 : 0,
-                        hasJoinableUdpThread() ? 1 : 0);
+    LOGI("stopUdpClient running={} joinable={}", isUdpRunning() ? 1 : 0, hasJoinableUdpThread() ? 1 : 0);
     requestUdpStop(true);
     joinUdpThread();
     setUdpRunning(false);
@@ -500,7 +493,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     {
         setUdpRunning(false);
         setUdpError("peer resolve failed");
-        __android_log_print(ANDROID_LOG_ERROR, kAndroidApfpvLogTag, "udp_start failed: %s", udpLastError().c_str());
+        LOGE("udp_start failed: {}", udpLastError());
         return;
     }
 
@@ -510,7 +503,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
         freeaddrinfo(addrinfo_result);
         setUdpRunning(false);
         setUdpError(std::string("socket create failed: ") + std::strerror(errno));
-        __android_log_print(ANDROID_LOG_ERROR, kAndroidApfpvLogTag, "udp_start failed: %s", udpLastError().c_str());
+        LOGE("udp_start failed: {}", udpLastError());
         return;
     }
 
@@ -525,11 +518,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     int receive_buffer_size = kAndroidApfpvReceiveBufferSizeBytes;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer_size, sizeof(receive_buffer_size)) != 0)
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kAndroidApfpvLogTag,
-                            "setsockopt SO_RCVBUF=%d failed: %s",
-                            receive_buffer_size,
-                            std::strerror(errno));
+        LOGW("setsockopt SO_RCVBUF={} failed: {}", receive_buffer_size, std::strerror(errno));
     }
     else
     {
@@ -541,11 +530,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
                        &effective_receive_buffer_size,
                        &effective_receive_buffer_size_len) == 0)
         {
-            __android_log_print(ANDROID_LOG_INFO,
-                                kAndroidApfpvLogTag,
-                                "SO_RCVBUF requested=%d effective=%d",
-                                receive_buffer_size,
-                                effective_receive_buffer_size);
+            LOGI("SO_RCVBUF requested={} effective={}", receive_buffer_size, effective_receive_buffer_size);
         }
     }
 
@@ -559,7 +544,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
         freeaddrinfo(addrinfo_result);
         setUdpRunning(false);
         setUdpError(std::string("bind failed: ") + std::strerror(errno));
-        __android_log_print(ANDROID_LOG_ERROR, kAndroidApfpvLogTag, "udp_start failed: %s", udpLastError().c_str());
+        LOGE("udp_start failed: {}", udpLastError());
         return;
     }
 
@@ -571,12 +556,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     clearUdpError();
     m_udp_packets_seen.store(false);
     updateUdpStats(0, 0.0f, 0, 0);
-    __android_log_print(ANDROID_LOG_INFO,
-                        kAndroidApfpvLogTag,
-                        "udp_start ok peer=%s:%d local=%d",
-                        m_udp_peer_host.c_str(),
-                        m_udp_peer_port,
-                        m_udp_local_port);
+    LOGI("udp_start ok peer={}:{} local={}", m_udp_peer_host, m_udp_peer_port, m_udp_local_port);
 
     std::array<uint8_t, 2048> rx_buffer = {};
     uint64_t packets_received = 0;
@@ -654,7 +634,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
             m_udp_packets_seen.store(true);
             if (packets_received == 1)
             {
-                __android_log_print(ANDROID_LOG_INFO, kAndroidApfpvLogTag, "udp_first_packet size=%zd", received);
+                LOGI("udp_first_packet size={}", received);
             }
 
             {
@@ -681,7 +661,7 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
         else if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
         {
             setUdpError(std::string("recv failed: ") + std::strerror(errno));
-            __android_log_print(ANDROID_LOG_ERROR, kAndroidApfpvLogTag, "udp_recv failed: %s", udpLastError().c_str());
+            LOGE("udp_recv failed: {}", udpLastError());
             break;
         }
 
@@ -715,6 +695,6 @@ void AndroidAPFPVTransport::runUdpClientLoop(UdpLoopCallbacks callbacks)
     setUdpRunning(false);
     if (!udpLastError().empty())
     {
-        __android_log_print(ANDROID_LOG_WARN, kAndroidApfpvLogTag, "udp_stop error=%s", udpLastError().c_str());
+        LOGW("udp_stop error={}", udpLastError());
     }
 }

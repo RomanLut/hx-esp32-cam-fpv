@@ -46,6 +46,7 @@ public:
     void init();
     void draw( Ground2Air_Config_Packet& config );
     void open();
+    void openPlaybackMenu();
     void close();
     bool isVisible() const;
     CapturedMenuBuffer copyCapturedMenuBuffer() const;
@@ -130,6 +131,7 @@ private:
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
     void drawDebugMenu(Ground2Air_Config_Packet& config);
     void drawPlaybackMenu(Ground2Air_Config_Packet& config);
+    void drawPlaybackRunMenu(Ground2Air_Config_Packet& config);
     void drawSearchModeMenu(Ground2Air_Config_Packet& config);
     void drawSearchRunMenu(Ground2Air_Config_Packet& config);
     void drawCurrentMenu(Ground2Air_Config_Packet& config);

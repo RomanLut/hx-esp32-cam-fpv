@@ -5,16 +5,14 @@
 #include <exception>
 #include <thread>
 
-#include <android/log.h>
 #include <libusb.h>
 
+#include "Log.h"
 #include "gs_shared_state.h"
 #include "third_party/devourer/src/SelectedChannel.h"
 
 namespace
 {
-
-constexpr const char* kLogTag = "AndroidWifiScan";
 
 //===================================================================================
 //===================================================================================
@@ -89,8 +87,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 {
     if (fd < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag,
-                            "Refusing to start adapter with invalid fd=%d", fd);
+        LOGE("Refusing to start adapter with invalid fd={}", fd);
         return false;
     }
 
@@ -99,7 +96,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
     if (libusb_init(&m_libusb_context) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "libusb_init failed");
+        LOGE("libusb_init failed");
         m_libusb_context = nullptr;
         return false;
     }
@@ -108,8 +105,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
                                static_cast<intptr_t>(fd),
                                &m_usb_handle) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag,
-                            "libusb_wrap_sys_device failed fd=%d", fd);
+        LOGE("libusb_wrap_sys_device failed fd={}", fd);
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
         m_usb_handle     = nullptr;
@@ -123,8 +119,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 
     if (libusb_claim_interface(m_usb_handle, 0) < 0)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag,
-                            "libusb_claim_interface failed");
+        LOGE("libusb_claim_interface failed");
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
         m_usb_handle     = nullptr;
@@ -135,7 +130,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         m_wifi_driver->CreateRtlDevice(m_usb_handle);
     if (!created_device)
     {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "CreateRtlDevice failed");
+        LOGE("CreateRtlDevice failed");
         libusb_release_interface(m_usb_handle, 0);
         libusb_exit(m_libusb_context);
         m_libusb_context = nullptr;
@@ -149,8 +144,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         m_active_usb_fd = fd;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag,
-                        "Started RTL adapter fd=%d", fd);
+    LOGI("Started RTL adapter fd={}", fd);
 
     // USB event pump thread.
     // Android can report a USB detach while libusb is still servicing callbacks,
@@ -173,8 +167,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
             const int rc = libusb_handle_events_timeout(m_libusb_context, &timeout);
             if (rc < 0)
             {
-                __android_log_print(ANDROID_LOG_WARN, kLogTag,
-                                    "libusb_handle_events_timeout rc=%d", rc);
+                LOGW("libusb_handle_events_timeout rc={}", rc);
             }
         }
     });
@@ -272,18 +265,13 @@ void AndroidWifiScanTransport::channelSwitchLoop()
                 }
                 catch (const std::exception& ex)
                 {
-                    __android_log_print(ANDROID_LOG_WARN,
-                                        kLogTag,
-                                        "SetMonitorChannel failed after USB detach: %s",
-                                        ex.what());
+                    LOGW("SetMonitorChannel failed after USB detach: {}", ex.what());
                     dev->should_stop = true;
                     break;
                 }
                 catch (...)
                 {
-                    __android_log_print(ANDROID_LOG_WARN,
-                                        kLogTag,
-                                        "SetMonitorChannel failed after USB detach with unknown exception");
+                    LOGW("SetMonitorChannel failed after USB detach with unknown exception");
                     dev->should_stop = true;
                     break;
                 }
@@ -310,9 +298,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
         else
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kLogTag,
-                                "Skipping self-join of channel switch thread during stop");
+            LOGW("Skipping self-join of channel switch thread during stop");
         }
     }
 
@@ -334,9 +320,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
         else
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kLogTag,
-                                "Skipping self-join of RX thread during stop");
+            LOGW("Skipping self-join of RX thread during stop");
         }
     }
     if (m_usb_event_thread && m_usb_event_thread->joinable())
@@ -347,9 +331,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
         else
         {
-            __android_log_print(ANDROID_LOG_WARN,
-                                kLogTag,
-                                "Skipping self-join of USB event thread during stop");
+            LOGW("Skipping self-join of USB event thread during stop");
         }
     }
     m_rx_thread.reset();
@@ -372,7 +354,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         m_libusb_context = nullptr;
     }
 
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "Stopped RTL adapter");
+    LOGI("Stopped RTL adapter");
 }
 
 //===================================================================================

@@ -1,6 +1,6 @@
 #include <jni.h>
-#include <android/log.h>
 #include <android/asset_manager_jni.h>
+#include <android/keycodes.h>
 #include <android/native_window_jni.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -26,6 +26,7 @@
 #include "android_bitmap_jpeg_decoder.h"
 #include "android_jni_shared.h"
 #include "android_osd_font_storage.h"
+#include "android_playback_manager.h"
 #include "android_recordings_storage.h"
 #include "../../../../../components/common/avi.h"
 #include "android_runtime_platform_services.h"
@@ -33,6 +34,7 @@
 #include "gs_video_renderer.h"
 #include "fec.h"
 #include "fec_block_decoder.h"
+#include "Log.h"
 #include "crc.h"
 #include "lodepng.h"
 #include "core/gs_session_core.h"
@@ -131,8 +133,6 @@ FlightOSD s_flightOSD;
 namespace
 {
 
-constexpr const char* kNativeLogTag = "AndroidNativeBridge";
-
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
 
 struct NativeHandle;
@@ -141,18 +141,24 @@ struct NativeHandle
 {
     explicit NativeHandle(uint16_t gs_device_id_value)
         : renderer(),
-          jpeg_decoder(renderer)
+          jpeg_decoder(renderer),
+          playback_manager(jpeg_decoder)
     {
         s_RuntimePlatformServices = &getAndroidRuntimePlatformServices();
         bindAndroidRuntimeRenderer(&renderer);
         s_OSDFontStorage = &getAndroidOsdFontStorage();
         s_recordingsStorage = &getAndroidRecordingsStorage();
+        s_playbackManager = &playback_manager;
         s_runtimeCore.resetState(gs_device_id_value);
         loadSharedSettings(s_runtimeCore.gs_device_id);
         prepAviBuffers();
         s_recordingsStorage->refreshGroundStorageStatus();
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
         s_runtimeCore.gs_device_id = s_groundstation_config.deviceId;
+        // Android can restart the Activity in the same process after Exit To Shell.
+        // The menu controller is a process-global singleton, so reset it for each
+        // fresh native handle instead of inheriting the old Exit/Back stack state.
+        gs::menu::g_osdMenuController.close();
         s_transportManager = &transport_manager;
         {
             gs::core::RXDescriptor rx_descriptor;
@@ -180,6 +186,11 @@ struct NativeHandle
         {
             background_runtime_thread->join();
         }
+        playback_manager.stopPlayback();
+        if (s_playbackManager == &playback_manager)
+        {
+            s_playbackManager = nullptr;
+        }
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
         transport_manager.rawBroadcastTransport().stopUsbAdapter();
@@ -197,6 +208,7 @@ struct NativeHandle
     AndroidTransportManager transport_manager;
     GsVideoRenderer renderer;
     AndroidBitmapJpegDecoder jpeg_decoder;
+    AndroidPlaybackManager playback_manager;
     Clock::time_point last_control_packet_tp = Clock::now();
     int gs_thermal_status = 0;
     int gs_battery_percent = -1;
@@ -387,20 +399,6 @@ std::string describeHandleString(const NativeHandle& handle)
     return out.str();
 }
 
-uint16_t readLe16(const uint8_t* data)
-{
-    return static_cast<uint16_t>(data[0]) |
-           (static_cast<uint16_t>(data[1]) << 8);
-}
-
-uint32_t readLe32(const uint8_t* data)
-{
-    return static_cast<uint32_t>(data[0]) |
-           (static_cast<uint32_t>(data[1]) << 8) |
-           (static_cast<uint32_t>(data[2]) << 16) |
-           (static_cast<uint32_t>(data[3]) << 24);
-}
-
 bool tryParseVideoPacketWire(const uint8_t* packet_data,
                              size_t packet_size,
                              Air2Ground_Video_Packet& out_packet,
@@ -416,7 +414,7 @@ bool tryParseVideoPacketWire(const uint8_t* packet_data,
         return false;
     }
 
-    const uint32_t declared_size = readLe32(packet_data + 1);
+    const uint32_t declared_size = readAviLe32(packet_data + 1);
     if (declared_size < sizeof(Air2Ground_Video_Packet))
     {
         return false;
@@ -433,12 +431,12 @@ bool tryParseVideoPacketWire(const uint8_t* packet_data,
     out_packet.pong = packet_data[5];
     out_packet.version = packet_data[6];
     out_packet.crc = packet_data[7];
-    out_packet.airDeviceId = readLe16(packet_data + 8);
-    out_packet.gsDeviceId = readLe16(packet_data + 10);
+    out_packet.airDeviceId = readAviLe16(packet_data + 8);
+    out_packet.gsDeviceId = readAviLe16(packet_data + 10);
     out_packet.resolution = static_cast<Resolution>(packet_data[12]);
     out_packet.part_index = packet_data[13] & 0x7Fu;
     out_packet.last_part = (packet_data[13] >> 7) & 0x01u;
-    out_packet.frame_index = readLe32(packet_data + 14);
+    out_packet.frame_index = readAviLe32(packet_data + 14);
 
     out_payload = packet_data + sizeof(Air2Ground_Video_Packet);
     out_payload_size = bounded_size - sizeof(Air2Ground_Video_Packet);
@@ -627,15 +625,13 @@ void processSessionPacketLocked(NativeHandle& handle,
         connected_air != s_last_logged_connected_air ||
         got_config != s_last_logged_got_config)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "Session event=%d connected_air=0x%04x got_config=%d decoded_type=%u decoded_size=%u restored=%d",
-                            static_cast<int>(session_event.kind),
-                            static_cast<unsigned int>(connected_air),
-                            got_config ? 1 : 0,
-                            static_cast<unsigned int>(s_runtimeCore.last_decoded_type),
-                            static_cast<unsigned int>(s_runtimeCore.last_decoded_size),
-                            restored_by_fec ? 1 : 0);
+        LOGI("Session event={} connected_air=0x{:04x} got_config={} decoded_type={} decoded_size={} restored={}",
+             static_cast<int>(session_event.kind),
+             static_cast<unsigned int>(connected_air),
+             got_config ? 1 : 0,
+             static_cast<unsigned int>(s_runtimeCore.last_decoded_type),
+             static_cast<unsigned int>(s_runtimeCore.last_decoded_size),
+             restored_by_fec ? 1 : 0);
         s_last_logged_event_kind = session_event.kind;
         s_last_logged_connected_air = connected_air;
         s_last_logged_got_config = got_config;
@@ -661,8 +657,12 @@ void processSessionPacketLocked(NativeHandle& handle,
                 const CompletedVideoFrameView& completed_frame = video_decision.completed_frame;
                 if (completed_frame.has_frame)
                 {
-                    handle.jpeg_decoder.submitJpeg(completed_frame.frame_data,
-                                                   completed_frame.frame_index);
+                    const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
+                    if (!playback_active)
+                    {
+                        handle.jpeg_decoder.submitJpeg(completed_frame.frame_data,
+                                                       completed_frame.frame_index);
+                    }
                     if (s_recordingsStorage != nullptr && s_recordingsStorage->isRecording())
                     {
                         s_recordingsStorage->writeVideoFrame(completed_frame.data,
@@ -744,13 +744,11 @@ void pumpSharedControlPacketLocked(NativeHandle& handle, Clock::time_point now)
     s_control_send_count++;
     if ((s_control_send_count % 4U) == 1U)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "Sent control packet count=%u size=%zu connected_air=0x%04x got_config=%d",
-                            static_cast<unsigned int>(s_control_send_count),
-                            control_payload.size(),
-                            static_cast<unsigned int>(s_runtimeCore.session.connectedAirDeviceId()),
-                            s_runtimeCore.session.gotConfigPacket() ? 1 : 0);
+        LOGI("Sent control packet count={} size={} connected_air=0x{:04x} got_config={}",
+             static_cast<unsigned int>(s_control_send_count),
+             control_payload.size(),
+             static_cast<unsigned int>(s_runtimeCore.session.connectedAirDeviceId()),
+             s_runtimeCore.session.gotConfigPacket() ? 1 : 0);
     }
 }
 
@@ -779,12 +777,10 @@ void syncApfpvUdpClient(NativeHandle& handle)
 
     if (should_stop)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "syncApfpvUdpClient stop active=%d running=%d joinable=%d",
-                            apfpv_active ? 1 : 0,
-                            udp_running ? 1 : 0,
-                            has_joinable_thread ? 1 : 0);
+        LOGI("syncApfpvUdpClient stop active={} running={} joinable={}",
+             apfpv_active ? 1 : 0,
+             udp_running ? 1 : 0,
+             has_joinable_thread ? 1 : 0);
         handle.stopUdpClient();
         return;
     }
@@ -814,21 +810,17 @@ void syncApfpvUdpClient(NativeHandle& handle)
 
     if (started)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "APFPV UDP backend auto-started active=%d running=%d joinable=%d",
-                            apfpv_active ? 1 : 0,
-                            udp_running ? 1 : 0,
-                            has_joinable_thread ? 1 : 0);
+        LOGI("APFPV UDP backend auto-started active={} running={} joinable={}",
+             apfpv_active ? 1 : 0,
+             udp_running ? 1 : 0,
+             has_joinable_thread ? 1 : 0);
     }
     else
     {
-        __android_log_print(ANDROID_LOG_WARN,
-                            kNativeLogTag,
-                            "APFPV UDP backend auto-start failed active=%d running=%d joinable=%d",
-                            apfpv_active ? 1 : 0,
-                            udp_running ? 1 : 0,
-                            has_joinable_thread ? 1 : 0);
+        LOGW("APFPV UDP backend auto-start failed active={} running={} joinable={}",
+             apfpv_active ? 1 : 0,
+             udp_running ? 1 : 0,
+             has_joinable_thread ? 1 : 0);
     }
 }
 
@@ -885,16 +877,14 @@ int processTransportPacket(NativeHandle& handle,
     if ((s_transport_process_log_count % 200U) == 1U)
     {
         const FecBlockDecoder::Stats stats = s_runtimeCore.rx_decoder.getStats();
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "Transport packets=%u decoded=%u unique=%u duplicate=%u fec_blocks=%u runtime_last_block=%u last_packet=%u",
-                            static_cast<unsigned int>(s_transport_process_log_count),
-                            static_cast<unsigned int>(s_runtimeCore.decoded_packets_seen),
-                            static_cast<unsigned int>(stats.unique_packet_count),
-                            static_cast<unsigned int>(stats.duplicate_packet_count),
-                            static_cast<unsigned int>(stats.fec_blocks_count),
-                            static_cast<unsigned int>(s_runtimeCore.last_transport_block),
-                            static_cast<unsigned int>(stats.last_packet_index));
+        LOGI("Transport packets={} decoded={} unique={} duplicate={} fec_blocks={} runtime_last_block={} last_packet={}",
+             static_cast<unsigned int>(s_transport_process_log_count),
+             static_cast<unsigned int>(s_runtimeCore.decoded_packets_seen),
+             static_cast<unsigned int>(stats.unique_packet_count),
+             static_cast<unsigned int>(stats.duplicate_packet_count),
+             static_cast<unsigned int>(stats.fec_blocks_count),
+             static_cast<unsigned int>(s_runtimeCore.last_transport_block),
+             static_cast<unsigned int>(stats.last_packet_index));
     }
     return static_cast<int>(s_runtimeCore.last_event_kind);
 }
@@ -918,13 +908,11 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
         {
             s_last_logged_config_channel = channel;
             s_last_logged_config_channel_valid = true;
-            __android_log_print(ANDROID_LOG_INFO,
-                                kNativeLogTag,
-                                "APFPV control config channel=%u air=%u gs=%u apfpv=%d",
-                                static_cast<unsigned int>(channel),
-                                static_cast<unsigned int>(config_packet->airDeviceId),
-                                static_cast<unsigned int>(config_packet->gsDeviceId),
-                                static_cast<int>(config_packet->misc.apfpv));
+            LOGI("APFPV control config channel={} air={} gs={} apfpv={}",
+                 static_cast<unsigned int>(channel),
+                 static_cast<unsigned int>(config_packet->airDeviceId),
+                 static_cast<unsigned int>(config_packet->gsDeviceId),
+                 static_cast<int>(config_packet->misc.apfpv));
         }
     }
 
@@ -933,102 +921,86 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
     return packets;
 }
 
-bool handleTapLocked(NativeHandle& handle,
-                     float tap_x,
-                     float tap_y,
-                     float view_width,
-                     float view_height)
+//===================================================================================
+//===================================================================================
+// Converts a renderer touch action into the same ImGui key used by physical navigation.
+ImGuiKey touchActionToImGuiKey(GsVideoRenderer::MenuActionKind action_kind)
 {
-    if (view_width <= 0.0f || view_height <= 0.0f)
-    {
-        return false;
-    }
-
-    if (!gs::menu::g_osdMenuController.isVisible())
-    {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "handleTapLocked menu not visible tap=(%.1f,%.1f) view=(%.1f,%.1f)",
-                            tap_x,
-                            tap_y,
-                            view_width,
-                            view_height);
-        return false;
-    }
-
-    const GsVideoRenderer::MenuAction action = handle.renderer.dispatchTap(tap_x, tap_y);
-    __android_log_print(ANDROID_LOG_INFO,
-                        kNativeLogTag,
-                        "handleTapLocked tap=(%.1f,%.1f) action=%d item=%d",
-                        tap_x,
-                        tap_y,
-                        static_cast<int>(action.kind),
-                        action.item_index);
-    switch (action.kind)
+    switch (action_kind)
     {
     case GsVideoRenderer::MenuActionKind::Up:
-        handle.renderer.queueKeyPress(ImGuiKey_UpArrow);
-        return false;
+        return ImGuiKey_UpArrow;
     case GsVideoRenderer::MenuActionKind::Down:
-        handle.renderer.queueKeyPress(ImGuiKey_DownArrow);
-        return false;
+        return ImGuiKey_DownArrow;
     case GsVideoRenderer::MenuActionKind::Back:
-        handle.renderer.queueKeyPress(ImGuiKey_LeftArrow);
-        return false;
+        return ImGuiKey_LeftArrow;
+    case GsVideoRenderer::MenuActionKind::Right:
+    case GsVideoRenderer::MenuActionKind::SelectItem:
+        return ImGuiKey_RightArrow;
     case GsVideoRenderer::MenuActionKind::Activate:
-        handle.renderer.queueKeyPress(ImGuiKey_RightArrow);
-        return false;
+        return ImGuiKey_Enter;
     case GsVideoRenderer::MenuActionKind::GsRec:
-        if (s_recordingsStorage != nullptr)
-        {
-            s_recordingsStorage->toggleRecording(0, 0, "touch_btn");
-        }
-        return false;
+        return ImGuiKey_G;
     case GsVideoRenderer::MenuActionKind::AirRec:
-        s_ground2air_config_packet.misc.air_record_btn++;
-        return false;
+        return ImGuiKey_R;
     default:
-        return true;
+        return ImGuiKey_None;
     }
 }
 
-bool handleKeyToImGui(bool menu_visible, int key_code, ImGuiKey* queued_key)
+//===================================================================================
+//===================================================================================
+// Queues the ImGui key represented by a tap on rendered touch controls or menu rows.
+void queueRenderedTapAsImGuiKey(NativeHandle& handle,
+                                float tap_x,
+                                float tap_y,
+                                float view_width,
+                                float view_height)
 {
-    constexpr int kKeycodeBack = 4;
-    constexpr int kKeycodeDpadUp = 19;
-    constexpr int kKeycodeDpadDown = 20;
-    constexpr int kKeycodeDpadLeft = 21;
-    constexpr int kKeycodeDpadRight = 22;
-    constexpr int kKeycodeDpadCenter = 23;
-    constexpr int kKeycodeEnter = 66;
-    constexpr int kKeycodeMenu = 82;
-
-    if (!menu_visible)
+    if (view_width <= 0.0f || view_height <= 0.0f)
     {
-        return key_code == kKeycodeMenu || key_code == kKeycodeDpadCenter || key_code == kKeycodeEnter;
+        return;
     }
 
+    const GsVideoRenderer::MenuAction action = handle.renderer.dispatchTap(tap_x, tap_y);
+    LOGI("queueRenderedTapAsImGuiKey tap=({:.1f},{:.1f}) action={} item={} view=({:.1f},{:.1f})",
+         tap_x,
+         tap_y,
+         static_cast<int>(action.kind),
+         action.item_index,
+         view_width,
+         view_height);
+
+    const ImGuiKey tap_key = touchActionToImGuiKey(action.kind);
+    if (tap_key != ImGuiKey_None)
+    {
+        handle.renderer.queueKeyPress(tap_key);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Converts Android native key codes into Dear ImGui key identifiers.
+ImGuiKey androidKeyCodeToImGuiKey(int key_code)
+{
     switch (key_code)
     {
-    case kKeycodeDpadUp:
-        if (queued_key != nullptr) *queued_key = ImGuiKey_UpArrow;
-        return true;
-    case kKeycodeDpadDown:
-        if (queued_key != nullptr) *queued_key = ImGuiKey_DownArrow;
-        return true;
-    case kKeycodeDpadLeft:
-    case kKeycodeBack:
-        if (queued_key != nullptr) *queued_key = ImGuiKey_LeftArrow;
-        return true;
-    case kKeycodeDpadRight:
-    case kKeycodeDpadCenter:
-    case kKeycodeEnter:
-        if (queued_key != nullptr) *queued_key = ImGuiKey_RightArrow;
-        return true;
-    case kKeycodeMenu:
-        return true;
+    case AKEYCODE_DPAD_UP:
+        return ImGuiKey_UpArrow;
+    case AKEYCODE_DPAD_DOWN:
+        return ImGuiKey_DownArrow;
+    case AKEYCODE_DPAD_LEFT:
+    case AKEYCODE_BACK:
+        return ImGuiKey_LeftArrow;
+    case AKEYCODE_DPAD_RIGHT:
+        return ImGuiKey_RightArrow;
+    case AKEYCODE_DPAD_CENTER:
+    case AKEYCODE_ENTER:
+        return ImGuiKey_Enter;
+    case AKEYCODE_MENU:
+        return ImGuiKey_Menu;
     default:
-        return false;
+        return ImGuiKey_None;
     }
 }
 
@@ -1443,12 +1415,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_startUdpClient(JNIEnv* env,
     {
         return JNI_FALSE;
     }
-    __android_log_print(ANDROID_LOG_INFO,
-                        kNativeLogTag,
-                        "startUdpClient requested peer=%s:%d local=%d",
-                        peer.c_str(),
-                        static_cast<int>(peer_port),
-                        static_cast<int>(local_port));
+    LOGI("startUdpClient requested peer={}:{} local={}",
+         peer,
+         static_cast<int>(peer_port),
+         static_cast<int>(local_port));
     return JNI_TRUE;
 }
 
@@ -1590,12 +1560,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
     }
 
     const bool ok = g_gsUDPBroadcast->init(addr_str, static_cast<int>(port));
-    __android_log_print(ANDROID_LOG_INFO,
-                        kNativeLogTag,
-                        "setVideoUdpOutput addr=%s port=%d ok=%d",
-                        addr_str.c_str(),
-                        static_cast<int>(port),
-                        ok ? 1 : 0);
+    LOGI("setVideoUdpOutput addr={} port={} ok={}",
+         addr_str,
+         static_cast<int>(port),
+         ok ? 1 : 0);
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -1722,12 +1690,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     s_sync_overlay_call_count++;
     if ((s_sync_overlay_call_count % 60U) == 1U)
     {
-        __android_log_print(ANDROID_LOG_INFO,
-                            kNativeLogTag,
-                            "syncRendererOverlay calls=%u transport=%d raw_usb=%d",
-                            static_cast<unsigned int>(s_sync_overlay_call_count),
-                            static_cast<int>(native_handle->transport_manager.activeKind()),
-                            native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? 1 : 0);
+        LOGI("syncRendererOverlay calls={} transport={} raw_usb={}",
+             static_cast<unsigned int>(s_sync_overlay_call_count),
+             static_cast<int>(native_handle->transport_manager.activeKind()),
+             native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? 1 : 0);
     }
     syncApfpvUdpClient(*native_handle);
     applyPendingRendererInvalidation(*native_handle);
@@ -1840,19 +1806,20 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
     {
         return;
     }
-    if (!native_handle->renderer.isMenuVisible())
+    const bool touch_controls_rendered =
+        native_handle->renderer.isMenuVisible() ||
+        (s_playbackManager != nullptr && s_playbackManager->status().active);
+    if (!touch_controls_rendered)
     {
-        native_handle->renderer.queueMenuOpen();
+        native_handle->renderer.queueKeyPress(ImGuiKey_Enter);
         return;
     }
-    if (handleTapLocked(*native_handle,
-                        tap_x,
-                        tap_y,
-                        static_cast<float>(view_width),
-                        static_cast<float>(view_height)))
-    {
-        native_handle->renderer.queueMouseTap(tap_x, tap_y);
-    }
+
+    queueRenderedTapAsImGuiKey(*native_handle,
+                               tap_x,
+                               tap_y,
+                               static_cast<float>(view_width),
+                               static_cast<float>(view_height));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -1867,27 +1834,13 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleKey(JNIEnv* /* env */,
         return JNI_FALSE;
     }
 
-    const bool menu_visible = native_handle->renderer.isMenuVisible();
-    ImGuiKey queued_key = ImGuiKey_None;
-    const bool handled = handleKeyToImGui(menu_visible, static_cast<int>(key_code), &queued_key);
-    if (!handled)
+    const ImGuiKey imgui_key = androidKeyCodeToImGuiKey(static_cast<int>(key_code));
+    if (imgui_key == ImGuiKey_None)
     {
         return JNI_FALSE;
     }
-    if (!menu_visible)
-    {
-        native_handle->renderer.queueMenuOpen();
-        return JNI_TRUE;
-    }
-    if (static_cast<int>(key_code) == 82)
-    {
-        native_handle->renderer.queueMenuClose();
-        return JNI_TRUE;
-    }
-    if (queued_key != ImGuiKey_None)
-    {
-        native_handle->renderer.queueKeyPress(queued_key);
-    }
+
+    native_handle->renderer.queueKeyPress(imgui_key);
     return JNI_TRUE;
 }
 

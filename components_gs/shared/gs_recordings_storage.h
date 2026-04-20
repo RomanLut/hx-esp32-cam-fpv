@@ -14,6 +14,8 @@
 struct RecordingEntry
 {
     std::string name;   // filename without extension
+    std::string extension;
+    std::string path;
     size_t size_kb = 0;
 };
 

@@ -20,6 +20,7 @@ public:
     virtual void set_backlight(float brightness) = 0; //0..1
     virtual void set_video_channel(unsigned int id)=0;
     virtual void add_render_callback(std::function<void()> func)=0;
+    virtual void set_pointer_tap_callback(std::function<void(float, float)> func)=0;
     virtual bool process() = 0;
 
     virtual void set_width( int w ) = 0;

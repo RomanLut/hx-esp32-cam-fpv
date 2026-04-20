@@ -3,6 +3,7 @@
 #include "flight_osd.h"
 #include "android_surface_backend.h"
 #include "gs_runtime_frame_ui.h"
+#include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 
 #include <array>
@@ -49,6 +50,7 @@ public:
         Up,
         Down,
         Back,
+        Right,
         Activate,
         GsRec,
         AirRec,
@@ -152,8 +154,8 @@ public:
     void setMenuFooter(const std::string& footer);
     bool isMenuVisible();
     void queueMenuOpen();
+    void queuePlaybackMenuOpen();
     void queueMenuClose();
-    void queueMouseTap(float x, float y);
     void queueKeyPress(ImGuiKey key);
     MenuAction dispatchTap(float x, float y);
     RendererStats consumeStats();
@@ -183,8 +185,10 @@ private:
     void uploadFrameLocked();
     void ensureTextureLocked();
     void drawOverlayLocked();
+    void handleImGuiKeysLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
+    RuntimeMenuUiState drawRuntimeTouchControlsLocked(bool visible, bool draw_controls);
     void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
     void drawTexturedQuadLocked(float x,
                                 float y,
@@ -222,6 +226,7 @@ private:
     float m_vr_separation = 0.0f;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
+    bool m_redraw_after_current_frame = false;
 
     unsigned int m_program = 0;
     unsigned int m_texture = 0;
@@ -249,18 +254,14 @@ private:
     Rect m_nav_down_bounds;
     Rect m_nav_left_bounds;
     Rect m_nav_right_bounds;
+    Rect m_nav_center_bounds;
     Rect m_nav_gs_rec_bounds;
     Rect m_nav_air_rec_bounds;
     bool m_menu_visible = false;
     bool m_open_menu_requested = false;
+    bool m_open_playback_menu_requested = false;
     bool m_close_menu_requested = false;
-    bool m_touch_pending = false;
-    uint64_t m_touch_sequence = 0;
-    uint64_t m_touch_processed_sequence = 0;
-    float m_touch_x = 0.0f;
-    float m_touch_y = 0.0f;
     std::vector<ImGuiKey> m_pending_key_presses;
-    MenuAction m_touch_action;
 
     std::atomic<uint32_t> m_upload_count = 0;
     std::atomic<uint32_t> m_upload_total_ms = 0;

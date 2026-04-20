@@ -7,7 +7,9 @@
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "core/stats_panel_shared.h"
+#include "gs_playback_manager.h"
 #include "gs_recordings_storage.h"
+#include "gs_runtime_input.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_video_layout_shared.h"
@@ -526,6 +528,20 @@ void GsVideoRenderer::queueMenuOpen()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_open_menu_requested = true;
+    m_open_playback_menu_requested = false;
+    m_close_menu_requested = false;
+    m_overlay_dirty = true;
+    m_cv.notify_all();
+}
+
+//===================================================================================
+//===================================================================================
+// Queues a request to open the Playback menu with the previous file selection.
+void GsVideoRenderer::queuePlaybackMenuOpen()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_open_playback_menu_requested = true;
+    m_open_menu_requested = false;
     m_close_menu_requested = false;
     m_overlay_dirty = true;
     m_cv.notify_all();
@@ -539,20 +555,8 @@ void GsVideoRenderer::queueMenuClose()
     std::lock_guard<std::mutex> lock(m_mutex);
     m_close_menu_requested = true;
     m_open_menu_requested = false;
+    m_open_playback_menu_requested = false;
     m_overlay_dirty = true;
-    m_cv.notify_all();
-}
-
-//===================================================================================
-//===================================================================================
-// Queues a mouse tap event at the specified coordinates.
-void GsVideoRenderer::queueMouseTap(float x, float y)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_touch_pending = true;
-    m_touch_x = x;
-    m_touch_y = y;
-    ++m_touch_sequence;
     m_cv.notify_all();
 }
 
@@ -573,7 +577,12 @@ void GsVideoRenderer::queueKeyPress(ImGuiKey key)
 
 //===================================================================================
 //===================================================================================
-// Dispatches a tap event and returns the resulting menu action.
+// Dispatches a touch or mouse tap against runtime overlay controls and returns
+// the semantic menu action. Runtime controls intentionally do not rely on raw
+// ImGui mouse routing: VR draws the canonical left-half ImGui UI into both eyes
+// after layout, so final screen coordinates must be transformed back here before
+// hit testing. Keeping this path shared also makes Android touch, Linux mouse,
+// physical keys, and GPIO buttons feed the same key/action semantics.
 GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -590,7 +599,7 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     }
 #endif
 
-    // In VR mode the right half mirrors the left half — translate right-half taps
+    // In VR mode the right half mirrors the left half; translate right-half taps
     // to their left-half equivalents so all bounds checks work for both eyes.
     // Also undo the VR separation offset so hit regions match the shifted visuals.
     if (m_vr_mode)
@@ -621,6 +630,10 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
         return {MenuActionKind::Back, -1};
     }
     if (pointInRect(x, y, m_nav_right_bounds))
+    {
+        return {MenuActionKind::Right, -1};
+    }
+    if (pointInRect(x, y, m_nav_center_bounds))
     {
         return {MenuActionKind::Activate, -1};
     }
@@ -689,7 +702,6 @@ void GsVideoRenderer::run()
                    m_frame_dirty.load() ||
                    m_mode_dirty ||
                    m_overlay_dirty ||
-                   m_touch_pending ||
                    !m_pending_key_presses.empty();
         });
 
@@ -708,13 +720,6 @@ void GsVideoRenderer::run()
             m_frame_dirty.store(false);
             m_mode_dirty = false;
             m_overlay_dirty = false;
-            if (m_touch_pending)
-            {
-                m_touch_pending = false;
-                m_touch_processed_sequence = m_touch_sequence;
-                m_touch_action = {};
-                m_cv.notify_all();
-            }
             continue;
         }
 
@@ -740,13 +745,14 @@ void GsVideoRenderer::run()
 
             m_frame_dirty.store(m_has_pending_frame);
         }
-        else if (m_mode_dirty || m_overlay_dirty || m_touch_pending || !m_pending_key_presses.empty())
+        else if (m_mode_dirty || m_overlay_dirty || !m_pending_key_presses.empty())
         {
             drawFrameLocked();
         }
 
         m_mode_dirty = false;
-        m_overlay_dirty = false;
+        m_overlay_dirty = m_redraw_after_current_frame;
+        m_redraw_after_current_frame = false;
     }
 
     destroyImGuiLocked();
@@ -1086,21 +1092,82 @@ void GsVideoRenderer::drawMenuLocked()
         {
             m_menu_controller->open();
         }
+        if (m_open_playback_menu_requested)
+        {
+            m_menu_controller->openPlaybackMenu();
+        }
         if (m_close_menu_requested)
         {
             m_menu_controller->close();
         }
         m_open_menu_requested = false;
+        m_open_playback_menu_requested = false;
         m_close_menu_requested = false;
+        const bool was_menu_visible = m_menu_controller->isVisible();
+        m_menu_visible = was_menu_visible;
+        handleImGuiKeysLocked();
         m_menu_visible = m_menu_controller->isVisible();
+        if (!was_menu_visible && m_menu_visible)
+        {
+            // Opening from a queued ImGui key must redraw on the next frame so the
+            // same key press cannot immediately activate the first visible item.
+            m_redraw_after_current_frame = true;
+            return;
+        }
     }
 
     if (!m_menu_visible)
     {
+        if (s_playbackManager != nullptr && s_playbackManager->status().active)
+        {
+            drawRuntimeTouchControlsLocked(true, true);
+        }
         return;
     }
 
     drawMenuImGuiLocked();
+}
+
+//===================================================================================
+//===================================================================================
+// Handles renderer-owned ImGui key actions after platform input has reached ImGui.
+void GsVideoRenderer::handleImGuiKeysLocked()
+{
+    if (m_menu_controller == nullptr || m_menu_config == nullptr)
+    {
+        return;
+    }
+
+    if (gs::runtime::handleRecordingKeysFromImGui(*m_menu_config, "imgui_g"))
+    {
+        return;
+    }
+
+    if (!m_menu_visible &&
+        gs::runtime::handlePlaybackKeysFromImGui(s_playbackManager,
+                                                 [this]()
+                                                 {
+                                                     m_menu_controller->openPlaybackMenu();
+                                                 }))
+    {
+        return;
+    }
+
+    if (!m_menu_visible)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_Menu, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+        {
+            m_menu_controller->open();
+        }
+        return;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Menu, false))
+    {
+        m_menu_controller->close();
+    }
 }
 
 //===================================================================================
@@ -1114,23 +1181,7 @@ void GsVideoRenderer::drawMenuImGuiLocked()
     }
 
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
-    RuntimeMenuUiState menu_ui = {};
-    menu_ui.visible = m_menu_visible;
-    menu_ui.vr_mode = m_vr_mode;
-    menu_ui.touch_nav_enabled = true;
-    menu_ui.surface_width = static_cast<float>(m_surface_width);
-    menu_ui.surface_height = static_cast<float>(m_surface_height);
-    menu_ui.gs_recording = (s_recordingsStorage != nullptr) && s_recordingsStorage->isRecording();
-    menu_ui.air_recording = m_overlay_input.air_record;
-    const float layout_width = m_vr_mode ? (menu_ui.surface_width * 0.5f) : menu_ui.surface_width;
-    const gs::render::NavPadLayout nav =
-        gs::render::buildTouchNavPadLayout(static_cast<int>(layout_width), static_cast<int>(menu_ui.surface_height));
-    m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
-    m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
-    m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
-    m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
-    m_nav_air_rec_bounds = {nav.margin, nav.mid_y, nav.size, nav.size};
-    m_nav_gs_rec_bounds = {nav.margin, nav.down_y, nav.size, nav.size};
+    RuntimeMenuUiState menu_ui = drawRuntimeTouchControlsLocked(m_menu_visible, false);
     drawRuntimeMenuOverlay(menu_ui);
     if (m_menu_mutex != nullptr)
     {
@@ -1139,6 +1190,38 @@ void GsVideoRenderer::drawMenuImGuiLocked()
         m_menu_visible = m_menu_controller->isVisible();
     }
     drawRuntimeMenuTouchNav(menu_ui);
+}
+
+//===================================================================================
+//===================================================================================
+// Draws Android-style touch DPAD and recording buttons independently of menu content.
+RuntimeMenuUiState GsVideoRenderer::drawRuntimeTouchControlsLocked(bool visible, bool draw_controls)
+{
+    RuntimeMenuUiState menu_ui = {};
+    menu_ui.visible = visible;
+    menu_ui.vr_mode = m_vr_mode;
+    menu_ui.touch_nav_enabled = true;
+    menu_ui.surface_width = static_cast<float>(m_surface_width);
+    menu_ui.surface_height = static_cast<float>(m_surface_height);
+    menu_ui.gs_recording = (s_recordingsStorage != nullptr) && s_recordingsStorage->isRecording();
+    menu_ui.air_recording = m_overlay_input.air_record;
+
+    const float layout_width = m_vr_mode ? (menu_ui.surface_width * 0.5f) : menu_ui.surface_width;
+    const gs::render::NavPadLayout nav =
+        gs::render::buildTouchNavPadLayout(static_cast<int>(layout_width), static_cast<int>(menu_ui.surface_height));
+    m_nav_up_bounds = {nav.center_x, nav.up_y, nav.size, nav.size};
+    m_nav_down_bounds = {nav.center_x, nav.down_y, nav.size, nav.size};
+    m_nav_left_bounds = {nav.left_x, nav.mid_y, nav.size, nav.size};
+    m_nav_right_bounds = {nav.right_x, nav.mid_y, nav.size, nav.size};
+    m_nav_center_bounds = {nav.center_x, nav.mid_y, nav.size, nav.size};
+    m_nav_air_rec_bounds = {nav.margin, nav.mid_y, nav.size, nav.size};
+    m_nav_gs_rec_bounds = {nav.margin, nav.down_y, nav.size, nav.size};
+    if (draw_controls)
+    {
+        drawRuntimeMenuTouchNav(menu_ui);
+    }
+
+    return menu_ui;
 }
 
 //===================================================================================
@@ -1157,20 +1240,6 @@ void GsVideoRenderer::drawOverlayLocked()
     io.FontGlobalScale = kLinuxMenuFontGlobalScale * gs::menu::imgui::calcOsdScale(static_cast<float>(m_surface_height));
     io.DeltaTime = 1.0f / 60.0f;
     gs::mcp::drainInjectedKeysToImGui();
-    m_touch_action = {};
-    if (m_touch_pending)
-    {
-#ifndef __ANDROID__
-        const float touch_x = m_screen_flip_v ? (static_cast<float>(m_surface_width)  - m_touch_x) : m_touch_x;
-        const float touch_y = m_screen_flip_v ? (static_cast<float>(m_surface_height) - m_touch_y) : m_touch_y;
-#else
-        const float touch_x = m_touch_x;
-        const float touch_y = m_touch_y;
-#endif
-        io.AddMousePosEvent(touch_x, touch_y);
-        io.AddMouseButtonEvent(0, true);
-        io.AddMouseButtonEvent(0, false);
-    }
     for (const ImGuiKey key : m_pending_key_presses)
     {
         io.AddKeyEvent(key, true);
@@ -1204,14 +1273,8 @@ void GsVideoRenderer::drawOverlayLocked()
         {
             gs::stats::drawFullscreenStatsPanel(m_overlay_stats_snapshot);
         }
+        drawPlaybackProgressOverlay(overlay_width, static_cast<float>(m_surface_height));
         drawMenuLocked();
-    }
-
-    if (m_touch_pending)
-    {
-        m_touch_pending = false;
-        m_touch_processed_sequence = m_touch_sequence;
-        m_cv.notify_all();
     }
 
     if (m_imgui_context != nullptr)

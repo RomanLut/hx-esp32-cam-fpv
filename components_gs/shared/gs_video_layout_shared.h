@@ -32,7 +32,7 @@ struct VideoQuad
 
 //===================================================================================
 //===================================================================================
-// Computed positions and dimensions for the touch navigation pad buttons.
+// Computed positions and dimensions for the touch navigation pad cells.
 struct NavPadLayout
 {
     float size = 0.0f;

@@ -7,6 +7,7 @@ add_library(android_gs_core SHARED
     android_surface_backend.cpp
     android_bitmap_jpeg_decoder.cpp
     android_osd_font_storage.cpp
+    android_playback_manager.cpp
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
     android_transport_manager.cpp
@@ -25,6 +26,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_runtime_sync.cpp
     ../../../../../components_gs/shared/gs_runtime_video_flow.cpp
     ../../../../../components_gs/shared/gs_recordings_storage.cpp
+    ../../../../../components_gs/shared/gs_playback_manager.cpp
     ../../../../../components_gs/shared/gs_asset_loader.cpp
     ../../../../../components_gs/shared/gs_stub_transport.cpp
     ../../../../../components_gs/shared/gs_test_transport.cpp

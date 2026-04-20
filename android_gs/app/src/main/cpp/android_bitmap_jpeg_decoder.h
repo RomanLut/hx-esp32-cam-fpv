@@ -35,6 +35,7 @@ public:
     ~AndroidBitmapJpegDecoder();
 
     void submitJpeg(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id);
+    void clearPending();
     uint64_t submittedFrameCount() const;
     DecodeStats statsSnapshot() const;
     DecodeStats consumeStats();
