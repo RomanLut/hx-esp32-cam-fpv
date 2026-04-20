@@ -51,5 +51,6 @@ void drawMenuStatus(const char* caption, const MenuFrameLayout& layout);
 void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout);
 void drawLargeGap(const MenuFrameLayout& layout);
 void drawSmallGap(const MenuFrameLayout& layout);
+void drawScrollbar(float x, float y_start, float track_height, int selected_item, int total_items, int visible_items, float width);
 
 } // namespace gs::menu::imgui

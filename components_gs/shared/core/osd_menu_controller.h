@@ -72,6 +72,13 @@ private:
     bool searchDone = false;
 
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
+
+    bool m_has_clip_items = false;
+    bool m_clip_y_started = false;
+    float m_clip_y_start = 0.0f;
+    float m_clip_y_end = 0.0f;
+    float m_clip_item_right_x = 0.0f;
+    int m_clip_total_items = 0;
     mutable std::mutex m_capture_mutex;
     CapturedMenuBuffer m_captured_menu_buffer = {};
     void resetCapturedMenuBuffer();

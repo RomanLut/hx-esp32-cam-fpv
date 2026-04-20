@@ -188,4 +188,29 @@ void drawSmallGap(const MenuFrameLayout& layout)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Draws an 8px-wide vertical scrollbar to the right of the clipped menu item list.
+// Track uses the navy menu background color; thumb uses the blue active-item color.
+void drawScrollbar(float x, float y_start, float track_height,
+                   int selected_item, int total_items, int visible_items, float width)
+{
+    if (total_items <= visible_items || track_height <= 0.0f)
+        return;
+
+    ImDrawList* draw_list = ImGui::GetForegroundDrawList();
+    const float y_end = y_start + track_height;
+
+    draw_list->AddRectFilled(ImVec2(x, y_start), ImVec2(x + width, y_end),
+                             IM_COL32(37, 51, 88, 255));
+
+    const float thumb_height = track_height * (float)visible_items / (float)total_items;
+    const float scrollable = (float)(total_items - visible_items);
+    const float t = (float)std::clamp(selected_item, 0, (int)scrollable) / scrollable;
+    const float thumb_y = y_start + t * (track_height - thumb_height);
+
+    draw_list->AddRectFilled(ImVec2(x, thumb_y), ImVec2(x + width, thumb_y + thumb_height),
+                             IM_COL32(77, 137, 205, 255));
+}
+
 } // namespace gs::menu::imgui

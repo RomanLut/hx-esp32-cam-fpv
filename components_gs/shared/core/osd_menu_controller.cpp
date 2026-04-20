@@ -409,9 +409,20 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     int d2 = -2;
     if ( this->selectedItem == 0) d1+=2;
     if ( this->selectedItem == 1) d1+=1;
-    if ( clip  && ((d>d1)|| (d<d2)))
+    if (clip)
     {
-        return false;
+        m_has_clip_items = true;
+        m_clip_total_items++;
+        if ((d > d1) || (d < d2))
+            return false;
+
+        const ImVec2 cursor_screen = ImGui::GetCursorScreenPos();
+        if (!m_clip_y_started)
+        {
+            m_clip_y_start = cursor_screen.y;
+            m_clip_item_right_x = cursor_screen.x + m_imgui_layout.item_indent + m_imgui_layout.item_width;
+            m_clip_y_started = true;
+        }
     }
 
     bool focused = this->selectedItem == itemIndex;
@@ -429,6 +440,11 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     if (gs::menu::imgui::drawMenuItem(caption, m_imgui_layout, focused))
     {
         res = true;
+    }
+
+    if (clip)
+    {
+        m_clip_y_end = ImGui::GetCursorScreenPos().y;
     }
 
     this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
@@ -465,8 +481,23 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
         resetCapturedMenuBuffer();
     }
 
+    m_has_clip_items = false;
+    m_clip_y_started = false;
+    m_clip_y_start = 0.0f;
+    m_clip_y_end = 0.0f;
+    m_clip_item_right_x = 0.0f;
+    m_clip_total_items = 0;
+
     gs::menu::imgui::beginMenuWindow(window_name, m_imgui_layout, extra_flags);
     drawCurrentMenu(config);
+    if (m_has_clip_items && m_clip_y_started && m_clip_total_items > 5)
+    {
+        const float sb_x = m_clip_item_right_x + 12.0f * m_imgui_layout.scale;
+        const float sb_width = 16.0f * m_imgui_layout.scale; 
+        const float sb_height = 5.0f * (m_imgui_layout.button_height + m_imgui_layout.item_gap_y) - m_imgui_layout.item_gap_y;
+        gs::menu::imgui::drawScrollbar(sb_x, m_clip_y_start, sb_height,
+                                       this->selectedItem, m_clip_total_items, 5, sb_width);
+    }
     gs::menu::imgui::endMenuWindow();
 
     this->m_draw_mode = DrawMode::Interactive;
