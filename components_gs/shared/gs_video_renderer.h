@@ -6,7 +6,6 @@
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 
-#include <array>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -132,12 +131,6 @@ public:
                      int stride,
                      uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24);
-    void submitFrame(std::vector<uint8_t>&& pixels,
-                     int width,
-                     int height,
-                     int stride,
-                     uint32_t frame_id,
-                     PixelFormat pixel_format = PixelFormat::RGB24);
     void setVsync(bool enabled);
     void setVrMode(bool enabled);
     void setScreenMode(int screen_mode);
@@ -184,23 +177,14 @@ private:
     void drawFrameLocked();
     void uploadFrameLocked();
     void ensureTextureLocked();
+    void submitPendingFrame(PendingFrame&& frame);
+    static void renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation);
     void drawVideoImGuiLocked(float surface_width, float surface_height);
     void drawOverlayLocked();
     void handleImGuiKeysLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
     RuntimeMenuUiState drawRuntimeTouchControlsLocked(bool visible, bool draw_controls);
-    void drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color);
-    void drawTexturedQuadLocked(float x,
-                                float y,
-                                float width,
-                                float height,
-                                float u0,
-                                float v0,
-                                float u1,
-                                float v1,
-                                unsigned int texture,
-                                const std::array<float, 4>& color);
     void releaseFrameRefLocked(PendingFrame& frame);
 
     std::mutex m_mutex;
@@ -216,22 +200,18 @@ private:
     bool m_has_pending_frame = false;
     int m_frame_width = 0;
     int m_frame_height = 0;
-    int m_frame_stride = 0;
     std::atomic<bool> m_frame_dirty = false;
 
     int m_screen_mode = 1;
     bool m_vsync = true;
     bool m_vr_mode = false;
-    bool m_screen_flip_v = false;
     float m_zoom = 1.0f;
     float m_vr_separation = 0.0f;
     bool m_mode_dirty = true;
     bool m_overlay_dirty = true;
     bool m_redraw_after_current_frame = false;
 
-    unsigned int m_program = 0;
     unsigned int m_texture = 0;
-    unsigned int m_white_texture = 0;
     void* m_imgui_context = nullptr;
     bool m_imgui_backend_initialized = false;
     int m_surface_width = 0;
@@ -240,7 +220,6 @@ private:
     int m_uploaded_height = 0;
     PixelFormat m_uploaded_pixel_format = PixelFormat::RGB24;
     bool m_has_uploaded_frame = false;
-    std::vector<uint8_t> m_pending_font_png;
     gs::imgui::TopOverlayData m_overlay_input;
     RuntimeFrameUiState m_frame_ui_state;
     gs::stats::FullscreenStatsSnapshot m_overlay_stats_snapshot;

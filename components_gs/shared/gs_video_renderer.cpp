@@ -19,10 +19,10 @@
 #include "../mcp/gs_mcp_server.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #include "../../components/common/Clock.h"
 
@@ -32,120 +32,10 @@ namespace
 constexpr float kLinuxMenuFontGlobalScale = 2.0f;
 constexpr float kTouchNavLabelScale = 0.75f;
 
-constexpr const char* kVertexShader = R"(
-attribute vec2 aPosition;
-attribute vec2 aTexCoord;
-varying vec2 vTexCoord;
-void main() {
-    gl_Position = vec4(aPosition, 0.0, 1.0);
-    vTexCoord = aTexCoord;
-}
-)";
-
-constexpr const char* kFragmentShader = R"(
-precision mediump float;
-varying vec2 vTexCoord;
-uniform sampler2D uTexture;
-uniform vec4 uColor;
-void main() {
-    gl_FragColor = texture2D(uTexture, vTexCoord) * uColor;
-}
-)";
-
-//===================================================================================
-//===================================================================================
-// Compiles an OpenGL shader from source code and returns the shader handle.
-GLuint compileShader(GLenum type, const char* source)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
-
-    GLint compiled = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-    if (compiled == GL_TRUE)
-    {
-        return shader;
-    }
-
-    GLint log_length = 0;
-    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
-    std::vector<char> log(static_cast<size_t>(std::max(log_length, 1)));
-    glGetShaderInfoLog(shader, log_length, nullptr, log.data());
-    LOGE("Shader compile failed: {}", log.data());
-    glDeleteShader(shader);
-    return 0;
-}
-
-//===================================================================================
-//===================================================================================
-// Creates and links an OpenGL shader program for video rendering.
-GLuint createProgram()
-{
-    const GLuint vertex = compileShader(GL_VERTEX_SHADER, kVertexShader);
-    const GLuint fragment = compileShader(GL_FRAGMENT_SHADER, kFragmentShader);
-    if (vertex == 0 || fragment == 0)
-    {
-        if (vertex != 0)
-        {
-            glDeleteShader(vertex);
-        }
-        if (fragment != 0)
-        {
-            glDeleteShader(fragment);
-        }
-        return 0;
-    }
-
-    const GLuint program = glCreateProgram();
-    glAttachShader(program, vertex);
-    glAttachShader(program, fragment);
-    glBindAttribLocation(program, 0, "aPosition");
-    glBindAttribLocation(program, 1, "aTexCoord");
-    glLinkProgram(program);
-    glDeleteShader(vertex);
-    glDeleteShader(fragment);
-
-    GLint linked = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    if (linked == GL_TRUE)
-    {
-        return program;
-    }
-
-    GLint log_length = 0;
-    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
-    std::vector<char> log(static_cast<size_t>(std::max(log_length, 1)));
-    glGetProgramInfoLog(program, log_length, nullptr, log.data());
-    LOGE("Program link failed: {}", log.data());
-    glDeleteProgram(program);
-    return 0;
-}
-
-float toNdcX(float x, float surface_width)
-{
-    return (x / surface_width) * 2.0f - 1.0f;
-}
-
-float toNdcY(float y, float surface_height)
-{
-    return 1.0f - (y / surface_height) * 2.0f;
-}
-
-std::array<float, 4> whiteColor()
-{
-    return {1.0f, 1.0f, 1.0f, 1.0f};
-}
-
 bool shouldReplacePendingFrame(uint32_t new_frame_id, uint32_t old_frame_id)
 {
     return new_frame_id > old_frame_id ||
            (old_frame_id >= 10u && new_frame_id < old_frame_id - 10u);
-}
-
-ImVec4 toImGuiColor(const std::array<float, 4>& color)
-{
-    return ImVec4(color[0], color[1], color[2], color[3]);
 }
 
 bool pointInRect(float x, float y, const GsVideoRenderer::Rect& rect)
@@ -239,23 +129,7 @@ void GsVideoRenderer::submitFrame(const uint8_t* pixels,
     frame.stride = stride;
     frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_has_pending_frame)
-        {
-            if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
-            {
-                m_discarded_pending_count.fetch_add(1);
-                return;
-            }
-            m_discarded_pending_count.fetch_add(1);
-        }
-        releaseFrameRefLocked(m_pending_frame);
-        m_pending_frame = std::move(frame);
-        m_has_pending_frame = true;
-        m_frame_dirty.store(true);
-    }
-    m_cv.notify_all();
+    submitPendingFrame(std::move(frame));
 }
 
 //===================================================================================
@@ -290,6 +164,14 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
     frame.stride = stride;
     frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
+    submitPendingFrame(std::move(frame));
+}
+
+//===================================================================================
+//===================================================================================
+// Queues a validated frame for the render thread, replacing older pending frames.
+void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
+{
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
@@ -298,48 +180,6 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
             {
                 m_discarded_pending_count.fetch_add(1);
                 releaseFrameRefLocked(frame);
-                return;
-            }
-            m_discarded_pending_count.fetch_add(1);
-        }
-        releaseFrameRefLocked(m_pending_frame);
-        m_pending_frame = std::move(frame);
-        m_has_pending_frame = true;
-        m_frame_dirty.store(true);
-    }
-    m_cv.notify_all();
-}
-
-//===================================================================================
-//===================================================================================
-// Submits a video frame for rendering by moving pixel data ownership.
-void GsVideoRenderer::submitFrame(std::vector<uint8_t>&& pixels,
-                                       int width,
-                                       int height,
-                                       int stride,
-                                       uint32_t frame_id,
-                                       PixelFormat pixel_format)
-{
-    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
-    if (pixels.empty() || width <= 0 || height <= 0 || stride < min_stride)
-    {
-        return;
-    }
-
-    PendingFrame frame;
-    frame.pixels = std::move(pixels);
-    frame.width = width;
-    frame.height = height;
-    frame.stride = stride;
-    frame.frame_id = frame_id;
-    frame.pixel_format = pixel_format;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_has_pending_frame)
-        {
-            if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
-            {
-                m_discarded_pending_count.fetch_add(1);
                 return;
             }
             m_discarded_pending_count.fetch_add(1);
@@ -450,7 +290,6 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     m_screen_mode = std::clamp(static_cast<int>(frame_ui_state.screen_mode), 0, 2);
     m_vsync = frame_ui_state.vsync;
     m_vr_mode = frame_ui_state.vr_mode;
-    m_screen_flip_v = frame_ui_state.screen_flip_v;
     m_zoom = frame_ui_state.screen_zoom;
     m_vr_separation = frame_ui_state.vr_separation;
     m_menu_footer = frame_ui_state.menu_footer;
@@ -494,7 +333,6 @@ void GsVideoRenderer::invalidateDisplayedFrame()
     m_has_pending_frame = false;
     m_frame_width = 0;
     m_frame_height = 0;
-    m_frame_stride = 0;
     m_uploaded_width = 0;
     m_uploaded_height = 0;
     m_has_uploaded_frame = false;
@@ -577,12 +415,11 @@ void GsVideoRenderer::queueKeyPress(ImGuiKey key)
 
 //===================================================================================
 //===================================================================================
-// Dispatches a touch or mouse tap against runtime overlay controls and returns
+// Dispatches a touch tap against runtime overlay controls and returns
 // the semantic menu action. Runtime controls intentionally do not rely on raw
 // ImGui mouse routing: VR draws the canonical left-half ImGui UI into both eyes
 // after layout, so final screen coordinates must be transformed back here before
-// hit testing. Keeping this path shared also makes Android touch, Linux mouse,
-// physical keys, and GPIO buttons feed the same key/action semantics.
+// hit testing.
 GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -590,14 +427,6 @@ GsVideoRenderer::MenuAction GsVideoRenderer::dispatchTap(float x, float y)
     {
         return {};
     }
-
-#ifndef __ANDROID__
-    if (m_screen_flip_v)
-    {
-        x = static_cast<float>(m_surface_width)  - x;
-        y = static_cast<float>(m_surface_height) - y;
-    }
-#endif
 
     // In VR mode the right half mirrors the left half; translate right-half taps
     // to their left-half equivalents so all bounds checks work for both eyes.
@@ -715,7 +544,7 @@ void GsVideoRenderer::run()
             applyPendingSurfaceLocked();
         }
 
-        if (!m_surface_backend.isReady() || m_program == 0)
+        if (!m_surface_backend.isReady())
         {
             m_frame_dirty.store(false);
             m_mode_dirty = false;
@@ -734,7 +563,6 @@ void GsVideoRenderer::run()
                 m_has_pending_frame = false;
                 m_frame_width = m_locked_frame.width;
                 m_frame_height = m_locked_frame.height;
-                m_frame_stride = m_locked_frame.stride;
                 have_new_frame = true;
             }
 
@@ -756,20 +584,10 @@ void GsVideoRenderer::run()
     }
 
     destroyImGuiLocked();
-    if (m_white_texture != 0)
-    {
-        glDeleteTextures(1, &m_white_texture);
-        m_white_texture = 0;
-    }
     if (m_texture != 0)
     {
         glDeleteTextures(1, &m_texture);
         m_texture = 0;
-    }
-    if (m_program != 0)
-    {
-        glDeleteProgram(m_program);
-        m_program = 0;
     }
 }
 
@@ -779,20 +597,10 @@ void GsVideoRenderer::run()
 void GsVideoRenderer::applyPendingSurfaceLocked()
 {
     destroyImGuiLocked();
-    if (m_white_texture != 0)
-    {
-        glDeleteTextures(1, &m_white_texture);
-        m_white_texture = 0;
-    }
     if (m_texture != 0)
     {
         glDeleteTextures(1, &m_texture);
         m_texture = 0;
-    }
-    if (m_program != 0)
-    {
-        glDeleteProgram(m_program);
-        m_program = 0;
     }
     m_surface_dirty = false;
     m_has_uploaded_frame = false;
@@ -804,45 +612,35 @@ void GsVideoRenderer::applyPendingSurfaceLocked()
 
     if (m_surface_backend.applyPendingSurface(m_vsync))
     {
-        m_program = createProgram();
-        if (m_program != 0)
+        glGenTextures(1, &m_texture);
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        m_surface_width = m_surface_backend.surfaceWidth();
+        m_surface_height = m_surface_backend.surfaceHeight();
+
+        glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        m_surface_backend.swapBuffers();
+        if (!initImGuiLocked())
         {
-            glGenTextures(1, &m_texture);
-            glBindTexture(GL_TEXTURE_2D, m_texture);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            return;
+        }
+        s_flightOSD.invalidateFontAtlas();
 
-            glGenTextures(1, &m_white_texture);
-            glBindTexture(GL_TEXTURE_2D, m_white_texture);
-            const std::array<uint8_t, 4> white_pixel = {255, 255, 255, 255};
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white_pixel.data());
-
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-            m_surface_width = m_surface_backend.surfaceWidth();
-            m_surface_height = m_surface_backend.surfaceHeight();
-
-            glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            m_surface_backend.swapBuffers();
-            initImGuiLocked();
-            s_flightOSD.invalidateFontAtlas();
-
-            if (!m_locked_frame.pixels.empty() || m_locked_frame.external_pixels != nullptr)
-            {
-                uploadFrameLocked();
-            }
-            else
-            {
-                drawFrameLocked();
-            }
+        if (!m_locked_frame.pixels.empty() || m_locked_frame.external_pixels != nullptr)
+        {
+            uploadFrameLocked();
+        }
+        else
+        {
+            drawFrameLocked();
         }
     }
 }
@@ -1021,62 +819,6 @@ void GsVideoRenderer::ensureTextureLocked()
 
 //===================================================================================
 //===================================================================================
-// Draws a textured quad with specified position, size, and texture coordinates.
-void GsVideoRenderer::drawTexturedQuadLocked(float x,
-                                                  float y,
-                                                  float width,
-                                                  float height,
-                                                  float u0,
-                                                  float v0,
-                                                  float u1,
-                                                  float v1,
-                                                  unsigned int texture,
-                                                  const std::array<float, 4>& color)
-{
-    if (texture == 0 || m_surface_width <= 0 || m_surface_height <= 0)
-    {
-        return;
-    }
-
-    const float sw = static_cast<float>(m_surface_width);
-    const float sh = static_cast<float>(m_surface_height);
-#ifndef __ANDROID__
-    const float flip = m_screen_flip_v ? -1.0f : 1.0f;
-#else
-    const float flip = 1.0f;
-#endif
-    const GLfloat vertices[] = {
-        flip * toNdcX(x,         sw), flip * toNdcY(y + height, sh), u0, v1,
-        flip * toNdcX(x + width, sw), flip * toNdcY(y + height, sh), u1, v1,
-        flip * toNdcX(x,         sw), flip * toNdcY(y,           sh), u0, v0,
-        flip * toNdcX(x + width, sw), flip * toNdcY(y,           sh), u1, v0
-    };
-
-    glUseProgram(m_program);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glUniform1i(glGetUniformLocation(m_program, "uTexture"), 0);
-    glUniform4f(glGetUniformLocation(m_program, "uColor"), color[0], color[1], color[2], color[3]);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-}
-
-//===================================================================================
-//===================================================================================
-// Draws a colored rectangle at the specified position and size.
-void GsVideoRenderer::drawRectLocked(float x, float y, float width, float height, const std::array<float, 4>& color)
-{
-    drawTexturedQuadLocked(x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f, m_white_texture, color);
-}
-
-
-
-//===================================================================================
-//===================================================================================
 // Draws the OSD menu overlay.
 void GsVideoRenderer::drawMenuLocked()
 {
@@ -1226,6 +968,84 @@ RuntimeMenuUiState GsVideoRenderer::drawRuntimeTouchControlsLocked(bool visible,
 
 //===================================================================================
 //===================================================================================
+// Renders one canonical left-eye ImGui frame into both VR eye regions.
+void GsVideoRenderer::renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation)
+{
+    if (draw_data == nullptr || surface_width <= 0.0f)
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        return;
+    }
+
+    const float half_w = surface_width * 0.5f;
+    const float full_w = surface_width;
+    const float offset = vr_separation * half_w;
+
+    struct SavedList
+    {
+        std::vector<float> x_positions;
+        std::vector<ImVec4> clip_rects;
+    };
+
+    std::vector<SavedList> saved(draw_data->CmdListsCount);
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        saved[n].x_positions.resize(cmd_list->VtxBuffer.Size);
+        for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+        {
+            saved[n].x_positions[i] = cmd_list->VtxBuffer[i].pos.x;
+        }
+
+        saved[n].clip_rects.resize(cmd_list->CmdBuffer.Size);
+        for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+        {
+            saved[n].clip_rects[i] = cmd_list->CmdBuffer[i].ClipRect;
+        }
+    }
+
+    const auto apply_eye = [&](float dx, float x_min, float x_max)
+    {
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
+        {
+            ImDrawList* cmd_list = draw_data->CmdLists[n];
+            for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+            {
+                cmd_list->VtxBuffer[i].pos.x = saved[n].x_positions[i] + dx;
+            }
+
+            for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+            {
+                const ImVec4& source_clip = saved[n].clip_rects[i];
+                ImVec4& clip = cmd_list->CmdBuffer[i].ClipRect;
+                clip.y = source_clip.y;
+                clip.w = source_clip.w;
+
+                // VR authors one canonical left-eye frame and replays it into both
+                // halves. Commands already outside the canonical eye are clipped so
+                // stale full-screen windows cannot leak across.
+                if (source_clip.x >= half_w)
+                {
+                    clip.x = x_min;
+                    clip.z = x_min;
+                }
+                else
+                {
+                    clip.x = std::clamp(source_clip.x + dx, x_min, x_max);
+                    clip.z = std::clamp(source_clip.z + dx, x_min, x_max);
+                }
+            }
+        }
+    };
+
+    apply_eye(+offset, 0.0f, half_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    apply_eye(half_w - offset, half_w, full_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+}
+
+//===================================================================================
+//===================================================================================
 // Authors the current video frame into ImGui's background draw list.
 void GsVideoRenderer::drawVideoImGuiLocked(float surface_width, float surface_height)
 {
@@ -1287,12 +1107,9 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui::NewFrame();
 
     const float overlay_width = m_vr_mode ? (static_cast<float>(m_surface_width) * 0.5f) : static_cast<float>(m_surface_width);
-#ifdef __ANDROID__
-    // Android follows the Linux model here: author one canonical frame,
-    // including video, then let final ImGui draw-data rendering handle normal
-    // output or VR eye replication with identical separation/clipping.
+    // Author one canonical frame, including video, then let final ImGui draw-data
+    // rendering handle normal output or VR eye replication with identical clipping.
     drawVideoImGuiLocked(overlay_width, static_cast<float>(m_surface_height));
-#endif
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(overlay_width, static_cast<float>(m_surface_height)), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
@@ -1327,89 +1144,11 @@ void GsVideoRenderer::drawOverlayLocked()
         ImGui::PopStyleVar(4);
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
-#ifndef __ANDROID__
-        if (m_screen_flip_v && draw_data != nullptr)
-        {
-            const float sw = static_cast<float>(m_surface_width);
-            const float sh = static_cast<float>(m_surface_height);
-            for (int n = 0; n < draw_data->CmdListsCount; n++)
-            {
-                ImDrawList* cmd_list = draw_data->CmdLists[n];
-                for (ImDrawVert& v : cmd_list->VtxBuffer)
-                {
-                    v.pos.x = sw - v.pos.x;
-                    v.pos.y = sh - v.pos.y;
-                }
-                for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
-                {
-                    const float x1 = cmd.ClipRect.x;
-                    const float y1 = cmd.ClipRect.y;
-                    const float x2 = cmd.ClipRect.z;
-                    const float y2 = cmd.ClipRect.w;
-                    cmd.ClipRect.x = sw - x2;
-                    cmd.ClipRect.y = sh - y2;
-                    cmd.ClipRect.z = sw - x1;
-                    cmd.ClipRect.w = sh - y1;
-                }
-            }
-        }
-#endif
         if (m_vr_mode && draw_data != nullptr)
         {
-            const float half_w = static_cast<float>(m_surface_width) * 0.5f;
-            const float full_w = static_cast<float>(m_surface_width);
-            const float offset = m_vr_separation * half_w;
-
-            struct SavedList
-            {
-                std::vector<float> vx;
-                std::vector<ImVec4> clips;
-            };
-            std::vector<SavedList> saved(draw_data->CmdListsCount);
-            for (int n = 0; n < draw_data->CmdListsCount; n++)
-            {
-                const auto* cl = draw_data->CmdLists[n];
-                saved[n].vx.resize(cl->VtxBuffer.Size);
-                for (int i = 0; i < cl->VtxBuffer.Size; i++)
-                    saved[n].vx[i] = cl->VtxBuffer[i].pos.x;
-                saved[n].clips.resize(cl->CmdBuffer.Size);
-                for (int i = 0; i < cl->CmdBuffer.Size; i++)
-                    saved[n].clips[i] = cl->CmdBuffer[i].ClipRect;
-            }
-
-            const auto applyEye = [&](float dx, float x_min, float x_max)
-            {
-                for (int n = 0; n < draw_data->CmdListsCount; n++)
-                {
-                    auto* cl = draw_data->CmdLists[n];
-                    for (int i = 0; i < cl->VtxBuffer.Size; i++)
-                        cl->VtxBuffer[i].pos.x = saved[n].vx[i] + dx;
-                    for (int i = 0; i < cl->CmdBuffer.Size; i++)
-                    {
-                        const auto& s = saved[n].clips[i];
-                        auto& c = cl->CmdBuffer[i].ClipRect;
-                        c.y = s.y;
-                        c.w = s.w;
-                        // VR UI is authored once in the left half, then rendered into both eyes.
-                        // Ignore any draw command that starts outside the canonical left-half copy.
-                        const bool excluded = s.x >= half_w;
-                        if (excluded)
-                        {
-                            c.x = c.z = x_min;  // degenerate — nothing drawn
-                        }
-                        else
-                        {
-                            c.x = std::clamp(s.x + dx, x_min, x_max);
-                            c.z = std::clamp(s.z + dx, x_min, x_max);
-                        }
-                    }
-                }
-            };
-
-            applyEye(+offset, 0.0f, half_w);
-            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
-            applyEye(half_w - offset, half_w, full_w);
-            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+            renderDrawDataWithVrReplication(draw_data,
+                                            static_cast<float>(m_surface_width),
+                                            m_vr_separation);
         }
         else
         {
@@ -1432,65 +1171,7 @@ void GsVideoRenderer::drawFrameLocked()
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-#ifdef __ANDROID__
     drawOverlayLocked();
-#else
-    if (m_has_uploaded_frame)
-    {
-        const auto drawVideoCopy = [this](float rect_x, float rect_y, float rect_width, float rect_height)
-        {
-            gs::render::VideoQuad quad =
-                gs::render::buildVideoQuad(rect_x,
-                                           rect_y,
-                                           rect_width,
-                                           rect_height,
-                                           m_frame_width,
-                                           m_frame_height,
-                                           m_screen_mode);
-            std::swap(quad.v0, quad.v1);
-
-            if (m_zoom != 1.0f)
-            {
-                const float cx = quad.x + quad.width * 0.5f;
-                const float cy = quad.y + quad.height * 0.5f;
-                quad.width *= m_zoom;
-                quad.height *= m_zoom;
-                quad.x = cx - quad.width * 0.5f;
-                quad.y = cy - quad.height * 0.5f;
-            }
-
-            drawTexturedQuadLocked(
-                quad.x,
-                quad.y,
-                quad.width,
-                quad.height,
-                quad.u0,
-                quad.v0,
-                quad.u1,
-                quad.v1,
-                m_texture,
-                whiteColor());
-        };
-
-        if (m_vr_mode)
-        {
-            const int half_width = m_surface_width / 2;
-            const float offset = m_vr_separation * static_cast<float>(half_width);
-            glEnable(GL_SCISSOR_TEST);
-            glScissor(0, 0, half_width, m_surface_height);
-            drawVideoCopy(offset, 0.0f, static_cast<float>(half_width), static_cast<float>(m_surface_height));
-            glScissor(half_width, 0, m_surface_width - half_width, m_surface_height);
-            drawVideoCopy(static_cast<float>(half_width) - offset, 0.0f, static_cast<float>(m_surface_width - half_width), static_cast<float>(m_surface_height));
-            glDisable(GL_SCISSOR_TEST);
-        }
-        else
-        {
-            drawVideoCopy(0.0f, 0.0f, static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
-        }
-    }
-
-    drawOverlayLocked();
-#endif
 
     const auto swap_begin = Clock::now();
     m_surface_backend.swapBuffers();

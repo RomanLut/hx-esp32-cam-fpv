@@ -10,7 +10,9 @@
 
 #include <fstream>
 #include <future>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 #include <optional>
 #include <cfloat>
@@ -46,6 +48,8 @@ extern "C"
 
 namespace
 {
+
+static GLuint g_VideoTexture;
 
 //===================================================================================
 //===================================================================================
@@ -98,6 +102,179 @@ void pushInjectedSdlKeyTransition()
 
 //===================================================================================
 //===================================================================================
+// Flips final ImGui draw data as one whole-screen image, including video and menus.
+void applyScreenFlipToDrawData(ImDrawData* draw_data, float surface_width, float surface_height)
+{
+    if (draw_data == nullptr)
+    {
+        return;
+    }
+
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        ImDrawList* cmd_list = draw_data->CmdLists[n];
+        for (ImDrawVert& vertex : cmd_list->VtxBuffer)
+        {
+            vertex.pos.x = surface_width - vertex.pos.x;
+            vertex.pos.y = surface_height - vertex.pos.y;
+        }
+
+        for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
+        {
+            const float x1 = cmd.ClipRect.x;
+            const float y1 = cmd.ClipRect.y;
+            const float x2 = cmd.ClipRect.z;
+            const float y2 = cmd.ClipRect.w;
+            cmd.ClipRect.x = surface_width - x2;
+            cmd.ClipRect.y = surface_height - y2;
+            cmd.ClipRect.z = surface_width - x1;
+            cmd.ClipRect.w = surface_height - y1;
+        }
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Renders one canonical left-eye ImGui frame into both VR eye regions.
+void renderDrawDataWithVrReplication(ImDrawData* draw_data,
+                                     float surface_width,
+                                     float surface_height,
+                                     float vr_separation,
+                                     bool screen_flip)
+{
+    if (draw_data == nullptr || surface_width <= 0.0f)
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        return;
+    }
+
+    const float half_w = surface_width * 0.5f;
+    const float full_w = surface_width;
+    const float offset = vr_separation * half_w;
+
+    struct SavedList
+    {
+        std::vector<ImVec2> positions;
+        std::vector<ImVec4> clip_rects;
+    };
+
+    std::vector<SavedList> saved(draw_data->CmdListsCount);
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        saved[n].positions.resize(cmd_list->VtxBuffer.Size);
+        for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+        {
+            saved[n].positions[i] = cmd_list->VtxBuffer[i].pos;
+        }
+
+        saved[n].clip_rects.resize(cmd_list->CmdBuffer.Size);
+        for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+        {
+            saved[n].clip_rects[i] = cmd_list->CmdBuffer[i].ClipRect;
+        }
+    }
+
+    const auto apply_eye = [&](float dx, float x_min, float x_max)
+    {
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
+        {
+            ImDrawList* cmd_list = draw_data->CmdLists[n];
+            for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+            {
+                cmd_list->VtxBuffer[i].pos.x = saved[n].positions[i].x + dx;
+                cmd_list->VtxBuffer[i].pos.y = saved[n].positions[i].y;
+            }
+
+            for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+            {
+                const ImVec4& source_clip = saved[n].clip_rects[i];
+                ImVec4& clip = cmd_list->CmdBuffer[i].ClipRect;
+                clip.y = source_clip.y;
+                clip.w = source_clip.w;
+
+                // Linux authors one canonical left-eye frame and replays it into
+                // both halves. Commands already outside the canonical eye are clipped
+                // so stale full-screen windows cannot leak across.
+                if (source_clip.x >= half_w)
+                {
+                    clip.x = x_min;
+                    clip.z = x_min;
+                }
+                else
+                {
+                    clip.x = std::clamp(source_clip.x + dx, x_min, x_max);
+                    clip.z = std::clamp(source_clip.z + dx, x_min, x_max);
+                }
+            }
+        }
+
+        if (screen_flip)
+        {
+            applyScreenFlipToDrawData(draw_data, surface_width, surface_height);
+        }
+    };
+
+    apply_eye(+offset, 0.0f, half_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    apply_eye(half_w - offset, half_w, full_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+}
+
+//===================================================================================
+//===================================================================================
+// Applies GS screen zoom after the video rectangle has been letterboxed.
+gs::render::RectI applyScreenZoom(const gs::render::RectI& rect, float zoom)
+{
+    if (zoom == 1.0f)
+    {
+        return rect;
+    }
+
+    const float center_x = (static_cast<float>(rect.x1) + static_cast<float>(rect.x2)) * 0.5f;
+    const float center_y = (static_cast<float>(rect.y1) + static_cast<float>(rect.y2)) * 0.5f;
+    const float width = static_cast<float>(rect.x2 - rect.x1) * zoom;
+    const float height = static_cast<float>(rect.y2 - rect.y1) * zoom;
+
+    return {
+        static_cast<int>(std::round(center_x - width * 0.5f)),
+        static_cast<int>(std::round(center_y - height * 0.5f)),
+        static_cast<int>(std::round(center_x + width * 0.5f)),
+        static_cast<int>(std::round(center_y + height * 0.5f))
+    };
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the video texture inside one viewport, clipping zoomed video to that viewport.
+void drawVideoInViewport(ImDrawList* draw_list,
+                         int x,
+                         int y,
+                         int width,
+                         int height,
+                         float video_aspect,
+                         ScreenAspectRatio screen_aspect_ratio,
+                         float screen_zoom)
+{
+    const gs::render::RectI letterboxed =
+        gs::render::buildLetterboxedRect(x,
+                                         y,
+                                         width,
+                                         height,
+                                         video_aspect,
+                                         screen_aspect_ratio);
+    const gs::render::RectI zoomed = applyScreenZoom(letterboxed, screen_zoom);
+    draw_list->PushClipRect(ImVec2(static_cast<float>(x), static_cast<float>(y)),
+                            ImVec2(static_cast<float>(x + width), static_cast<float>(y + height)),
+                            true);
+    draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                        ImVec2(static_cast<float>(zoomed.x1), static_cast<float>(zoomed.y1)),
+                        ImVec2(static_cast<float>(zoomed.x2), static_cast<float>(zoomed.y2)));
+    draw_list->PopClipRect();
+}
+
+//===================================================================================
+//===================================================================================
 // Refreshes the cached SDL logical window size used by ImGui layout and pointer math.
 void refreshSdlWindowSize(SDL_Window* window, uint32_t& width, uint32_t& height)
 {
@@ -114,84 +291,6 @@ void refreshSdlWindowSize(SDL_Window* window, uint32_t& width, uint32_t& height)
         width = static_cast<uint32_t>(window_width);
         height = static_cast<uint32_t>(window_height);
     }
-}
-
-//===================================================================================
-//===================================================================================
-// Renders one canonical left-eye ImGui frame into both VR eye regions.
-void renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation)
-{
-    if (draw_data == nullptr || surface_width <= 0.0f)
-    {
-        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
-        return;
-    }
-
-    const float half_w = surface_width * 0.5f;
-    const float full_w = surface_width;
-    const float offset = vr_separation * half_w;
-
-    struct SavedList
-    {
-        std::vector<float> x_positions;
-        std::vector<ImVec4> clip_rects;
-    };
-
-    std::vector<SavedList> saved(draw_data->CmdListsCount);
-    for (int n = 0; n < draw_data->CmdListsCount; n++)
-    {
-        const ImDrawList* cmd_list = draw_data->CmdLists[n];
-        saved[n].x_positions.resize(cmd_list->VtxBuffer.Size);
-        for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
-        {
-            saved[n].x_positions[i] = cmd_list->VtxBuffer[i].pos.x;
-        }
-
-        saved[n].clip_rects.resize(cmd_list->CmdBuffer.Size);
-        for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
-        {
-            saved[n].clip_rects[i] = cmd_list->CmdBuffer[i].ClipRect;
-        }
-    }
-
-    auto apply_eye = [&](float dx, float x_min, float x_max)
-    {
-        for (int n = 0; n < draw_data->CmdListsCount; n++)
-        {
-            ImDrawList* cmd_list = draw_data->CmdLists[n];
-            for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
-            {
-                cmd_list->VtxBuffer[i].pos.x = saved[n].x_positions[i] + dx;
-            }
-
-            for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
-            {
-                const ImVec4& source_clip = saved[n].clip_rects[i];
-                ImVec4& clip = cmd_list->CmdBuffer[i].ClipRect;
-                clip.y = source_clip.y;
-                clip.w = source_clip.w;
-
-                // Linux VR authors one left-eye UI/video frame and replays it into
-                // both halves. Commands already authored outside the canonical eye
-                // are clipped out so stale full-screen windows cannot leak across.
-                if (source_clip.x >= half_w)
-                {
-                    clip.x = x_min;
-                    clip.z = x_min;
-                }
-                else
-                {
-                    clip.x = std::clamp(source_clip.x + dx, x_min, x_max);
-                    clip.z = std::clamp(source_clip.z + dx, x_min, x_max);
-                }
-            }
-        }
-    };
-
-    apply_eye(+offset, 0.0f, half_w);
-    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
-    apply_eye(half_w - offset, half_w, full_w);
-    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
 }
 
 } // namespace
@@ -376,7 +475,6 @@ bool PI_HAL::init_display_dispmanx()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-static GLuint       g_VideoTexture;
 void PI_HAL::set_video_channel(unsigned int id)
 {
     g_VideoTexture = id;   
@@ -686,35 +784,18 @@ bool PI_HAL::update_display()
     // left-eye image is authored here; the final draw data is replayed into both
     // halves below so video, OSD, top overlay, and menu stay identical per eye.
     ImDrawList* video_draw_list = ImGui::GetBackgroundDrawList();
-    if (s_groundstation_config.vrMode)
-    {
-        const int half_width = display_width / 2;
-        const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
-        const gs::render::RectI left_rect =
-            gs::render::buildLetterboxedRect(0,
-                                             0,
-                                             half_width,
-                                             display_height,
-                                             video_aspect,
-                                             s_groundstation_config.screenAspectRatio);
-        video_draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                                  ImVec2(left_rect.x1, left_rect.y1),
-                                  ImVec2(left_rect.x2, left_rect.y2));
-    }
-    else
-    {
-        const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
-        const gs::render::RectI rect =
-            gs::render::buildLetterboxedRect(0,
-                                             0,
-                                             display_width,
-                                             display_height,
-                                             video_aspect,
-                                             s_groundstation_config.screenAspectRatio);
-        video_draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                                  ImVec2(rect.x1, rect.y1),
-                                  ImVec2(rect.x2, rect.y2));
-    }
+    const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
+    const int viewport_width = s_groundstation_config.vrMode ? (display_width / 2) : display_width;
+    // Zoom is intentionally applied after letterboxing. Clipping to the authored
+    // viewport keeps zoomed VR video from bleeding into the other eye before replay.
+    drawVideoInViewport(video_draw_list,
+                        0,
+                        0,
+                        viewport_width,
+                        display_height,
+                        video_aspect,
+                        s_groundstation_config.screenAspectRatio,
+                        s_groundstation_config.screenZoom);
 
     for(auto &func:render_callbacks)
     {
@@ -729,39 +810,20 @@ bool PI_HAL::update_display()
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
     ImDrawData* draw_data = ImGui::GetDrawData();
-    if (s_groundstation_config.screenFlipV && draw_data != nullptr)
-    {
-        const float sw = io.DisplaySize.x;
-        const float sh = io.DisplaySize.y;
-        for (int n = 0; n < draw_data->CmdListsCount; n++)
-        {
-            ImDrawList* cmd_list = draw_data->CmdLists[n];
-            for (ImDrawVert& v : cmd_list->VtxBuffer)
-            {
-                v.pos.x = sw - v.pos.x;
-                v.pos.y = sh - v.pos.y;
-            }
-            for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
-            {
-                const float x1 = cmd.ClipRect.x;
-                const float y1 = cmd.ClipRect.y;
-                const float x2 = cmd.ClipRect.z;
-                const float y2 = cmd.ClipRect.w;
-                cmd.ClipRect.x = sw - x2;
-                cmd.ClipRect.y = sh - y2;
-                cmd.ClipRect.z = sw - x1;
-                cmd.ClipRect.w = sh - y1;
-            }
-        }
-    }
     if (s_groundstation_config.vrMode)
     {
         renderDrawDataWithVrReplication(draw_data,
                                         io.DisplaySize.x,
-                                        s_groundstation_config.screenVrSeparation);
+                                        io.DisplaySize.y,
+                                        s_groundstation_config.screenVrSeparation,
+                                        s_groundstation_config.screenFlipV);
     }
     else
     {
+        if (s_groundstation_config.screenFlipV)
+        {
+            applyScreenFlipToDrawData(draw_data, io.DisplaySize.x, io.DisplaySize.y);
+        }
         ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     }
     SDL_GL_SwapWindow(m_impl->window);
