@@ -184,6 +184,7 @@ private:
     void drawFrameLocked();
     void uploadFrameLocked();
     void ensureTextureLocked();
+    void drawVideoImGuiLocked(float surface_width, float surface_height);
     void drawOverlayLocked();
     void handleImGuiKeysLocked();
     void drawMenuLocked();

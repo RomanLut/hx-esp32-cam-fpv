@@ -15,6 +15,7 @@
 #include <optional>
 #include <cfloat>
 #include <utility>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -93,6 +94,104 @@ void pushInjectedSdlKeyTransition()
     event.key.keysym.sym = *keycode;
     event.key.keysym.scancode = SDL_GetScancodeFromKey(*keycode);
     SDL_PushEvent(&event);
+}
+
+//===================================================================================
+//===================================================================================
+// Refreshes the cached SDL logical window size used by ImGui layout and pointer math.
+void refreshSdlWindowSize(SDL_Window* window, uint32_t& width, uint32_t& height)
+{
+    if (window == nullptr)
+    {
+        return;
+    }
+
+    int window_width = 0;
+    int window_height = 0;
+    SDL_GetWindowSize(window, &window_width, &window_height);
+    if (window_width > 0 && window_height > 0)
+    {
+        width = static_cast<uint32_t>(window_width);
+        height = static_cast<uint32_t>(window_height);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Renders one canonical left-eye ImGui frame into both VR eye regions.
+void renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation)
+{
+    if (draw_data == nullptr || surface_width <= 0.0f)
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        return;
+    }
+
+    const float half_w = surface_width * 0.5f;
+    const float full_w = surface_width;
+    const float offset = vr_separation * half_w;
+
+    struct SavedList
+    {
+        std::vector<float> x_positions;
+        std::vector<ImVec4> clip_rects;
+    };
+
+    std::vector<SavedList> saved(draw_data->CmdListsCount);
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        saved[n].x_positions.resize(cmd_list->VtxBuffer.Size);
+        for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+        {
+            saved[n].x_positions[i] = cmd_list->VtxBuffer[i].pos.x;
+        }
+
+        saved[n].clip_rects.resize(cmd_list->CmdBuffer.Size);
+        for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+        {
+            saved[n].clip_rects[i] = cmd_list->CmdBuffer[i].ClipRect;
+        }
+    }
+
+    auto apply_eye = [&](float dx, float x_min, float x_max)
+    {
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
+        {
+            ImDrawList* cmd_list = draw_data->CmdLists[n];
+            for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+            {
+                cmd_list->VtxBuffer[i].pos.x = saved[n].x_positions[i] + dx;
+            }
+
+            for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+            {
+                const ImVec4& source_clip = saved[n].clip_rects[i];
+                ImVec4& clip = cmd_list->CmdBuffer[i].ClipRect;
+                clip.y = source_clip.y;
+                clip.w = source_clip.w;
+
+                // Linux VR authors one left-eye UI/video frame and replays it into
+                // both halves. Commands already authored outside the canonical eye
+                // are clipped out so stale full-screen windows cannot leak across.
+                if (source_clip.x >= half_w)
+                {
+                    clip.x = x_min;
+                    clip.z = x_min;
+                }
+                else
+                {
+                    clip.x = std::clamp(source_clip.x + dx, x_min, x_max);
+                    clip.z = std::clamp(source_clip.z + dx, x_min, x_max);
+                }
+            }
+        }
+    };
+
+    apply_eye(+offset, 0.0f, half_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    apply_eye(half_w - offset, half_w, full_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
 }
 
 } // namespace
@@ -512,8 +611,9 @@ void PI_HAL::shutdown_display()
 #endif
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
+//===================================================================================
+//===================================================================================
+// Updates SDL input, refreshes the live window layout, and renders one ImGui frame.
 bool PI_HAL::update_display()
 {
     pushInjectedSdlKeyTransition();
@@ -555,6 +655,11 @@ bool PI_HAL::update_display()
     }
     dispatch_pending_pointer_tap();
 
+    // WSLg/SDL can clamp or resize the window after creation. VR layout must use
+    // the live logical window size, otherwise the right eye can be placed beyond
+    // ImGui's display rectangle and disappears on the right side of the screen.
+    refreshSdlWindowSize(m_impl->window, m_impl->width, m_impl->height);
+
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
@@ -565,7 +670,10 @@ bool PI_HAL::update_display()
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(get_display_size());
+    const ImVec2 display_size = get_display_size();
+    const int display_width = static_cast<int>(display_size.x);
+    const int display_height = static_cast<int>(display_size.y);
+    ImGui::SetNextWindowSize(display_size);
     ImGui::SetNextWindowBgAlpha(0);
     ImGui::Begin("mainWindow", nullptr, ImGuiWindowFlags_NoTitleBar | 
                             ImGuiWindowFlags_NoResize | 
@@ -573,35 +681,25 @@ bool PI_HAL::update_display()
                             ImGuiWindowFlags_NoScrollbar | 
                             ImGuiWindowFlags_NoCollapse | 
                             ImGuiWindowFlags_NoInputs);
-    for(auto &func:render_callbacks){
-        func();
-    }
 
+    // Keep video in ImGui's background draw list. In VR mode only the canonical
+    // left-eye image is authored here; the final draw data is replayed into both
+    // halves below so video, OSD, top overlay, and menu stay identical per eye.
+    ImDrawList* video_draw_list = ImGui::GetBackgroundDrawList();
     if (s_groundstation_config.vrMode)
     {
-        const int half_width = m_impl->width / 2;
+        const int half_width = display_width / 2;
         const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
         const gs::render::RectI left_rect =
             gs::render::buildLetterboxedRect(0,
                                              0,
                                              half_width,
-                                             m_impl->height,
+                                             display_height,
                                              video_aspect,
                                              s_groundstation_config.screenAspectRatio);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                                             ImVec2(left_rect.x1, left_rect.y1),
-                                             ImVec2(left_rect.x2, left_rect.y2));
-
-        const gs::render::RectI right_rect =
-            gs::render::buildLetterboxedRect(half_width,
-                                             0,
-                                             m_impl->width - half_width,
-                                             m_impl->height,
-                                             video_aspect,
-                                             s_groundstation_config.screenAspectRatio);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                                             ImVec2(right_rect.x1, right_rect.y1),
-                                             ImVec2(right_rect.x2, right_rect.y2));
+        video_draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                                  ImVec2(left_rect.x1, left_rect.y1),
+                                  ImVec2(left_rect.x2, left_rect.y2));
     }
     else
     {
@@ -609,13 +707,18 @@ bool PI_HAL::update_display()
         const gs::render::RectI rect =
             gs::render::buildLetterboxedRect(0,
                                              0,
-                                             m_impl->width,
-                                             m_impl->height,
+                                             display_width,
+                                             display_height,
                                              video_aspect,
                                              s_groundstation_config.screenAspectRatio);
-        ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                                             ImVec2(rect.x1, rect.y1),
-                                             ImVec2(rect.x2, rect.y2));
+        video_draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
+                                  ImVec2(rect.x1, rect.y1),
+                                  ImVec2(rect.x2, rect.y2));
+    }
+
+    for(auto &func:render_callbacks)
+    {
+        func();
     }
 
     ImGui::End();
@@ -651,7 +754,16 @@ bool PI_HAL::update_display()
             }
         }
     }
-    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    if (s_groundstation_config.vrMode)
+    {
+        renderDrawDataWithVrReplication(draw_data,
+                                        io.DisplaySize.x,
+                                        s_groundstation_config.screenVrSeparation);
+    }
+    else
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    }
     SDL_GL_SwapWindow(m_impl->window);
     
     return true;

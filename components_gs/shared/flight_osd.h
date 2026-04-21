@@ -37,8 +37,7 @@ public:
               int surface_height,
               int frame_width,
               int frame_height,
-              int screen_mode,
-              bool vr_mode);
+              int screen_mode);
 
 private:
     bool ensureFont();

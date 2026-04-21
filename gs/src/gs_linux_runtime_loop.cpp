@@ -416,12 +416,14 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
         {
             const ImVec2 display_size = ImGui::GetIO().DisplaySize;
-            s_flightOSD.draw(static_cast<int>(display_size.x),
+            const float overlay_width = frame_ui.vr_mode ? display_size.x * 0.5f : display_size.x;
+            // Linux VR is authored once into the left-eye area; PI_HAL replays the
+            // final ImGui draw data into both halves so menu/overlay/video match.
+            s_flightOSD.draw(static_cast<int>(overlay_width),
                              static_cast<int>(display_size.y),
                              frame_ui.flight_osd_is_16x9 ? 16 : 4,
                              frame_ui.flight_osd_is_16x9 ? 9 : 3,
-                             static_cast<int>(frame_ui.screen_mode),
-                             frame_ui.vr_mode);
+                             static_cast<int>(frame_ui.screen_mode));
 
             //------------------------------------------------
             gs::imgui::TopOverlayData input = {};
@@ -461,7 +463,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
                 gs::stats::drawFullscreenStatsPanel(overlay_stats_snapshot);
             }
 
-            drawPlaybackProgressOverlay(display_size.x, display_size.y);
+            drawPlaybackProgressOverlay(overlay_width, display_size.y);
         }
         ImGui::End();
         ImGui::PopStyleVar();
@@ -472,7 +474,9 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         menu_ui.visible = menu_visible;
         menu_ui.vr_mode = s_groundstation_config.vrMode;
         // touch_nav_enabled intentionally left false for Linux/WSL (keyboard-driven, no DPAD/REC buttons)
-        menu_ui.surface_width = ImGui::GetIO().DisplaySize.x;
+        menu_ui.surface_width = s_groundstation_config.vrMode
+            ? ImGui::GetIO().DisplaySize.x * 0.5f
+            : ImGui::GetIO().DisplaySize.x;
         menu_ui.surface_height = ImGui::GetIO().DisplaySize.y;
         drawRuntimeMenuOverlay(menu_ui);
         gs::menu::g_osdMenuController.draw(config);

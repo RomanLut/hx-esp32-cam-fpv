@@ -297,13 +297,12 @@ bool FlightOSD::ensureFont()
 
 //===================================================================================
 //===================================================================================
-// Draws the OSD aligned to the current frame rectangle on either mono or VR output.
+// Draws the OSD aligned to the current frame rectangle.
 void FlightOSD::draw(int surface_width,
                      int surface_height,
                      int frame_width,
                      int frame_height,
-                     int screen_mode,
-                     bool vr_mode)
+                     int screen_mode)
 {
     if (!ensureFont())
     {
@@ -315,26 +314,6 @@ void FlightOSD::draw(int surface_width,
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         buffer_snapshot = m_buffer;
-    }
-
-    auto draw_in_rect = [this, &buffer_snapshot, frame_width, frame_height, screen_mode](int origin_x, int width, int height)
-    {
-        int x1 = origin_x;
-        int y1 = 0;
-        int x2 = origin_x + width;
-        int y2 = height;
-        computeVideoBounds(width, height, frame_width, frame_height, screen_mode, x1, y1, x2, y2);
-        x1 += origin_x;
-        x2 += origin_x;
-        drawInRect(buffer_snapshot, x1, y1, x2, y2);
-    };
-
-    if (vr_mode)
-    {
-        const int half_width = surface_width / 2;
-        draw_in_rect(0, half_width, surface_height);
-        draw_in_rect(half_width, surface_width - half_width, surface_height);
-        return;
     }
 
     int x1 = 0;
