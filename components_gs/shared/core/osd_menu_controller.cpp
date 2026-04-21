@@ -198,8 +198,10 @@ bool OSDMenuController::isMenuItemActivatePressed()
 // Returns true when the current frame contains an increase action for an inline value.
 bool OSDMenuController::isMenuAdjustIncreasePressed()
 {
-    return ImGui::IsKeyPressed(ImGuiKey_RightArrow, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight, false);
+    // Keep ImGui repeat enabled here. Adjustable rows such as screen zoom must
+    // consume held arrow repeats before the generic back handler sees Left.
+    return ImGui::IsKeyPressed(ImGuiKey_RightArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight);
 }
 
 //===================================================================================
@@ -207,8 +209,10 @@ bool OSDMenuController::isMenuAdjustIncreasePressed()
 // Returns true when the current frame contains a decrease action for an inline value.
 bool OSDMenuController::isMenuAdjustDecreasePressed()
 {
-    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, false);
+    // Keep ImGui repeat enabled here. Adjustable rows such as screen zoom must
+    // consume held arrow repeats before the generic back handler sees Left.
+    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft);
 }
 
 //===================================================================================
@@ -216,8 +220,8 @@ bool OSDMenuController::isMenuAdjustDecreasePressed()
 // Returns true when the current frame contains an upward navigation action.
 bool OSDMenuController::isMenuUpPressed()
 {
-    return ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp, false);
+    return ImGui::IsKeyPressed(ImGuiKey_UpArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadUp);
 }
 
 //===================================================================================
@@ -225,8 +229,8 @@ bool OSDMenuController::isMenuUpPressed()
 // Returns true when the current frame contains a downward navigation action.
 bool OSDMenuController::isMenuDownPressed()
 {
-    return ImGui::IsKeyPressed(ImGuiKey_DownArrow, false) ||
-           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown, false);
+    return ImGui::IsKeyPressed(ImGuiKey_DownArrow) ||
+           ImGui::IsKeyPressed(ImGuiKey_GamepadDpadDown);
 }
 
 //===================================================================================
