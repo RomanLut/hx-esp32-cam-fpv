@@ -521,6 +521,15 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
     if (!this->visible)
     {
+        const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
+        // Linux draws the menu before its render hotkeys are consumed, so active
+        // playback owns Enter for 0x/1x speed toggling and must not open Main.
+        if (playback_active && (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+                                ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)))
+        {
+            return;
+        }
+
         if (isMenuOpenPressed() || isMenuRightClickPressed())
         {
             this->visible = true;
@@ -2309,7 +2318,7 @@ void OSDMenuController::goForward(OSDMenuId newMenuId, int newItem)
 
 //===================================================================================
 //===================================================================================
-// Navigates back to the previous menu page by popping from the back stack.
+// Navigates back to the previous menu page, or closes when no parent remains.
 void OSDMenuController::goBack()
 {
     if ( this->backMenuIds.size() > 0 )
@@ -2318,5 +2327,9 @@ void OSDMenuController::goBack()
         this->backMenuIds.pop_back();
         this->selectedItem = this->backMenuItems.back();
         this->backMenuItems.pop_back();
+    }
+    else
+    {
+        this->close();
     }
 }
