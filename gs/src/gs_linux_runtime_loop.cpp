@@ -413,6 +413,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
         {
             const ImVec2 display_size = ImGui::GetIO().DisplaySize;
@@ -466,7 +467,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             drawPlaybackProgressOverlay(overlay_width, display_size.y);
         }
         ImGui::End();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
 
         const bool menu_visible = gs::menu::g_osdMenuController.isVisible();
         const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;

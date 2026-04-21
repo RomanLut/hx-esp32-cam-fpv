@@ -684,6 +684,7 @@ bool GsVideoRenderer::initImGuiLocked()
     io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));
 
     ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowBorderSize = 0.0f;
     style.ScrollbarSize = static_cast<float>(m_surface_width) / 80.0f;
     style.ItemInnerSpacing = ImVec2(style.ItemSpacing.x / 2.0f, style.ItemSpacing.y / 2.0f);
     io.FontGlobalScale = kLinuxMenuFontGlobalScale;
@@ -1113,6 +1114,7 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(overlay_width, static_cast<float>(m_surface_height)), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 0.0f));
@@ -1141,7 +1143,7 @@ void GsVideoRenderer::drawOverlayLocked()
     {
         ImGui::SetCurrentContext(static_cast<ImGuiContext*>(m_imgui_context));
         ImGui::End();
-        ImGui::PopStyleVar(4);
+        ImGui::PopStyleVar(5);
         ImGui::Render();
         ImDrawData* draw_data = ImGui::GetDrawData();
         if (m_vr_mode && draw_data != nullptr)

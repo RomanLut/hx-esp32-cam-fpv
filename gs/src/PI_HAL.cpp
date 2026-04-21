@@ -635,6 +635,7 @@ bool PI_HAL::init_display_sdl()
 
     ImVec2 display_size = get_display_size();
     ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowBorderSize = 0.0f;
     style.ScrollbarSize = display_size.x / 80.f;
     //style.TouchExtraPadding = ImVec2(style.ScrollbarSize * 2.f, style.ScrollbarSize * 2.f);
     //style.ItemSpacing = ImVec2(size.x / 200, size.x / 200);
@@ -956,6 +957,8 @@ bool PI_HAL::init()
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowBorderSize = 0.0f;
 
     return true;
 }
