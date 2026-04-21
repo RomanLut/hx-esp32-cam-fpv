@@ -456,7 +456,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.now = Clock::now();
             input.transport_message = s_transport->getTransportMessage();
 
-            gs::imgui::drawTopOverlayStatus(input);
+            gs::imgui::drawTopOverlayStatus(input, overlay_width);
             //------------------------------------------------
 
             if (frame_ui.overlay_stats_visible)

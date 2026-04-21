@@ -32,8 +32,8 @@ struct OverlayChipSpec
 
 //===================================================================================
 //===================================================================================
-// Draws the top overlay chips in a single horizontal strip. Returns the row height.
-float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y)
+// Draws the top overlay chips, wrapping to the next row when the next chip would overflow.
+float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y, float overlay_width)
 {
     if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
     {
@@ -44,7 +44,15 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
 
     const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
     const float resolved_height = std::max(20.0f, ImGui::GetIO().DisplaySize.y * 0.04f);
+    const float row_gap = kOverlayChipGap * osd_scale;
+    const ImVec2 window_pos = ImGui::GetWindowPos();
+    // Content-region/window-size helpers are unreliable here because this fullscreen
+    // overlay uses absolute drawing and can be replayed into VR eye viewports.
+    const float available_width = std::max(0.0f, overlay_width);
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
     float x = 0.0f;
+    float y = start_y;
+    bool drew_chip = false;
 
     for (size_t i = 0; i < chips.size(); ++i)
     {
@@ -56,22 +64,29 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
 
         const ImVec2 text_size = ImGui::CalcTextSize(chip.text.c_str());
         const float chip_width = chip.width > 0.0f ? chip.width * osd_scale : std::max(44.0f, 16.0f + text_size.x);
+        if (x > 0.0f && available_width > 0.0f && x + chip_width > available_width)
+        {
+            x = 0.0f;
+            y += resolved_height + row_gap;
+        }
+
         const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
                                      : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
 
-        ImGui::SetCursorPos(ImVec2(x, start_y));
-        ImGui::PushID(static_cast<int>(i));
-        ImGui::PushStyleColor(ImGuiCol_Button, bg);
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
-        ImGui::Button(chip.text.c_str(), ImVec2(chip_width, resolved_height));
-        ImGui::PopStyleColor(3);
-        ImGui::PopID();
+        // The fullscreen overlay window is shared with OSD/menu drawing, so draw
+        // chips with absolute coordinates instead of relying on ImGui item cursor state.
+        const ImVec2 chip_min(window_pos.x + x, window_pos.y + y);
+        const ImVec2 chip_max(chip_min.x + chip_width, chip_min.y + resolved_height);
+        const ImVec2 text_pos(chip_min.x + std::max(0.0f, (chip_width - text_size.x) * 0.5f),
+                              chip_min.y + std::max(0.0f, (resolved_height - text_size.y) * 0.5f));
+        draw_list->AddRectFilled(chip_min, chip_max, ImGui::ColorConvertFloat4ToU32(bg));
+        draw_list->AddText(text_pos, ImGui::GetColorU32(ImGuiCol_Text), chip.text.c_str());
 
-        x += chip_width + kOverlayChipGap * osd_scale;
+        x += chip_width + row_gap;
+        drew_chip = true;
     }
 
-    return resolved_height;
+    return drew_chip ? (y - start_y) + resolved_height : 0.0f;
 }
 
 } // namespace
@@ -79,7 +94,7 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
 //===================================================================================
 //===================================================================================
 // Builds and draws the runtime top overlay status chips.
-void drawTopOverlayStatus(const TopOverlayData& input)
+void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
 {
     if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
     {
@@ -166,10 +181,10 @@ void drawTopOverlayStatus(const TopOverlayData& input)
     if (input.osd_font_error) chips.push_back({"Displayport OSD Font Unexpected Format!", true, 0.0f});
     if (input.air_suspended) chips.push_back({"OFF", true, 0.0f});
 
-    const float main_row_height = drawOverlayChipStrip(chips, 0.0f);
+    const float main_row_height = drawOverlayChipStrip(chips, 0.0f, overlay_width);
     if (!input.transport_message.empty())
     {
-        drawOverlayChipStrip({{input.transport_message, true, 0.0f}}, main_row_height + kOverlayBannerGap);
+        drawOverlayChipStrip({{input.transport_message, true, 0.0f}}, main_row_height + kOverlayBannerGap, overlay_width);
     }
 }
 }

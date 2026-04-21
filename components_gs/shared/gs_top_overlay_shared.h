@@ -43,5 +43,5 @@ struct TopOverlayData
     Clock::time_point now = Clock::time_point::max();
 };
 
-void drawTopOverlayStatus(const TopOverlayData& input);
+void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width);
 }

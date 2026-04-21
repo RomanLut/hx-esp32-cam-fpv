@@ -1130,7 +1130,7 @@ void GsVideoRenderer::drawOverlayLocked()
     if (overlay_window_open)
     {
         s_flightOSD.draw(static_cast<int>(overlay_width), m_surface_height, m_frame_width, m_frame_height, m_screen_mode);
-        gs::imgui::drawTopOverlayStatus(m_overlay_input);
+        gs::imgui::drawTopOverlayStatus(m_overlay_input, overlay_width);
         if (m_frame_ui_state.overlay_stats_visible)
         {
             gs::stats::drawFullscreenStatsPanel(m_overlay_stats_snapshot);
