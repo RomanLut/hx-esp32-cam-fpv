@@ -13,6 +13,7 @@ code style and comments:
   `//===================================================================================`
   `//===================================================================================`
 - after these two lines, add a short English description comment explaining what it does
+- when adding these separator lines, check the existing nearby comments first and do not duplicate them; each definition should start with exactly two `//===================================================================================` lines, not four or more
 - do not add these separator lines or description comments to method declarations inside a class or struct body
 - if you change an implementation, update any stale comments that describe that implementation, especially the leading comment above the definition and the leading comment above the class or struct declaration
 - if testing or debugging reveals a non-obvious behavior, constraint, race, ordering requirement, or hardware/platform quirk, add a short English comment near the relevant implementation that explains the behavior and why the code is written that way
