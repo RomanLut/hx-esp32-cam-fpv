@@ -10,6 +10,11 @@ namespace gs::stats
 namespace
 {
 
+constexpr float kTopOverlayChipGap = 6.0f;
+
+//===================================================================================
+//===================================================================================
+// Calculates packet loss ratio as a percentage from sent and received packet counts.
 float calcLossRatio(int out_count, int in_count)
 {
     if (out_count == 0)
@@ -26,7 +31,9 @@ float calcLossRatio(int out_count, int in_count)
 
 } // namespace
 
-
+//===================================================================================
+//===================================================================================
+// Draws the fullscreen stats graphs and tables over the video frame.
 void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
 {
     const int fec_codec_n = snapshot.fec_codec_n;
@@ -52,7 +59,12 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     const int restored_frames = ground_stats.restoredCompletedFrames;
 
     const float osd_scale = gs::menu::imgui::calcOsdScale(ImGui::GetIO().DisplaySize.y);
+    const float top_overlay_one_line_height = std::max(20.0f, ImGui::GetIO().DisplaySize.y * 0.04f);
+    const float left_stats_start_y = top_overlay_one_line_height + (kTopOverlayChipGap * osd_scale);
 
+    // Keep the left stats below one top-overlay row. The top overlay may wrap, but
+    // stats intentionally reserve only one fixed row so the layout stays predictable.
+    ImGui::SetCursorPosY(left_stats_start_y);
     ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.25f);
     std::snprintf(overlay, sizeof(overlay), "Frames %d+%d", received_frames, restored_frames);
     ImGui::PlotHistogram(overlay, Stats::getter, const_cast<Stats*>(&frame_stats), frame_stats.count(), 0, nullptr, 0, 4.0f, ImVec2(0, 24.0f * osd_scale));
