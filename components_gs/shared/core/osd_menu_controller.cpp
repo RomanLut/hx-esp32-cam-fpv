@@ -577,6 +577,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
     {
         case OSDMenuId::Main: this->drawMainMenu(config); break;
         case OSDMenuId::CameraSettings: this->drawCameraSettingsMenu(config); break;
+        case OSDMenuId::CameraMode: this->drawCameraModeMenu(config); break;
         case OSDMenuId::Resolution: this->drawResolutionMenu(config); break;
         case OSDMenuId::Brightness: this->drawBrightnessMenu(config); break;
         case OSDMenuId::Contrast: this->drawContrastMenu(config); break;
@@ -796,13 +797,22 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the camera settings sub-menu.
+// Draws the camera settings sub-menu, including the air-unit transport mode flag.
 void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Camera Settings" );
 
     {
-        if ( this->drawMenuItem( "Image Settings...", 0 ) )
+        char buf[256];
+        sprintf(buf, "Mode: %s##0", config.misc.apfpv != 0 ? "APFPV" : "RAW Broadcast");
+        if ( this->drawMenuItem( buf, 0 ) )
+        {
+            this->goForward( OSDMenuId::CameraMode, config.misc.apfpv != 0 ? 1 : 0 );
+        }
+    }
+
+    {
+        if ( this->drawMenuItem( "Image Settings...", 1 ) )
         {
             this->goForward( OSDMenuId::Image, 0 );
         }
@@ -816,7 +826,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
             buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
         }
         strcat(buf, "##1");
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             const auto& fonts = s_OSDFontStorage->osdFontsList();
             auto it = std::find(fonts.begin(), fonts.end(), s_flightOSD.currentFontName());
@@ -828,7 +838,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Autostart recording: %s", config.misc.autostartRecord == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             config.misc.autostartRecord ^= 1;
 
@@ -845,7 +855,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         {
             sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
         }
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
         }
@@ -854,7 +864,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 4) )
+        if ( this->drawMenuItem( buf, 5) )
         {
             config.misc.mavlink2mspRC ^= 1;
 
@@ -864,7 +874,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
-        if ( this->drawMenuItem( buf, 5) )
+        if ( this->drawMenuItem( buf, 6) )
         {
             if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
             {
@@ -883,6 +893,36 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         this->goBack();
     }
 
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the camera mode submenu backed by the air config packet APFPV flag.
+void OSDMenuController::drawCameraModeMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle("Camera Settings -> Mode");
+    drawSpacing();
+
+    if (this->drawMenuItem("RAW Broadcast", 0))
+    {
+        config.misc.apfpv = 0;
+        commitGround2AirConfig(config);
+        this->goBack();
+        return;
+    }
+
+    if (this->drawMenuItem("APFPV", 1))
+    {
+        config.misc.apfpv = 1;
+        commitGround2AirConfig(config);
+        this->goBack();
+        return;
+    }
+
+    if (this->exitKeyPressed())
+    {
+        this->goBack();
+    }
 }
 
 //===================================================================================

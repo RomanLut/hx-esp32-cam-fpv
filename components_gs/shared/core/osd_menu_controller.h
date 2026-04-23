@@ -114,6 +114,7 @@ private:
 
     void drawMainMenu(Ground2Air_Config_Packet& config);
     void drawCameraSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawCameraModeMenu(Ground2Air_Config_Packet& config);
     void drawResolutionMenu(Ground2Air_Config_Packet& config);
     void drawBrightnessMenu(Ground2Air_Config_Packet& config);
     void drawContrastMenu(Ground2Air_Config_Packet& config);

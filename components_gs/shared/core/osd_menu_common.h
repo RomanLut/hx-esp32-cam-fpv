@@ -11,6 +11,7 @@ enum class OSDMenuId
 {
     Main,
     CameraSettings,
+    CameraMode,
     Resolution,
     Brightness,
     Contrast,

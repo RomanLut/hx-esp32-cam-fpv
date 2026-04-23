@@ -97,6 +97,7 @@ object NativeCore {
     external fun createHandle(gsDeviceId: Int = 1): Long
     external fun describeHandle(handle: Long): String
     external fun getActiveTransportKind(handle: Long): Int
+    external fun isAirApfpvModeEnabled(handle: Long): Boolean
     external fun getPreferredApfpvCameraId(handle: Long): Int
     external fun setPreferredApfpvCameraId(handle: Long, deviceId: Int)
     external fun isApfpvMenuSearchActive(handle: Long): Boolean

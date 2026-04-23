@@ -143,7 +143,7 @@ struct DataChannelConfig
 //======================================================
 struct MiscConfig
 {
-    //basically is not config variables, but we use config packe to transfer them
+    //basically is not config variables, but we use config packet to transfer them
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile2_btn = 0; //incremented each time button is pressed on gs

@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.KeyEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.WindowManager
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
         rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
         wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
         applyImmersiveFullscreen()
 

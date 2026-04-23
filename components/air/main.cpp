@@ -1416,11 +1416,12 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     bool transport_changed = processSetting( "apfpv",  dst.misc.apfpv, src.misc.apfpv, "apfpv" );
     if (transport_changed)
     {
-        unpairGS();
-        ESP_ERROR_CHECK(switch_wifi_transport(src.misc.apfpv != 0,
-                                             src.dataChannel.wifi_rate,
-                                             getValidWifiChannel(src.dataChannel.wifi_channel),
-                                             src.dataChannel.wifi_power));
+        // Transport mode changes are applied after reboot so the full radio stack
+        // comes up cleanly in the new mode instead of trying to hot-switch in place.
+        if (s_restart_time == 0)
+        {
+            s_restart_time = esp_timer_get_time() + 1000; //1 ms
+        }
     }
 
     if ( processSetting( "Wifi rate", (int)dst.dataChannel.wifi_rate, (int)src.dataChannel.wifi_rate, "rate") )

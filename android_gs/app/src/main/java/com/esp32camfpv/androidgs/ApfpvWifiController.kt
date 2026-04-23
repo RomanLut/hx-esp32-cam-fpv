@@ -55,6 +55,7 @@ class ApfpvWifiController(
     private var requestedNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var boundNetwork: Network? = null
     private var permissionRequestInFlight = false
+    private var lastAirApfpvModeEnabled: Boolean? = null
 
     fun start() {
         if (syncJob != null) {
@@ -72,6 +73,7 @@ class ApfpvWifiController(
     fun stop() {
         syncJob?.cancel()
         syncJob = null
+        lastAirApfpvModeEnabled = null
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         releaseWifiStreamingLock()
@@ -91,11 +93,24 @@ class ApfpvWifiController(
             NativeCore.getActiveTransportKind(handle)
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
+            lastAirApfpvModeEnabled = null
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             releaseWifiStreamingLock()
             bindToNetwork(null)
             return
+        }
+
+        val airApfpvModeEnabled = withContext(Dispatchers.Default) {
+            NativeCore.isAirApfpvModeEnabled(handle)
+        }
+        val apfpvModeChanged = lastAirApfpvModeEnabled != null && lastAirApfpvModeEnabled != airApfpvModeEnabled
+        lastAirApfpvModeEnabled = airApfpvModeEnabled
+        if (apfpvModeChanged) {
+            // Android scanResults is a platform cache. Clear the published camera list first so
+            // the menu does not keep stale APFPV SSIDs after the air unit switches mode.
+            syncCameraState(emptyList(), null)
+            wifiManager.startScan()
         }
 
         acquireWifiStreamingLock()
