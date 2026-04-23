@@ -412,9 +412,8 @@ void checkButton()
   }
 }
 
-//////////////////////////////////////////////////////////////////////////////
-static bool s_recv_ground2air_packet = false;
-
+//=============================================================================================
+//=============================================================================================
 SemaphoreHandle_t s_serial_mux = xSemaphoreCreateBinary();
 
 auto _init_result2 = []() -> bool
@@ -1407,7 +1406,6 @@ static void unpairGS();
 //process settings not related to camera sensor setup
 static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
-    s_recv_ground2air_packet = true;
     s_accept_connection_timeout_ms = 0;
 
     int64_t t = esp_timer_get_time();
@@ -3667,7 +3665,7 @@ extern "C" void app_main()
 #ifdef UART_MSP_OSD
         //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
-        //with UART RX buffer of 512 we are save with periods 10...40ms
+        //with UART RX buffer of 512 we are safe with periods 10...40ms
         g_msp.loop();
 #endif
 
