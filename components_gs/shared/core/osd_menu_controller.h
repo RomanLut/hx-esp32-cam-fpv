@@ -70,6 +70,8 @@ private:
 
     Clock::time_point search_tp = Clock::now();
     bool searchDone = false;
+    LensCorrectionState m_lens_correction_draft = {};
+    bool m_lens_correction_draft_active = false;
 
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
 
@@ -130,6 +132,7 @@ private:
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
+    void drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config);
     void drawOSDFontMenu(Ground2Air_Config_Packet& config);
     void drawConnectMenu(Ground2Air_Config_Packet& config);
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);

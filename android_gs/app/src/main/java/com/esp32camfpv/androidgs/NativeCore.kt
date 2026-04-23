@@ -129,6 +129,7 @@ object NativeCore {
     external fun setBatteryPercent(handle: Long, batteryPercent: Int)
     external fun syncRendererOverlay(handle: Long, buildInfo: String)
     external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
+    external fun handleTouchDown(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float): Boolean
     external fun handleKey(handle: Long, keyCode: Int): Boolean
     external fun setRenderSurface(handle: Long, surface: Surface)
     external fun clearRenderSurface(handle: Long)

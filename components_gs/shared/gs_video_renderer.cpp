@@ -679,6 +679,8 @@ bool GsVideoRenderer::initImGuiLocked()
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
+    io.KeyRepeatDelay = 1.0f;
+    io.KeyRepeatRate = 0.1f;
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
     io.DisplaySize = ImVec2(static_cast<float>(m_surface_width), static_cast<float>(m_surface_height));

@@ -466,6 +466,8 @@ bool PI_HAL::init_display_dispmanx()
 
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.KeyRepeatDelay = 1.0f;
+    io.KeyRepeatRate = 0.1f;
     io.DisplaySize.x = m_impl->width;
     io.DisplaySize.y = m_impl->height;
 
@@ -622,6 +624,8 @@ bool PI_HAL::init_display_sdl()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.KeyRepeatDelay = 1.0f;
+    io.KeyRepeatRate = 0.1f;
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 

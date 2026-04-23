@@ -950,16 +950,34 @@ ImGuiKey touchActionToImGuiKey(GsVideoRenderer::MenuActionKind action_kind)
 
 //===================================================================================
 //===================================================================================
+// Returns true when a rendered touch action is one of the repeatable D-pad controls.
+bool isRepeatableRenderedTouchAction(GsVideoRenderer::MenuActionKind action_kind)
+{
+    switch (action_kind)
+    {
+    case GsVideoRenderer::MenuActionKind::Up:
+    case GsVideoRenderer::MenuActionKind::Down:
+    case GsVideoRenderer::MenuActionKind::Back:
+    case GsVideoRenderer::MenuActionKind::Right:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Queues the ImGui key represented by a tap on rendered touch controls or menu rows.
-void queueRenderedTapAsImGuiKey(NativeHandle& handle,
-                                float tap_x,
-                                float tap_y,
-                                float view_width,
-                                float view_height)
+GsVideoRenderer::MenuActionKind queueRenderedTapAsImGuiKey(NativeHandle& handle,
+                                                           float tap_x,
+                                                           float tap_y,
+                                                           float view_width,
+                                                           float view_height)
 {
     if (view_width <= 0.0f || view_height <= 0.0f)
     {
-        return;
+        return GsVideoRenderer::MenuActionKind::None;
     }
 
     const GsVideoRenderer::MenuAction action = handle.renderer.dispatchTap(tap_x, tap_y);
@@ -976,6 +994,8 @@ void queueRenderedTapAsImGuiKey(NativeHandle& handle,
     {
         handle.renderer.queueKeyPress(tap_key);
     }
+
+    return action.kind;
 }
 
 //===================================================================================
@@ -1838,6 +1858,44 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
                                tap_y,
                                static_cast<float>(view_width),
                                static_cast<float>(view_height));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_handleTouchDown(JNIEnv* /* env */,
+                                                          jobject /* thiz */,
+                                                          jlong handle,
+                                                          jfloat x,
+                                                          jfloat y,
+                                                          jfloat view_width,
+                                                          jfloat view_height)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    if (static_cast<float>(view_width) <= 0.0f || static_cast<float>(view_height) <= 0.0f)
+    {
+        return JNI_FALSE;
+    }
+
+    const bool touch_controls_rendered =
+        native_handle->renderer.isMenuVisible() ||
+        (s_playbackManager != nullptr && s_playbackManager->status().active);
+    if (!touch_controls_rendered)
+    {
+        native_handle->renderer.queueKeyPress(ImGuiKey_Enter);
+        return JNI_FALSE;
+    }
+
+    const GsVideoRenderer::MenuActionKind action_kind =
+        queueRenderedTapAsImGuiKey(*native_handle,
+                                   static_cast<float>(x),
+                                   static_cast<float>(y),
+                                   static_cast<float>(view_width),
+                                   static_cast<float>(view_height));
+    return isRepeatableRenderedTouchAction(action_kind) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

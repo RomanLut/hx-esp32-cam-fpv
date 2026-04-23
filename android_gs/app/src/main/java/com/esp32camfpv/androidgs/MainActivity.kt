@@ -41,7 +41,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -297,6 +299,7 @@ private fun NativeVideoSurface(
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val surfaceViewRef = remember { AtomicReference<SurfaceView?>(null) }
+    val touchRepeatJobRef = remember { AtomicReference<Job?>(null) }
 
     DisposableEffect(nativeHandle, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -310,6 +313,7 @@ private fun NativeVideoSurface(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            touchRepeatJobRef.getAndSet(null)?.cancel()
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
@@ -322,20 +326,46 @@ private fun NativeVideoSurface(
                 isClickable = true
                 isFocusable = true
                 setOnTouchListener { _, event ->
-                    if (event.action == MotionEvent.ACTION_UP) {
-                        onUserInteraction()
-                        scope.launch(Dispatchers.Default) {
-                            NativeCore.handleTap(
-                                nativeHandle,
-                                event.x,
-                                event.y,
-                                width.toFloat(),
-                                height.toFloat()
-                            )
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            onUserInteraction()
+                            touchRepeatJobRef.getAndSet(null)?.cancel()
+                            val downX = event.x
+                            val downY = event.y
+                            val viewWidth = width.toFloat()
+                            val viewHeight = height.toFloat()
+                            val repeatJob = scope.launch(Dispatchers.Default) {
+                                val repeatable = NativeCore.handleTouchDown(
+                                    nativeHandle,
+                                    downX,
+                                    downY,
+                                    viewWidth,
+                                    viewHeight
+                                )
+                                if (repeatable) {
+                                    delay(1000)
+                                    while (isActive) {
+                                        NativeCore.handleTap(
+                                            nativeHandle,
+                                            downX,
+                                            downY,
+                                            viewWidth,
+                                            viewHeight
+                                        )
+                                        delay(100)
+                                    }
+                                }
+                            }
+                            touchRepeatJobRef.set(repeatJob)
+                            true
                         }
-                        true
-                    } else {
-                        true
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_CANCEL -> {
+                            touchRepeatJobRef.getAndSet(null)?.cancel()
+                            onUserInteraction()
+                            true
+                        }
+                        else -> true
                     }
                 }
                 holder.addCallback(object : SurfaceHolder.Callback {

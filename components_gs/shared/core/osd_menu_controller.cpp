@@ -30,6 +30,9 @@ constexpr float kScreenVrSeparationMax = 0.30f;
 constexpr float kScreenVrSeparationStep = 0.02f;
 constexpr float kScreenVrSeparationStepScale = 50.0f;
 constexpr float kScreenVrSeparationDisplayScale = 100.0f;
+constexpr double kLensCorrectionRadialStep = 0.00001;
+constexpr double kLensCorrectionTangentialStep = 0.000001;
+constexpr double kLensCorrectionDisplayScale = 1000000.0;
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -60,6 +63,14 @@ std::string formatStorageLine(const char* label,
     }
     out << ' ' << std::fixed << std::setprecision(2) << free_gb << "GB/" << total_gb << "GB";
     return out.str();
+}
+
+//===================================================================================
+//===================================================================================
+// Returns a coefficient rounded to the displayed six-decimal precision.
+double roundLensCorrectionCoefficient(double value)
+{
+    return std::round(value * kLensCorrectionDisplayScale) / kLensCorrectionDisplayScale;
 }
 }
 
@@ -295,6 +306,7 @@ void OSDMenuController::openPlaybackMenu()
 void OSDMenuController::close()
 {
     this->visible = false;
+    this->m_lens_correction_draft_active = false;
     resetCapturedMenuBuffer();
 }
 
@@ -593,6 +605,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
+        case OSDMenuId::GSLensCorrection: this->drawGSLensCorrectionMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawConnectMenu(config); break;
         case OSDMenuId::SearchMode: this->drawSearchModeMenu(config); break;
@@ -1744,9 +1757,18 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     }
 
     {
+        if ( this->drawMenuItem( "Lens Correction...##lens_correction", 1) )
+        {
+            this->m_lens_correction_draft = s_lensCorrectionState;
+            this->m_lens_correction_draft_active = true;
+            this->goForward( OSDMenuId::GSLensCorrection, 0 );
+        }
+    }
+
+    {
         char buf[256];
         sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             gs_config.vsync = !gs_config.vsync;
             s_RuntimePlatformServices->setVsync(gs_config.vsync);
@@ -1757,7 +1779,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             gs_config.screenFlipV = !gs_config.screenFlipV;
             s_settingsStorage.saveGroundStationConfig();
@@ -1766,7 +1788,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool zoom_handled = false;
     {
-        const bool zoom_focused = (this->selectedItem == 3);
+        const bool zoom_focused = (this->selectedItem == 4);
         if (m_draw_mode == DrawMode::Interactive && zoom_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -1786,13 +1808,13 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "Zoom: <>%d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
-        this->drawMenuItem( buf, 3);
+        this->drawMenuItem( buf, 4);
     }
 
     {
         char buf[256];
         sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 4) )
+        if ( this->drawMenuItem( buf, 5) )
         {
             gs_config.vrMode = !gs_config.vrMode;
             s_settingsStorage.saveGroundStationConfig();
@@ -1801,7 +1823,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool vr_separation_handled = false;
     {
-        const bool vr_sep_focused = (this->selectedItem == 5);
+        const bool vr_sep_focused = (this->selectedItem == 6);
         if (m_draw_mode == DrawMode::Interactive && vr_sep_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -1821,11 +1843,82 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "VR Separation: <>%+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
-        this->drawMenuItem( buf, 5);
+        this->drawMenuItem( buf, 6);
     }
 
     if (!zoom_handled && !vr_separation_handled && this->exitKeyPressed())
     {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws staged GS lens correction controls and applies them only when requested.
+void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+
+    if (!this->m_lens_correction_draft_active)
+    {
+        this->m_lens_correction_draft = s_lensCorrectionState;
+        this->m_lens_correction_draft_active = true;
+    }
+
+    this->drawMenuTitle( "GS Screen -> Lens Correction" );
+    drawSpacing();
+
+    bool coefficient_handled = false;
+    auto draw_coefficient = [&](const char* label, const char* imgui_id, int item_index, double& value, double step)
+    {
+        const bool focused = (this->selectedItem == item_index);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                value = roundLensCorrectionCoefficient(value + step);
+                this->keyHandled = true;
+                coefficient_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                value = roundLensCorrectionCoefficient(value - step);
+                this->keyHandled = true;
+                coefficient_handled = true;
+            }
+        }
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "<>%s: %.6f##%s", label, value, imgui_id);
+        this->drawMenuItem(buf, item_index);
+    };
+
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", this->m_lens_correction_draft.enabled ? "On" : "Off");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->m_lens_correction_draft.enabled = !this->m_lens_correction_draft.enabled;
+        }
+    }
+
+    draw_coefficient("k1", "k1", 1, this->m_lens_correction_draft.k1, kLensCorrectionRadialStep);
+    draw_coefficient("k2", "k2", 2, this->m_lens_correction_draft.k2, kLensCorrectionRadialStep);
+    draw_coefficient("k3", "k3", 3, this->m_lens_correction_draft.k3, kLensCorrectionRadialStep);
+    draw_coefficient("p1", "p1", 4, this->m_lens_correction_draft.p1, kLensCorrectionTangentialStep);
+    draw_coefficient("p2", "p2", 5, this->m_lens_correction_draft.p2, kLensCorrectionTangentialStep);
+
+    if ( this->drawMenuItem( "Apply##apply", 6) )
+    {
+        s_lensCorrectionState = this->m_lens_correction_draft;
+        this->m_lens_correction_draft_active = false;
+        this->goBack();
+        return;
+    }
+
+    if (!coefficient_handled && this->exitKeyPressed())
+    {
+        this->m_lens_correction_draft_active = false;
         this->goBack();
     }
 }

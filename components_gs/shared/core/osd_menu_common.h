@@ -27,6 +27,7 @@ enum class OSDMenuId
     GSSettings,
     GSWifiSettings,
     GSScreen,
+    GSLensCorrection,
     OSDFont,
     Search,
     SearchMode,

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 namespace
 {
@@ -16,11 +17,45 @@ ImVec4 toImGuiColor(float r, float g, float b, float a)
     return ImVec4(r, g, b, a);
 }
 
+struct TouchKeyRepeatState
+{
+    double next_repeat_time = 0.0;
+};
+
 void emitMenuKey(ImGuiKey key)
 {
     ImGuiIO& io = ImGui::GetIO();
     io.AddKeyEvent(key, true);
     io.AddKeyEvent(key, false);
+}
+
+void handleTouchKeyRepeat(ImGuiKey key)
+{
+    static std::unordered_map<ImGuiID, TouchKeyRepeatState> repeat_states;
+
+    const ImGuiID item_id = ImGui::GetItemID();
+    TouchKeyRepeatState& repeat_state = repeat_states[item_id];
+    const ImGuiIO& io = ImGui::GetIO();
+    const double now = ImGui::GetTime();
+
+    if (ImGui::IsItemActivated())
+    {
+        emitMenuKey(key);
+        repeat_state.next_repeat_time = now + io.KeyRepeatDelay;
+        return;
+    }
+
+    if (ImGui::IsItemActive())
+    {
+        if (now >= repeat_state.next_repeat_time)
+        {
+            emitMenuKey(key);
+            repeat_state.next_repeat_time = now + io.KeyRepeatRate;
+        }
+        return;
+    }
+
+    repeat_state.next_repeat_time = 0.0;
 }
 
 } // namespace
@@ -140,9 +175,13 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
             ImGui::PushStyleColor(ImGuiCol_Button, bg);
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
-            if (ImGui::Button(label, nav_size) && interactive)
+            ImGui::Button(label, nav_size);
+            if (interactive)
             {
-                emitMenuKey(key);
+                // Touch nav buttons synthesize short key pulses. They are not
+                // held as real ImGui keys, so repeat must be generated while
+                // the drawn button remains active.
+                handleTouchKeyRepeat(key);
             }
             ImGui::PopStyleColor(3);
         };
@@ -154,9 +193,10 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
 
         // The center cell stays visually empty; renderer tap dispatch treats the same region as Enter.
         ImGui::SetCursorPos(ImVec2(nav.center_x, nav.mid_y));
-        if (ImGui::InvisibleButton("CENTER_ENTER", nav_size) && interactive)
+        ImGui::InvisibleButton("CENTER_ENTER", nav_size);
+        if (interactive)
         {
-            emitMenuKey(ImGuiKey_Enter);
+            handleTouchKeyRepeat(ImGuiKey_Enter);
         }
 
         ImGui::End();

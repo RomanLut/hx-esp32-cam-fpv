@@ -17,6 +17,22 @@ enum class ScreenAspectRatio : int
     ASPECT16X10 = 5
 };
 
+//===================================================================================
+//===================================================================================
+// Holds the reusable GS lens correction coefficients and enable state.
+struct LensCorrectionState
+{
+    bool enabled = false;
+    double k1 = 0.0;
+    double k2 = 0.0;
+    double k3 = 0.0;
+    double p1 = 0.0;
+    double p2 = 0.0;
+};
+
+//===================================================================================
+//===================================================================================
+// Holds ground station runtime settings shared by platform-specific front ends.
 struct TGroundstationConfig
 {
     int socket_fd;
@@ -39,4 +55,5 @@ struct TGroundstationConfig
 };
 
 extern TGroundstationConfig s_groundstation_config;
+extern LensCorrectionState s_lensCorrectionState;
 extern Clock::time_point& s_last_packet_tp;
