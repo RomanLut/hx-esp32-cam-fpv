@@ -24,6 +24,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AndroidGs.Starting">
+        <meta-data
+            android:name="com.samsung.android.multiinstance"
+            android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
