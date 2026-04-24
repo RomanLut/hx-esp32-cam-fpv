@@ -1891,7 +1891,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         }
 
         char buf[256];
-        snprintf(buf, sizeof(buf), "<>%s: %.6f##%s", label, value, imgui_id);
+        snprintf(buf, sizeof(buf), "%s: <>%.6f##%s", label, value, imgui_id);
         this->drawMenuItem(buf, item_index);
     };
 
