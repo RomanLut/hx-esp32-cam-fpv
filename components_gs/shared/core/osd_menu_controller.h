@@ -73,6 +73,10 @@ private:
     LensCorrectionState m_lens_correction_original = {};
     LensCorrectionState m_lens_correction_draft = {};
     bool m_lens_correction_draft_active = false;
+    Clock::time_point m_lens_correction_last_adjust_tp = {};
+    Clock::time_point m_lens_correction_repeat_start_tp = {};
+    int m_lens_correction_repeat_item = -1;
+    int m_lens_correction_repeat_direction = 0;
 
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
 
@@ -110,6 +114,8 @@ private:
     static bool isMenuOpenPressed();
     static bool isMenuRightClickPressed();
     bool exitKeyPressed();
+    int getLensCorrectionStepMultiplier(int item_index, int direction);
+    void resetLensCorrectionStepMultiplier();
     static gs::core::TransportKind getTransportKindForMenuIndex(int menu_index);
 
     void goForward(OSDMenuId newMenuId, int newItem);

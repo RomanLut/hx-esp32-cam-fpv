@@ -1,4 +1,6 @@
 #include "core/osd_menu_controller.h"
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -23,8 +25,8 @@
 
 namespace
 {
-constexpr float kScreenZoomStep = 0.05f;
-constexpr float kScreenZoomStepScale = 20.0f;
+constexpr float kScreenZoomStep = 0.01f;
+constexpr float kScreenZoomStepScale = 100.0f;
 constexpr float kScreenVrSeparationMin = -0.30f;
 constexpr float kScreenVrSeparationMax = 0.30f;
 constexpr float kScreenVrSeparationStep = 0.02f;
@@ -33,6 +35,9 @@ constexpr float kScreenVrSeparationDisplayScale = 100.0f;
 constexpr double kLensCorrectionRadialStep = 0.00001;
 constexpr double kLensCorrectionTangentialStep = 0.000001;
 constexpr double kLensCorrectionDisplayScale = 1000000.0;
+constexpr int kLensCorrectionRepeatResetMs = 200;
+constexpr int kLensCorrectionAccelerationStepMs = 3000;
+constexpr int kLensCorrectionMaxStepMultiplier = 256;
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -72,6 +77,46 @@ double roundLensCorrectionCoefficient(double value)
 {
     return std::round(value * kLensCorrectionDisplayScale) / kLensCorrectionDisplayScale;
 }
+}
+
+//===================================================================================
+//===================================================================================
+// Calculates the accelerated lens coefficient step multiplier for repeated input.
+int OSDMenuController::getLensCorrectionStepMultiplier(int item_index, int direction)
+{
+    const Clock::time_point now = Clock::now();
+    const bool same_repeat =
+        this->m_lens_correction_last_adjust_tp != Clock::time_point{} &&
+        this->m_lens_correction_repeat_item == item_index &&
+        this->m_lens_correction_repeat_direction == direction &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - this->m_lens_correction_last_adjust_tp).count() < kLensCorrectionRepeatResetMs;
+
+    if (!same_repeat)
+    {
+        this->m_lens_correction_repeat_start_tp = now;
+        this->m_lens_correction_repeat_item = item_index;
+        this->m_lens_correction_repeat_direction = direction;
+        this->m_lens_correction_last_adjust_tp = now;
+        return 1;
+    }
+
+    this->m_lens_correction_last_adjust_tp = now;
+    const int acceleration_stage = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - this->m_lens_correction_repeat_start_tp).count() / kLensCorrectionAccelerationStepMs);
+    return std::min(kLensCorrectionMaxStepMultiplier, 1 << std::min(acceleration_stage, 8));
+}
+
+//===================================================================================
+//===================================================================================
+// Resets lens coefficient repeat acceleration after a pause or menu transition.
+void OSDMenuController::resetLensCorrectionStepMultiplier()
+{
+    this->m_lens_correction_last_adjust_tp = {};
+    this->m_lens_correction_repeat_start_tp = {};
+    this->m_lens_correction_repeat_item = -1;
+    this->m_lens_correction_repeat_direction = 0;
 }
 
 //===================================================================================
@@ -1762,6 +1807,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
             this->m_lens_correction_draft = s_lensCorrectionState;
             this->m_lens_correction_original = s_lensCorrectionState;
             this->m_lens_correction_draft_active = true;
+            this->resetLensCorrectionStepMultiplier();
             this->goForward( OSDMenuId::GSLensCorrection, 0 );
         }
     }
@@ -1865,6 +1911,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         this->m_lens_correction_draft = s_lensCorrectionState;
         this->m_lens_correction_original = s_lensCorrectionState;
         this->m_lens_correction_draft_active = true;
+        this->resetLensCorrectionStepMultiplier();
     }
 
     this->drawMenuTitle( "GS Screen -> Lens Correction" );
@@ -1878,13 +1925,15 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         {
             if (isMenuAdjustIncreasePressed())
             {
-                value = roundLensCorrectionCoefficient(value + step);
+                value = roundLensCorrectionCoefficient(
+                    value + step * this->getLensCorrectionStepMultiplier(item_index, +1));
                 this->keyHandled = true;
                 coefficient_handled = true;
             }
             else if (isMenuAdjustDecreasePressed())
             {
-                value = roundLensCorrectionCoefficient(value - step);
+                value = roundLensCorrectionCoefficient(
+                    value - step * this->getLensCorrectionStepMultiplier(item_index, -1));
                 this->keyHandled = true;
                 coefficient_handled = true;
             }
@@ -1915,6 +1964,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
     {
         s_lensCorrectionState = this->m_lens_correction_draft;
         this->m_lens_correction_draft_active = false;
+        this->resetLensCorrectionStepMultiplier();
         this->goBack();
         return;
     }
@@ -1928,6 +1978,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
     {
         s_lensCorrectionState = this->m_lens_correction_original;
         this->m_lens_correction_draft_active = false;
+        this->resetLensCorrectionStepMultiplier();
         this->goBack();
     }
 }
