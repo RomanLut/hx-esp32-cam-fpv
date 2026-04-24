@@ -584,6 +584,7 @@ void GsVideoRenderer::run()
     }
 
     destroyImGuiLocked();
+    m_video_shader_renderer.release();
     if (m_texture != 0)
     {
         glDeleteTextures(1, &m_texture);
@@ -597,6 +598,7 @@ void GsVideoRenderer::run()
 void GsVideoRenderer::applyPendingSurfaceLocked()
 {
     destroyImGuiLocked();
+    m_video_shader_renderer.release();
     if (m_texture != 0)
     {
         glDeleteTextures(1, &m_texture);
@@ -1049,19 +1051,22 @@ void GsVideoRenderer::renderDrawDataWithVrReplication(ImDrawData* draw_data, flo
 
 //===================================================================================
 //===================================================================================
-// Authors the current video frame into ImGui's background draw list.
-void GsVideoRenderer::drawVideoImGuiLocked(float surface_width, float surface_height)
+// Draws the current video frame directly with the shared video shader.
+void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
+                                            float clip_x,
+                                            float viewport_width,
+                                            float viewport_height)
 {
-    if (!m_has_uploaded_frame || m_texture == 0 || surface_width <= 0.0f || surface_height <= 0.0f)
+    if (!m_has_uploaded_frame || m_texture == 0 || viewport_width <= 0.0f || viewport_height <= 0.0f)
     {
         return;
     }
 
     gs::render::VideoQuad quad =
-        gs::render::buildVideoQuad(0.0f,
+        gs::render::buildVideoQuad(quad_x,
                                    0.0f,
-                                   surface_width,
-                                   surface_height,
+                                   viewport_width,
+                                   viewport_height,
                                    m_frame_width,
                                    m_frame_height,
                                    m_screen_mode);
@@ -1077,11 +1082,19 @@ void GsVideoRenderer::drawVideoImGuiLocked(float surface_width, float surface_he
         quad.y = cy - quad.height * 0.5f;
     }
 
-    ImGui::GetBackgroundDrawList()->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(m_texture)),
-                                             ImVec2(quad.x, quad.y),
-                                             ImVec2(quad.x + quad.width, quad.y + quad.height),
-                                             ImVec2(quad.u0, quad.v0),
-                                             ImVec2(quad.u1, quad.v1));
+    const gs::render::LensCorrectionParams lens_params =
+        gs::render::buildLensCorrectionParams(s_lensCorrectionState);
+    m_video_shader_renderer.draw(m_texture,
+                                 quad,
+                                 clip_x,
+                                 0.0f,
+                                 viewport_width,
+                                 viewport_height,
+                                 static_cast<float>(m_surface_width),
+                                 static_cast<float>(m_surface_height),
+                                 m_frame_width,
+                                 m_frame_height,
+                                 lens_params);
 }
 
 //===================================================================================
@@ -1110,9 +1123,8 @@ void GsVideoRenderer::drawOverlayLocked()
     ImGui::NewFrame();
 
     const float overlay_width = m_vr_mode ? (static_cast<float>(m_surface_width) * 0.5f) : static_cast<float>(m_surface_width);
-    // Author one canonical frame, including video, then let final ImGui draw-data
-    // rendering handle normal output or VR eye replication with identical clipping.
-    drawVideoImGuiLocked(overlay_width, static_cast<float>(m_surface_height));
+    // Video is drawn before ImGui so lens correction can run in the video shader.
+    // Overlay draw data is still authored once and replayed into both eyes in VR.
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(overlay_width, static_cast<float>(m_surface_height)), ImGuiCond_Always);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
@@ -1175,6 +1187,20 @@ void GsVideoRenderer::drawFrameLocked()
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    if (m_vr_mode)
+    {
+        const float half_w = static_cast<float>(m_surface_width) * 0.5f;
+        const float offset = m_vr_separation * half_w;
+        drawVideoShaderLocked(+offset, 0.0f, half_w, static_cast<float>(m_surface_height));
+        drawVideoShaderLocked(half_w - offset, half_w, half_w, static_cast<float>(m_surface_height));
+    }
+    else
+    {
+        drawVideoShaderLocked(0.0f,
+                              0.0f,
+                              static_cast<float>(m_surface_width),
+                              static_cast<float>(m_surface_height));
+    }
     drawOverlayLocked();
 
     const auto swap_begin = Clock::now();

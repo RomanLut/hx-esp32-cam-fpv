@@ -1760,6 +1760,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( "Lens Correction...##lens_correction", 1) )
         {
             this->m_lens_correction_draft = s_lensCorrectionState;
+            this->m_lens_correction_original = s_lensCorrectionState;
             this->m_lens_correction_draft_active = true;
             this->goForward( OSDMenuId::GSLensCorrection, 0 );
         }
@@ -1854,7 +1855,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws staged GS lens correction controls and applies them only when requested.
+// Draws GS lens correction controls with live preview until Apply or Back.
 void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config)
 {
     (void)config;
@@ -1862,6 +1863,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
     if (!this->m_lens_correction_draft_active)
     {
         this->m_lens_correction_draft = s_lensCorrectionState;
+        this->m_lens_correction_original = s_lensCorrectionState;
         this->m_lens_correction_draft_active = true;
     }
 
@@ -1899,6 +1901,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         if ( this->drawMenuItem( buf, 0) )
         {
             this->m_lens_correction_draft.enabled = !this->m_lens_correction_draft.enabled;
+            s_lensCorrectionState = this->m_lens_correction_draft;
         }
     }
 
@@ -1916,8 +1919,14 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         return;
     }
 
+    if (coefficient_handled)
+    {
+        s_lensCorrectionState = this->m_lens_correction_draft;
+    }
+
     if (!coefficient_handled && this->exitKeyPressed())
     {
+        s_lensCorrectionState = this->m_lens_correction_original;
         this->m_lens_correction_draft_active = false;
         this->goBack();
     }

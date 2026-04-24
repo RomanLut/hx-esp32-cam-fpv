@@ -5,6 +5,7 @@
 #include "gs_runtime_frame_ui.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
+#include "gs_video_shader_renderer.h"
 
 #include <condition_variable>
 #include <cstddef>
@@ -179,8 +180,8 @@ private:
     void ensureTextureLocked();
     void submitPendingFrame(PendingFrame&& frame);
     static void renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation);
-    void drawVideoImGuiLocked(float surface_width, float surface_height);
     void drawOverlayLocked();
+    void drawVideoShaderLocked(float quad_x, float clip_x, float viewport_width, float viewport_height);
     void handleImGuiKeysLocked();
     void drawMenuLocked();
     void drawMenuImGuiLocked();
@@ -212,6 +213,7 @@ private:
     bool m_redraw_after_current_frame = false;
 
     unsigned int m_texture = 0;
+    gs::render::VideoShaderRenderer m_video_shader_renderer;
     void* m_imgui_context = nullptr;
     bool m_imgui_backend_initialized = false;
     int m_surface_width = 0;

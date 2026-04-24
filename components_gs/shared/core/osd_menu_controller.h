@@ -70,6 +70,7 @@ private:
 
     Clock::time_point search_tp = Clock::now();
     bool searchDone = false;
+    LensCorrectionState m_lens_correction_original = {};
     LensCorrectionState m_lens_correction_draft = {};
     bool m_lens_correction_draft_active = false;
 

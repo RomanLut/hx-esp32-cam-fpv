@@ -23,6 +23,8 @@
 #include "imgui_impl_opengl3.h"
 #include "../../components/common/Clock.h"
 #include "../../components_gs/mcp/gs_mcp_server.h"
+#include "gs_lens_correction_shared.h"
+#include "gs_video_shader_renderer.h"
 
 #ifdef USE_MANGA_SCREEN2
 #include <tslib.h> //needs libts-dev 
@@ -50,6 +52,7 @@ namespace
 {
 
 static GLuint g_VideoTexture;
+static gs::render::VideoShaderRenderer g_VideoShaderRenderer;
 
 //===================================================================================
 //===================================================================================
@@ -247,30 +250,47 @@ gs::render::RectI applyScreenZoom(const gs::render::RectI& rect, float zoom)
 //===================================================================================
 //===================================================================================
 // Draws the video texture inside one viewport, clipping zoomed video to that viewport.
-void drawVideoInViewport(ImDrawList* draw_list,
-                         int x,
+void drawVideoInViewport(int quad_x,
+                         int clip_x,
                          int y,
                          int width,
                          int height,
                          float video_aspect,
                          ScreenAspectRatio screen_aspect_ratio,
-                         float screen_zoom)
+                         float screen_zoom,
+                         float surface_width,
+                         float surface_height)
 {
     const gs::render::RectI letterboxed =
-        gs::render::buildLetterboxedRect(x,
+        gs::render::buildLetterboxedRect(quad_x,
                                          y,
                                          width,
                                          height,
                                          video_aspect,
                                          screen_aspect_ratio);
     const gs::render::RectI zoomed = applyScreenZoom(letterboxed, screen_zoom);
-    draw_list->PushClipRect(ImVec2(static_cast<float>(x), static_cast<float>(y)),
-                            ImVec2(static_cast<float>(x + width), static_cast<float>(y + height)),
-                            true);
-    draw_list->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),
-                        ImVec2(static_cast<float>(zoomed.x1), static_cast<float>(zoomed.y1)),
-                        ImVec2(static_cast<float>(zoomed.x2), static_cast<float>(zoomed.y2)));
-    draw_list->PopClipRect();
+    gs::render::VideoQuad quad;
+    quad.x = static_cast<float>(zoomed.x1);
+    quad.y = static_cast<float>(zoomed.y1);
+    quad.width = static_cast<float>(zoomed.x2 - zoomed.x1);
+    quad.height = static_cast<float>(zoomed.y2 - zoomed.y1);
+    quad.v0 = 0.0f;
+    quad.v1 = 1.0f;
+
+    const gs::render::LensCorrectionParams lens_params =
+        gs::render::buildLensCorrectionParams(s_lensCorrectionState);
+    const int aspect_width = static_cast<int>(std::round(video_aspect * 1000.0f));
+    g_VideoShaderRenderer.draw(g_VideoTexture,
+                               quad,
+                               static_cast<float>(clip_x),
+                               static_cast<float>(y),
+                               static_cast<float>(width),
+                               static_cast<float>(height),
+                               surface_width,
+                               surface_height,
+                               aspect_width,
+                               1000,
+                               lens_params);
 }
 
 //===================================================================================
@@ -681,6 +701,7 @@ return true;
 void PI_HAL::shutdown_display_dispmanx()
 {
 #ifndef USE_SDL
+    g_VideoShaderRenderer.release();
     // clear screen
     glClear(GL_COLOR_BUFFER_BIT);
     eglSwapBuffers(m_impl->display, m_impl->surface);
@@ -698,6 +719,7 @@ void PI_HAL::shutdown_display_dispmanx()
 void PI_HAL::shutdown_display_sdl()
 {
 #ifdef USE_SDL
+    g_VideoShaderRenderer.release();
     SDL_GL_DeleteContext(m_impl->context);
     SDL_DestroyWindow(m_impl->window);
     SDL_Quit();
@@ -785,22 +807,8 @@ bool PI_HAL::update_display()
                             ImGuiWindowFlags_NoCollapse | 
                             ImGuiWindowFlags_NoInputs);
 
-    // Keep video in ImGui's background draw list. In VR mode only the canonical
-    // left-eye image is authored here; the final draw data is replayed into both
-    // halves below so video, OSD, top overlay, and menu stay identical per eye.
-    ImDrawList* video_draw_list = ImGui::GetBackgroundDrawList();
     const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
     const int viewport_width = s_groundstation_config.vrMode ? (display_width / 2) : display_width;
-    // Zoom is intentionally applied after letterboxing. Clipping to the authored
-    // viewport keeps zoomed VR video from bleeding into the other eye before replay.
-    drawVideoInViewport(video_draw_list,
-                        0,
-                        0,
-                        viewport_width,
-                        display_height,
-                        video_aspect,
-                        s_groundstation_config.screenAspectRatio,
-                        s_groundstation_config.screenZoom);
 
     for(auto &func:render_callbacks)
     {
@@ -814,6 +822,46 @@ bool PI_HAL::update_display()
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
+    if (s_groundstation_config.vrMode)
+    {
+        const float half_w = io.DisplaySize.x * 0.5f;
+        const float offset = s_groundstation_config.screenVrSeparation * half_w;
+        // Zoom is intentionally applied after letterboxing. Per-eye scissor
+        // clipping keeps zoomed VR video from bleeding into the other eye.
+        drawVideoInViewport(static_cast<int>(std::round(offset)),
+                            0,
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y);
+        drawVideoInViewport(static_cast<int>(std::round(half_w - offset)),
+                            static_cast<int>(std::round(half_w)),
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y);
+    }
+    else
+    {
+        drawVideoInViewport(0,
+                            0,
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y);
+    }
     ImDrawData* draw_data = ImGui::GetDrawData();
     if (s_groundstation_config.vrMode)
     {
