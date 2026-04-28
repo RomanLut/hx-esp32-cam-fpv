@@ -36,6 +36,7 @@ enum class OSDMenuId
     GSTxInterface,
     GSApfpvInterface,
     Image,
+    CameraRC,
     CameraStopCH,
     Debug,
     Playback,

@@ -659,6 +659,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
         case OSDMenuId::GSApfpvInterface: this->drawGSApfpvInterfaceMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
+        case OSDMenuId::CameraRC: this->drawCameraRCMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
@@ -855,7 +856,7 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the camera settings sub-menu, including the air-unit transport mode flag.
+// Draws the camera settings sub-menu, including the air-unit transport and RC submenus.
 void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Camera Settings" );
@@ -904,35 +905,16 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        char buf[256];
-        if ( config.misc.cameraStopChannel == 0 )
+        if ( this->drawMenuItem( "RC...", 4 ) )
         {
-            sprintf(buf, "Camera Off RC Channel: None" );
-        }
-        else
-        {
-            sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
-        }
-        if ( this->drawMenuItem( buf, 4) )
-        {
-            this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
-        }
-    }
-
-    {
-        char buf[256];
-        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 5) )
-        {
-            config.misc.mavlink2mspRC ^= 1;
-
+            this->goForward( OSDMenuId::CameraRC, 0 );
         }
     }
 
     {
         char buf[256];
         sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
-        if ( this->drawMenuItem( buf, 6) )
+        if ( this->drawMenuItem( buf, 5) )
         {
             if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
             {
@@ -951,6 +933,44 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         this->goBack();
     }
 
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the camera RC settings submenu.
+void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Camera Settings -> RC" );
+
+    {
+        char buf[256];
+        if ( config.misc.cameraStopChannel == 0 )
+        {
+            sprintf(buf, "Camera Off RC Channel: None" );
+        }
+        else
+        {
+            sprintf(buf, "Camera Off RC Channel: %d", (int)config.misc.cameraStopChannel );
+        }
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->goForward( OSDMenuId::CameraStopCH, (int)config.misc.cameraStopChannel );
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            config.misc.mavlink2mspRC ^= 1;
+        }
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
 }
 
 //===================================================================================
