@@ -140,6 +140,7 @@ private:
     void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
     void drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config);
+    void drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_Packet& config);
     void drawOSDFontMenu(Ground2Air_Config_Packet& config);
     void drawConnectMenu(Ground2Air_Config_Packet& config);
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);

@@ -651,6 +651,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::GSLensCorrection: this->drawGSLensCorrectionMenu(config); break;
+        case OSDMenuId::GSLensCorrectionCoefficients: this->drawGSLensCorrectionCoefficientsMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
         case OSDMenuId::Search: this->drawConnectMenu(config); break;
         case OSDMenuId::SearchMode: this->drawSearchModeMenu(config); break;
@@ -878,6 +879,17 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
+        if ( this->drawMenuItem( "Lens Correction...##lens_correction", 2) )
+        {
+            this->m_lens_correction_draft = s_lensCorrectionState;
+            this->m_lens_correction_original = s_lensCorrectionState;
+            this->m_lens_correction_draft_active = true;
+            this->resetLensCorrectionStepMultiplier();
+            this->goForward( OSDMenuId::GSLensCorrection, 0 );
+        }
+    }
+
+    {
         char buf[512];
         sprintf(buf, "OSD Font: %s", s_flightOSD.currentFontName().c_str());
         if (strlen(buf) > 30 )
@@ -885,7 +897,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
             buf[28]='.'; buf[29]='.'; buf[30]='.'; buf[31]=0;
         }
         strcat(buf, "##1");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             const auto& fonts = s_OSDFontStorage->osdFontsList();
             auto it = std::find(fonts.begin(), fonts.end(), s_flightOSD.currentFontName());
@@ -897,7 +909,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Autostart recording: %s", config.misc.autostartRecord == 1? "On" : "Off");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             config.misc.autostartRecord ^= 1;
 
@@ -905,7 +917,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( "RC...", 4 ) )
+        if ( this->drawMenuItem( "RC...", 5 ) )
         {
             this->goForward( OSDMenuId::CameraRC, 0 );
         }
@@ -914,7 +926,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
-        if ( this->drawMenuItem( buf, 5) )
+        if ( this->drawMenuItem( buf, 6) )
         {
             if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
             {
@@ -1822,20 +1834,9 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     }
 
     {
-        if ( this->drawMenuItem( "Lens Correction...##lens_correction", 1) )
-        {
-            this->m_lens_correction_draft = s_lensCorrectionState;
-            this->m_lens_correction_original = s_lensCorrectionState;
-            this->m_lens_correction_draft_active = true;
-            this->resetLensCorrectionStepMultiplier();
-            this->goForward( OSDMenuId::GSLensCorrection, 0 );
-        }
-    }
-
-    {
         char buf[256];
         sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 1) )
         {
             gs_config.vsync = !gs_config.vsync;
             s_RuntimePlatformServices->setVsync(gs_config.vsync);
@@ -1846,7 +1847,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             gs_config.screenFlipV = !gs_config.screenFlipV;
             s_settingsStorage.saveGroundStationConfig();
@@ -1855,7 +1856,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool zoom_handled = false;
     {
-        const bool zoom_focused = (this->selectedItem == 4);
+        const bool zoom_focused = (this->selectedItem == 3);
         if (m_draw_mode == DrawMode::Interactive && zoom_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -1875,13 +1876,13 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "Zoom: <>%d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
-        this->drawMenuItem( buf, 4);
+        this->drawMenuItem( buf, 3);
     }
 
     {
         char buf[256];
         sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 5) )
+        if ( this->drawMenuItem( buf, 4) )
         {
             gs_config.vrMode = !gs_config.vrMode;
             s_settingsStorage.saveGroundStationConfig();
@@ -1890,7 +1891,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool vr_separation_handled = false;
     {
-        const bool vr_sep_focused = (this->selectedItem == 6);
+        const bool vr_sep_focused = (this->selectedItem == 5);
         if (m_draw_mode == DrawMode::Interactive && vr_sep_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -1910,7 +1911,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "VR Separation: <>%+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
-        this->drawMenuItem( buf, 6);
+        this->drawMenuItem( buf, 5);
     }
 
     if (!zoom_handled && !vr_separation_handled && this->exitKeyPressed())
@@ -1934,7 +1935,53 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         this->resetLensCorrectionStepMultiplier();
     }
 
-    this->drawMenuTitle( "GS Screen -> Lens Correction" );
+    this->drawMenuTitle( "Camera Settings -> Lens Correction" );
+    drawSpacing();
+
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", this->m_lens_correction_draft.enabled ? "On" : "Off");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->m_lens_correction_draft.enabled = !this->m_lens_correction_draft.enabled;
+            s_lensCorrectionState = this->m_lens_correction_draft;
+        }
+    }
+
+    if ( this->drawMenuItem( "Coefficients...##coefficients", 1) )
+    {
+        this->resetLensCorrectionStepMultiplier();
+        this->goForward( OSDMenuId::GSLensCorrectionCoefficients, 0 );
+        return;
+    }
+
+    this->drawMenuItem( "Calibrate...##calibrate", 2);
+
+    if (this->exitKeyPressed())
+    {
+        s_lensCorrectionState = this->m_lens_correction_original;
+        this->m_lens_correction_draft_active = false;
+        this->resetLensCorrectionStepMultiplier();
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws GS lens correction coefficient controls with live preview until Apply or Back.
+void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+
+    if (!this->m_lens_correction_draft_active)
+    {
+        this->m_lens_correction_draft = s_lensCorrectionState;
+        this->m_lens_correction_original = s_lensCorrectionState;
+        this->m_lens_correction_draft_active = true;
+        this->resetLensCorrectionStepMultiplier();
+    }
+
+    this->drawMenuTitle( "Lens Correction -> Coefficients" );
     drawSpacing();
 
     bool coefficient_handled = false;
@@ -1964,27 +2011,18 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         this->drawMenuItem(buf, item_index);
     };
 
-    {
-        char buf[256];
-        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", this->m_lens_correction_draft.enabled ? "On" : "Off");
-        if ( this->drawMenuItem( buf, 0) )
-        {
-            this->m_lens_correction_draft.enabled = !this->m_lens_correction_draft.enabled;
-            s_lensCorrectionState = this->m_lens_correction_draft;
-        }
-    }
+    draw_coefficient("k1", "k1", 0, this->m_lens_correction_draft.k1, kLensCorrectionRadialStep);
+    draw_coefficient("k2", "k2", 1, this->m_lens_correction_draft.k2, kLensCorrectionRadialStep);
+    draw_coefficient("k3", "k3", 2, this->m_lens_correction_draft.k3, kLensCorrectionRadialStep);
+    draw_coefficient("p1", "p1", 3, this->m_lens_correction_draft.p1, kLensCorrectionTangentialStep);
+    draw_coefficient("p2", "p2", 4, this->m_lens_correction_draft.p2, kLensCorrectionTangentialStep);
 
-    draw_coefficient("k1", "k1", 1, this->m_lens_correction_draft.k1, kLensCorrectionRadialStep);
-    draw_coefficient("k2", "k2", 2, this->m_lens_correction_draft.k2, kLensCorrectionRadialStep);
-    draw_coefficient("k3", "k3", 3, this->m_lens_correction_draft.k3, kLensCorrectionRadialStep);
-    draw_coefficient("p1", "p1", 4, this->m_lens_correction_draft.p1, kLensCorrectionTangentialStep);
-    draw_coefficient("p2", "p2", 5, this->m_lens_correction_draft.p2, kLensCorrectionTangentialStep);
-
-    if ( this->drawMenuItem( "Apply##apply", 6) )
+    if ( this->drawMenuItem( "Apply##apply", 5) )
     {
         s_lensCorrectionState = this->m_lens_correction_draft;
         this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
+        this->goBack();
         this->goBack();
         return;
     }
@@ -1996,8 +2034,6 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 
     if (!coefficient_handled && this->exitKeyPressed())
     {
-        s_lensCorrectionState = this->m_lens_correction_original;
-        this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();
     }
