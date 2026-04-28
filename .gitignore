@@ -29,6 +29,13 @@
 *.a
 *.lib
 
+# Exception: prebuilt GS OpenCV wrapper libraries
+!OpenCV/OpenCVWrapper/Prebuilt/**/*.so
+!OpenCV/OpenCVWrapper/Prebuilt/**/*.dylib
+!OpenCV/OpenCVWrapper/Prebuilt/**/*.dll
+!OpenCV/OpenCVWrapper/Prebuilt/**/*.lib
+!OpenCV/OpenCVWrapper/Prebuilt/**/*.a
+
 # Executables
 *.exe
 *.out
@@ -52,3 +59,6 @@ managed_components
 /tools/receive_vcd_nodejs/package-lock.json
 /tools/receive_vcd_nodejs/node_modules
 /tools/parse_jpeg_nodejs/V036_015.AVI
+
+# OpenCV wrapper generated build trees and downloaded build tools
+/OpenCV/OpenCVWrapper/Build/
