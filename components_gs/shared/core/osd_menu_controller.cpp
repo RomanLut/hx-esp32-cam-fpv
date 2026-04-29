@@ -14,6 +14,7 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_shared_runtime.h"
 #include "gs_runtime_config.h"
+#include "gs_camera_calibration_shared.h"
 #include "core/transport_manager.h"
 #include "core/transport_manager_base.h"
 #include "frame_packets_debug.h"
@@ -576,6 +577,42 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 // Main draw entry point; handles menu open/close logic and draws one canonical UI copy.
 void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
+    if (gs::calibration::isActive())
+    {
+        this->visible = false;
+        resetCapturedMenuBuffer();
+        return;
+    }
+
+    bool calibration_completed = false;
+    if (gs::calibration::consumeFinishRequest(calibration_completed))
+    {
+        this->visible = true;
+        this->menuId = OSDMenuId::GSLensCorrection;
+        this->selectedItem = 2;
+        if (calibration_completed)
+        {
+            if (gs::calibration::applyCapturedCalibrationToLensCorrection(s_lensCorrectionState))
+            {
+                this->m_lens_correction_draft = s_lensCorrectionState;
+                this->m_lens_correction_original = s_lensCorrectionState;
+                s_settingsStorage.saveGroundStationConfig();
+            }
+            else
+            {
+                this->m_lens_correction_draft = this->m_lens_correction_original;
+                s_lensCorrectionState = this->m_lens_correction_original;
+            }
+        }
+        else
+        {
+            this->m_lens_correction_draft = this->m_lens_correction_original;
+            s_lensCorrectionState = this->m_lens_correction_original;
+        }
+        this->m_lens_correction_draft_active = true;
+        this->resetLensCorrectionStepMultiplier();
+    }
+
     if (!this->visible)
     {
         const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
@@ -1955,7 +1992,14 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         return;
     }
 
-    this->drawMenuItem( "Calibrate...##calibrate", 2);
+    if ( this->drawMenuItem( "Calibrate...##calibrate", 2) )
+    {
+        s_lensCorrectionState = this->m_lens_correction_draft;
+        gs::calibration::begin();
+        this->visible = false;
+        resetCapturedMenuBuffer();
+        return;
+    }
 
     if (this->exitKeyPressed())
     {
@@ -2020,6 +2064,7 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
     if ( this->drawMenuItem( "Apply##apply", 5) )
     {
         s_lensCorrectionState = this->m_lens_correction_draft;
+        s_settingsStorage.saveGroundStationConfig();
         this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();

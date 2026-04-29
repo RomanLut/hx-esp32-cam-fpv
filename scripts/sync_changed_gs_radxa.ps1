@@ -40,7 +40,12 @@ function Convert-ToWslPath([string]$windowsPath)
 
 Require-Tool $plink
 
-$syncPaths = @(
+$opencvSyncPaths = @(
+    "OpenCV/OpenCV",
+    "OpenCV/OpenCVWrapper"
+)
+
+$gsSyncPaths = @(
     "gs",
     "components_gs",
     "components/common",
@@ -48,6 +53,10 @@ $syncPaths = @(
 )
 
 $rsyncExcludesByPath = @{
+    "OpenCV/OpenCVWrapper" = @(
+        "--exclude=Build/"
+        "--exclude=Prebuilt/"
+    )
     "gs" = @(
         "--exclude=build/"
         "--exclude=gs"
@@ -58,6 +67,9 @@ $rsyncExcludesByPath = @{
 
 $remoteDirs = @(
     $RemoteProjectDir,
+    "$RemoteProjectDir/OpenCV",
+    "$RemoteProjectDir/OpenCV/OpenCV",
+    "$RemoteProjectDir/OpenCV/OpenCVWrapper",
     "$RemoteProjectDir/gs",
     "$RemoteProjectDir/components_gs",
     "$RemoteProjectDir/components",
@@ -77,8 +89,29 @@ if ([string]::IsNullOrWhiteSpace($repoRootForWsl))
     throw "Failed to resolve WSL path for repo root: $repoRoot"
 }
 
+Write-Host "Syncing OpenCV trees via rsync ..."
+foreach ($relativePath in $opencvSyncPaths)
+{
+    $sourceForWsl = Convert-ToWslPath (Join-Path $repoRoot $relativePath)
+    $sourceForBash = Convert-ToBashSingleQuoted ($sourceForWsl.TrimEnd("/") + "/")
+    $destinationForBash = Convert-ToBashSingleQuoted ("${User}@${RemoteHost}:${RemoteProjectDir}/$relativePath/")
+    $passwordForBash = Convert-ToBashSingleQuoted $Password
+    $excludeArgs = @()
+    if ($rsyncExcludesByPath.ContainsKey($relativePath))
+    {
+        $excludeArgs = $rsyncExcludesByPath[$relativePath]
+    }
+    $excludeArgsString = if ($excludeArgs.Count -gt 0) { ($excludeArgs -join " ") + " " } else { "" }
+    $rsyncCommand = "export SSHPASS=$passwordForBash; " +
+                    "export RSYNC_RSH='ssh -o StrictHostKeyChecking=no'; " +
+                    "sshpass -e rsync -az --delete --omit-dir-times --no-perms --no-owner --no-group " +
+                    $excludeArgsString +
+                    "$sourceForBash $destinationForBash"
+    & wsl.exe -d Ubuntu -u root -- bash -lc $rsyncCommand
+}
+
 Write-Host "Syncing GS runtime trees via rsync ..."
-foreach ($relativePath in $syncPaths)
+foreach ($relativePath in $gsSyncPaths)
 {
     $sourceForWsl = Convert-ToWslPath (Join-Path $repoRoot $relativePath)
     $sourceForBash = Convert-ToBashSingleQuoted ($sourceForWsl.TrimEnd("/") + "/")
@@ -100,6 +133,9 @@ foreach ($relativePath in $syncPaths)
 
 if ($Build)
 {
+    Write-Host "Building OpenCV wrapper on remote host ..."
+    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir && bash OpenCV/OpenCVWrapper/scripts/build_linux.sh"
+
     Write-Host "Building GS on remote host ..."
     & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir/$RemoteBuildSubdir && make -j4"
 }

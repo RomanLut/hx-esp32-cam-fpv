@@ -15,10 +15,15 @@ struct Vec2
 
 //===================================================================================
 //===================================================================================
-// Packs lens correction coefficients in float form for shader upload.
+// Packs lens correction intrinsics and coefficients in float form for shader upload.
 struct LensCorrectionParams
 {
     bool enabled = false;
+    bool has_camera_matrix = false;
+    float fx_norm = 0.0f;
+    float fy_norm = 0.0f;
+    float cx_norm = 0.5f;
+    float cy_norm = 0.5f;
     float k1 = 0.0f;
     float k2 = 0.0f;
     float k3 = 0.0f;

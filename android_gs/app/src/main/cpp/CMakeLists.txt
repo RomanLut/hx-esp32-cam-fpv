@@ -35,6 +35,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
+    ../../../../../components_gs/shared/gs_camera_calibration_shared.cpp
     ../../../../../components_gs/shared/gs_lens_correction_shared.cpp
     ../../../../../components_gs/shared/gs_video_layout_shared.cpp
     ../../../../../components_gs/shared/gs_video_shader_renderer.cpp
@@ -105,6 +106,11 @@ set_target_properties(libusb_prebuilt PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/third_party/prebuilt/${ANDROID_ABI}/libusb1.0.so
 )
 
+add_library(opencv_wrapper_prebuilt SHARED IMPORTED)
+set_target_properties(opencv_wrapper_prebuilt PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../OpenCV/OpenCVWrapper/Prebuilt/android/${ANDROID_ABI}/libOpenCVWrapper.so
+)
+
 target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2)
 
 find_library(log-lib log)
@@ -117,5 +123,6 @@ target_link_libraries(android_gs_core
     ${egl-lib}
     ${gles-lib}
     libusb_prebuilt
+    opencv_wrapper_prebuilt
     ${log-lib}
 )

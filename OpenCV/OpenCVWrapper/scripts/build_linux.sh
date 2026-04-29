@@ -22,7 +22,12 @@ OPENCV_BUILD="${BUILD_ROOT}/opencv"
 OPENCV_INSTALL="${BUILD_ROOT}/opencv-install"
 WRAPPER_BUILD="${BUILD_ROOT}/wrapper"
 
-OPENCV_TAG="$(git -C "${OPENCV_SOURCE}" describe --tags --exact-match)"
+OPENCV_TAG=""
+if OPENCV_TAG="$(git -C "${OPENCV_SOURCE}" describe --tags --exact-match 2>/dev/null)"; then
+    :
+elif [[ -f "${WRAPPER_ROOT}/OPENCV_VERSION.txt" ]]; then
+    OPENCV_TAG="$(sed -n 's/^OpenCV tag:[[:space:]]*//p' "${WRAPPER_ROOT}/OPENCV_VERSION.txt" | head -n 1)"
+fi
 if [[ "${OPENCV_TAG}" != "${EXPECTED_OPENCV_TAG}" ]]; then
     echo "OpenCV source must be pinned to tag ${EXPECTED_OPENCV_TAG}, but found '${OPENCV_TAG}'." >&2
     exit 1

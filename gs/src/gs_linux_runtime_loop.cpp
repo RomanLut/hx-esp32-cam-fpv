@@ -25,6 +25,7 @@
 #include "gs_playback_manager.h"
 #include "gs_runtime_frame_ui.h"
 #include "gs_runtime_menu_ui.h"
+#include "gs_camera_calibration_shared.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
 #include "gs_top_overlay_shared.h"
@@ -465,6 +466,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             }
 
             drawPlaybackProgressOverlay(overlay_width, display_size.y);
+            gs::calibration::drawCalibrationOverlay(overlay_width, display_size.y);
         }
         ImGui::End();
         ImGui::PopStyleVar(2);
@@ -482,7 +484,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         drawRuntimeMenuOverlay(menu_ui);
         gs::menu::g_osdMenuController.draw(config);
         RuntimeMenuUiState touch_nav_ui = menu_ui;
-        touch_nav_ui.visible = menu_visible || playback_active;
+        touch_nav_ui.visible = menu_visible || playback_active || gs::calibration::isActive();
         touch_nav_ui.gs_recording = s_recordingsStorage != nullptr && s_recordingsStorage->isRecording();
         touch_nav_ui.air_recording = s_air_record;
         drawRuntimeMenuTouchNav(touch_nav_ui);

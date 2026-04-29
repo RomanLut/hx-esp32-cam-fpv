@@ -47,7 +47,8 @@ uniform vec2 uUv0;
 uniform vec2 uUv1;
 uniform vec3 uRadial;
 uniform vec2 uTangential;
-uniform float uAspect;
+uniform vec2 uFocalNorm;
+uniform vec2 uPrincipalNorm;
 varying vec2 vTexCoord;
 
 void main()
@@ -56,8 +57,8 @@ void main()
     range.x = abs(range.x) < 0.0001 ? 0.0001 : range.x;
     range.y = abs(range.y) < 0.0001 ? 0.0001 : range.y;
     vec2 normalized_coord = (vTexCoord - uUv0) / range;
-    vec2 p = vec2((normalized_coord.x - 0.5) * 2.0 * max(uAspect, 0.0001),
-                  (normalized_coord.y - 0.5) * 2.0);
+    vec2 focal = max(uFocalNorm, vec2(0.0001, 0.0001));
+    vec2 p = (normalized_coord - uPrincipalNorm) / focal;
     float r2 = dot(p, p);
     float r4 = r2 * r2;
     float r6 = r4 * r2;
@@ -66,8 +67,7 @@ void main()
     vec2 corrected = vec2(
         p.x * radial + uTangential.x * xy2 + uTangential.y * (r2 + 2.0 * p.x * p.x),
         p.y * radial + uTangential.x * (r2 + 2.0 * p.y * p.y) + uTangential.y * xy2);
-    vec2 sample_coord = vec2(corrected.x / (2.0 * max(uAspect, 0.0001)) + 0.5,
-                             corrected.y * 0.5 + 0.5);
+    vec2 sample_coord = corrected * focal + uPrincipalNorm;
     if (sample_coord.x < 0.0 || sample_coord.x > 1.0 || sample_coord.y < 0.0 || sample_coord.y > 1.0)
     {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
@@ -252,7 +252,12 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         glUniform2f(glGetUniformLocation(program_slot, "uUv1"), quad.u1, quad.v1);
         glUniform3f(glGetUniformLocation(program_slot, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
         glUniform2f(glGetUniformLocation(program_slot, "uTangential"), lens_params.p1, lens_params.p2);
-        glUniform1f(glGetUniformLocation(program_slot, "uAspect"), aspect);
+        const float focal_x = lens_params.has_camera_matrix ? lens_params.fx_norm : 0.5f / std::max(aspect, 0.0001f);
+        const float focal_y = lens_params.has_camera_matrix ? lens_params.fy_norm : 0.5f;
+        const float principal_x = lens_params.has_camera_matrix ? lens_params.cx_norm : 0.5f;
+        const float principal_y = lens_params.has_camera_matrix ? lens_params.cy_norm : 0.5f;
+        glUniform2f(glGetUniformLocation(program_slot, "uFocalNorm"), focal_x, focal_y);
+        glUniform2f(glGetUniformLocation(program_slot, "uPrincipalNorm"), principal_x, principal_y);
     }
 
     const GLint scissor_x = static_cast<GLint>(std::round(clip_x));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "packets.h"
+#include "gs_camera_calibration_shared.h"
 #include "gs_playback_manager.h"
 #include "gs_recordings_storage.h"
 #include "imgui.h"
@@ -13,6 +14,11 @@ namespace gs::runtime
 // Handles shared ground and air recording keys from the current ImGui frame.
 inline bool handleRecordingKeysFromImGui(Ground2Air_Config_Packet& config, const char* gs_record_reason)
 {
+    if (gs::calibration::isActive())
+    {
+        return gs::calibration::handleCalibrationKeysFromImGui();
+    }
+
     if (ImGui::IsKeyPressed(ImGuiKey_R, false))
     {
         config.misc.air_record_btn++;

@@ -12,6 +12,7 @@
 #include "gs_runtime_input.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
+#include "gs_camera_calibration_shared.h"
 #include "gs_video_layout_shared.h"
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -172,6 +173,23 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
 // Queues a validated frame for the render thread, replacing older pending frames.
 void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
 {
+    if (frame.pixel_format == PixelFormat::RGB565)
+    {
+        gs::calibration::captureReadyRgb565Frame(frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data(),
+                                                 frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size(),
+                                                 frame.width,
+                                                 frame.height,
+                                                 frame.stride);
+    }
+    else
+    {
+        gs::calibration::captureReadyRgbFrame(frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data(),
+                                              frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size(),
+                                              frame.width,
+                                              frame.height,
+                                              frame.stride);
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
@@ -865,7 +883,8 @@ void GsVideoRenderer::drawMenuLocked()
 
     if (!m_menu_visible)
     {
-        if (s_playbackManager != nullptr && s_playbackManager->status().active)
+        if ((s_playbackManager != nullptr && s_playbackManager->status().active) ||
+            gs::calibration::isActive())
         {
             drawRuntimeTouchControlsLocked(true, true);
         }
@@ -1151,6 +1170,7 @@ void GsVideoRenderer::drawOverlayLocked()
         }
         drawPlaybackProgressOverlay(overlay_width, static_cast<float>(m_surface_height));
         drawMenuLocked();
+        gs::calibration::drawCalibrationOverlay(overlay_width, static_cast<float>(m_surface_height));
     }
 
     if (m_imgui_context != nullptr)

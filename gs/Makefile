@@ -21,6 +21,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_test_transport.cpp \
 	../components_gs/shared/gs_wifi_scan_transport.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
+	../components_gs/shared/gs_camera_calibration_shared.cpp \
 	../components_gs/shared/gs_lens_correction_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	../components_gs/shared/gs_video_shader_renderer.cpp \
@@ -136,7 +137,7 @@ CFLAGS = $(CXXFLAGS)
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lbcm_host -lbrcmGLESv2 -lbrcmEGL -lts
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lGLESv2 -lturbojpeg -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lepoxy
 LDFLAGS := -L/usr/lib/aarch64-linux-gnu/ -L/usr/lib/ -L/opt/vc/lib/ 
-LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs
+LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs -ldl
 
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td

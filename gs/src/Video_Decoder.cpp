@@ -12,6 +12,7 @@
 #include "Pool.h"
 #include "gs_gl_debug.h"
 #include "gs_stats.h"
+#include "gs_camera_calibration_shared.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
 
@@ -324,6 +325,11 @@ size_t Video_Decoder::lock_output()
     }
 
     Output& output = *m_impl->locked_outputs.back();
+    gs::calibration::captureReadyRgbFrame(output.rgb_data.data(),
+                                          output.rgb_data.size(),
+                                          output.width,
+                                          output.height,
+                                          output.width * 3);
 
     //LOGI("* Rcv buffer {} at {}", (size_t)&output, std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_start).count());
     if(output.texture == 0){

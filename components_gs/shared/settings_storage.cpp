@@ -188,6 +188,66 @@ void SettingsStorage::loadGroundStationConfig()
     {
         s_groundstation_config.apfpvInterface = "auto";
     }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_enabled"];
+        if (!temp.empty()) s_lensCorrectionState.enabled = std::atoi(temp.c_str()) != 0;
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_image_width"];
+        if (!temp.empty()) s_lensCorrectionState.image_width = std::max(0, std::atoi(temp.c_str()));
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_image_height"];
+        if (!temp.empty()) s_lensCorrectionState.image_height = std::max(0, std::atoi(temp.c_str()));
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_fx"];
+        if (!temp.empty()) s_lensCorrectionState.fx = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_fy"];
+        if (!temp.empty()) s_lensCorrectionState.fy = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_cx"];
+        if (!temp.empty()) s_lensCorrectionState.cx = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_cy"];
+        if (!temp.empty()) s_lensCorrectionState.cy = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_k1"];
+        if (!temp.empty()) s_lensCorrectionState.k1 = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_k2"];
+        if (!temp.empty()) s_lensCorrectionState.k2 = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_k3"];
+        if (!temp.empty()) s_lensCorrectionState.k3 = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_p1"];
+        if (!temp.empty()) s_lensCorrectionState.p1 = std::atof(temp.c_str());
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["lens_correction_p2"];
+        if (!temp.empty()) s_lensCorrectionState.p2 = std::atof(temp.c_str());
+    }
 }
 
 void SettingsStorage::loadGround2AirConfig()
@@ -273,6 +333,18 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["apfpv_camera_id"] = std::to_string(s_groundstation_config.apfpvPreferredCameraId);
     (*this)["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     (*this)["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
+    (*this)["gs"]["lens_correction_enabled"] = std::to_string(s_lensCorrectionState.enabled ? 1 : 0);
+    (*this)["gs"]["lens_correction_image_width"] = std::to_string(s_lensCorrectionState.image_width);
+    (*this)["gs"]["lens_correction_image_height"] = std::to_string(s_lensCorrectionState.image_height);
+    (*this)["gs"]["lens_correction_fx"] = std::to_string(s_lensCorrectionState.fx);
+    (*this)["gs"]["lens_correction_fy"] = std::to_string(s_lensCorrectionState.fy);
+    (*this)["gs"]["lens_correction_cx"] = std::to_string(s_lensCorrectionState.cx);
+    (*this)["gs"]["lens_correction_cy"] = std::to_string(s_lensCorrectionState.cy);
+    (*this)["gs"]["lens_correction_k1"] = std::to_string(s_lensCorrectionState.k1);
+    (*this)["gs"]["lens_correction_k2"] = std::to_string(s_lensCorrectionState.k2);
+    (*this)["gs"]["lens_correction_k3"] = std::to_string(s_lensCorrectionState.k3);
+    (*this)["gs"]["lens_correction_p1"] = std::to_string(s_lensCorrectionState.p1);
+    (*this)["gs"]["lens_correction_p2"] = std::to_string(s_lensCorrectionState.p2);
     save();
 }
 

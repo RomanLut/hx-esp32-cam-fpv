@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "gs_camera_calibration_shared.h"
+
 namespace gs::render
 {
 //===================================================================================
@@ -11,7 +13,18 @@ namespace gs::render
 LensCorrectionParams buildLensCorrectionParams(const LensCorrectionState& state)
 {
     LensCorrectionParams params;
-    params.enabled = state.enabled;
+    params.enabled = state.enabled && !gs::calibration::wantsLensCorrectionDisabled();
+    params.has_camera_matrix = state.image_width > 0 &&
+                               state.image_height > 0 &&
+                               state.fx > 0.0 &&
+                               state.fy > 0.0;
+    if (params.has_camera_matrix)
+    {
+        params.fx_norm = static_cast<float>(state.fx / static_cast<double>(state.image_width));
+        params.fy_norm = static_cast<float>(state.fy / static_cast<double>(state.image_height));
+        params.cx_norm = static_cast<float>(state.cx / static_cast<double>(state.image_width));
+        params.cy_norm = static_cast<float>(state.cy / static_cast<double>(state.image_height));
+    }
     params.k1 = static_cast<float>(state.k1);
     params.k2 = static_cast<float>(state.k2);
     params.k3 = static_cast<float>(state.k3);
@@ -47,12 +60,15 @@ Vec2 calculateLensCorrectedSampleCoord(Vec2 normalized_coord,
 
     aspect = std::max(aspect, 0.0001f);
 
-    // OpenCV distortion coefficients are resolution-independent when they are
-    // applied to normalized camera coordinates. Without a stored camera matrix,
-    // the shader assumes centered square pixels and focal length equal to half
-    // the image height, so x carries the image aspect and both axes use [-1, 1].
-    const float x = (normalized_coord.x - 0.5f) * 2.0f * aspect;
-    const float y = (normalized_coord.y - 0.5f) * 2.0f;
+    // OpenCV coefficients must be applied through the same normalized camera
+    // matrix used during calibration. The fallback preserves older manually
+    // entered coefficients that assumed a centered camera and square pixels.
+    const float fx_norm = params.has_camera_matrix ? std::max(params.fx_norm, 0.0001f) : 0.5f / aspect;
+    const float fy_norm = params.has_camera_matrix ? std::max(params.fy_norm, 0.0001f) : 0.5f;
+    const float cx_norm = params.has_camera_matrix ? params.cx_norm : 0.5f;
+    const float cy_norm = params.has_camera_matrix ? params.cy_norm : 0.5f;
+    const float x = (normalized_coord.x - cx_norm) / fx_norm;
+    const float y = (normalized_coord.y - cy_norm) / fy_norm;
     const float r2 = x * x + y * y;
     const float r4 = r2 * r2;
     const float r6 = r4 * r2;
@@ -62,8 +78,8 @@ Vec2 calculateLensCorrectedSampleCoord(Vec2 normalized_coord,
     const float sample_y = y * radial + params.p1 * (r2 + 2.0f * y * y) + params.p2 * xy2;
 
     return {
-        sample_x / (2.0f * aspect) + 0.5f,
-        sample_y * 0.5f + 0.5f
+        sample_x * fx_norm + cx_norm,
+        sample_y * fy_norm + cy_norm
     };
 }
 }

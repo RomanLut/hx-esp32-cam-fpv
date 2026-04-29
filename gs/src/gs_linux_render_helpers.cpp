@@ -13,11 +13,17 @@
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_core.h"
+#include "gs_camera_calibration_shared.h"
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_controller.h"
 
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
+    if (gs::calibration::handleCalibrationKeysFromImGui())
+    {
+        return;
+    }
+
     if (ImGui::IsKeyPressed(ImGuiKey_S))
     {
         s_groundstation_config.stats = !s_groundstation_config.stats;

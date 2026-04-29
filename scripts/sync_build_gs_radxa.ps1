@@ -16,6 +16,7 @@ $tar = (Get-Command tar.exe -ErrorAction Stop).Source
 $localArchivePath = Join-Path ([System.IO.Path]::GetTempPath()) "esp32-cam-fpv-radxa-sync.tar"
 $remoteArchivePath = "/tmp/esp32-cam-fpv-radxa-sync.tar"
 $syncPaths = @(
+    "OpenCV",
     "gs",
     "components_gs",
     "components/common",
@@ -46,6 +47,8 @@ if (Test-Path $localArchivePath) {
 Push-Location $repoRoot
 try {
     & $tar -cf $localArchivePath `
+        --exclude=OpenCV/OpenCVWrapper/Build `
+        --exclude=OpenCV/OpenCVWrapper/Prebuilt `
         --exclude=gs/build `
         --exclude=gs/.vscode `
         --exclude=gs/gs `
@@ -68,6 +71,9 @@ finally {
         Remove-Item -LiteralPath $localArchivePath -Force
     }
 }
+
+Write-Host "Building OpenCV wrapper on remote host ..."
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir && bash OpenCV/OpenCVWrapper/scripts/build_linux.sh"
 
 Write-Host "Building GS on remote host ..."
 & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $buildCmd
