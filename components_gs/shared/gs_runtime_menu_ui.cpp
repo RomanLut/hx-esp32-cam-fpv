@@ -191,7 +191,7 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
         draw_button("RIGHT", nav.right_x, nav.mid_y, right_bg, ImGuiKey_RightArrow);
         draw_button("DOWN", nav.center_x, nav.down_y, active_bg, ImGuiKey_DownArrow);
 
-        // The center cell stays visually empty; renderer tap dispatch treats the same region as Enter.
+        // The center cell stays visually empty while still emitting the same Enter key as the renderer tap dispatch.
         ImGui::SetCursorPos(ImVec2(nav.center_x, nav.mid_y));
         ImGui::InvisibleButton("CENTER_ENTER", nav_size);
         if (interactive)
@@ -220,7 +220,7 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
         const ImVec4 rec_active_bg = toImGuiColor(0.55f, 0.10f, 0.10f, 0.92f);
         const ImVec4 rec_idle_bg   = toImGuiColor(0.20f, 0.20f, 0.20f, 0.92f);
 
-        auto draw_rec_button = [&](const char* label, float x, float y, bool recording)
+        auto draw_rec_button = [&](const char* label, float x, float y, bool recording, ImGuiKey key)
         {
             const ImVec4& bg = recording ? rec_active_bg : rec_idle_bg;
             ImGui::SetCursorPos(ImVec2(x, y));
@@ -228,11 +228,15 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, bg);
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, bg);
             ImGui::Button(label, nav_size);
+            if (ImGui::IsItemActivated())
+            {
+                emitMenuKey(key);
+            }
             ImGui::PopStyleColor(3);
         };
 
-        draw_rec_button("AIR\nREC", nav.margin, nav.mid_y,  state.air_recording);
-        draw_rec_button("GS\nREC",  nav.margin, nav.down_y, state.gs_recording);
+        draw_rec_button("AIR\nREC", nav.margin, nav.mid_y,  state.air_recording, ImGuiKey_R);
+        draw_rec_button("GS\nREC",  nav.margin, nav.down_y, state.gs_recording, ImGuiKey_G);
     }
 
     ImGui::End();

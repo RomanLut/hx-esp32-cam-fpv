@@ -54,6 +54,7 @@
 #include "gs_shared_runtime.h"
 #include "gs_runtime_state.h"
 #include "gs_stats.h"
+#include "gs_camera_calibration_shared.h"
 #include "core/video_frame_assembler.h"
 #include "packet_filter.h"
 #include "settings_storage.h"
@@ -968,6 +969,16 @@ bool isRepeatableRenderedTouchAction(GsVideoRenderer::MenuActionKind action_kind
 
 //===================================================================================
 //===================================================================================
+// Returns true when taps should be routed through rendered ImGui touch controls.
+bool areRenderedTouchControlsActive(NativeHandle& handle)
+{
+    return handle.renderer.isMenuVisible() ||
+           gs::calibration::isActive() ||
+           (s_playbackManager != nullptr && s_playbackManager->status().active);
+}
+
+//===================================================================================
+//===================================================================================
 // Queues the ImGui key represented by a tap on rendered touch controls or menu rows.
 GsVideoRenderer::MenuActionKind queueRenderedTapAsImGuiKey(NativeHandle& handle,
                                                            float tap_x,
@@ -1844,10 +1855,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
     {
         return;
     }
-    const bool touch_controls_rendered =
-        native_handle->renderer.isMenuVisible() ||
-        (s_playbackManager != nullptr && s_playbackManager->status().active);
-    if (!touch_controls_rendered)
+    if (!areRenderedTouchControlsActive(*native_handle))
     {
         native_handle->renderer.queueKeyPress(ImGuiKey_Enter);
         return;
@@ -1880,10 +1888,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTouchDown(JNIEnv* /* env */,
         return JNI_FALSE;
     }
 
-    const bool touch_controls_rendered =
-        native_handle->renderer.isMenuVisible() ||
-        (s_playbackManager != nullptr && s_playbackManager->status().active);
-    if (!touch_controls_rendered)
+    if (!areRenderedTouchControlsActive(*native_handle))
     {
         native_handle->renderer.queueKeyPress(ImGuiKey_Enter);
         return JNI_FALSE;

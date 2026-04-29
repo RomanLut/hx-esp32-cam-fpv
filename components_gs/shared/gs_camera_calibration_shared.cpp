@@ -213,7 +213,7 @@ namespace gs::calibration
 
 //===================================================================================
 //===================================================================================
-// Returns true while the full-screen calibration prompt owns REC and Left input.
+// Returns true while the full-screen calibration prompt owns capture and cancel input.
 bool isActive()
 {
     std::lock_guard<std::mutex> lock(s_calibration_mutex);
@@ -274,7 +274,7 @@ void requestCapture()
 
 //===================================================================================
 //===================================================================================
-// Handles calibration-specific REC and Left keys before normal recording hotkeys.
+// Handles calibration-specific capture and cancel keys before normal recording hotkeys.
 bool handleCalibrationKeysFromImGui()
 {
     if (!isActive())
@@ -291,7 +291,9 @@ bool handleCalibrationKeysFromImGui()
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_R, false) ||
-        ImGui::IsKeyPressed(ImGuiKey_G, false))
+        ImGui::IsKeyPressed(ImGuiKey_G, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
     {
         requestCapture();
         return true;
@@ -503,12 +505,16 @@ void drawCalibrationOverlay(float width, float height)
     draw_list->AddRectFilled(ImVec2(0.0f, 0.0f), ImVec2(width, height), dim);
 
     const float line_height = ImGui::GetTextLineHeightWithSpacing();
-    const float start_y = (height - line_height * 6.0f) * 0.5f;
-    std::array<std::string, 6> lines = {
+    const float start_y = (height - line_height * 10.0f) * 0.5f;
+    std::array<std::string, 10> lines = {
         "Camera Calibration",
         "",
-        "Place the calibration chessboard at varying angles and positions within the frame.",
-        "Press any REC button to capture a frame.",
+        "Place the calibration chessboard",
+        "at varying angles and positions within the frame.",
+        "Make sure the entire board is visible in each frame.",
+        "Board should occupy more than 40% of screen.",
+        "Make sure to place chessboard near the screen edges also.",
+        "Press Enter or any REC button to capture a frame.",
         "",
         "Frames captured: " + std::to_string(frames) + "/" + std::to_string(kRequiredCalibrationFrames)
     };

@@ -33,6 +33,10 @@ constexpr float kScreenVrSeparationMax = 0.30f;
 constexpr float kScreenVrSeparationStep = 0.02f;
 constexpr float kScreenVrSeparationStepScale = 50.0f;
 constexpr float kScreenVrSeparationDisplayScale = 100.0f;
+constexpr double kLensCorrectionNormalizedStep = 0.001;
+constexpr double kLensCorrectionNormalizedDefaultFocal = 0.5;
+constexpr double kLensCorrectionNormalizedDefaultCenter = 0.5;
+constexpr double kLensCorrectionMinimumNormalizedFocal = 0.000001;
 constexpr double kLensCorrectionRadialStep = 0.00001;
 constexpr double kLensCorrectionTangentialStep = 0.000001;
 constexpr double kLensCorrectionDisplayScale = 1000000.0;
@@ -73,10 +77,62 @@ std::string formatStorageLine(const char* label,
 
 //===================================================================================
 //===================================================================================
-// Returns a coefficient rounded to the displayed six-decimal precision.
-double roundLensCorrectionCoefficient(double value)
+// Returns a lens correction menu value rounded to the displayed six-decimal precision.
+double roundLensCorrectionMenuValue(double value)
 {
     return std::round(value * kLensCorrectionDisplayScale) / kLensCorrectionDisplayScale;
+}
+
+//===================================================================================
+//===================================================================================
+// Reads a normalized focal length, falling back to the manual-edit default.
+double getLensCorrectionNormalizedFocal(double focal, int image_size)
+{
+    if (image_size > 0 && focal > 0.0)
+    {
+        return focal / static_cast<double>(image_size);
+    }
+    return kLensCorrectionNormalizedDefaultFocal;
+}
+
+//===================================================================================
+//===================================================================================
+// Reads a normalized principal point, falling back to image center.
+double getLensCorrectionNormalizedCenter(double center, int image_size)
+{
+    if (image_size > 0)
+    {
+        return center / static_cast<double>(image_size);
+    }
+    return kLensCorrectionNormalizedDefaultCenter;
+}
+
+//===================================================================================
+//===================================================================================
+// Stores a normalized horizontal intrinsic while preserving calibrated image width.
+void setLensCorrectionNormalizedX(LensCorrectionState& state, double fx_norm, double cx_norm)
+{
+    if (state.image_width <= 0)
+    {
+        state.image_width = 1;
+    }
+    state.fx = std::max(fx_norm, kLensCorrectionMinimumNormalizedFocal) *
+               static_cast<double>(state.image_width);
+    state.cx = cx_norm * static_cast<double>(state.image_width);
+}
+
+//===================================================================================
+//===================================================================================
+// Stores a normalized vertical intrinsic while preserving calibrated image height.
+void setLensCorrectionNormalizedY(LensCorrectionState& state, double fy_norm, double cy_norm)
+{
+    if (state.image_height <= 0)
+    {
+        state.image_height = 1;
+    }
+    state.fy = std::max(fy_norm, kLensCorrectionMinimumNormalizedFocal) *
+               static_cast<double>(state.image_height);
+    state.cy = cy_norm * static_cast<double>(state.image_height);
 }
 }
 
@@ -2012,7 +2068,7 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 
 //===================================================================================
 //===================================================================================
-// Draws GS lens correction coefficient controls with live preview until Apply or Back.
+// Draws GS lens correction normalized intrinsics and coefficient controls with live preview.
 void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_Packet& config)
 {
     (void)config;
@@ -2029,6 +2085,7 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
     drawSpacing();
 
     bool coefficient_handled = false;
+    int coefficient_handled_item = -1;
     auto draw_coefficient = [&](const char* label, const char* imgui_id, int item_index, double& value, double step)
     {
         const bool focused = (this->selectedItem == item_index);
@@ -2036,38 +2093,66 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
         {
             if (isMenuAdjustIncreasePressed())
             {
-                value = roundLensCorrectionCoefficient(
+                value = roundLensCorrectionMenuValue(
                     value + step * this->getLensCorrectionStepMultiplier(item_index, +1));
                 this->keyHandled = true;
                 coefficient_handled = true;
+                coefficient_handled_item = item_index;
             }
             else if (isMenuAdjustDecreasePressed())
             {
-                value = roundLensCorrectionCoefficient(
+                value = roundLensCorrectionMenuValue(
                     value - step * this->getLensCorrectionStepMultiplier(item_index, -1));
                 this->keyHandled = true;
                 coefficient_handled = true;
+                coefficient_handled_item = item_index;
             }
         }
 
         char buf[256];
         snprintf(buf, sizeof(buf), "%s: <>%.6f##%s", label, value, imgui_id);
-        this->drawMenuItem(buf, item_index);
+        this->drawMenuItem(buf, item_index, true);
     };
 
-    draw_coefficient("k1", "k1", 0, this->m_lens_correction_draft.k1, kLensCorrectionRadialStep);
-    draw_coefficient("k2", "k2", 1, this->m_lens_correction_draft.k2, kLensCorrectionRadialStep);
-    draw_coefficient("k3", "k3", 2, this->m_lens_correction_draft.k3, kLensCorrectionRadialStep);
-    draw_coefficient("p1", "p1", 3, this->m_lens_correction_draft.p1, kLensCorrectionTangentialStep);
-    draw_coefficient("p2", "p2", 4, this->m_lens_correction_draft.p2, kLensCorrectionTangentialStep);
+    double fx_norm = getLensCorrectionNormalizedFocal(this->m_lens_correction_draft.fx,
+                                                      this->m_lens_correction_draft.image_width);
+    double fy_norm = getLensCorrectionNormalizedFocal(this->m_lens_correction_draft.fy,
+                                                      this->m_lens_correction_draft.image_height);
+    double cx_norm = getLensCorrectionNormalizedCenter(this->m_lens_correction_draft.cx,
+                                                       this->m_lens_correction_draft.image_width);
+    double cy_norm = getLensCorrectionNormalizedCenter(this->m_lens_correction_draft.cy,
+                                                       this->m_lens_correction_draft.image_height);
 
-    if ( this->drawMenuItem( "Apply##apply", 5) )
+    draw_coefficient("fxnorm", "fxnorm", 0, fx_norm, kLensCorrectionNormalizedStep);
+    draw_coefficient("fynorm", "fynorm", 1, fy_norm, kLensCorrectionNormalizedStep);
+    draw_coefficient("cxnorm", "cxnorm", 2, cx_norm, kLensCorrectionNormalizedStep);
+    draw_coefficient("cynorm", "cynorm", 3, cy_norm, kLensCorrectionNormalizedStep);
+    draw_coefficient("k1", "k1", 4, this->m_lens_correction_draft.k1, kLensCorrectionRadialStep);
+    draw_coefficient("k2", "k2", 5, this->m_lens_correction_draft.k2, kLensCorrectionRadialStep);
+    draw_coefficient("k3", "k3", 6, this->m_lens_correction_draft.k3, kLensCorrectionRadialStep);
+    draw_coefficient("p1", "p1", 7, this->m_lens_correction_draft.p1, kLensCorrectionTangentialStep);
+    draw_coefficient("p2", "p2", 8, this->m_lens_correction_draft.p2, kLensCorrectionTangentialStep);
+
+    if (coefficient_handled && coefficient_handled_item >= 0 && coefficient_handled_item <= 3)
+    {
+        setLensCorrectionNormalizedX(this->m_lens_correction_draft, fx_norm, cx_norm);
+        setLensCorrectionNormalizedY(this->m_lens_correction_draft, fy_norm, cy_norm);
+    }
+
+    if ( this->drawMenuItem( "Apply##apply", 9, true) )
     {
         s_lensCorrectionState = this->m_lens_correction_draft;
         s_settingsStorage.saveGroundStationConfig();
         this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();
+        this->goBack();
+        return;
+    }
+
+    if ( this->drawMenuItem( "Exit##exit", 10, true) )
+    {
+        this->resetLensCorrectionStepMultiplier();
         this->goBack();
         return;
     }
