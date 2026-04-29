@@ -78,11 +78,8 @@ if /i "%ATTACHED%"=="1" (
 )
 
 echo Waiting for Wifi interface in WSL...
-for /l %%N in (1,1,15) do (
-  call :detect_iface
-  if defined IFACE goto :iface_ready
-  timeout /t 1 /nobreak >nul
-)
+call :detect_iface
+if defined IFACE goto :iface_ready
 
 echo Could not detect Wifi interface in WSL after USB attach.
 exit /b 1
@@ -140,7 +137,7 @@ exit /b 0
 :detect_iface
 set "IFACE="
 del /q "%BUSID_FILE%" 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%" "75"
 if exist "%BUSID_FILE%" set /p "IFACE="<"%BUSID_FILE%"
 :detect_iface_done
 exit /b 0

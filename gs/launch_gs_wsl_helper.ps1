@@ -138,19 +138,56 @@ function Ensure-WindowsMcpProxy {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Find-WslWifiInterface {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DistroName,
+
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $probeCommand = @'
+for module in 88XXau rtl88xxau 8812au; do
+    modprobe "$module" >/dev/null 2>&1 && break
+done
+udevadm settle --timeout=3 >/dev/null 2>&1 || true
+ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | head -n1
+'@
+
+    do {
+        $result = Invoke-WslCommand -DistroName $DistroName -CommandText $probeCommand
+        $iface = $result.StdOut.Trim().Split([Environment]::NewLine, [System.StringSplitOptions]::RemoveEmptyEntries) |
+            Select-Object -Last 1
+
+        if (-not [string]::IsNullOrWhiteSpace($iface)) {
+            return $iface.Trim()
+        }
+
+        Start-Sleep -Seconds 1
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    return $null
+}
+
 switch ($Action) {
     'detect_iface' {
         if ([string]::IsNullOrWhiteSpace($Arg1)) {
             throw 'detect_iface requires an output file path.'
         }
 
-        $result = Invoke-WslCommand -DistroName $Distro -CommandText "ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | head -n1"
-        $iface = $result.StdOut.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($iface)) {
-            Set-Content -LiteralPath $Arg1 -Value $iface -NoNewline
+        $timeoutSeconds = 15
+        if (-not [string]::IsNullOrWhiteSpace($Arg2)) {
+            $timeoutSeconds = [Math]::Max(1, [int]$Arg2)
         }
 
-        exit $result.ExitCode
+        $iface = Find-WslWifiInterface -DistroName $Distro -TimeoutSeconds $timeoutSeconds
+        if (-not [string]::IsNullOrWhiteSpace($iface)) {
+            Set-Content -LiteralPath $Arg1 -Value $iface -NoNewline
+            exit 0
+        }
+
+        exit 1
     }
 
     'probe_iface_ready' {
