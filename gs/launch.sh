@@ -27,6 +27,30 @@ fi
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
 
+GETTY_TTY1_WAS_ACTIVE=false
+
+stop_console_getty_while_gs_runs() {
+    if ! $IS_RADXA || ! command -v systemctl >/dev/null 2>&1; then
+        return
+    fi
+
+    # Radxa images autologin root on tty1. GS can be launched from SSH while
+    # that physical console shell is still active; GPIO/uinput and keyboard
+    # navigation keys then reach both GS and the shell, so Up/Down/Enter can
+    # execute shell-history commands such as "sudo reboot". Stop tty1 while GS
+    # owns the screen and restore it after GS exits.
+    if systemctl is-active --quiet getty@tty1.service; then
+        GETTY_TTY1_WAS_ACTIVE=true
+        sudo systemctl stop getty@tty1.service 2>/dev/null || true
+    fi
+}
+
+restore_console_getty_after_gs() {
+    if $GETTY_TTY1_WAS_ACTIVE; then
+        sudo systemctl start getty@tty1.service 2>/dev/null || true
+    fi
+}
+
 # Function to check if X11 or any desktop environment is running
 is_desktop_running() {
     if pgrep -x "Xorg" > /dev/null || pgrep -x "lxsession" > /dev/null; then
@@ -42,11 +66,22 @@ cd ${HOME_DIRECTORY}
 cd esp32-cam-fpv
 cd gs
 sudo airmon-ng check kill
+stop_console_getty_while_gs_runs
+trap restore_console_getty_after_gs EXIT
+
+run_gs() {
+    local video_driver_env=()
+    if ! is_desktop_running; then
+        video_driver_env=(SDL_VIDEODRIVER=kmsdrm)
+    fi
+
+    sudo -E env LD_LIBRARY_PATH=/usr/local/lib "${video_driver_env[@]}" ./gs
+}
 
 if is_desktop_running; then
-    sudo -E LD_LIBRARY_PATH=/usr/local/lib DISPLAY=:0 ./gs
+    DISPLAY=:0 run_gs
 else
-    sudo -E LD_LIBRARY_PATH=/usr/local/lib SDL_VIDEODRIVER=kmsdrm ./gs
+    run_gs
 fi
 
 #let LAN card get ip address (required if dhcpcd service is disabled)
