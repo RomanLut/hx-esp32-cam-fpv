@@ -29,12 +29,8 @@
 *.a
 *.lib
 
-# Exception: prebuilt GS OpenCV wrapper libraries
-!OpenCV/OpenCVWrapper/Prebuilt/**/*.so
-!OpenCV/OpenCVWrapper/Prebuilt/**/*.dylib
-!OpenCV/OpenCVWrapper/Prebuilt/**/*.dll
-!OpenCV/OpenCVWrapper/Prebuilt/**/*.lib
-!OpenCV/OpenCVWrapper/Prebuilt/**/*.a
+# OpenCV wrapper prebuilt output — build locally, not tracked in git
+OpenCV/OpenCVWrapper/Prebuilt/
 
 # Executables
 *.exe

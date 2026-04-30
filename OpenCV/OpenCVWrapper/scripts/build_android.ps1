@@ -210,4 +210,5 @@ $WrapperConfigureArgs = @(
 )
 
 Invoke-Checked $CMakeExe $WrapperConfigureArgs
-Invoke-Checked $CMakeExe @("--build", $WrapperBuild, "--config", $Config, "--target", "install", "--parallel", "$BuildJobs")
+Invoke-Checked $CMakeExe @("--build", $WrapperBuild, "--config", $Config, "--parallel", "$BuildJobs")
+Invoke-Checked $CMakeExe @("--install", $WrapperBuild, "--config", $Config, "--strip")

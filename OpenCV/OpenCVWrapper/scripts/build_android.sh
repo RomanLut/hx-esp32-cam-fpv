@@ -118,4 +118,5 @@ fi
     -DOpenCV_DIR="${OPENCV_BUILD}" \
     -DOPENCV_WRAPPER_PREBUILT_PLATFORM="${PREBUILT_PLATFORM}"
 
-"${CMAKE_EXE}" --build "${WRAPPER_BUILD}" --config "${CONFIG}" --target install --parallel "${BUILD_JOBS}"
+"${CMAKE_EXE}" --build "${WRAPPER_BUILD}" --config "${CONFIG}" --parallel "${BUILD_JOBS}"
+"${CMAKE_EXE}" --install "${WRAPPER_BUILD}" --config "${CONFIG}" --strip

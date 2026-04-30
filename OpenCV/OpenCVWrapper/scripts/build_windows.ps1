@@ -64,4 +64,5 @@ cmake -S $WrapperRoot -B $WrapperBuild -G $Generator -A $Arch `
     -DOpenCV_DIR="$OpenCVBuild" `
     -DOPENCV_WRAPPER_PREBUILT_PLATFORM=$PrebuiltPlatform
 
-cmake --build $WrapperBuild --config $Config --target install
+cmake --build $WrapperBuild --config $Config
+cmake --install $WrapperBuild --config $Config --strip

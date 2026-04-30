@@ -80,4 +80,5 @@ cmake -S "${WRAPPER_ROOT}" -B "${WRAPPER_BUILD}" \
     -DOpenCV_DIR="${OPENCV_BUILD}" \
     -DOPENCV_WRAPPER_PREBUILT_PLATFORM="${PREBUILT_PLATFORM}"
 
-cmake --build "${WRAPPER_BUILD}" --config "${CONFIG}" --target install --parallel "${BUILD_JOBS}"
+cmake --build "${WRAPPER_BUILD}" --config "${CONFIG}" --parallel "${BUILD_JOBS}"
+cmake --install "${WRAPPER_BUILD}" --config "${CONFIG}" --strip
