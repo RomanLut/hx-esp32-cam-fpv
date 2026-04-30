@@ -1,0 +1,57 @@
+name: Build GS Linux
+
+on:
+  push:
+    branches:
+      - master
+      - development
+    paths:
+      - '.github/workflows/build_gs.yml'
+      - 'gs/**'
+      - 'components_gs/**'
+      - 'components/**'
+  pull_request:
+    paths:
+      - '.github/workflows/build_gs.yml'
+      - 'gs/**'
+      - 'components_gs/**'
+      - 'components/**'
+  workflow_dispatch:
+
+jobs:
+  build-linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev \
+            libturbojpeg0-dev \
+            libpcap-dev \
+            libgles2-mesa-dev \
+            libfreetype-dev
+
+      - name: Get version
+        id: version
+        run: |
+          fw=$(grep '#define FW_VERSION' components/common/packets.h | sed 's/.*"\(.*\)".*/\1/')
+          pkt=$(grep -oP '(?<=#define PACKET_VERSION\s)\d+' components/common/fec.h)
+          echo "version=$fw.$pkt" >> $GITHUB_OUTPUT
+
+      - name: Build gs
+        run: make -C gs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gs-linux-x64-${{ steps.version.outputs.version }}
+          path: gs/gs
+          if-no-files-found: error
