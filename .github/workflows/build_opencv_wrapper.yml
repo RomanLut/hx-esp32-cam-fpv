@@ -1,0 +1,104 @@
+name: Build OpenCV Wrapper
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/build_opencv_wrapper.yml'
+      - '.gitmodules'
+      - 'OpenCV/OpenCVWrapper/**'
+  push:
+    branches:
+      - master
+      - development
+    paths:
+      - '.github/workflows/build_opencv_wrapper.yml'
+      - '.gitmodules'
+      - 'OpenCV/OpenCVWrapper/**'
+
+jobs:
+  build-linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Fetch pinned OpenCV tag
+        run: git -C OpenCV/OpenCV fetch --force --depth=1 origin refs/tags/4.13.0:refs/tags/4.13.0
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Build OpenCV Wrapper
+        run: bash OpenCV/OpenCVWrapper/scripts/build_linux.sh
+
+      - name: Upload prebuilt
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-wrapper-linux-x64
+          path: OpenCV/OpenCVWrapper/Prebuilt/linux/x64/
+          if-no-files-found: error
+
+  build-android-arm64:
+    name: Android arm64-v8a
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Fetch pinned OpenCV tag
+        run: git -C OpenCV/OpenCV fetch --force --depth=1 origin refs/tags/4.13.0:refs/tags/4.13.0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Android build tools
+        run: yes | sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+
+      - name: Build OpenCV Wrapper
+        env:
+          ANDROID_ABI: arm64-v8a
+          ANDROID_MIN_SDK: '23'
+        run: bash OpenCV/OpenCVWrapper/scripts/build_android.sh
+
+      - name: Upload prebuilt
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-wrapper-android-arm64-v8a
+          path: OpenCV/OpenCVWrapper/Prebuilt/android/arm64-v8a/
+          if-no-files-found: error
+
+  build-windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Fetch pinned OpenCV tag
+        shell: pwsh
+        run: git -C OpenCV/OpenCV fetch --force --depth=1 origin refs/tags/4.13.0:refs/tags/4.13.0
+
+      - name: Build OpenCV Wrapper
+        shell: pwsh
+        run: .\OpenCV\OpenCVWrapper\scripts\build_windows.ps1
+
+      - name: Upload prebuilt
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-wrapper-windows-x64
+          path: OpenCV/OpenCVWrapper/Prebuilt/windows/x64/
+          if-no-files-found: error
