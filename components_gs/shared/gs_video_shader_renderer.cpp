@@ -28,11 +28,33 @@ precision highp float;
 precision mediump float;
 #endif
 uniform sampler2D uTexture;
+uniform vec2 uUv0;
+uniform vec2 uUv1;
+uniform vec2 uFrameSize;
+uniform vec3 uStabilizationInv0;
+uniform vec3 uStabilizationInv1;
+uniform float uStabilizationEnabled;
 varying vec2 vTexCoord;
 
 void main()
 {
-    gl_FragColor = texture2D(uTexture, vTexCoord);
+    vec2 range = uUv1 - uUv0;
+    range.x = abs(range.x) < 0.0001 ? 0.0001 : range.x;
+    range.y = abs(range.y) < 0.0001 ? 0.0001 : range.y;
+    vec2 sample_coord = (vTexCoord - uUv0) / range;
+    if (uStabilizationEnabled > 0.5)
+    {
+        vec2 pixel_coord = sample_coord * uFrameSize;
+        sample_coord = vec2(
+            dot(uStabilizationInv0, vec3(pixel_coord, 1.0)) / uFrameSize.x,
+            dot(uStabilizationInv1, vec3(pixel_coord, 1.0)) / uFrameSize.y);
+    }
+    if (sample_coord.x < 0.0 || sample_coord.x > 1.0 || sample_coord.y < 0.0 || sample_coord.y > 1.0)
+    {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+    gl_FragColor = texture2D(uTexture, mix(uUv0, uUv1, sample_coord));
 }
 )glsl";
 
@@ -49,6 +71,10 @@ uniform vec3 uRadial;
 uniform vec2 uTangential;
 uniform vec2 uFocalNorm;
 uniform vec2 uPrincipalNorm;
+uniform vec2 uFrameSize;
+uniform vec3 uStabilizationInv0;
+uniform vec3 uStabilizationInv1;
+uniform float uStabilizationEnabled;
 varying vec2 vTexCoord;
 
 void main()
@@ -68,6 +94,13 @@ void main()
         p.x * radial + uTangential.x * xy2 + uTangential.y * (r2 + 2.0 * p.x * p.x),
         p.y * radial + uTangential.x * (r2 + 2.0 * p.y * p.y) + uTangential.y * xy2);
     vec2 sample_coord = corrected * focal + uPrincipalNorm;
+    if (uStabilizationEnabled > 0.5)
+    {
+        vec2 pixel_coord = sample_coord * uFrameSize;
+        sample_coord = vec2(
+            dot(uStabilizationInv0, vec3(pixel_coord, 1.0)) / uFrameSize.x,
+            dot(uStabilizationInv1, vec3(pixel_coord, 1.0)) / uFrameSize.y);
+    }
     if (sample_coord.x < 0.0 || sample_coord.x > 1.0 || sample_coord.y < 0.0 || sample_coord.y > 1.0)
     {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
@@ -183,7 +216,7 @@ void VideoShaderRenderer::release()
 
 //===================================================================================
 //===================================================================================
-// Draws one textured video quad, using lens correction only when it is enabled.
+// Draws one textured video quad, applying lens correction and stabilization in shader.
 bool VideoShaderRenderer::draw(unsigned int texture,
                                const VideoQuad& quad,
                                float clip_x,
@@ -194,7 +227,8 @@ bool VideoShaderRenderer::draw(unsigned int texture,
                                float surface_height,
                                int frame_width,
                                int frame_height,
-                               const LensCorrectionParams& lens_params)
+                               const LensCorrectionParams& lens_params,
+                               const gs::stabilization::StabilizationTransform& stabilization_transform)
 {
     if (texture == 0 ||
         quad.width <= 0.0f ||
@@ -243,13 +277,44 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     glUseProgram(program_slot);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1i(glGetUniformLocation(program_slot, "uTexture"), 0);
+    glUniform2f(glGetUniformLocation(program_slot, "uUv0"), quad.u0, quad.v0);
+    glUniform2f(glGetUniformLocation(program_slot, "uUv1"), quad.u1, quad.v1);
+    glUniform2f(glGetUniformLocation(program_slot, "uFrameSize"),
+                static_cast<float>(std::max(frame_width, 1)),
+                static_cast<float>(std::max(frame_height, 1)));
+
+    float inv00 = 1.0f;
+    float inv01 = 0.0f;
+    float inv02 = 0.0f;
+    float inv10 = 0.0f;
+    float inv11 = 1.0f;
+    float inv12 = 0.0f;
+    const bool stabilization_enabled = stabilization_transform.enabled &&
+                                       stabilization_transform.width == frame_width &&
+                                       stabilization_transform.height == frame_height;
+    if (stabilization_enabled)
+    {
+        const float det = stabilization_transform.m00 * stabilization_transform.m11 -
+                          stabilization_transform.m01 * stabilization_transform.m10;
+        if (std::abs(det) > 0.000001f)
+        {
+            const float inv_det = 1.0f / det;
+            inv00 = stabilization_transform.m11 * inv_det;
+            inv01 = -stabilization_transform.m01 * inv_det;
+            inv10 = -stabilization_transform.m10 * inv_det;
+            inv11 = stabilization_transform.m00 * inv_det;
+            inv02 = -(inv00 * stabilization_transform.m02 + inv01 * stabilization_transform.m12);
+            inv12 = -(inv10 * stabilization_transform.m02 + inv11 * stabilization_transform.m12);
+        }
+    }
+    glUniform1f(glGetUniformLocation(program_slot, "uStabilizationEnabled"), stabilization_enabled ? 1.0f : 0.0f);
+    glUniform3f(glGetUniformLocation(program_slot, "uStabilizationInv0"), inv00, inv01, inv02);
+    glUniform3f(glGetUniformLocation(program_slot, "uStabilizationInv1"), inv10, inv11, inv12);
     if (lens_enabled)
     {
         const float aspect = frame_height > 0
             ? static_cast<float>(std::max(frame_width, 1)) / static_cast<float>(frame_height)
             : 1.0f;
-        glUniform2f(glGetUniformLocation(program_slot, "uUv0"), quad.u0, quad.v0);
-        glUniform2f(glGetUniformLocation(program_slot, "uUv1"), quad.u1, quad.v1);
         glUniform3f(glGetUniformLocation(program_slot, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
         glUniform2f(glGetUniformLocation(program_slot, "uTangential"), lens_params.p1, lens_params.p2);
         const float focal_x = lens_params.has_camera_matrix ? lens_params.fx_norm : 0.5f / std::max(aspect, 0.0001f);

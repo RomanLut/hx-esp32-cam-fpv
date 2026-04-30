@@ -11,16 +11,18 @@ option(OPENCV_WRAPPER_BUILD_SHARED "Build the OpenCV wrapper as a shared library
 if(OPENCV_WRAPPER_BUILD_SHARED)
     add_library(OpenCVWrapper SHARED
         src/CameraCalibration.cpp
+        src/VideoStabilizer.cpp
     )
 else()
     add_library(OpenCVWrapper STATIC
         src/CameraCalibration.cpp
+        src/VideoStabilizer.cpp
     )
 endif()
 
 add_library(OpenCVWrapper::OpenCVWrapper ALIAS OpenCVWrapper)
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
 
 target_include_directories(OpenCVWrapper
     PUBLIC

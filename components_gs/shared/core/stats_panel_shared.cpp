@@ -203,6 +203,12 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         ground_stats.textureUploadTimeMaxMS);
         });
+        row("Stabilization", [&]
+        {
+            ImGui::Text("%d/%d ms",
+                        ground_stats.stabilizationTimeMinMS,
+                        ground_stats.stabilizationTimeMaxMS);
+        });
         row("Discarded frames", [&]
         {
             ImGui::Text("%d/%d/%d",

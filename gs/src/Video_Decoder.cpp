@@ -13,6 +13,7 @@
 #include "gs_gl_debug.h"
 #include "gs_stats.h"
 #include "gs_camera_calibration_shared.h"
+#include "gs_video_stabilization_shared.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
 
@@ -284,6 +285,12 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
         }
 
+        gs::stabilization::estimateRgbFrame(output->rgb_data.data(),
+                                            output->rgb_data.size(),
+                                            output->width,
+                                            output->height,
+                                            output->width * 3);
+
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
             if (m_impl->has_pending_output)
@@ -442,6 +449,7 @@ void Video_Decoder::invalidate_displayed_frame()
 
     m_texture = 0;
     m_resolution = ImVec2(0.0f, 0.0f);
+    gs::stabilization::reset();
 }
 
 //===================================================================================

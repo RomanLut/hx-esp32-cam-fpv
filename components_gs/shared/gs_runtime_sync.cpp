@@ -7,6 +7,7 @@
 #include "gs_recordings_storage.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
+#include "gs_video_stabilization_shared.h"
 
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
@@ -50,6 +51,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         const int8_t gs_noise_floor = core.gs_stats.noiseFloorDbm;
 
         const gs::core::VideoFrameAssembler::Stats assembler_stats = core.assembler.consumeStats();
+        const gs::stabilization::StabilizationStats stabilization_stats =
+            gs::stabilization::consumeStats();
         core.gs_stats.brokenFrames = static_cast<uint8_t>(std::min<uint32_t>(params.decode_stats.broken_frames, 255));
         core.gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
         core.gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
@@ -63,6 +66,9 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.textureUploadTimeMinMS =
             static_cast<int>(core.acc_upload_count > 0 ? core.acc_upload_min_ms : 0);
         core.gs_stats.textureUploadTimeMaxMS = static_cast<int>(core.acc_upload_max_ms);
+        core.gs_stats.stabilizationCount = static_cast<int>(stabilization_stats.count);
+        core.gs_stats.stabilizationTimeMinMS = static_cast<int>(stabilization_stats.min_ms);
+        core.gs_stats.stabilizationTimeMaxMS = static_cast<int>(stabilization_stats.max_ms);
         core.gs_stats.discardedFramesAssemblerPoolOverflow =
             static_cast<int>(assembler_stats.discarded_frames);
         core.gs_stats.discardedFramesDecoderInput =

@@ -21,6 +21,7 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
+#include "gs_video_stabilization_shared.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -43,6 +44,16 @@ constexpr double kLensCorrectionDisplayScale = 1000000.0;
 constexpr int kLensCorrectionRepeatResetMs = 200;
 constexpr int kLensCorrectionAccelerationStepMs = 3000;
 constexpr int kLensCorrectionMaxStepMultiplier = 256;
+constexpr int kImageStabilizationRepeatResetMs = 200;
+constexpr int kImageStabilizationAccelerationStepMs = 3000;
+constexpr int kImageStabilizationMaxStepMultiplier = 64;
+constexpr float kImageStabilizationRoiDivisorStep = 0.1f;
+constexpr float kImageStabilizationZoomFactorStep = 0.01f;
+constexpr float kImageStabilizationProcessVarStep = 0.001f;
+constexpr float kImageStabilizationMeasurementVarStep = 0.1f;
+constexpr int kImageStabilizationMaxCornersStep = 25;
+constexpr float kImageStabilizationQualityLevelStep = 0.001f;
+constexpr float kImageStabilizationMinDistanceStep = 1.0f;
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -178,6 +189,44 @@ void OSDMenuController::resetLensCorrectionStepMultiplier()
 
 //===================================================================================
 //===================================================================================
+// Calculates the accelerated image stabilization parameter step multiplier.
+int OSDMenuController::getImageStabilizationStepMultiplier(int item_index, int direction)
+{
+    const Clock::time_point now = Clock::now();
+    const bool same_repeat =
+        this->m_image_stabilization_last_adjust_tp != Clock::time_point{} &&
+        this->m_image_stabilization_repeat_item == item_index &&
+        this->m_image_stabilization_repeat_direction == direction &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - this->m_image_stabilization_last_adjust_tp).count() < kImageStabilizationRepeatResetMs;
+
+    if (!same_repeat)
+    {
+        this->m_image_stabilization_repeat_start_tp = now;
+        this->m_image_stabilization_repeat_item = item_index;
+        this->m_image_stabilization_repeat_direction = direction;
+        this->m_image_stabilization_last_adjust_tp = now;
+        return 1;
+    }
+
+    this->m_image_stabilization_last_adjust_tp = now;
+    const int acceleration_stage = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - this->m_image_stabilization_repeat_start_tp).count() / kImageStabilizationAccelerationStepMs);
+    return std::min(kImageStabilizationMaxStepMultiplier, 1 << std::min(acceleration_stage, 6));
+}
+
+//===================================================================================
+//===================================================================================
+// Resets image stabilization parameter repeat acceleration after a pause or transition.
+void OSDMenuController::resetImageStabilizationStepMultiplier()
+{
+    this->m_image_stabilization_last_adjust_tp = {};
+    this->m_image_stabilization_repeat_start_tp = {};
+    this->m_image_stabilization_repeat_item = -1;
+    this->m_image_stabilization_repeat_direction = 0;
+}
+
 //===================================================================================
 //===================================================================================
 // Formats the AIR SD status line from raw status flags and capacity values.
@@ -650,22 +699,18 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
         {
             if (gs::calibration::applyCapturedCalibrationToLensCorrection(s_lensCorrectionState))
             {
-                this->m_lens_correction_draft = s_lensCorrectionState;
                 this->m_lens_correction_original = s_lensCorrectionState;
                 s_settingsStorage.saveGroundStationConfig();
             }
             else
             {
-                this->m_lens_correction_draft = this->m_lens_correction_original;
                 s_lensCorrectionState = this->m_lens_correction_original;
             }
         }
         else
         {
-            this->m_lens_correction_draft = this->m_lens_correction_original;
             s_lensCorrectionState = this->m_lens_correction_original;
         }
-        this->m_lens_correction_draft_active = true;
         this->resetLensCorrectionStepMultiplier();
     }
 
@@ -743,6 +788,9 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
+        case OSDMenuId::GSVRMode: this->drawGSVRModeMenu(config); break;
+        case OSDMenuId::GSImageStabilization: this->drawGSImageStabilizationMenu(config); break;
+        case OSDMenuId::GSImageStabilizationParameters: this->drawGSImageStabilizationParametersMenu(config); break;
         case OSDMenuId::GSLensCorrection: this->drawGSLensCorrectionMenu(config); break;
         case OSDMenuId::GSLensCorrectionCoefficients: this->drawGSLensCorrectionCoefficientsMenu(config); break;
         case OSDMenuId::OSDFont: this->drawOSDFontMenu(config); break;
@@ -974,10 +1022,7 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
     {
         if ( this->drawMenuItem( "Lens Correction...##lens_correction", 2) )
         {
-            this->m_lens_correction_draft = s_lensCorrectionState;
             this->m_lens_correction_original = s_lensCorrectionState;
-            this->m_lens_correction_draft_active = true;
-            this->resetLensCorrectionStepMultiplier();
             this->goForward( OSDMenuId::GSLensCorrection, 0 );
         }
     }
@@ -1974,8 +2019,43 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
+        sprintf(buf, "VR Mode...##vr_mode");
         if ( this->drawMenuItem( buf, 4) )
+        {
+            this->goForward( OSDMenuId::GSVRMode, 0 );
+            return;
+        }
+    }
+
+    if ( this->drawMenuItem( "Image Stabilization...##image_stabilization", 5) )
+    {
+        this->m_image_stabilization_draft = s_imageStabilizationState;
+        this->m_image_stabilization_original = s_imageStabilizationState;
+        this->m_image_stabilization_draft_active = true;
+        this->resetImageStabilizationStepMultiplier();
+        this->goForward( OSDMenuId::GSImageStabilization, 0 );
+        return;
+    }
+
+    if (!zoom_handled && this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+// Draws the VR mode submenu (VR Mode toggle + VR Separation adjustment).
+void OSDMenuController::drawGSVRModeMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "Menu -> GS Screen -> VR Mode" );
+    drawSpacing();
+
+    {
+        char buf[256];
+        sprintf(buf, "VR Mode: %s##2", gs_config.vrMode ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 0) )
         {
             gs_config.vrMode = !gs_config.vrMode;
             s_settingsStorage.saveGroundStationConfig();
@@ -1984,7 +2064,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 
     bool vr_separation_handled = false;
     {
-        const bool vr_sep_focused = (this->selectedItem == 5);
+        const bool vr_sep_focused = (this->selectedItem == 1);
         if (m_draw_mode == DrawMode::Interactive && vr_sep_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -2004,11 +2084,205 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "VR Separation: <>%+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
-        this->drawMenuItem( buf, 5);
+        this->drawMenuItem( buf, 1);
     }
 
-    if (!zoom_handled && !vr_separation_handled && this->exitKeyPressed())
+    if (!vr_separation_handled && this->exitKeyPressed())
     {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws GS image stabilization controls with draft settings until Apply or Back.
+void OSDMenuController::drawGSImageStabilizationMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+
+    if (!this->m_image_stabilization_draft_active)
+    {
+        this->m_image_stabilization_draft = s_imageStabilizationState;
+        this->m_image_stabilization_original = s_imageStabilizationState;
+        this->m_image_stabilization_draft_active = true;
+        this->resetImageStabilizationStepMultiplier();
+    }
+
+    this->drawMenuTitle( "GS Screen -> Image Stabilization" );
+    drawSpacing();
+
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", this->m_image_stabilization_draft.enabled ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            this->m_image_stabilization_draft.enabled = !this->m_image_stabilization_draft.enabled;
+            s_imageStabilizationState.enabled = this->m_image_stabilization_draft.enabled;
+            this->m_image_stabilization_original.enabled = this->m_image_stabilization_draft.enabled;
+            s_settingsStorage.saveGroundStationConfig();
+            gs::stabilization::reset();
+        }
+    }
+
+    if ( this->drawMenuItem( "Parameters...##parameters", 1) )
+    {
+        this->resetImageStabilizationStepMultiplier();
+        this->goForward( OSDMenuId::GSImageStabilizationParameters, 0 );
+        return;
+    }
+
+    if (this->exitKeyPressed())
+    {
+        this->m_image_stabilization_draft = this->m_image_stabilization_original;
+        s_imageStabilizationState = this->m_image_stabilization_original;
+        gs::stabilization::reset();
+        this->m_image_stabilization_draft_active = false;
+        this->resetImageStabilizationStepMultiplier();
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws GS image stabilization parameter controls with draft values until Apply.
+void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+
+    if (!this->m_image_stabilization_draft_active)
+    {
+        this->m_image_stabilization_draft = s_imageStabilizationState;
+        this->m_image_stabilization_original = s_imageStabilizationState;
+        this->m_image_stabilization_draft_active = true;
+        this->resetImageStabilizationStepMultiplier();
+    }
+
+    this->drawMenuTitle( "Image Stabilization -> Parameters" );
+    drawSpacing();
+
+    bool parameter_handled = false;
+    auto draw_float_parameter = [&](const char* label,
+                                    const char* imgui_id,
+                                    int item_index,
+                                    float& value,
+                                    float step,
+                                    float min_value,
+                                    float max_value,
+                                    int precision)
+    {
+        const bool focused = (this->selectedItem == item_index);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                value = std::clamp(
+                    value + step * static_cast<float>(this->getImageStabilizationStepMultiplier(item_index, +1)),
+                    min_value,
+                    max_value);
+                this->keyHandled = true;
+                parameter_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                value = std::clamp(
+                    value - step * static_cast<float>(this->getImageStabilizationStepMultiplier(item_index, -1)),
+                    min_value,
+                    max_value);
+                this->keyHandled = true;
+                parameter_handled = true;
+            }
+        }
+
+        char format[64];
+        snprintf(format, sizeof(format), "%%s: <>%%.%df##%%s", precision);
+        char buf[256];
+        snprintf(buf, sizeof(buf), format, label, value, imgui_id);
+        this->drawMenuItem(buf, item_index, true);
+    };
+
+    auto draw_int_parameter = [&](const char* label,
+                                  const char* imgui_id,
+                                  int item_index,
+                                  int& value,
+                                  int step,
+                                  int min_value,
+                                  int max_value)
+    {
+        const bool focused = (this->selectedItem == item_index);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                value = std::clamp(
+                    value + step * this->getImageStabilizationStepMultiplier(item_index, +1),
+                    min_value,
+                    max_value);
+                this->keyHandled = true;
+                parameter_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                value = std::clamp(
+                    value - step * this->getImageStabilizationStepMultiplier(item_index, -1),
+                    min_value,
+                    max_value);
+                this->keyHandled = true;
+                parameter_handled = true;
+            }
+        }
+
+        char buf[256];
+        snprintf(buf, sizeof(buf), "%s: <>%d##%s", label, value, imgui_id);
+        this->drawMenuItem(buf, item_index, true);
+    };
+
+    draw_float_parameter("roi_divisor", "roi_divisor", 0, this->m_image_stabilization_draft.roi_divisor, kImageStabilizationRoiDivisorStep, 1.2f, 10.0f, 1);
+    draw_float_parameter("zoom_factor", "zoom_factor", 1, this->m_image_stabilization_draft.zoom_factor, kImageStabilizationZoomFactorStep, 0.5f, 1.0f, 2);
+    draw_float_parameter("process_var", "process_var", 2, this->m_image_stabilization_draft.process_var, kImageStabilizationProcessVarStep, 0.001f, 1.0f, 3);
+    draw_float_parameter("measurement_var", "measurement_var", 3, this->m_image_stabilization_draft.measurement_var, kImageStabilizationMeasurementVarStep, 0.1f, 20.0f, 1);
+    draw_int_parameter("max_corners", "max_corners", 4, this->m_image_stabilization_draft.max_corners, kImageStabilizationMaxCornersStep, 50, 1000);
+    draw_float_parameter("quality_level", "quality_level", 5, this->m_image_stabilization_draft.quality_level, kImageStabilizationQualityLevelStep, 0.001f, 0.1f, 3);
+    draw_float_parameter("min_distance", "min_distance", 6, this->m_image_stabilization_draft.min_distance, kImageStabilizationMinDistanceStep, 1.0f, 100.0f, 0);
+
+    if ( this->drawMenuItem( "Apply##apply", 7, true) )
+    {
+        s_imageStabilizationState = this->m_image_stabilization_draft;
+        s_settingsStorage.saveGroundStationConfig();
+        gs::stabilization::reset();
+        this->m_image_stabilization_draft_active = false;
+        this->resetImageStabilizationStepMultiplier();
+        this->goBack();
+        this->goBack();
+        return;
+    }
+
+    if ( this->drawMenuItem( "Reset##reset", 8, true) )
+    {
+        const bool enabled = this->m_image_stabilization_draft.enabled;
+        this->m_image_stabilization_draft = {};
+        this->m_image_stabilization_draft.enabled = enabled;
+        s_imageStabilizationState = this->m_image_stabilization_draft;
+        gs::stabilization::reset();
+        this->resetImageStabilizationStepMultiplier();
+        return;
+    }
+
+    if ( this->drawMenuItem( "Exit##exit", 9, true) )
+    {
+        this->resetImageStabilizationStepMultiplier();
+        this->goBack();
+        return;
+    }
+
+    if (parameter_handled)
+    {
+        s_imageStabilizationState = this->m_image_stabilization_draft;
+        gs::stabilization::reset();
+    }
+
+    if (!parameter_handled && this->exitKeyPressed())
+    {
+        this->resetImageStabilizationStepMultiplier();
         this->goBack();
     }
 }
@@ -2020,29 +2294,24 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 {
     (void)config;
 
-    if (!this->m_lens_correction_draft_active)
-    {
-        this->m_lens_correction_draft = s_lensCorrectionState;
-        this->m_lens_correction_original = s_lensCorrectionState;
-        this->m_lens_correction_draft_active = true;
-        this->resetLensCorrectionStepMultiplier();
-    }
-
     this->drawMenuTitle( "Camera Settings -> Lens Correction" );
     drawSpacing();
 
     {
         char buf[256];
-        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", this->m_lens_correction_draft.enabled ? "On" : "Off");
+        snprintf(buf, sizeof(buf), "Enabled: %s##enabled", s_lensCorrectionState.enabled ? "On" : "Off");
         if ( this->drawMenuItem( buf, 0) )
         {
-            this->m_lens_correction_draft.enabled = !this->m_lens_correction_draft.enabled;
-            s_lensCorrectionState = this->m_lens_correction_draft;
+            s_lensCorrectionState.enabled = !s_lensCorrectionState.enabled;
+            s_settingsStorage.saveGroundStationConfig();
         }
     }
 
     if ( this->drawMenuItem( "Coefficients...##coefficients", 1) )
     {
+        this->m_lens_correction_draft = s_lensCorrectionState;
+        this->m_lens_correction_original = s_lensCorrectionState;
+        this->m_lens_correction_draft_active = true;
         this->resetLensCorrectionStepMultiplier();
         this->goForward( OSDMenuId::GSLensCorrectionCoefficients, 0 );
         return;
@@ -2050,7 +2319,6 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 
     if ( this->drawMenuItem( "Calibrate...##calibrate", 2) )
     {
-        s_lensCorrectionState = this->m_lens_correction_draft;
         gs::calibration::begin();
         this->visible = false;
         resetCapturedMenuBuffer();
@@ -2059,9 +2327,6 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 
     if (this->exitKeyPressed())
     {
-        s_lensCorrectionState = this->m_lens_correction_original;
-        this->m_lens_correction_draft_active = false;
-        this->resetLensCorrectionStepMultiplier();
         this->goBack();
     }
 }
@@ -2152,6 +2417,8 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
 
     if ( this->drawMenuItem( "Exit##exit", 10, true) )
     {
+        s_lensCorrectionState = this->m_lens_correction_original;
+        this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();
         return;
@@ -2164,6 +2431,8 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
 
     if (!coefficient_handled && this->exitKeyPressed())
     {
+        s_lensCorrectionState = this->m_lens_correction_original;
+        this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();
     }

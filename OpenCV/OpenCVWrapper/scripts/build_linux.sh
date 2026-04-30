@@ -40,7 +40,7 @@ cmake -S "${OPENCV_SOURCE}" -B "${OPENCV_BUILD}" \
     -DCMAKE_INSTALL_PREFIX="${OPENCV_INSTALL}" \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DBUILD_SHARED_LIBS=OFF \
-    -DBUILD_LIST=core,imgproc,calib3d \
+    -DBUILD_LIST=core,imgproc,calib3d,video \
     -DCPU_DISPATCH= \
     -DBUILD_TESTS=OFF \
     -DBUILD_PERF_TESTS=OFF \

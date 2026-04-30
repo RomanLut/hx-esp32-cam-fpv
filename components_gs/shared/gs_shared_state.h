@@ -38,6 +38,21 @@ struct LensCorrectionState
 
 //===================================================================================
 //===================================================================================
+// Holds GS image stabilization enable state and OpenCV tracking parameters.
+struct ImageStabilizationState
+{
+    bool enabled = false;
+    float roi_divisor = 3.5f;
+    float zoom_factor = 0.9f;
+    float process_var = 0.03f;
+    float measurement_var = 2.0f;
+    int max_corners = 400;
+    float quality_level = 0.01f;
+    float min_distance = 30.0f;
+};
+
+//===================================================================================
+//===================================================================================
 // Holds ground station runtime settings shared by platform-specific front ends.
 struct TGroundstationConfig
 {
@@ -62,4 +77,5 @@ struct TGroundstationConfig
 
 extern TGroundstationConfig s_groundstation_config;
 extern LensCorrectionState s_lensCorrectionState;
+extern ImageStabilizationState s_imageStabilizationState;
 extern Clock::time_point& s_last_packet_tp;

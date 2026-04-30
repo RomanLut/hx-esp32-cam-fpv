@@ -36,6 +36,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/flight_osd.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_camera_calibration_shared.cpp
+    ../../../../../components_gs/shared/gs_video_stabilization_shared.cpp
     ../../../../../components_gs/shared/gs_lens_correction_shared.cpp
     ../../../../../components_gs/shared/gs_video_layout_shared.cpp
     ../../../../../components_gs/shared/gs_video_shader_renderer.cpp

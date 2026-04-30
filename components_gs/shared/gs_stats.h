@@ -38,6 +38,9 @@ struct GSStats
     int textureUploadTimeTotalMS = 0;
     int textureUploadTimeMinMS = 99;
     int textureUploadTimeMaxMS = 0;
+    int stabilizationCount = 0;
+    int stabilizationTimeMinMS = 0;
+    int stabilizationTimeMaxMS = 0;
     int discardedFramesAssemblerPoolOverflow = 0;
     int discardedFramesDecoderInput = 0;
     int discardedFramesDecodedOutput = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gs_lens_correction_shared.h"
+#include "gs_video_stabilization_shared.h"
 #include "gs_video_layout_shared.h"
 
 namespace gs::render
@@ -25,7 +26,8 @@ public:
               float surface_height,
               int frame_width,
               int frame_height,
-              const LensCorrectionParams& lens_params);
+              const LensCorrectionParams& lens_params,
+              const gs::stabilization::StabilizationTransform& stabilization_transform);
 
 private:
     unsigned int m_fast_program = 0;

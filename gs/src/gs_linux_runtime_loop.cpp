@@ -30,6 +30,7 @@
 #include "gs_runtime_state.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_video_layout_shared.h"
+#include "gs_video_stabilization_shared.h"
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
@@ -191,6 +192,8 @@ void comms_thread_proc()
             const gs::core::LinkStatusSnapshot link_status = s_runtimeCore.session.consumeLinkStatus(now);
             const gs::core::PeriodicStatsSnapshot periodic_stats = s_runtimeCore.session.consumePeriodicStats();
             const gs::core::VideoFrameAssembler::Stats assembler_stats = s_runtimeCore.assembler.consumeStats();
+            const gs::stabilization::StabilizationStats stabilization_stats =
+                gs::stabilization::consumeStats();
             LOGI("Sent: {}, RX len: {}, TlmIn: {}, TlmOut: {}, RSSI: {}/{}, Latency: {}/{}/{}, vfps: {}, AIR:0x{:04X}, GS:0x{:04X}",
                 periodic_stats.sent_count, periodic_stats.total_data, periodic_stats.in_tlm_size, periodic_stats.out_tlm_size,
                 (int)s_last_gs_stats.rssiDbm[0], (int)s_last_gs_stats.rssiDbm[1],
@@ -211,6 +214,9 @@ void comms_thread_proc()
                 s_gs_stats.pingMaxMS = link_status.ping_max_ms;
                 s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
                 s_gs_stats.restoredCompletedFrames = periodic_stats.restored_completed_frames;
+                s_gs_stats.stabilizationCount = static_cast<int>(stabilization_stats.count);
+                s_gs_stats.stabilizationTimeMinMS = static_cast<int>(stabilization_stats.min_ms);
+                s_gs_stats.stabilizationTimeMaxMS = static_cast<int>(stabilization_stats.max_ms);
                 s_gs_stats.discardedFramesAssemblerPoolOverflow += static_cast<int>(assembler_stats.discarded_frames);
 
                 s_gs_stats.brokenFrames += s_last_gs_stats.brokenFrames;

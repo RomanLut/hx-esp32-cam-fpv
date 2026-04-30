@@ -13,6 +13,7 @@
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_camera_calibration_shared.h"
+#include "gs_video_stabilization_shared.h"
 #include "gs_video_layout_shared.h"
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
@@ -190,6 +191,29 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
                                               frame.stride);
     }
 
+    if (gs::stabilization::isEnabled() &&
+        (frame.pixel_format == PixelFormat::RGB24 || frame.pixel_format == PixelFormat::RGB565))
+    {
+        const uint8_t* source_pixels = frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data();
+        const size_t source_size = frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size();
+        if (frame.pixel_format == PixelFormat::RGB565)
+        {
+            gs::stabilization::estimateRgb565Frame(source_pixels,
+                                                   source_size,
+                                                   frame.width,
+                                                   frame.height,
+                                                   frame.stride);
+        }
+        else
+        {
+            gs::stabilization::estimateRgbFrame(source_pixels,
+                                                source_size,
+                                                frame.width,
+                                                frame.height,
+                                                frame.stride);
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_has_pending_frame)
@@ -356,6 +380,7 @@ void GsVideoRenderer::invalidateDisplayedFrame()
     m_has_uploaded_frame = false;
     m_frame_dirty.store(false);
     m_overlay_dirty = true;
+    gs::stabilization::reset();
     m_cv.notify_all();
 }
 
@@ -1103,6 +1128,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
 
     const gs::render::LensCorrectionParams lens_params =
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
+    const gs::stabilization::StabilizationTransform stabilization_transform =
+        gs::stabilization::getLatestTransform();
     m_video_shader_renderer.draw(m_texture,
                                  quad,
                                  clip_x,
@@ -1113,7 +1140,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
                                  static_cast<float>(m_surface_height),
                                  m_frame_width,
                                  m_frame_height,
-                                 lens_params);
+                                 lens_params,
+                                 stabilization_transform);
 }
 
 //===================================================================================

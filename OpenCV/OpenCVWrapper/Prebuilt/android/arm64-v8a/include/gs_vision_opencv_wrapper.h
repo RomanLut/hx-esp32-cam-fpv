@@ -26,7 +26,8 @@ typedef enum GsVisionImageFormat
     GS_VISION_IMAGE_FORMAT_BGR8 = 2,
     GS_VISION_IMAGE_FORMAT_RGB8 = 3,
     GS_VISION_IMAGE_FORMAT_BGRA8 = 4,
-    GS_VISION_IMAGE_FORMAT_RGBA8 = 5
+    GS_VISION_IMAGE_FORMAT_RGBA8 = 5,
+    GS_VISION_IMAGE_FORMAT_RGB565 = 6
 } GsVisionImageFormat;
 
 //===================================================================================
@@ -73,6 +74,54 @@ typedef struct GsVisionCameraCalibrationResult
 
 //===================================================================================
 //===================================================================================
+// Configures low-latency ROI-based video stabilization.
+typedef struct GsVisionStabilizerConfig
+{
+    float roi_divisor;
+    float zoom_factor;
+    float process_variance;
+    float measurement_variance;
+    int32_t max_corners;
+    float quality_level;
+    float min_distance;
+} GsVisionStabilizerConfig;
+
+//===================================================================================
+//===================================================================================
+// Reports details from the most recent stabilization frame.
+typedef struct GsVisionStabilizerFrameResult
+{
+    int32_t stabilized;
+    int32_t tracked_points;
+    int32_t inliers;
+    float dx;
+    float dy;
+    float angle_radians;
+    float total_ms;
+    float convert_ms;
+    float gray_ms;
+    float feature_ms;
+    float optical_flow_ms;
+    float affine_ms;
+    float first_warp_ms;
+    float zoom_warp_ms;
+    float store_ms;
+    float output_ms;
+    float transform_00;
+    float transform_01;
+    float transform_02;
+    float transform_10;
+    float transform_11;
+    float transform_12;
+} GsVisionStabilizerFrameResult;
+
+//===================================================================================
+//===================================================================================
+// Opaque state handle for the video stabilizer.
+typedef struct GsVisionStabilizer GsVisionStabilizer;
+
+//===================================================================================
+//===================================================================================
 // Reports details for the most recent wrapper call made on the current thread.
 GS_VISION_API const char* gs_vision_get_last_error(void);
 
@@ -84,6 +133,29 @@ GS_VISION_API int32_t gs_vision_calibrate_camera_from_chessboard_images(
     int32_t image_count,
     const GsVisionChessboardCalibrationConfig* config,
     GsVisionCameraCalibrationResult* result);
+
+//===================================================================================
+//===================================================================================
+// Creates one stateful video stabilizer instance.
+GS_VISION_API GsVisionStabilizer* gs_vision_stabilizer_create(const GsVisionStabilizerConfig* config);
+
+//===================================================================================
+//===================================================================================
+// Destroys a video stabilizer instance created by gs_vision_stabilizer_create.
+GS_VISION_API void gs_vision_stabilizer_destroy(GsVisionStabilizer* stabilizer);
+
+//===================================================================================
+//===================================================================================
+// Clears all temporal state retained by a video stabilizer instance.
+GS_VISION_API void gs_vision_stabilizer_reset(GsVisionStabilizer* stabilizer);
+
+//===================================================================================
+//===================================================================================
+// Estimates stabilization motion without producing a CPU-warped output frame.
+GS_VISION_API int32_t gs_vision_stabilizer_estimate_frame(
+    GsVisionStabilizer* stabilizer,
+    const GsVisionImage* input,
+    GsVisionStabilizerFrameResult* result);
 
 #ifdef __cplusplus
 }

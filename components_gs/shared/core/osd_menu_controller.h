@@ -77,6 +77,13 @@ private:
     Clock::time_point m_lens_correction_repeat_start_tp = {};
     int m_lens_correction_repeat_item = -1;
     int m_lens_correction_repeat_direction = 0;
+    ImageStabilizationState m_image_stabilization_original = {};
+    ImageStabilizationState m_image_stabilization_draft = {};
+    bool m_image_stabilization_draft_active = false;
+    Clock::time_point m_image_stabilization_last_adjust_tp = {};
+    Clock::time_point m_image_stabilization_repeat_start_tp = {};
+    int m_image_stabilization_repeat_item = -1;
+    int m_image_stabilization_repeat_direction = 0;
 
     gs::menu::imgui::MenuFrameLayout m_imgui_layout;
 
@@ -116,6 +123,8 @@ private:
     bool exitKeyPressed();
     int getLensCorrectionStepMultiplier(int item_index, int direction);
     void resetLensCorrectionStepMultiplier();
+    int getImageStabilizationStepMultiplier(int item_index, int direction);
+    void resetImageStabilizationStepMultiplier();
     static gs::core::TransportKind getTransportKindForMenuIndex(int menu_index);
 
     void goForward(OSDMenuId newMenuId, int newItem);
@@ -139,6 +148,9 @@ private:
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
+    void drawGSVRModeMenu(Ground2Air_Config_Packet& config);
+    void drawGSImageStabilizationMenu(Ground2Air_Config_Packet& config);
+    void drawGSImageStabilizationParametersMenu(Ground2Air_Config_Packet& config);
     void drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config);
     void drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_Packet& config);
     void drawOSDFontMenu(Ground2Air_Config_Packet& config);

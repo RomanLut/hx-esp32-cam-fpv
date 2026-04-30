@@ -109,7 +109,7 @@ if not defined GS_WSL_DIR (
 set "WSL_MCP_CLIENT=%GS_WSL_DIR%/scripts/gs_mcp_client.py"
 
 echo Building gs under WSL...
-wsl.exe -d %WSL_DISTRO% -e bash -lc "cd '%GS_WSL_DIR%' && make -j2"
+wsl.exe -d %WSL_DISTRO% -e bash -lc "cd '%GS_WSL_DIR%' && make -j16"
 if errorlevel 1 (
   echo gs build failed.
   exit /b 1

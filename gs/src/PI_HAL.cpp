@@ -25,6 +25,7 @@
 #include "../../components_gs/mcp/gs_mcp_server.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_shader_renderer.h"
+#include "gs_video_stabilization_shared.h"
 
 #ifdef USE_MANGA_SCREEN2
 #include <tslib.h> //needs libts-dev 
@@ -259,7 +260,9 @@ void drawVideoInViewport(int quad_x,
                          ScreenAspectRatio screen_aspect_ratio,
                          float screen_zoom,
                          float surface_width,
-                         float surface_height)
+                         float surface_height,
+                         int frame_width,
+                         int frame_height)
 {
     const gs::render::RectI letterboxed =
         gs::render::buildLetterboxedRect(quad_x,
@@ -279,7 +282,8 @@ void drawVideoInViewport(int quad_x,
 
     const gs::render::LensCorrectionParams lens_params =
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
-    const int aspect_width = static_cast<int>(std::round(video_aspect * 1000.0f));
+    const gs::stabilization::StabilizationTransform stabilization_transform =
+        gs::stabilization::getLatestTransform();
     g_VideoShaderRenderer.draw(g_VideoTexture,
                                quad,
                                static_cast<float>(clip_x),
@@ -288,9 +292,10 @@ void drawVideoInViewport(int quad_x,
                                static_cast<float>(height),
                                surface_width,
                                surface_height,
-                               aspect_width,
-                               1000,
-                               lens_params);
+                               frame_width,
+                               frame_height,
+                               lens_params,
+                               stabilization_transform);
 }
 
 //===================================================================================
@@ -809,6 +814,9 @@ bool PI_HAL::update_display()
 
     const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
     const int viewport_width = s_groundstation_config.vrMode ? (display_width / 2) : display_width;
+    const ImVec2 frame_resolution = s_decoder.get_video_resolution();
+    const int frame_width = static_cast<int>(frame_resolution.x);
+    const int frame_height = static_cast<int>(frame_resolution.y);
 
     for(auto &func:render_callbacks)
     {
@@ -816,7 +824,7 @@ bool PI_HAL::update_display()
     }
 
     ImGui::End();
-    
+
     // Rendering
     ImGui::Render();
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
@@ -837,7 +845,9 @@ bool PI_HAL::update_display()
                             s_groundstation_config.screenAspectRatio,
                             s_groundstation_config.screenZoom,
                             io.DisplaySize.x,
-                            io.DisplaySize.y);
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
         drawVideoInViewport(static_cast<int>(std::round(half_w - offset)),
                             static_cast<int>(std::round(half_w)),
                             0,
@@ -847,7 +857,9 @@ bool PI_HAL::update_display()
                             s_groundstation_config.screenAspectRatio,
                             s_groundstation_config.screenZoom,
                             io.DisplaySize.x,
-                            io.DisplaySize.y);
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
     }
     else
     {
@@ -860,7 +872,9 @@ bool PI_HAL::update_display()
                             s_groundstation_config.screenAspectRatio,
                             s_groundstation_config.screenZoom,
                             io.DisplaySize.x,
-                            io.DisplaySize.y);
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
     }
     ImDrawData* draw_data = ImGui::GetDrawData();
     if (s_groundstation_config.vrMode)
