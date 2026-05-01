@@ -55,6 +55,7 @@ SRCS := src/main.cpp \
 	src/PI_HAL.cpp \
 	src/linux_raw_broadcast_transport.cpp \
 	src/Video_Decoder.cpp \
+	src/dct_calibration.cpp \
 	../components_gs/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \

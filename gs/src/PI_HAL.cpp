@@ -23,6 +23,8 @@
 #include "imgui_impl_opengl3.h"
 #include "../../components/common/Clock.h"
 #include "../../components_gs/mcp/gs_mcp_server.h"
+#include "gs_runtime_state.h"
+#include "gs_shared_state.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_shader_renderer.h"
 #include "gs_video_stabilization_shared.h"
@@ -284,6 +286,8 @@ void drawVideoInViewport(int quad_x,
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
     const gs::stabilization::StabilizationTransform stabilization_transform =
         gs::stabilization::getLatestTransform();
+    const gs::render::VideoPostprocessingParams postprocessing_params =
+        gs::render::buildVideoPostprocessingParams(s_curr_quality);
     g_VideoShaderRenderer.draw(g_VideoTexture,
                                quad,
                                static_cast<float>(clip_x),
@@ -295,7 +299,8 @@ void drawVideoInViewport(int quad_x,
                                frame_width,
                                frame_height,
                                lens_params,
-                               stabilization_transform);
+                               stabilization_transform,
+                               postprocessing_params);
 }
 
 //===================================================================================

@@ -17,6 +17,11 @@
 #include "IHAL.h"
 #include <SDL2/SDL.h>
 
+#if defined(GS_ENABLE_DCT_CALIBRATION)
+#include "gs_runtime_state.h"
+#include "dct_calibration.h"
+#endif
+
 extern "C"
 {
 #include <turbojpeg.h>
@@ -247,6 +252,10 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             LOGE("Jpeg header error: {}", tjGetErrorStr());
             continue;
         }
+
+#if defined(GS_ENABLE_DCT_CALIBRATION)
+        gs::ov2640::observeJpegDctTables(data, size, s_curr_quality);
+#endif
 
         Output_ptr output = m_impl->output_pool.acquire();
 

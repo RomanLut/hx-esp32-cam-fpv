@@ -10,11 +10,13 @@
 #include "gs_playback_manager.h"
 #include "gs_recordings_storage.h"
 #include "gs_runtime_input.h"
+#include "gs_runtime_state.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_camera_calibration_shared.h"
 #include "gs_video_stabilization_shared.h"
 #include "gs_video_layout_shared.h"
+#include "gs_video_shader_renderer.h"
 #include "imgui.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "utils/lodepng.h"
@@ -1130,6 +1132,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
     const gs::stabilization::StabilizationTransform stabilization_transform =
         gs::stabilization::getLatestTransform();
+    const gs::render::VideoPostprocessingParams postprocessing_params =
+        gs::render::buildVideoPostprocessingParams(s_curr_quality);
     m_video_shader_renderer.draw(m_texture,
                                  quad,
                                  clip_x,
@@ -1141,7 +1145,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
                                  m_frame_width,
                                  m_frame_height,
                                  lens_params,
-                                 stabilization_transform);
+                                 stabilization_transform,
+                                 postprocessing_params);
 }
 
 //===================================================================================

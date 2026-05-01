@@ -4,6 +4,7 @@
 TGroundstationConfig s_groundstation_config = {};
 LensCorrectionState s_lensCorrectionState = {};
 ImageStabilizationState s_imageStabilizationState = {};
+PostprocessingState s_postprocessingState = {};
 SettingsStorage s_settingsStorage("gs.ini");
 Ground2Air_Config_Packet s_ground2air_config_packet = {};
 GsRuntimeCore s_runtimeCore(1, s_groundstation_config, s_ground2air_config_packet);

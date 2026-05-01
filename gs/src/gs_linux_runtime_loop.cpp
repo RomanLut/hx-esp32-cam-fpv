@@ -41,6 +41,10 @@
 #include "utils/utils.h"
 #include "../../components_gs/mcp/gs_mcp_server.h"
 
+#if defined(GS_ENABLE_DCT_CALIBRATION)
+#include "dct_calibration.h"
+#endif
+
 namespace
 {
 
@@ -243,6 +247,15 @@ void comms_thread_proc()
             std::vector<uint8_t> control_payload;
             if (tryBuildControlPacketPayload(s_groundstation_config.deviceId, control_payload))
             {
+#if defined(GS_ENABLE_DCT_CALIBRATION)
+                if (control_payload.size() == sizeof(Ground2Air_Config_Packet))
+                {
+                    auto* config_packet =
+                        reinterpret_cast<Ground2Air_Config_Packet*>(control_payload.data());
+                    gs::ov2640::applyTemporaryQualitySweep(*config_packet);
+                }
+#endif
+
                 std::unique_lock<std::mutex> transport_lock(s_transport_mutex, std::try_to_lock);
                 if (transport_lock.owns_lock())
                 {

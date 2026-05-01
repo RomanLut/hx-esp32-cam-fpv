@@ -54,6 +54,15 @@ struct ImageStabilizationState
 
 //===================================================================================
 //===================================================================================
+// Holds lightweight shader postprocessing controls for decoded MJPEG video.
+struct PostprocessingState
+{
+    bool jpeg_deblocking_enabled = true;
+    uint8_t adaptive_dithering_level = 2; // 0 off, 1 low, 2 medium, 3 high
+};
+
+//===================================================================================
+//===================================================================================
 // Holds ground station runtime settings shared by platform-specific front ends.
 struct TGroundstationConfig
 {
@@ -79,4 +88,5 @@ struct TGroundstationConfig
 extern TGroundstationConfig s_groundstation_config;
 extern LensCorrectionState s_lensCorrectionState;
 extern ImageStabilizationState s_imageStabilizationState;
+extern PostprocessingState s_postprocessingState;
 extern Clock::time_point& s_last_packet_tp;

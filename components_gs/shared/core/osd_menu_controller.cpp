@@ -788,6 +788,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
+        case OSDMenuId::GSPostprocessing: this->drawGSPostprocessingMenu(config); break;
         case OSDMenuId::GSVRMode: this->drawGSVRModeMenu(config); break;
         case OSDMenuId::GSImageStabilization: this->drawGSImageStabilizationMenu(config); break;
         case OSDMenuId::GSImageStabilizationParameters: this->drawGSImageStabilizationParametersMenu(config); break;
@@ -2091,6 +2092,12 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         return;
     }
 
+    if ( this->drawMenuItem( "Postprocessing...##postprocessing", 6) )
+    {
+        this->goForward( OSDMenuId::GSPostprocessing, 0 );
+        return;
+    }
+
     if (!zoom_handled && this->exitKeyPressed())
     {
         this->goBack();
@@ -2098,7 +2105,53 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 }
 
 //===================================================================================
-// Draws the VR mode submenu (VR Mode toggle + VR Separation adjustment).
+//===================================================================================
+// Draws GS video postprocessing controls.
+void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+    this->drawMenuTitle( "GS Screen -> Postprocessing" );
+    drawSpacing();
+
+    const char* level_names[] = { "OFF", "LOW", "MED", "HIGH" };
+    const auto next_level = [](uint8_t level)
+    {
+        return static_cast<uint8_t>((level + 1) % 4);
+    };
+
+    {
+        char buf[256];
+        sprintf(buf,
+                "JPEG Deblocking: %s##jpeg_deblocking",
+                s_postprocessingState.jpeg_deblocking_enabled ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            s_postprocessingState.jpeg_deblocking_enabled =
+                !s_postprocessingState.jpeg_deblocking_enabled;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
+    {
+        char buf[256];
+        const uint8_t level = std::min<uint8_t>(s_postprocessingState.adaptive_dithering_level, 3);
+        sprintf(buf, "Adaptive dithering: %s##adaptive_dithering", level_names[level]);
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            s_postprocessingState.adaptive_dithering_level = next_level(level);
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
+    if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the VR mode submenu with the VR toggle and separation adjustment.
 void OSDMenuController::drawGSVRModeMenu(Ground2Air_Config_Packet& config)
 {
     (void)config;
