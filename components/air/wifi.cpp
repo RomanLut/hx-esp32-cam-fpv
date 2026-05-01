@@ -1026,7 +1026,7 @@ esp_err_t set_wlan_power_dBm(float dBm)
 
     dBm = std::max(std::min(dBm, k_max), k_min);
     s_wlan_power_dBm = dBm;
-    int8_t power = static_cast<int8_t>(((dBm - k_min) / (k_max - k_min)) * 80) + 8;
+    int8_t power = static_cast<int8_t>(dBm * 4.0f);
     return esp_wifi_set_max_tx_power(power);
 }
 
