@@ -38,10 +38,11 @@ struct LensCorrectionState
 
 //===================================================================================
 //===================================================================================
-// Holds GS image stabilization enable state and OpenCV tracking parameters.
+// Holds GS image stabilization enable state, RC control channel, and OpenCV tracking parameters.
 struct ImageStabilizationState
 {
     bool enabled = false;
+    uint8_t rc_channel = 0;
     float roi_divisor = 3.5f;
     float zoom_factor = 0.9f;
     float process_var = 0.03f;

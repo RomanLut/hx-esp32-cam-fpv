@@ -5,7 +5,9 @@
 #include "frame_packets_debug.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_state.h"
+#include "gs_shared_state.h"
 #include "gs_stats.h"
+#include "gs_video_stabilization_shared.h"
 
 namespace gs::core
 {
@@ -382,6 +384,18 @@ void GsSessionCore::processIncomingTelemetry(uint16_t gs_device_id,
                 m_mavlink_parser_in.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE)
             {
                 gotRCPacket = true;
+                const int stabilization_channel = s_imageStabilizationState.rc_channel;
+                if (stabilization_channel >= 1 && stabilization_channel <= 18)
+                {
+                    const auto* rc_msg = m_mavlink_parser_in.getMsg<HXMAVLinkRCChannelsOverride>();
+                    const bool stabilization_enabled = rc_msg->getChannelValue(stabilization_channel) > 1700;
+                    // RC packets can arrive at high rate, so only the in-memory enable state is changed here.
+                    if (s_imageStabilizationState.enabled != stabilization_enabled)
+                    {
+                        s_imageStabilizationState.enabled = stabilization_enabled;
+                        gs::stabilization::reset();
+                    }
+                }
 
                 static Clock::time_point s_last_rc_command = Clock::now();
                 Clock::time_point t = Clock::now();

@@ -42,6 +42,7 @@ enum class OSDMenuId
     Image,
     CameraRC,
     CameraStopCH,
+    ImageStabilizationCH,
     Debug,
     Playback,
     PlaybackRun

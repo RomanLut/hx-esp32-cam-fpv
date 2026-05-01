@@ -803,6 +803,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraRC: this->drawCameraRCMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
+        case OSDMenuId::ImageStabilizationCH: this->drawImageStabilizationCHMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
         case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
@@ -1110,8 +1111,24 @@ void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
+        if ( s_imageStabilizationState.rc_channel == 0 )
+        {
+            sprintf(buf, "Image Stabiliz. RC Ch.: None" );
+        }
+        else
+        {
+            sprintf(buf, "Image Stabiliz. RC Ch.: %d", (int)s_imageStabilizationState.rc_channel );
+        }
         if ( this->drawMenuItem( buf, 1) )
+        {
+            this->goForward( OSDMenuId::ImageStabilizationCH, (int)s_imageStabilizationState.rc_channel );
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf, "Mavlink2 to Msp RC: %s", config.misc.mavlink2mspRC == 1? "On" : "Off");
+        if ( this->drawMenuItem( buf, 2) )
         {
             config.misc.mavlink2mspRC ^= 1;
         }
@@ -1722,6 +1739,43 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
     {
         this->goBack();
     }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the GS image stabilization RC channel selection menu.
+void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle( "Menu -> Image Stabilization Channel" );
+    drawSpacing();
+
+    bool bExit = false;
+
+    for ( int i = 0; i <= 18; i++ )
+    {
+        char buf[12];
+        if ( i == 0 )
+        {
+            sprintf(buf, "None" );
+        }
+        else
+        {
+            sprintf(buf, "%d", i );
+        }
+        if ( this->drawMenuItem( buf, i, true) )
+        {
+            s_imageStabilizationState.rc_channel = static_cast<uint8_t>(i);
+            s_settingsStorage.saveGroundStationConfig();
+            bExit = true;
+        }
+    }
+
+    if ( bExit || this->exitKeyPressed() )
+    {
+        this->goBack();
+    }
+
+    (void)config;
 }
 
 //===================================================================================

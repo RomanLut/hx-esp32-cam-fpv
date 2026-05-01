@@ -286,6 +286,11 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["image_stabilization_channel"];
+        if (!temp.empty()) s_imageStabilizationState.rc_channel = static_cast<uint8_t>(std::clamp(std::atoi(temp.c_str()), 0, 18));
+    }
+
+    {
         std::string& temp = (*this)["gs"]["image_stabilization_roi_divisor"];
         if (!temp.empty()) s_imageStabilizationState.roi_divisor = std::clamp(std::stof(temp), 1.2f, 10.0f);
     }
@@ -425,6 +430,7 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["lens_correction_p1"] = std::to_string(s_lensCorrectionState.p1);
     (*this)["gs"]["lens_correction_p2"] = std::to_string(s_lensCorrectionState.p2);
     (*this)["gs"]["image_stabilization_enabled"] = std::to_string(s_imageStabilizationState.enabled ? 1 : 0);
+    (*this)["gs"]["image_stabilization_channel"] = std::to_string(s_imageStabilizationState.rc_channel);
     (*this)["gs"]["image_stabilization_roi_divisor"] = std::to_string(s_imageStabilizationState.roi_divisor);
     (*this)["gs"]["image_stabilization_zoom_factor"] = std::to_string(s_imageStabilizationState.zoom_factor);
     (*this)["gs"]["image_stabilization_process_var"] = std::to_string(s_imageStabilizationState.process_var);
