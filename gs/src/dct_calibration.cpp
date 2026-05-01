@@ -8,7 +8,6 @@
 #if defined(GS_ENABLE_DCT_CALIBRATION)
 
 #include <fstream>
-#include <cstdlib>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -36,11 +35,9 @@ struct DctTable
 
 std::mutex s_calibration_mutex;
 std::map<uint8_t, std::vector<DctTable>> s_observed_tables;
-std::map<uint8_t, float> s_loaded_severity;
 uint8_t s_forced_quality = kFirstQuality;
 uint8_t s_matching_quality_frame_count = 0;
 bool s_sweep_complete = false;
-bool s_loaded_calibration = false;
 bool s_logged_disabled_warning = false;
 uint8_t s_logged_forced_quality = 0;
 uint8_t s_last_reported_quality_log = 0;
@@ -82,6 +79,13 @@ std::vector<DctTable> parseDctTables(const uint8_t* data, size_t size)
         }
 
         const uint8_t marker = data[offset++];
+        if (marker == 0xDA)
+        {
+            // DQT tables belong in the header area before scan entropy. After SOS,
+            // byte stuffing can contain marker-like values that are not segments.
+            break;
+        }
+
         if (isStandaloneMarker(marker))
         {
             continue;
@@ -184,79 +188,6 @@ void fillParamsFromSeverity(float severity,
     {
         params.dithering_strength = (6.0f + 8.0f * severity) / 255.0f;
         params.dithering_flat_threshold = 0.020f + 0.025f * severity;
-    }
-}
-
-//===================================================================================
-//===================================================================================
-// Loads per-quality severity from the calibration JSON; shader params are derived
-// from this value at runtime so generated JSON does not duplicate coefficient policy.
-void loadCalibrationJsonLocked()
-{
-    if (s_loaded_calibration)
-    {
-        return;
-    }
-    s_loaded_calibration = true;
-
-    std::ifstream in(kCalibrationPath);
-    if (!in)
-    {
-        return;
-    }
-
-    const std::string json((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    size_t position = json.find("\"qualities\"");
-    if (position == std::string::npos)
-    {
-        return;
-    }
-
-    while (true)
-    {
-        const size_t key_begin = json.find('"', position);
-        if (key_begin == std::string::npos)
-        {
-            break;
-        }
-
-        const size_t key_end = json.find('"', key_begin + 1);
-        if (key_end == std::string::npos)
-        {
-            break;
-        }
-
-        const std::string key = json.substr(key_begin + 1, key_end - key_begin - 1);
-        char* parse_end = nullptr;
-        const long quality = std::strtol(key.c_str(), &parse_end, 10);
-        position = key_end + 1;
-        if (parse_end == key.c_str() || *parse_end != '\0' || quality < kFirstQuality || quality > kLastQuality)
-        {
-            continue;
-        }
-
-        const size_t next_quality = json.find("\n    \"", position);
-        const size_t search_end = next_quality == std::string::npos ? json.size() : next_quality;
-        const size_t severity_key = json.find("\"severity\"", position);
-        if (severity_key == std::string::npos || severity_key >= search_end)
-        {
-            continue;
-        }
-
-        const size_t colon = json.find(':', severity_key);
-        if (colon == std::string::npos || colon >= search_end)
-        {
-            continue;
-        }
-
-        const char* severity_begin = json.c_str() + colon + 1;
-        char* severity_end = nullptr;
-        const float severity = std::strtof(severity_begin, &severity_end);
-        if (severity_end != severity_begin)
-        {
-            s_loaded_severity[static_cast<uint8_t>(quality)] = std::clamp(severity, 0.0f, 1.0f);
-        }
     }
 }
 
@@ -420,21 +351,13 @@ void observeJpegDctTables(const uint8_t* data, size_t size, uint8_t reported_qua
 
 //===================================================================================
 //===================================================================================
-// Returns calibrated shader coefficients for a previously observed quality level.
+// Returns shader coefficients for a quality level observed during this calibration run.
 bool buildCalibratedPostprocessingParams(uint8_t quality,
                                          bool jpeg_deblocking,
                                          bool adaptive_dithering,
                                          gs::render::VideoPostprocessingParams& params)
 {
     std::lock_guard<std::mutex> lock(s_calibration_mutex);
-    loadCalibrationJsonLocked();
-    const auto severity_found = s_loaded_severity.find(quality);
-    if (severity_found != s_loaded_severity.end())
-    {
-        fillParamsFromSeverity(severity_found->second, jpeg_deblocking, adaptive_dithering, params);
-        return true;
-    }
-
     const auto found = s_observed_tables.find(quality);
     if (found == s_observed_tables.end())
     {

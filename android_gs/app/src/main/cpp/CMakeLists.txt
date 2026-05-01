@@ -40,6 +40,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/gs_lens_correction_shared.cpp
     ../../../../../components_gs/shared/gs_video_layout_shared.cpp
     ../../../../../components_gs/shared/gs_video_shader_renderer.cpp
+    ../../../../../components_gs/shared/gs_jpeg_dct_postprocessing.cpp
     ../../../../../components_gs/shared/gs_video_renderer.cpp
     ../../../../../components_gs/imgui/imgui.cpp
     ../../../../../components_gs/imgui/imgui_draw.cpp

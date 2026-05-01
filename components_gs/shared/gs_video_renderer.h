@@ -123,7 +123,9 @@ public:
                      int height,
                      int stride,
                      uint32_t frame_id,
-                     PixelFormat pixel_format = PixelFormat::RGB24);
+                     PixelFormat pixel_format = PixelFormat::RGB24,
+                     const gs::render::VideoPostprocessingParams& postprocessing_params =
+                         gs::render::VideoPostprocessingParams());
     void submitFrame(std::shared_ptr<void> external_frame_ref,
                      const uint8_t* pixels,
                      size_t size,
@@ -131,7 +133,9 @@ public:
                      int height,
                      int stride,
                      uint32_t frame_id,
-                     PixelFormat pixel_format = PixelFormat::RGB24);
+                     PixelFormat pixel_format = PixelFormat::RGB24,
+                     const gs::render::VideoPostprocessingParams& postprocessing_params =
+                         gs::render::VideoPostprocessingParams());
     void setVsync(bool enabled);
     void setVrMode(bool enabled);
     void setScreenMode(int screen_mode);
@@ -169,6 +173,7 @@ private:
         int stride = 0;
         uint32_t frame_id = 0;
         PixelFormat pixel_format = PixelFormat::RGB24;
+        gs::render::VideoPostprocessingParams postprocessing_params = {};
     };
 
     void run();

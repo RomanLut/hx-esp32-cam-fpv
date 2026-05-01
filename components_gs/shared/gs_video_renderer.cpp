@@ -118,7 +118,8 @@ void GsVideoRenderer::submitFrame(const uint8_t* pixels,
                                        int height,
                                        int stride,
                                        uint32_t frame_id,
-                                       PixelFormat pixel_format)
+                                       PixelFormat pixel_format,
+                                       const gs::render::VideoPostprocessingParams& postprocessing_params)
 {
     const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
     if (pixels == nullptr || size == 0 || width <= 0 || height <= 0 || stride < min_stride)
@@ -133,6 +134,7 @@ void GsVideoRenderer::submitFrame(const uint8_t* pixels,
     frame.stride = stride;
     frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
+    frame.postprocessing_params = postprocessing_params;
     submitPendingFrame(std::move(frame));
 }
 
@@ -146,7 +148,8 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
                                        int height,
                                        int stride,
                                        uint32_t frame_id,
-                                       PixelFormat pixel_format)
+                                       PixelFormat pixel_format,
+                                       const gs::render::VideoPostprocessingParams& postprocessing_params)
 {
     const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
     if (!external_frame_ref ||
@@ -168,6 +171,7 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
     frame.stride = stride;
     frame.frame_id = frame_id;
     frame.pixel_format = pixel_format;
+    frame.postprocessing_params = postprocessing_params;
     submitPendingFrame(std::move(frame));
 }
 
@@ -1132,8 +1136,6 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
     const gs::stabilization::StabilizationTransform stabilization_transform =
         gs::stabilization::getLatestTransform();
-    const gs::render::VideoPostprocessingParams postprocessing_params =
-        gs::render::buildVideoPostprocessingParams(s_curr_quality);
     m_video_shader_renderer.draw(m_texture,
                                  quad,
                                  clip_x,
@@ -1146,7 +1148,7 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
                                  m_frame_height,
                                  lens_params,
                                  stabilization_transform,
-                                 postprocessing_params);
+                                 m_locked_frame.postprocessing_params);
 }
 
 //===================================================================================

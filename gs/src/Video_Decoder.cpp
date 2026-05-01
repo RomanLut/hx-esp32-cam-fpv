@@ -13,6 +13,7 @@
 #include "gs_gl_debug.h"
 #include "gs_stats.h"
 #include "gs_camera_calibration_shared.h"
+#include "gs_jpeg_dct_postprocessing.h"
 #include "gs_video_stabilization_shared.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
@@ -49,6 +50,7 @@ struct Output
     uint32_t height = 0;
     uint32_t frame_id = 0;
     std::vector<uint8_t> rgb_data;
+    gs::render::VideoPostprocessingParams postprocessing_params = {};
 
     ~Output(){
         if(texture != 0)
@@ -86,6 +88,7 @@ struct Video_Decoder::Impl
     bool has_pending_output = false;
 
     std::deque<Output_ptr> locked_outputs;
+    gs::render::VideoPostprocessingParams current_postprocessing_params = {};
 };
 
 static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_id)
@@ -151,6 +154,14 @@ uint32_t Video_Decoder::get_video_texture_id() const
 ImVec2 Video_Decoder::get_video_resolution() const
 {
     return m_resolution;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns postprocessing params extracted from the currently uploaded JPEG frame.
+gs::render::VideoPostprocessingParams Video_Decoder::get_postprocessing_params() const
+{
+    return m_impl->current_postprocessing_params;
 }
 
 
@@ -253,10 +264,6 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             continue;
         }
 
-#if defined(GS_ENABLE_DCT_CALIBRATION)
-        gs::ov2640::observeJpegDctTables(data, size, s_curr_quality);
-#endif
-
         Output_ptr output = m_impl->output_pool.acquire();
 
         output->rgb_data.resize(tjBufSize(width,height,inSubsamp));
@@ -264,6 +271,11 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
         output->width = width;
         output->height = height;
         output->frame_id = input->frame_id;
+        gs::render::buildJpegDctPostprocessingParams(data, size, output->postprocessing_params);
+
+#if defined(GS_ENABLE_DCT_CALIBRATION)
+        gs::ov2640::observeJpegDctTables(data, size, s_curr_quality);
+#endif
 
         Clock::time_point t1 = Clock::now();
 
@@ -403,6 +415,7 @@ size_t Video_Decoder::lock_output()
 
     m_texture = output.texture;
     m_resolution = ImVec2((float)output.width, (float)output.height);
+    m_impl->current_postprocessing_params = output.postprocessing_params;
 
     return count;
 }
@@ -458,6 +471,7 @@ void Video_Decoder::invalidate_displayed_frame()
 
     m_texture = 0;
     m_resolution = ImVec2(0.0f, 0.0f);
+    m_impl->current_postprocessing_params = {};
     gs::stabilization::reset();
 }
 

@@ -26,6 +26,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_lens_correction_shared.cpp \
 	../components_gs/shared/gs_video_layout_shared.cpp \
 	../components_gs/shared/gs_video_shader_renderer.cpp \
+	../components_gs/shared/gs_jpeg_dct_postprocessing.cpp \
 	src/gs_linux_bootstrap.cpp \
 	src/gs_linux_recordings_storage.cpp \
 	src/gs_linux_playback_manager.cpp \

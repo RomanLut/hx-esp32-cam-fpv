@@ -11,6 +11,7 @@
 #include <string>
 
 #include "Log.h"
+#include "gs_jpeg_dct_postprocessing.h"
 
 namespace
 {
@@ -353,6 +354,11 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             m_input_queue.clear();
         }
 
+        gs::render::VideoPostprocessingParams postprocessing_params = {};
+        gs::render::buildJpegDctPostprocessingParams(input.jpeg_buffer->data.data(),
+                                                     input.jpeg_buffer->data.size(),
+                                                     postprocessing_params);
+
         jbyteArray jpeg_array =
             jni.env->NewByteArray(static_cast<jsize>(input.jpeg_buffer->data.size()));
         if (jpeg_array == nullptr)
@@ -451,7 +457,8 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             static_cast<int>(height),
             static_cast<int>(stride),
             input.frame_id,
-            GsVideoRenderer::PixelFormat::RGB565);
+            GsVideoRenderer::PixelFormat::RGB565,
+            postprocessing_params);
         m_submitted_frames.fetch_add(1);
     }
 }

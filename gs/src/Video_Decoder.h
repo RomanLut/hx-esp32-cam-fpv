@@ -4,6 +4,7 @@
 #include <chrono>
 #include "imgui.h"
 #include "core/video_frame_assembler.h"
+#include "gs_video_shader_renderer.h"
 
 class IHAL;
 
@@ -21,6 +22,7 @@ public:
     void wait_for_output(std::chrono::milliseconds timeout);
     uint32_t get_video_texture_id() const;
     ImVec2 get_video_resolution() const;
+    gs::render::VideoPostprocessingParams get_postprocessing_params() const;
     bool unlock_output();
     void invalidate_displayed_frame();
 

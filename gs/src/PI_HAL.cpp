@@ -287,7 +287,7 @@ void drawVideoInViewport(int quad_x,
     const gs::stabilization::StabilizationTransform stabilization_transform =
         gs::stabilization::getLatestTransform();
     const gs::render::VideoPostprocessingParams postprocessing_params =
-        gs::render::buildVideoPostprocessingParams(s_curr_quality);
+        s_decoder.get_postprocessing_params();
     g_VideoShaderRenderer.draw(g_VideoTexture,
                                quad,
                                static_cast<float>(clip_x),
