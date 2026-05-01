@@ -33,6 +33,7 @@
 #include "gs_video_stabilization_shared.h"
 #include "core/osd_menu_controller.h"
 #include "core/osd_menu_imgui_shared.h"
+#include "crc.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "jpeg_parser.h"
@@ -253,6 +254,10 @@ void comms_thread_proc()
                     auto* config_packet =
                         reinterpret_cast<Ground2Air_Config_Packet*>(control_payload.data());
                     gs::ov2640::applyTemporaryQualitySweep(*config_packet);
+                    // Calibration mutates the already prepared config payload, so
+                    // refresh the CRC or air rejects the forced quality update.
+                    config_packet->crc = 0;
+                    config_packet->crc = crc8(0, config_packet, sizeof(*config_packet));
                 }
 #endif
 

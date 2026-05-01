@@ -24,7 +24,8 @@ namespace
 
 constexpr uint8_t kFirstQuality = 8;
 constexpr uint8_t kLastQuality = 63;
-constexpr const char* kCalibrationPath = "../assets_gs/ov2640_dct.json";
+constexpr uint8_t kMatchedFramesPerQuality = 3;
+constexpr const char* kCalibrationPath = "../assets_gs/ov5640.dct.json";
 
 struct DctTable
 {
@@ -36,10 +37,14 @@ struct DctTable
 std::mutex s_calibration_mutex;
 std::map<uint8_t, std::vector<DctTable>> s_observed_tables;
 std::map<uint8_t, float> s_loaded_severity;
-uint8_t s_next_quality = kFirstQuality;
+uint8_t s_forced_quality = kFirstQuality;
+uint8_t s_matching_quality_frame_count = 0;
 bool s_sweep_complete = false;
 bool s_loaded_calibration = false;
 bool s_logged_disabled_warning = false;
+uint8_t s_logged_forced_quality = 0;
+uint8_t s_last_reported_quality_log = 0;
+uint8_t s_last_no_dqt_quality_log = 0;
 
 //===================================================================================
 //===================================================================================
@@ -263,16 +268,16 @@ void writeCalibrationJsonLocked()
     std::ofstream out(kCalibrationPath, std::ios::trunc);
     if (!out)
     {
-        LOGW("Unable to open {} for OV2640 DCT calibration output", kCalibrationPath);
+        LOGW("Unable to open {} for OV5640 DCT calibration output", kCalibrationPath);
         return;
     }
 
     out << "{\n";
     out << "  \"format\": \"v1\",\n";
-    out << "  \"note\": \"DCT here means JPEG DQT quantization coefficients extracted from received OV2640 JPEG frames.\",\n";
+    out << "  \"note\": \"DCT here means JPEG DQT quantization coefficients extracted from received OV5640 JPEG frames.\",\n";
     out << "  \"forced_quality_min\": " << static_cast<int>(kFirstQuality) << ",\n";
     out << "  \"forced_quality_max\": " << static_cast<int>(kLastQuality) << ",\n";
-    out << "  \"current_forced_quality\": " << static_cast<int>(s_next_quality) << ",\n";
+    out << "  \"current_forced_quality\": " << static_cast<int>(s_forced_quality) << ",\n";
     out << "  \"complete\": " << (s_sweep_complete ? "true" : "false") << ",\n";
     out << "  \"qualities\": {\n";
 
@@ -335,22 +340,16 @@ void applyTemporaryQualitySweep(Ground2Air_Config_Packet& config)
         return;
     }
 
-    config.camera.quality = s_next_quality;
+    config.camera.quality = s_forced_quality;
     if (!s_logged_disabled_warning)
     {
-        LOGW("OV2640 DCT calibration is enabled and temporarily forcing camera quality");
+        LOGW("OV5640 DCT calibration is enabled and temporarily forcing camera quality");
         s_logged_disabled_warning = true;
     }
-
-    if (s_next_quality < kLastQuality)
+    if (s_logged_forced_quality != s_forced_quality)
     {
-        s_next_quality++;
-    }
-    else
-    {
-        s_sweep_complete = true;
-        config.camera.quality = 0;
-        writeCalibrationJsonLocked();
+        s_logged_forced_quality = s_forced_quality;
+        LOGI("OV5640 DCT calibration forcing quality {}", static_cast<int>(s_forced_quality));
     }
 }
 
@@ -359,19 +358,63 @@ void applyTemporaryQualitySweep(Ground2Air_Config_Packet& config)
 // Observes JPEG DQT coefficients for the currently reported camera quality level.
 void observeJpegDctTables(const uint8_t* data, size_t size, uint8_t reported_quality)
 {
+    // Config packets and JPEG frames are asynchronous. Label captures by the
+    // quality reported by air stats so stale OV5640 frames are not written under
+    // the next GS-forced quality during the sweep.
     if (data == nullptr || size == 0 || reported_quality < kFirstQuality || reported_quality > kLastQuality)
     {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(s_calibration_mutex);
+    if (s_last_reported_quality_log != reported_quality)
+    {
+        s_last_reported_quality_log = reported_quality;
+        LOGI("OV5640 DCT calibration sees reported quality {}, forced quality {}",
+             static_cast<int>(reported_quality),
+             static_cast<int>(s_forced_quality));
+    }
+    if (s_sweep_complete || reported_quality != s_forced_quality)
+    {
+        s_matching_quality_frame_count = 0;
         return;
     }
 
     const std::vector<DctTable> tables = parseDctTables(data, size);
     if (tables.empty())
     {
+        if (s_last_no_dqt_quality_log != reported_quality)
+        {
+            s_last_no_dqt_quality_log = reported_quality;
+            LOGW("OV5640 DCT calibration found no JPEG DQT tables at quality {}, frame size {}",
+                 static_cast<int>(reported_quality),
+                 size);
+        }
         return;
     }
 
-    std::lock_guard<std::mutex> lock(s_calibration_mutex);
-    s_observed_tables[reported_quality] = tables;
+    s_matching_quality_frame_count++;
+    if (s_matching_quality_frame_count < kMatchedFramesPerQuality)
+    {
+        return;
+    }
+
+    s_observed_tables[s_forced_quality] = tables;
+    if (s_forced_quality < kLastQuality)
+    {
+        s_forced_quality++;
+        LOGI("OV5640 DCT calibration captured quality {}, next quality {}",
+             static_cast<int>(reported_quality),
+             static_cast<int>(s_forced_quality));
+    }
+    else
+    {
+        s_sweep_complete = true;
+        LOGI("OV5640 DCT calibration captured quality {} and completed",
+             static_cast<int>(reported_quality));
+    }
+
+    s_matching_quality_frame_count = 0;
     writeCalibrationJsonLocked();
 }
 
