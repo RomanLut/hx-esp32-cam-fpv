@@ -1,9 +1,39 @@
 #include "gs_linux_recordings_storage.h"
 
+#include <limits.h>
 #include <sys/statvfs.h>
+#include <unistd.h>
+
+#include <string>
 
 namespace
 {
+
+//===================================================================================
+//===================================================================================
+// Returns the directory that contains the running Linux GS executable.
+std::string getExecutableDirectory()
+{
+    char path[PATH_MAX] = {};
+    const ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (length <= 0)
+    {
+        return ".";
+    }
+
+    path[length] = '\0';
+    std::string executable_path(path);
+    const size_t separator = executable_path.find_last_of('/');
+    if (separator == std::string::npos)
+    {
+        return ".";
+    }
+    if (separator == 0)
+    {
+        return "/";
+    }
+    return executable_path.substr(0, separator);
+}
 
 //===================================================================================
 //===================================================================================
@@ -22,11 +52,12 @@ RecordingsStorage& getLinuxRecordingsStorage()
 
 //===================================================================================
 //===================================================================================
-// Queries Linux filesystem free space for ground recordings.
+// Queries free space in the Linux GS recordings directory.
 bool LinuxRecordingsStorage::queryGroundStorageStatus(GroundStorageStatus& status) const
 {
     struct statvfs fs = {};
-    if (statvfs(".", &fs) != 0)
+    const std::string directory = recordingDirectory();
+    if (statvfs(directory.c_str(), &fs) != 0)
     {
         status = {};
         return false;
@@ -39,10 +70,10 @@ bool LinuxRecordingsStorage::queryGroundStorageStatus(GroundStorageStatus& statu
 
 //===================================================================================
 //===================================================================================
-// Returns the Linux directory where recording files are written.
+// Returns the Linux GS directory where recording files are written.
 std::string LinuxRecordingsStorage::recordingDirectory() const
 {
-    return ".";
+    return getExecutableDirectory();
 }
 
 //===================================================================================
