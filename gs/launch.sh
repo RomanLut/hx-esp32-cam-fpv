@@ -9,7 +9,7 @@ COMPATIBLE_FILE="/proc/device-tree/compatible"
 # Check if the compatible file exists
 if [ -f "$COMPATIBLE_FILE" ]; then
     # Read the content of the file
-    COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
+    COMPATIBLE_CONTENT=$(tr -d '\000' < "$COMPATIBLE_FILE")
 
     # Check if the content contains "radxa,zero3"
     if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3"; then
@@ -37,8 +37,13 @@ stop_console_getty_while_gs_runs() {
     # Radxa images autologin root on tty1. GS can be launched from SSH while
     # that physical console shell is still active; GPIO/uinput and keyboard
     # navigation keys then reach both GS and the shell, so Up/Down/Enter can
-    # execute shell-history commands such as "sudo reboot". Stop tty1 while GS
-    # owns the screen and restore it after GS exits.
+    # execute shell-history commands such as "sudo reboot". When GS is started
+    # by /root/.profile on tty1, stopping getty@tty1 would kill the launch
+    # shell itself, so only stop tty1 for SSH/other launch contexts.
+    if [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then
+        return
+    fi
+
     if systemctl is-active --quiet getty@tty1.service; then
         GETTY_TTY1_WAS_ACTIVE=true
         sudo systemctl stop getty@tty1.service 2>/dev/null || true
