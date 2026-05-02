@@ -159,6 +159,15 @@ void fillParamsFromSeverity(float severity, gs::render::VideoPostprocessingParam
         params.deblocking_tc = 0.55f + 0.30f * severity;
     }
 
+    const float debanding_scale =
+        gs::render::postprocessingLevelScale(s_postprocessingState.debanding_level);
+    if (debanding_scale > 0.0f)
+    {
+        params.debanding_strength = (0.18f + 0.18f * severity) * debanding_scale;
+        params.debanding_flat_threshold = 0.012f + 0.018f * severity;
+        params.debanding_range = 0.018f + 0.028f * severity;
+    }
+
     const float dithering_scale =
         gs::render::postprocessingLevelScale(s_postprocessingState.adaptive_dithering_level);
     if (dithering_scale > 0.0f)

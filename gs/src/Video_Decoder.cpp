@@ -306,11 +306,14 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
         }
 
-        gs::stabilization::estimateRgbFrame(output->rgb_data.data(),
-                                            output->rgb_data.size(),
-                                            output->width,
-                                            output->height,
-                                            output->width * 3);
+        if (gs::stabilization::isEnabled())
+        {
+            gs::stabilization::estimateRgbFrame(output->rgb_data.data(),
+                                                output->rgb_data.size(),
+                                                output->width,
+                                                output->height,
+                                                output->width * 3);
+        }
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);

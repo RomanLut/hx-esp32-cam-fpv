@@ -21,6 +21,9 @@ struct VideoPostprocessingParams
     float deblocking_alpha = 0.0f;
     float deblocking_beta = 0.0f;
     float deblocking_tc = 0.0f; // maximum boundary smoothing weight
+    float debanding_strength = 0.0f;
+    float debanding_flat_threshold = 0.0f;
+    float debanding_range = 0.0f;
     float dithering_strength = 0.0f;
     float dithering_flat_threshold = 0.0f;
 };
@@ -30,7 +33,7 @@ VideoPostprocessingParams buildVideoPostprocessingParams(uint8_t current_quality
 
 //===================================================================================
 //===================================================================================
-// Draws video textures with a fast path and an optional lens-correction shader.
+// Draws video textures with startup-compiled shaders for each enabled feature set.
 class VideoShaderRenderer
 {
 public:
@@ -53,11 +56,9 @@ public:
               const VideoPostprocessingParams& postprocessing_params);
 
 private:
-    unsigned int m_fast_program = 0;
-    unsigned int m_lens_program = 0;
-    unsigned int m_fast_post_program = 0;
-    unsigned int m_lens_post_program = 0;
-    bool m_fast_post_failed = false;
-    bool m_lens_post_failed = false;
+    static constexpr unsigned int kShaderProgramCount = 32;
+
+    unsigned int m_programs[kShaderProgramCount] = {};
+    bool m_programs_ready = false;
 };
 }
