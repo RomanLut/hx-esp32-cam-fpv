@@ -104,6 +104,8 @@ public:
         uint32_t swap_total_ms = 0;
         uint32_t swap_min_ms = 99;
         uint32_t swap_max_ms = 0;
+        uint32_t gpu_wait_last_ms = 0;
+        uint32_t gpu_wait_max_ms = 0;
     };
 
 //===================================================================================
@@ -259,4 +261,5 @@ private:
     std::atomic<uint32_t> m_swap_total_ms = 0;
     std::atomic<uint32_t> m_swap_min_ms = 99;
     std::atomic<uint32_t> m_swap_max_ms = 0;
+    std::atomic<uint32_t> m_gpu_wait_last_ms = 0;
 };

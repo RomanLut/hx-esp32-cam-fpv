@@ -58,7 +58,6 @@ struct ImageStabilizationState
 struct PostprocessingState
 {
     bool jpeg_deblocking_enabled = true;
-    uint8_t debanding_level = 1; // 0 off, 1 low, 2 medium, 3 high
     uint8_t adaptive_dithering_level = 2; // 0 off, 1 low, 2 medium, 3 high
 };
 

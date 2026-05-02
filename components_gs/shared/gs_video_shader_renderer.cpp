@@ -28,11 +28,23 @@ enum ShaderFeature : uint8_t
     kShaderFeatureLens = 1u << 0,
     kShaderFeatureStabilization = 1u << 1,
     kShaderFeatureDeblocking = 1u << 2,
-    kShaderFeatureDebanding = 1u << 3,
     kShaderFeatureDithering = 1u << 4,
 };
 
-constexpr uint8_t kShaderFeatureCount = 32;
+constexpr uint8_t kArtifactShaderFeatureMasks[] = {
+    0,
+    kShaderFeatureDeblocking,
+};
+constexpr uint8_t kDisplayShaderFeatureMasks[] = {
+    0,
+    kShaderFeatureLens,
+    kShaderFeatureStabilization,
+    kShaderFeatureLens | kShaderFeatureStabilization,
+    kShaderFeatureDithering,
+    kShaderFeatureLens | kShaderFeatureDithering,
+    kShaderFeatureStabilization | kShaderFeatureDithering,
+    kShaderFeatureLens | kShaderFeatureStabilization | kShaderFeatureDithering,
+};
 
 constexpr char kComposedFragmentShader[] = R"glsl(
 #ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -59,9 +71,6 @@ uniform vec3 uStabilizationInv1;
 #endif
 #if GS_FEATURE_DEBLOCKING
 uniform vec4 uDeblockParams;
-#endif
-#if GS_FEATURE_DEBANDING
-uniform vec3 uDebandParams;
 #endif
 #if GS_FEATURE_DITHERING
 uniform vec2 uDitherParams;
@@ -113,7 +122,7 @@ vec2 applyStabilization(vec2 sample_coord)
 }
 #endif
 
-#if GS_FEATURE_DEBLOCKING || GS_FEATURE_DEBANDING || GS_FEATURE_DITHERING
+#if GS_FEATURE_DEBLOCKING || GS_FEATURE_DITHERING
 float luma(vec3 c)
 {
     return dot(c, vec3(0.299, 0.587, 0.114));
@@ -201,48 +210,6 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
 }
 #endif
 
-#if GS_FEATURE_DEBANDING
-vec3 applyDebanding(vec2 sample_coord, vec3 color)
-{
-    vec2 px = 1.0 / max(uFrameSize, vec2(1.0, 1.0));
-    float center = luma(color);
-    vec2 left_coord = max(sample_coord - vec2(px.x, 0.0), vec2(0.0, 0.0));
-    vec2 right_coord = min(sample_coord + vec2(px.x, 0.0), vec2(1.0, 1.0));
-    vec2 up_coord = max(sample_coord - vec2(0.0, px.y), vec2(0.0, 0.0));
-    vec2 down_coord = min(sample_coord + vec2(0.0, px.y), vec2(1.0, 1.0));
-    vec3 left = sampleVideo(left_coord);
-    vec3 right = sampleVideo(right_coord);
-    vec3 up = sampleVideo(up_coord);
-    vec3 down = sampleVideo(down_coord);
-    float local_gradient = max(abs(center - luma(left)) + abs(center - luma(right)),
-                               abs(center - luma(up)) + abs(center - luma(down))) * 0.5;
-    float flat_area = 1.0 - smoothstep(uDebandParams.y * 0.5, uDebandParams.y, local_gradient);
-    if (flat_area <= 0.0)
-    {
-        return color;
-    }
-
-    vec3 left2 = sampleVideo(max(sample_coord - vec2(px.x * 2.0, 0.0), vec2(0.0, 0.0)));
-    vec3 right2 = sampleVideo(min(sample_coord + vec2(px.x * 2.0, 0.0), vec2(1.0, 1.0)));
-    vec3 up2 = sampleVideo(max(sample_coord - vec2(0.0, px.y * 2.0), vec2(0.0, 0.0)));
-    vec3 down2 = sampleVideo(min(sample_coord + vec2(0.0, px.y * 2.0), vec2(1.0, 1.0)));
-    float w_left = 1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(left)));
-    float w_right = 1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(right)));
-    float w_up = 1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(up)));
-    float w_down = 1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(down)));
-    float w_left2 = 0.55 * (1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(left2))));
-    float w_right2 = 0.55 * (1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(right2))));
-    float w_up2 = 0.55 * (1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(up2))));
-    float w_down2 = 0.55 * (1.0 - smoothstep(uDebandParams.z * 0.5, uDebandParams.z, abs(center - luma(down2))));
-    vec3 smoothed = color +
-                    left * w_left + right * w_right + up * w_up + down * w_down +
-                    left2 * w_left2 + right2 * w_right2 + up2 * w_up2 + down2 * w_down2;
-    float total_weight = 1.0 + w_left + w_right + w_up + w_down + w_left2 + w_right2 + w_up2 + w_down2;
-    smoothed /= max(total_weight, 0.0001);
-    return clamp(mix(color, smoothed, clamp(uDebandParams.x * flat_area, 0.0, 1.0)), 0.0, 1.0);
-}
-#endif
-
 #if GS_FEATURE_DITHERING
 vec3 applyDithering(vec2 sample_coord, vec3 color)
 {
@@ -273,9 +240,6 @@ void main()
 #if GS_FEATURE_DEBLOCKING
     color = applyDeblocking(sample_coord, color);
 #endif
-#if GS_FEATURE_DEBANDING
-    color = applyDebanding(sample_coord, color);
-#endif
 #if GS_FEATURE_DITHERING
     color = applyDithering(sample_coord, color);
 #endif
@@ -290,7 +254,6 @@ std::string buildFragmentShader(uint8_t features)
 {
     const bool needs_frame_size = (features & (kShaderFeatureStabilization |
                                                kShaderFeatureDeblocking |
-                                               kShaderFeatureDebanding |
                                                kShaderFeatureDithering)) != 0;
     std::string source;
     source.reserve(12000);
@@ -300,8 +263,6 @@ std::string buildFragmentShader(uint8_t features)
     source += (features & kShaderFeatureStabilization) != 0 ? "1\n" : "0\n";
     source += "#define GS_FEATURE_DEBLOCKING ";
     source += (features & kShaderFeatureDeblocking) != 0 ? "1\n" : "0\n";
-    source += "#define GS_FEATURE_DEBANDING ";
-    source += (features & kShaderFeatureDebanding) != 0 ? "1\n" : "0\n";
     source += "#define GS_FEATURE_DITHERING ";
     source += (features & kShaderFeatureDithering) != 0 ? "1\n" : "0\n";
     source += "#define GS_NEEDS_FRAME_SIZE ";
@@ -372,16 +333,19 @@ GLuint createProgram(const char* fragment_source)
 
 //===================================================================================
 //===================================================================================
-// Compiles the complete shader table once a GL context is available.
-bool compileShaderPrograms(GLuint* programs, uint8_t program_count)
+// Compiles one shader table from the feature masks used by that render pass.
+bool compileShaderPrograms(GLuint* programs, const uint8_t* feature_masks, uint8_t program_count, const char* pass_name)
 {
     for (uint8_t features = 0; features < program_count; ++features)
     {
-        const std::string fragment_shader = buildFragmentShader(features);
+        const std::string fragment_shader = buildFragmentShader(feature_masks[features]);
         programs[features] = createProgram(fragment_shader.c_str());
         if (programs[features] == 0)
         {
-            LOGE("Video shader feature program failed mask={}", static_cast<int>(features));
+            LOGE("Video {} shader program failed index={} mask={}",
+                 pass_name,
+                 static_cast<int>(features),
+                 static_cast<int>(feature_masks[features]));
             for (uint8_t index = 0; index < features; ++index)
             {
                 if (programs[index] != 0)
@@ -393,7 +357,7 @@ bool compileShaderPrograms(GLuint* programs, uint8_t program_count)
             return false;
         }
     }
-    LOGI("Video shader compiled {} feature combinations", static_cast<int>(program_count));
+    LOGI("Video {} shader compiled {} feature combinations", pass_name, static_cast<int>(program_count));
     return true;
 }
 
@@ -438,7 +402,6 @@ VideoPostprocessingParams buildVideoPostprocessingParams(uint8_t current_quality
 {
     VideoPostprocessingParams params = {};
     const float deblocking_scale = s_postprocessingState.jpeg_deblocking_enabled ? 1.0f : 0.0f;
-    const float debanding_scale = postprocessingLevelScale(s_postprocessingState.debanding_level);
     const float dithering_scale = postprocessingLevelScale(s_postprocessingState.adaptive_dithering_level);
 
     // A zero current_quality means no air stats have reached GS yet, not maximum
@@ -458,13 +421,6 @@ VideoPostprocessingParams buildVideoPostprocessingParams(uint8_t current_quality
         params.deblocking_alpha = (28.0f + 40.0f * artifact) / 255.0f;
         params.deblocking_beta = (22.0f + 32.0f * artifact) / 255.0f;
         params.deblocking_tc = std::min((0.50f + 0.30f * artifact) * deblocking_scale, 1.0f);
-    }
-
-    if (debanding_scale > 0.0f)
-    {
-        params.debanding_strength = (0.16f + 0.16f * artifact) * debanding_scale;
-        params.debanding_flat_threshold = 0.012f + 0.016f * artifact;
-        params.debanding_range = 0.018f + 0.026f * artifact;
     }
 
     if (dithering_scale > 0.0f)
@@ -489,7 +445,15 @@ VideoShaderRenderer::~VideoShaderRenderer()
 // Deletes startup-compiled shader programs.
 void VideoShaderRenderer::release()
 {
-    for (unsigned int& program : m_programs)
+    for (unsigned int& program : m_artifact_programs)
+    {
+        if (program != 0)
+        {
+            glDeleteProgram(program);
+            program = 0;
+        }
+    }
+    for (unsigned int& program : m_display_programs)
     {
         if (program != 0)
         {
@@ -498,11 +462,76 @@ void VideoShaderRenderer::release()
         }
     }
     m_programs_ready = false;
+    releaseArtifactTarget();
 }
 
 //===================================================================================
 //===================================================================================
-// Draws one textured video quad with the compiled shader matching active features.
+// Deletes the source-resolution artifact pass framebuffer and texture.
+void VideoShaderRenderer::releaseArtifactTarget()
+{
+    if (m_artifact_framebuffer != 0)
+    {
+        glDeleteFramebuffers(1, &m_artifact_framebuffer);
+        m_artifact_framebuffer = 0;
+    }
+    if (m_artifact_texture != 0)
+    {
+        glDeleteTextures(1, &m_artifact_texture);
+        m_artifact_texture = 0;
+    }
+    m_artifact_width = 0;
+    m_artifact_height = 0;
+}
+
+//===================================================================================
+//===================================================================================
+// Creates or resizes the camera-resolution texture used by the artifact pass.
+bool VideoShaderRenderer::ensureArtifactTarget(int frame_width, int frame_height)
+{
+    const int target_width = std::max(frame_width, 1);
+    const int target_height = std::max(frame_height, 1);
+    if (m_artifact_texture != 0 &&
+        m_artifact_framebuffer != 0 &&
+        m_artifact_width == target_width &&
+        m_artifact_height == target_height)
+    {
+        return true;
+    }
+
+    releaseArtifactTarget();
+    glGenTextures(1, &m_artifact_texture);
+    glBindTexture(GL_TEXTURE_2D, m_artifact_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 target_width,
+                 target_height,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
+    glGenFramebuffers(1, &m_artifact_framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_artifact_framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_artifact_texture, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        LOGE("Video artifact framebuffer incomplete {}x{}", target_width, target_height);
+        releaseArtifactTarget();
+        return false;
+    }
+    m_artifact_width = target_width;
+    m_artifact_height = target_height;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws one textured video quad through optional artifact and display shader stages.
 bool VideoShaderRenderer::draw(unsigned int texture,
                                const VideoQuad& quad,
                                float clip_x,
@@ -530,7 +559,14 @@ bool VideoShaderRenderer::draw(unsigned int texture,
 
     if (!m_programs_ready)
     {
-        if (!compileShaderPrograms(m_programs, kShaderFeatureCount))
+        if (!compileShaderPrograms(m_artifact_programs,
+                                   kArtifactShaderFeatureMasks,
+                                   kArtifactShaderProgramCount,
+                                   "artifact") ||
+            !compileShaderPrograms(m_display_programs,
+                                   kDisplayShaderFeatureMasks,
+                                   kDisplayShaderProgramCount,
+                                   "display"))
         {
             return false;
         }
@@ -565,17 +601,15 @@ bool VideoShaderRenderer::draw(unsigned int texture,
 
     const bool lens_enabled = isLensCorrectionEnabled(lens_params);
     const bool deblocking_enabled = postprocessing_params.deblocking_strength > 0.0f;
-    const bool debanding_enabled = postprocessing_params.debanding_strength > 0.0f;
     const bool dithering_enabled = postprocessing_params.dithering_strength > 0.0f;
-    const bool active_postprocessing = deblocking_enabled || debanding_enabled || dithering_enabled;
-    uint8_t program_features = 0;
-    program_features |= lens_enabled ? kShaderFeatureLens : 0;
-    program_features |= stabilization_enabled ? kShaderFeatureStabilization : 0;
-    program_features |= deblocking_enabled ? kShaderFeatureDeblocking : 0;
-    program_features |= debanding_enabled ? kShaderFeatureDebanding : 0;
-    program_features |= dithering_enabled ? kShaderFeatureDithering : 0;
-    const GLuint program = m_programs[program_features];
-    if (program == 0)
+    const bool artifact_pass_enabled = deblocking_enabled;
+    const uint8_t artifact_program_index = deblocking_enabled ? 1u : 0u;
+    const uint8_t display_program_index = (lens_enabled ? 1u : 0u) |
+                                          (stabilization_enabled ? 2u : 0u) |
+                                          (dithering_enabled ? 4u : 0u);
+    const GLuint artifact_program = m_artifact_programs[artifact_program_index];
+    const GLuint display_program = m_display_programs[display_program_index];
+    if ((artifact_pass_enabled && artifact_program == 0) || display_program == 0)
     {
         return false;
     }
@@ -594,86 +628,122 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     GLint previous_program = 0;
     GLint previous_texture = 0;
     GLint previous_active_texture = 0;
+    GLint previous_framebuffer = 0;
+    GLint previous_viewport[4] = {};
     GLint previous_scissor_box[4] = {};
     GLboolean scissor_was_enabled = glIsEnabled(GL_SCISSOR_TEST);
     glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &previous_active_texture);
     glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous_framebuffer);
+    glGetIntegerv(GL_VIEWPORT, previous_viewport);
     glGetIntegerv(GL_SCISSOR_BOX, previous_scissor_box);
 
-    glUseProgram(program);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glUniform1i(glGetUniformLocation(program, "uTexture"), 0);
-    glUniform2f(glGetUniformLocation(program, "uUv0"), quad.u0, quad.v0);
-    glUniform2f(glGetUniformLocation(program, "uUv1"), quad.u1, quad.v1);
-    const bool frame_size_uniform_needed = (program_features & (kShaderFeatureStabilization |
-                                                                kShaderFeatureDeblocking |
-                                                                kShaderFeatureDebanding |
-                                                                kShaderFeatureDithering)) != 0;
-    if (frame_size_uniform_needed)
+    GLuint display_texture = texture;
+    if (artifact_pass_enabled)
     {
-        glUniform2f(glGetUniformLocation(program, "uFrameSize"),
-                    static_cast<float>(std::max(frame_width, 1)),
-                    static_cast<float>(std::max(frame_height, 1)));
-    }
-    if (stabilization_enabled)
-    {
-        glUniform3f(glGetUniformLocation(program, "uStabilizationInv0"), inv00, inv01, inv02);
-        glUniform3f(glGetUniformLocation(program, "uStabilizationInv1"), inv10, inv11, inv12);
-    }
-    if (active_postprocessing)
-    {
-        static bool s_logged_postprocessing_active = false;
-        if (!s_logged_postprocessing_active)
+        if (!ensureArtifactTarget(frame_width, frame_height))
         {
-            s_logged_postprocessing_active = true;
-            LOGI("Video postprocessing shader active deblock=({:.3f},{:.3f},{:.3f},{:.3f}) deband=({:.3f},{:.3f},{:.3f}) dither=({:.4f},{:.3f})",
+            glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
+            glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
+            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture));
+            glUseProgram(static_cast<GLuint>(previous_program));
+            glActiveTexture(static_cast<GLenum>(previous_active_texture));
+            return false;
+        }
+
+        static bool s_logged_artifact_pass_active = false;
+        if (!s_logged_artifact_pass_active)
+        {
+            s_logged_artifact_pass_active = true;
+            LOGI("Video artifact shader active deblock=({:.3f},{:.3f},{:.3f},{:.3f})",
                  postprocessing_params.deblocking_strength,
                  postprocessing_params.deblocking_alpha,
                  postprocessing_params.deblocking_beta,
-                 postprocessing_params.deblocking_tc,
-                 postprocessing_params.debanding_strength,
-                 postprocessing_params.debanding_flat_threshold,
-                 postprocessing_params.debanding_range,
-                 postprocessing_params.dithering_strength,
-                 postprocessing_params.dithering_flat_threshold);
+                 postprocessing_params.deblocking_tc);
         }
+
+        const GLfloat artifact_vertices[] = {
+            -1.0f,  1.0f, 0.0f, 1.0f,
+             1.0f,  1.0f, 1.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+        };
+        glBindFramebuffer(GL_FRAMEBUFFER, m_artifact_framebuffer);
+        glViewport(0, 0, m_artifact_width, m_artifact_height);
+        glDisable(GL_SCISSOR_TEST);
+        glUseProgram(artifact_program);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glUniform1i(glGetUniformLocation(artifact_program, "uTexture"), 0);
+        glUniform2f(glGetUniformLocation(artifact_program, "uUv0"), 0.0f, 1.0f);
+        glUniform2f(glGetUniformLocation(artifact_program, "uUv1"), 1.0f, 0.0f);
+        glUniform2f(glGetUniformLocation(artifact_program, "uFrameSize"),
+                    static_cast<float>(std::max(frame_width, 1)),
+                    static_cast<float>(std::max(frame_height, 1)));
         if (deblocking_enabled)
         {
-            glUniform4f(glGetUniformLocation(program, "uDeblockParams"),
+            glUniform4f(glGetUniformLocation(artifact_program, "uDeblockParams"),
                         postprocessing_params.deblocking_strength,
                         postprocessing_params.deblocking_alpha,
                         postprocessing_params.deblocking_beta,
                         postprocessing_params.deblocking_tc);
         }
-        if (debanding_enabled)
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_vertices);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_vertices + 2);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
+        display_texture = m_artifact_texture;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
+    glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
+    glUseProgram(display_program);
+    glBindTexture(GL_TEXTURE_2D, display_texture);
+    glUniform1i(glGetUniformLocation(display_program, "uTexture"), 0);
+    glUniform2f(glGetUniformLocation(display_program, "uUv0"), quad.u0, quad.v0);
+    glUniform2f(glGetUniformLocation(display_program, "uUv1"), quad.u1, quad.v1);
+    if (stabilization_enabled || dithering_enabled)
+    {
+        glUniform2f(glGetUniformLocation(display_program, "uFrameSize"),
+                    static_cast<float>(std::max(frame_width, 1)),
+                    static_cast<float>(std::max(frame_height, 1)));
+    }
+    if (stabilization_enabled)
+    {
+        glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv0"), inv00, inv01, inv02);
+        glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv1"), inv10, inv11, inv12);
+    }
+    if (dithering_enabled)
+    {
+        static bool s_logged_dithering_active = false;
+        if (!s_logged_dithering_active)
         {
-            glUniform3f(glGetUniformLocation(program, "uDebandParams"),
-                        postprocessing_params.debanding_strength,
-                        postprocessing_params.debanding_flat_threshold,
-                        postprocessing_params.debanding_range);
+            s_logged_dithering_active = true;
+            LOGI("Video display shader dithering active dither=({:.4f},{:.3f})",
+                 postprocessing_params.dithering_strength,
+                 postprocessing_params.dithering_flat_threshold);
         }
-        if (dithering_enabled)
-        {
-            glUniform2f(glGetUniformLocation(program, "uDitherParams"),
-                        postprocessing_params.dithering_strength,
-                        postprocessing_params.dithering_flat_threshold);
-        }
+        glUniform2f(glGetUniformLocation(display_program, "uDitherParams"),
+                    postprocessing_params.dithering_strength,
+                    postprocessing_params.dithering_flat_threshold);
     }
     if (lens_enabled)
     {
         const float aspect = frame_height > 0
             ? static_cast<float>(std::max(frame_width, 1)) / static_cast<float>(frame_height)
             : 1.0f;
-        glUniform3f(glGetUniformLocation(program, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
-        glUniform2f(glGetUniformLocation(program, "uTangential"), lens_params.p1, lens_params.p2);
+        glUniform3f(glGetUniformLocation(display_program, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
+        glUniform2f(glGetUniformLocation(display_program, "uTangential"), lens_params.p1, lens_params.p2);
         const float focal_x = lens_params.has_camera_matrix ? lens_params.fx_norm : 0.5f / std::max(aspect, 0.0001f);
         const float focal_y = lens_params.has_camera_matrix ? lens_params.fy_norm : 0.5f;
         const float principal_x = lens_params.has_camera_matrix ? lens_params.cx_norm : 0.5f;
         const float principal_y = lens_params.has_camera_matrix ? lens_params.cy_norm : 0.5f;
-        glUniform2f(glGetUniformLocation(program, "uFocalNorm"), focal_x, focal_y);
-        glUniform2f(glGetUniformLocation(program, "uPrincipalNorm"), principal_x, principal_y);
+        glUniform2f(glGetUniformLocation(display_program, "uFocalNorm"), focal_x, focal_y);
+        glUniform2f(glGetUniformLocation(display_program, "uPrincipalNorm"), principal_x, principal_y);
     }
 
     const GLint scissor_x = static_cast<GLint>(std::round(clip_x));
@@ -704,6 +774,8 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     }
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previous_texture));
     glUseProgram(static_cast<GLuint>(previous_program));
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
+    glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
     glActiveTexture(static_cast<GLenum>(previous_active_texture));
     return true;
 }

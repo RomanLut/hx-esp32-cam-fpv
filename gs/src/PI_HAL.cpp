@@ -25,6 +25,7 @@
 #include "../../components_gs/mcp/gs_mcp_server.h"
 #include "gs_runtime_state.h"
 #include "gs_shared_state.h"
+#include "gs_stats.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_shader_renderer.h"
 #include "gs_video_stabilization_shared.h"
@@ -898,7 +899,15 @@ bool PI_HAL::update_display()
         }
         ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     }
+    const Clock::time_point swap_begin = Clock::now();
     SDL_GL_SwapWindow(m_impl->window);
+    const int swap_duration_ms = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
+    {
+        std::lock_guard<std::mutex> lock(s_gs_stats_mutex);
+        s_gs_stats.gpuWaitLastFrameMS = swap_duration_ms;
+        s_gs_stats.gpuWaitMaxMS = std::max(s_gs_stats.gpuWaitMaxMS, swap_duration_ms);
+    }
     
     return true;
 }

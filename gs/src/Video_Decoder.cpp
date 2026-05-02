@@ -91,6 +91,22 @@ struct Video_Decoder::Impl
     gs::render::VideoPostprocessingParams current_postprocessing_params = {};
 };
 
+//===================================================================================
+//===================================================================================
+// Chooses how many parallel JPEG decode worker threads to spawn for Video_Decoder.
+// On low core-count boards (for example Radxa Zero 3W), four workers can finish RGB
+// decompresses between display-thread lock_output() calls, which inflates
+// discardedFramesDecodedOutput even though only the latest frame is ever shown.
+static size_t decoder_worker_count()
+{
+    const unsigned hc = std::thread::hardware_concurrency();
+    if (hc == 0u)
+    {
+        return 1;
+    }
+    return hc <= 4u ? 1u : 4u;
+}
+
 static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_id)
 {
     return new_frame_id > old_frame_id ||
@@ -133,7 +149,8 @@ bool Video_Decoder::init(IHAL& hal)
     {
     };
 
-    for (size_t i = 0; i < 4; i++)
+    const size_t worker_count = decoder_worker_count();
+    for (size_t i = 0; i < worker_count; ++i)
     {
         m_impl->threads.push_back(std::thread([this, i]() { decoder_thread_proc(i); }));
     }
@@ -262,6 +279,20 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             tjDestroy(tjInstance);
             LOGE("Jpeg header error: {}", tjGetErrorStr());
             continue;
+        }
+
+        {
+            std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
+            if (m_impl->has_pending_output &&
+                !shouldReplaceDecodedFrame(input->frame_id, m_impl->pending_output->frame_id))
+            {
+                // The display thread has not consumed pending_output yet, and this JPEG is
+                // strictly older than what is already decoded. A full RGB decode would be
+                // discarded immediately, so skip it and return the assembler buffer sooner.
+                input->jpeg_buffer.reset();
+                tjDestroy(tjInstance);
+                continue;
+            }
         }
 
         Output_ptr output = m_impl->output_pool.acquire();

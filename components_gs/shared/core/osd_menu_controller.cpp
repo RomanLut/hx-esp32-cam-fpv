@@ -2134,20 +2134,9 @@ void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& confi
 
     {
         char buf[256];
-        const uint8_t level = std::min<uint8_t>(s_postprocessingState.debanding_level, 3);
-        sprintf(buf, "Debanding: %s##debanding", level_names[level]);
-        if ( this->drawMenuItem( buf, 1) )
-        {
-            s_postprocessingState.debanding_level = next_level(level);
-            s_settingsStorage.saveGroundStationConfig();
-        }
-    }
-
-    {
-        char buf[256];
         const uint8_t level = std::min<uint8_t>(s_postprocessingState.adaptive_dithering_level, 3);
         sprintf(buf, "Adaptive dithering: %s##adaptive_dithering", level_names[level]);
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 1) )
         {
             s_postprocessingState.adaptive_dithering_level = next_level(level);
             s_settingsStorage.saveGroundStationConfig();

@@ -1771,6 +1771,8 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
         sync_params.renderer_stats.swap_total_ms = renderer_stats.swap_total_ms;
         sync_params.renderer_stats.swap_min_ms = renderer_stats.swap_min_ms;
         sync_params.renderer_stats.swap_max_ms = renderer_stats.swap_max_ms;
+        sync_params.renderer_stats.gpu_wait_last_ms = renderer_stats.gpu_wait_last_ms;
+        sync_params.renderer_stats.gpu_wait_max_ms = renderer_stats.gpu_wait_max_ms;
         sync_params.renderer_stats.discarded_pending_count = renderer_stats.discarded_pending_count;
         sync_params.build_info = info;
         sync_params.osd_font_name = s_flightOSD.currentFontName();

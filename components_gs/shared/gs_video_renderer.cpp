@@ -555,6 +555,8 @@ GsVideoRenderer::RendererStats GsVideoRenderer::consumeStats()
     stats.swap_total_ms = m_swap_total_ms.exchange(0);
     stats.swap_min_ms = m_swap_min_ms.exchange(99);
     stats.swap_max_ms = m_swap_max_ms.exchange(0);
+    stats.gpu_wait_last_ms = m_gpu_wait_last_ms.load();
+    stats.gpu_wait_max_ms = stats.swap_count > 0 ? stats.swap_max_ms : 0;
     if (stats.upload_count == 0)
     {
         stats.upload_min_ms = 99;
@@ -1262,6 +1264,7 @@ void GsVideoRenderer::drawFrameLocked()
     m_surface_backend.swapBuffers();
     const uint32_t swap_duration_ms = static_cast<uint32_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
+    m_gpu_wait_last_ms.store(swap_duration_ms);
     m_swap_count.fetch_add(1);
     m_swap_total_ms.fetch_add(swap_duration_ms);
     uint32_t swap_min = m_swap_min_ms.load();

@@ -37,6 +37,11 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.acc_upload_min_ms = std::min(core.acc_upload_min_ms, params.renderer_stats.upload_min_ms);
         core.acc_upload_max_ms = std::max(core.acc_upload_max_ms, params.renderer_stats.upload_max_ms);
     }
+    if (params.renderer_stats.swap_count > 0)
+    {
+        core.acc_gpu_wait_last_ms = params.renderer_stats.gpu_wait_last_ms;
+        core.acc_gpu_wait_max_ms = std::max(core.acc_gpu_wait_max_ms, params.renderer_stats.gpu_wait_max_ms);
+    }
 
     if (now - core.last_periodic_stats_tp >= std::chrono::milliseconds(1000))
     {
@@ -66,6 +71,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.textureUploadTimeMinMS =
             static_cast<int>(core.acc_upload_count > 0 ? core.acc_upload_min_ms : 0);
         core.gs_stats.textureUploadTimeMaxMS = static_cast<int>(core.acc_upload_max_ms);
+        core.gs_stats.gpuWaitLastFrameMS = static_cast<int>(core.acc_gpu_wait_last_ms);
+        core.gs_stats.gpuWaitMaxMS = static_cast<int>(core.acc_gpu_wait_max_ms);
         core.gs_stats.stabilizationCount = static_cast<int>(stabilization_stats.count);
         core.gs_stats.stabilizationTimeMinMS = static_cast<int>(stabilization_stats.min_ms);
         core.gs_stats.stabilizationTimeMaxMS = static_cast<int>(stabilization_stats.max_ms);
@@ -88,6 +95,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.acc_upload_total_ms = 0;
         core.acc_upload_min_ms = 9999;
         core.acc_upload_max_ms = 0;
+        core.acc_gpu_wait_last_ms = 0;
+        core.acc_gpu_wait_max_ms = 0;
         core.last_had_frame_loss = core.session.consumeLostFrameCount() != 0;
         GSStats next_stats = {};
         next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;

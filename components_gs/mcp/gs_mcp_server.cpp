@@ -670,6 +670,11 @@ std::string buildMenuBufferJson()
 std::string buildSnapshotJson()
 {
     const ApfpvCameraStateSnapshot apfpv_state = copyApfpvCameraState();
+    GSStats last_gs_stats = {};
+    {
+        std::lock_guard<std::mutex> lock(s_gs_stats_mutex);
+        last_gs_stats = s_runtimeCore.last_ground_stats;
+    }
 
     std::ostringstream discovered_cameras;
     discovered_cameras << '[';
@@ -716,6 +721,19 @@ std::string buildSnapshotJson()
         << "\"last_transport_payload_size\":" << s_runtimeCore.last_transport_payload_size << ','
         << "\"last_transport_from\":" << s_runtimeCore.last_transport_from << ','
         << "\"last_transport_to\":" << s_runtimeCore.last_transport_to
+        << "},"
+        << "\"ground_stats\":{"
+        << "\"discarded_frames_assembler_pool_overflow\":" << last_gs_stats.discardedFramesAssemblerPoolOverflow << ','
+        << "\"discarded_frames_decoder_input\":" << last_gs_stats.discardedFramesDecoderInput << ','
+        << "\"discarded_frames_decoded_output\":" << last_gs_stats.discardedFramesDecodedOutput << ','
+        << "\"decoded_jpeg_count\":" << last_gs_stats.decodedJpegCount << ','
+        << "\"decoded_jpeg_time_min_ms\":" << last_gs_stats.decodedJpegTimeMinMS << ','
+        << "\"decoded_jpeg_time_max_ms\":" << last_gs_stats.decodedJpegTimeMaxMS << ','
+        << "\"texture_upload_count\":" << last_gs_stats.textureUploadCount << ','
+        << "\"texture_upload_time_min_ms\":" << last_gs_stats.textureUploadTimeMinMS << ','
+        << "\"texture_upload_time_max_ms\":" << last_gs_stats.textureUploadTimeMaxMS << ','
+        << "\"received_completed_frames\":" << last_gs_stats.receivedCompletedFrames << ','
+        << "\"restored_completed_frames\":" << last_gs_stats.restoredCompletedFrames
         << "},"
         << "\"frame_debug\":{"
         << "\"enabled\":" << (g_framePacketsDebug.isOn() ? "true" : "false") << ','

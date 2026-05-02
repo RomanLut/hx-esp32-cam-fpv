@@ -38,6 +38,8 @@ struct GSStats
     int textureUploadTimeTotalMS = 0;
     int textureUploadTimeMinMS = 99;
     int textureUploadTimeMaxMS = 0;
+    int gpuWaitLastFrameMS = 0;
+    int gpuWaitMaxMS = 0;
     int stabilizationCount = 0;
     int stabilizationTimeMinMS = 0;
     int stabilizationTimeMaxMS = 0;

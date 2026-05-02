@@ -80,6 +80,8 @@ struct GsRuntimeCore
     uint32_t acc_upload_total_ms = 0;
     uint32_t acc_upload_min_ms = 9999;
     uint32_t acc_upload_max_ms = 0;
+    uint32_t acc_gpu_wait_last_ms = 0;
+    uint32_t acc_gpu_wait_max_ms = 0;
 
     Clock::time_point last_periodic_stats_tp = Clock::now();
     Clock::time_point last_data_rate_sample_tp = Clock::now();

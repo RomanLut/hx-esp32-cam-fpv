@@ -52,6 +52,8 @@ struct RuntimeRendererStats
     uint32_t swap_total_ms = 0;
     uint32_t swap_min_ms = 0;
     uint32_t swap_max_ms = 0;
+    uint32_t gpu_wait_last_ms = 0;
+    uint32_t gpu_wait_max_ms = 0;
     uint32_t discarded_pending_count = 0;
 };
 

@@ -21,9 +21,6 @@ struct VideoPostprocessingParams
     float deblocking_alpha = 0.0f;
     float deblocking_beta = 0.0f;
     float deblocking_tc = 0.0f; // maximum boundary smoothing weight
-    float debanding_strength = 0.0f;
-    float debanding_flat_threshold = 0.0f;
-    float debanding_range = 0.0f;
     float dithering_strength = 0.0f;
     float dithering_flat_threshold = 0.0f;
 };
@@ -33,7 +30,7 @@ VideoPostprocessingParams buildVideoPostprocessingParams(uint8_t current_quality
 
 //===================================================================================
 //===================================================================================
-// Draws video textures with startup-compiled shaders for each enabled feature set.
+// Draws video textures with source-resolution artifact and display shader stages.
 class VideoShaderRenderer
 {
 public:
@@ -56,9 +53,18 @@ public:
               const VideoPostprocessingParams& postprocessing_params);
 
 private:
-    static constexpr unsigned int kShaderProgramCount = 32;
+    static constexpr unsigned int kArtifactShaderProgramCount = 2;
+    static constexpr unsigned int kDisplayShaderProgramCount = 8;
 
-    unsigned int m_programs[kShaderProgramCount] = {};
+    bool ensureArtifactTarget(int frame_width, int frame_height);
+    void releaseArtifactTarget();
+
+    unsigned int m_artifact_programs[kArtifactShaderProgramCount] = {};
+    unsigned int m_display_programs[kDisplayShaderProgramCount] = {};
     bool m_programs_ready = false;
+    unsigned int m_artifact_framebuffer = 0;
+    unsigned int m_artifact_texture = 0;
+    int m_artifact_width = 0;
+    int m_artifact_height = 0;
 };
 }

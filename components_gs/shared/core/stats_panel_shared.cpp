@@ -203,6 +203,12 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
                         avg,
                         ground_stats.textureUploadTimeMaxMS);
         });
+        row("Waiting for GPU", [&]
+        {
+            ImGui::Text("%d/%d ms",
+                        ground_stats.gpuWaitLastFrameMS,
+                        ground_stats.gpuWaitMaxMS);
+        });
         row("Stabilization", [&]
         {
             ImGui::Text("%d/%d ms",

@@ -288,6 +288,7 @@ void comms_thread_proc()
             }
         }
 
+        bool received_packet_this_iteration = false;
         while (true)
         {
             bool restoredByFEC = false;
@@ -303,7 +304,6 @@ void comms_thread_proc()
                 rx_data.size = rx_data.data.size();
                 if (!s_transport->receive(rx_data.data.data(), rx_data.size, restoredByFEC))
                 {
-                    std::this_thread::yield();
                     break;
                 }
             }
@@ -313,6 +313,7 @@ void comms_thread_proc()
                 break;
             }
 
+            received_packet_this_iteration = true;
             ProcessedSessionPacket processed_packet = {};
             processed_packet.processed_tp = Clock::now();
             processed_packet.event =
@@ -370,6 +371,13 @@ void comms_thread_proc()
             {
                 pendingOsdFontReload();
             }
+        }
+
+        if (!received_packet_this_iteration)
+        {
+            // Radxa loses decode/render headroom if this thread busy-polls the empty
+            // FEC output queue; keep burst draining immediate, but sleep during idle gaps.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 }
