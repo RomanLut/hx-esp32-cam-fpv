@@ -20,7 +20,8 @@ $syncPaths = @(
     "gs",
     "components_gs",
     "components/common",
-    "assets_gs"
+    "assets_gs",
+    "scripts"
 )
 
 function Require-Tool([string]$path) {
@@ -64,7 +65,7 @@ if (-not (Test-Path $localArchivePath)) {
 
 try {
     & $pscp -scp -batch -pw $Password $localArchivePath "${User}@${RemoteHost}:${remoteArchivePath}"
-    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p $RemoteProjectDir && find $RemoteProjectDir -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && cd $RemoteProjectDir && tar -xf $remoteArchivePath && rm -f $remoteArchivePath"
+    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p $RemoteProjectDir && find $RemoteProjectDir -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && cd $RemoteProjectDir && tar -xf $remoteArchivePath && rm -f $remoteArchivePath && find '$RemoteProjectDir/scripts' -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} + && find '$RemoteProjectDir/scripts' -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
 }
 finally {
     if (Test-Path $localArchivePath) {

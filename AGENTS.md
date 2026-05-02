@@ -25,3 +25,7 @@ first-party GS logging rule:
 - if platform-specific logging behavior is needed, implement it inside `components_gs/shared/Log.h`, not at call sites
 - treat vendored third-party code under `components_gs/imgui`, `components_gs/fmt`, `android_gs/app/src/main/cpp/third_party`, and similar imported libraries as exceptions unless explicitly asked to modify them
 
+Radxa deployment rule:
+- when updating Radxa sync or install flows, deploy the top-level scripts directory with the GS runtime tree
+- after syncing to Radxa, normalize remote shell and Python scripts to LF line endings and restore executable flags because Windows and rsync options may not preserve them
+

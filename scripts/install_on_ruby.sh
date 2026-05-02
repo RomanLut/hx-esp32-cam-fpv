@@ -19,7 +19,7 @@ IS_RADXA=false
 COMPATIBLE_FILE="/proc/device-tree/compatible"
 
 if [ -f "$COMPATIBLE_FILE" ]; then
-    COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
+    COMPATIBLE_CONTENT=$(tr -d '\000' < "$COMPATIBLE_FILE")
 
     # Check if the content contains "radxa,zero3"
     if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3"; then

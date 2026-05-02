@@ -49,7 +49,8 @@ $gsSyncPaths = @(
     "gs",
     "components_gs",
     "components/common",
-    "assets_gs"
+    "assets_gs",
+    "scripts"
 )
 
 $rsyncExcludesByPath = @{
@@ -74,7 +75,8 @@ $remoteDirs = @(
     "$RemoteProjectDir/components_gs",
     "$RemoteProjectDir/components",
     "$RemoteProjectDir/components/common",
-    "$RemoteProjectDir/assets_gs"
+    "$RemoteProjectDir/assets_gs",
+    "$RemoteProjectDir/scripts"
 )
 
 $mkdirArgs = ($remoteDirs | ForEach-Object { Convert-ToBashSingleQuoted $_ }) -join " "
@@ -130,6 +132,13 @@ foreach ($relativePath in $gsSyncPaths)
                     "$sourceForBash $destinationForBash"
     & wsl.exe -d Ubuntu -u root -- bash -lc $rsyncCommand
 }
+
+$remoteScriptsDir = Convert-ToBashSingleQuoted "$RemoteProjectDir/scripts"
+Write-Host "Normalizing line endings on remote scripts ..."
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +"
+
+Write-Host "Restoring executable flags on remote scripts ..."
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
 
 if ($Build)
 {
