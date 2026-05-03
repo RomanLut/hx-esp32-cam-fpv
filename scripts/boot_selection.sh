@@ -96,6 +96,14 @@ if [ -f "$BOOT_SELECTION_FILE" ] && grep -q "ruby" "$BOOT_SELECTION_FILE"; then
     cd ${HOME_DIRECTORY}/ruby
     ./ruby_start
 else
+    # launch.sh can restart getty@tty1 after GS (non-tty1 start); the new autologin re-runs
+    # this script from /root/.profile. Consume the one-shot flag so that login stays in shell.
+    GS_SKIP_NEXT_FPV_AUTOSTART_FLAG=/run/esp32camfpv-skip-fpv-autostart-once
+    if [ -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG" ]; then
+        echo "Skipping esp32-cam-fpv autostart once (after GS released the console)."
+        rm -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG"
+        exit 0
+    fi
     echo "Launching esp32-cam-fpv..."
     cd ${HOME_DIRECTORY}/esp32-cam-fpv/gs
     ./launch.sh

@@ -52,6 +52,10 @@ stop_console_getty_while_gs_runs() {
 
 restore_console_getty_after_gs() {
     if $GETTY_TTY1_WAS_ACTIVE; then
+        # Starting tty1 getty again triggers a fresh autologin; /root/.profile then runs
+        # boot_selection.sh, which would immediately relaunch GS. One-shot skip flag on
+        # tmpfs (cleared on reboot) lets that login drop to a shell instead.
+        sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
         sudo systemctl start getty@tty1.service 2>/dev/null || true
     fi
 }
