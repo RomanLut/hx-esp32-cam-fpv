@@ -50,6 +50,7 @@ public:
     void close();
     bool isVisible() const;
     CapturedMenuBuffer copyCapturedMenuBuffer() const;
+    bool tryGetImageStabilizationRoiOverlaySettings(float& out_roi_divisor) const;
 
 private:
     enum class DrawMode

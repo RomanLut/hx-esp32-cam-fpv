@@ -60,4 +60,38 @@ VideoQuad buildVideoQuad(float rect_x,
                          int frame_width,
                          int frame_height,
                          int screen_mode);
+
+//===================================================================================
+//===================================================================================
+// Axis-aligned ROI rectangle in the same screen pixel space as VideoQuad x/y.
+struct StabilizationRoiScreenRect
+{
+    float min_x = 0.0f;
+    float min_y = 0.0f;
+    float max_x = 0.0f;
+    float max_y = 0.0f;
+};
+
+bool computeStabilizationRoiScreenRect(float layout_rect_x,
+                                       float layout_rect_y,
+                                       float layout_rect_w,
+                                       float layout_rect_h,
+                                       int frame_width,
+                                       int frame_height,
+                                       int screen_mode,
+                                       float screen_zoom,
+                                       float roi_divisor,
+                                       StabilizationRoiScreenRect& out_rect);
+
+bool computeStabilizationRoiScreenRectLetterboxed(int layout_quad_x,
+                                                  int layout_y,
+                                                  int layout_width,
+                                                  int layout_height,
+                                                  float video_aspect,
+                                                  ScreenAspectRatio screen_aspect_ratio,
+                                                  float screen_zoom,
+                                                  int frame_width,
+                                                  int frame_height,
+                                                  float roi_divisor,
+                                                  StabilizationRoiScreenRect& out_rect);
 }

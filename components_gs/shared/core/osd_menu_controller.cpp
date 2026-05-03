@@ -471,6 +471,27 @@ bool OSDMenuController::isVisible() const
 
 //===================================================================================
 //===================================================================================
+// Supplies roi_divisor for drawing the stabilization tracking ROI when the GS
+// image stabilization menus are open.
+bool OSDMenuController::tryGetImageStabilizationRoiOverlaySettings(float& out_roi_divisor) const
+{
+    if (!this->visible)
+    {
+        return false;
+    }
+    if (this->menuId != OSDMenuId::GSImageStabilization &&
+        this->menuId != OSDMenuId::GSImageStabilizationParameters)
+    {
+        return false;
+    }
+    out_roi_divisor = this->m_image_stabilization_draft_active
+        ? this->m_image_stabilization_draft.roi_divisor
+        : s_imageStabilizationState.roi_divisor;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
 // Returns a thread-safe copy of the last menu buffer captured during rendering.
 gs::menu::CapturedMenuBuffer OSDMenuController::copyCapturedMenuBuffer() const
 {

@@ -191,6 +191,7 @@ private:
     void drawVideoShaderLocked(float quad_x, float clip_x, float viewport_width, float viewport_height);
     void handleImGuiKeysLocked();
     void drawMenuLocked();
+    void drawStabilizationRoiOverlay(float overlay_width, float surface_height);
     void drawMenuImGuiLocked();
     RuntimeMenuUiState drawRuntimeTouchControlsLocked(bool visible, bool draw_controls);
     void releaseFrameRefLocked(PendingFrame& frame);

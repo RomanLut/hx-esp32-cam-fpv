@@ -1,6 +1,7 @@
 #include "gs_video_layout_shared.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -154,5 +155,158 @@ VideoQuad buildVideoQuad(float rect_x,
     }
 
     return quad;
+}
+
+//===================================================================================
+//===================================================================================
+// Maps the stabilization feature ROI from frame pixels to screen pixels. Geometry
+// matches OpenCV wrapper BuildRoi (VideoStabilizer.cpp); must stay in sync if that
+// ROI definition changes.
+bool computeStabilizationRoiScreenRect(float layout_rect_x,
+                                       float layout_rect_y,
+                                       float layout_rect_w,
+                                       float layout_rect_h,
+                                       int frame_width,
+                                       int frame_height,
+                                       int screen_mode,
+                                       float screen_zoom,
+                                       float roi_divisor,
+                                       StabilizationRoiScreenRect& out_rect)
+{
+    if (frame_width <= 0 || frame_height <= 0 || layout_rect_w <= 0.0f || layout_rect_h <= 0.0f)
+    {
+        return false;
+    }
+    if (roi_divisor <= 1.05f)
+    {
+        return false;
+    }
+
+    VideoQuad quad = buildVideoQuad(layout_rect_x,
+                                     layout_rect_y,
+                                     layout_rect_w,
+                                     layout_rect_h,
+                                     frame_width,
+                                     frame_height,
+                                     screen_mode);
+    std::swap(quad.v0, quad.v1);
+
+    if (screen_zoom != 1.0f)
+    {
+        const float cx = quad.x + quad.width * 0.5f;
+        const float cy = quad.y + quad.height * 0.5f;
+        quad.width *= screen_zoom;
+        quad.height *= screen_zoom;
+        quad.x = cx - quad.width * 0.5f;
+        quad.y = cy - quad.height * 0.5f;
+    }
+
+    const int fw = frame_width;
+    const int fh = frame_height;
+    const int margin_x = static_cast<int>(static_cast<float>(fw) / roi_divisor);
+    const int margin_y = static_cast<int>(static_cast<float>(fh) / roi_divisor);
+    const int rx = std::clamp(margin_x, 0, fw - 1);
+    const int ry = std::clamp(margin_y, 0, fh - 1);
+    const int rw = std::max(1, fw - rx * 2);
+    const int rh = std::max(1, fh - ry * 2);
+
+    const float inv_fw = 1.0f / static_cast<float>(fw);
+    const float inv_fh = 1.0f / static_cast<float>(fh);
+    const float nx0 = static_cast<float>(rx) * inv_fw;
+    const float ny0 = static_cast<float>(ry) * inv_fh;
+    const float nx1 = static_cast<float>(rx + rw) * inv_fw;
+    const float ny1 = static_cast<float>(ry + rh) * inv_fh;
+
+    out_rect.min_x = quad.x + nx0 * quad.width;
+    out_rect.max_x = quad.x + nx1 * quad.width;
+    out_rect.min_y = quad.y + ny0 * quad.height;
+    out_rect.max_y = quad.y + ny1 * quad.height;
+    return true;
+}
+
+namespace
+{
+//===================================================================================
+//===================================================================================
+// Zooms a letterboxed integer rect about its center. Matches PI_HAL applyScreenZoom
+// so Linux ROI overlay aligns with GL video placement.
+RectI applyScreenZoomToRectI(const RectI& rect, float zoom)
+{
+    if (zoom == 1.0f)
+    {
+        return rect;
+    }
+
+    const float center_x = (static_cast<float>(rect.x1) + static_cast<float>(rect.x2)) * 0.5f;
+    const float center_y = (static_cast<float>(rect.y1) + static_cast<float>(rect.y2)) * 0.5f;
+    const float width = static_cast<float>(rect.x2 - rect.x1) * zoom;
+    const float height = static_cast<float>(rect.y2 - rect.y1) * zoom;
+
+    return {
+        static_cast<int>(std::round(center_x - width * 0.5f)),
+        static_cast<int>(std::round(center_y - height * 0.5f)),
+        static_cast<int>(std::round(center_x + width * 0.5f)),
+        static_cast<int>(std::round(center_y + height * 0.5f))};
+}
+}
+
+//===================================================================================
+//===================================================================================
+// Linux GS video uses buildLetterboxedRect + screen zoom (PI_HAL) instead of
+// buildVideoQuad(screen_mode); this path must match that layout.
+bool computeStabilizationRoiScreenRectLetterboxed(int layout_quad_x,
+                                                  int layout_y,
+                                                  int layout_width,
+                                                  int layout_height,
+                                                  float video_aspect,
+                                                  ScreenAspectRatio screen_aspect_ratio,
+                                                  float screen_zoom,
+                                                  int frame_width,
+                                                  int frame_height,
+                                                  float roi_divisor,
+                                                  StabilizationRoiScreenRect& out_rect)
+{
+    if (frame_width <= 0 || frame_height <= 0 || layout_width <= 0 || layout_height <= 0)
+    {
+        return false;
+    }
+    if (roi_divisor <= 1.05f || video_aspect <= 0.0f)
+    {
+        return false;
+    }
+
+    const RectI letterboxed =
+        buildLetterboxedRect(layout_quad_x, layout_y, layout_width, layout_height, video_aspect, screen_aspect_ratio);
+    const RectI zoomed = applyScreenZoomToRectI(letterboxed, screen_zoom);
+    const float qx = static_cast<float>(zoomed.x1);
+    const float qy = static_cast<float>(zoomed.y1);
+    const float qw = static_cast<float>(zoomed.x2 - zoomed.x1);
+    const float qh = static_cast<float>(zoomed.y2 - zoomed.y1);
+    if (qw <= 0.0f || qh <= 0.0f)
+    {
+        return false;
+    }
+
+    const int fw = frame_width;
+    const int fh = frame_height;
+    const int margin_x = static_cast<int>(static_cast<float>(fw) / roi_divisor);
+    const int margin_y = static_cast<int>(static_cast<float>(fh) / roi_divisor);
+    const int rx = std::clamp(margin_x, 0, fw - 1);
+    const int ry = std::clamp(margin_y, 0, fh - 1);
+    const int rw = std::max(1, fw - rx * 2);
+    const int rh = std::max(1, fh - ry * 2);
+
+    const float inv_fw = 1.0f / static_cast<float>(fw);
+    const float inv_fh = 1.0f / static_cast<float>(fh);
+    const float nx0 = static_cast<float>(rx) * inv_fw;
+    const float ny0 = static_cast<float>(ry) * inv_fh;
+    const float nx1 = static_cast<float>(rx + rw) * inv_fw;
+    const float ny1 = static_cast<float>(ry + rh) * inv_fh;
+
+    out_rect.min_x = qx + nx0 * qw;
+    out_rect.max_x = qx + nx1 * qw;
+    out_rect.min_y = qy + ny0 * qh;
+    out_rect.max_y = qy + ny1 * qh;
+    return true;
 }
 }
