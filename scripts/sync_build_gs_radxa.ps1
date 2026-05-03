@@ -40,6 +40,16 @@ if (-not $SkipClean) {
 }
 $buildCmd += "make -j4"
 
+# Windows tar / SCP strips +x; rsync uses --no-perms. Normalize LF and chmod for scripts/ and gs/ (e.g. launch.sh).
+$remoteScriptsDir = "$RemoteProjectDir/scripts"
+$remoteGsDir = "$RemoteProjectDir/gs"
+$normalizeShellArtifacts = @(
+    "find '$remoteScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +",
+    "find '$remoteScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +",
+    "find '$remoteGsDir' \( -path '$remoteGsDir/build' -o -path '$remoteGsDir/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +",
+    "find '$remoteGsDir' \( -path '$remoteGsDir/build' -o -path '$remoteGsDir/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
+) -join " && "
+
 Write-Host "Syncing GS runtime tree to ${User}@${RemoteHost}:${RemoteProjectDir} ..."
 if (Test-Path $localArchivePath) {
     Remove-Item -LiteralPath $localArchivePath -Force
@@ -65,7 +75,7 @@ if (-not (Test-Path $localArchivePath)) {
 
 try {
     & $pscp -scp -batch -pw $Password $localArchivePath "${User}@${RemoteHost}:${remoteArchivePath}"
-    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p $RemoteProjectDir && find $RemoteProjectDir -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && cd $RemoteProjectDir && tar -xf $remoteArchivePath && rm -f $remoteArchivePath && find '$RemoteProjectDir/scripts' -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} + && find '$RemoteProjectDir/scripts' -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
+    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p $RemoteProjectDir && find $RemoteProjectDir -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && cd $RemoteProjectDir && tar -xf $remoteArchivePath && rm -f $remoteArchivePath && $normalizeShellArtifacts"
 }
 finally {
     if (Test-Path $localArchivePath) {

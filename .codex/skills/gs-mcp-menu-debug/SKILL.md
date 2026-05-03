@@ -85,8 +85,8 @@ Radxa commands:
   `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && make -j4"`
 - Normal launch:
   `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && ./launch.sh"`
-- Preferred persistent remote launch:
-  `"C:\Program Files\putty\plink.exe" -ssh -t -pw radxa radxa@192.168.3.148 "tmux kill-session -t gslaunch 2>/dev/null || true; cd /home/radxa/esp32-cam-fpv/gs && tmux new-session -d -s gslaunch 'cd /home/radxa/esp32-cam-fpv/gs && ./launch.sh' && tmux list-sessions"`
+- Preferred persistent remote launch (run from `gs/` so `tmux` starts `./launch.sh` with the right cwd):
+  `"C:\Program Files\putty\plink.exe" -ssh -t -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && chmod +x ./launch.sh && (tmux kill-session -t gslaunch 2>/dev/null || true) && tmux new-session -d -s gslaunch ./launch.sh && tmux list-sessions"`
 - `tmux` launch verification:
   `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "tmux list-sessions 2>/dev/null || true; echo ---; pgrep -af './launch.sh|./gs'; echo ---; tmux capture-pane -pt gslaunch 2>/dev/null | tail -n 80"`
 - Background launch verification:
@@ -94,6 +94,7 @@ Radxa commands:
 
 Radxa constraints:
 
+- Windows `tar`/SCP and `rsync --no-perms` drop the execute bit on shell scripts. The Radxa sync PowerShell scripts restore `+x` and CRLF normalization for `scripts/**` and `gs/**` (`*.sh` / `*.py`, excluding `gs/build`). If `./launch.sh` fails with Permission denied, re-run sync or `chmod +x /home/radxa/esp32-cam-fpv/gs/launch.sh` on the board.
 - Never sync only `gs\*` manually; Linux `gs` also depends on `components_gs`, `components/common`, and `assets_gs`.
 - Sync and remote build are strictly sequential steps on this setup. Never start a Radxa `make` while `rsync` or any other source-sync command is still running.
 - When syncing the `gs` tree to Radxa, exclude local build/runtime artifacts such as `gs/build/`, the host-built `gs` binary, and device-local `gs.ini` / `imgui.ini`; pushing those files can break the remote ARM launch or overwrite the board's active runtime mode.

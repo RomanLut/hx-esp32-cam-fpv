@@ -134,11 +134,13 @@ foreach ($relativePath in $gsSyncPaths)
 }
 
 $remoteScriptsDir = Convert-ToBashSingleQuoted "$RemoteProjectDir/scripts"
+$remoteGsDir = Convert-ToBashSingleQuoted "$RemoteProjectDir/gs"
+$remoteGsDirUnquoted = "$RemoteProjectDir/gs"
 Write-Host "Normalizing line endings on remote scripts ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +"
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +"
 
 Write-Host "Restoring executable flags on remote scripts ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
+& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
 
 if ($Build)
 {
