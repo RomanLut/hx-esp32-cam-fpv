@@ -93,13 +93,15 @@ void LinuxRuntimePlatformServices::setVsync(bool enabled)
 //===================================================================================
 //===================================================================================
 // Exits the Linux application, stopping recording first when needed.
+// Uses _Exit so "Exit to shell" and signal shutdown do not raise SIGABRT or dump core;
+// the parent launch.sh / boot_selection.sh chain can return to a normal login shell.
 void LinuxRuntimePlatformServices::exitApp()
 {
     if (s_recordingsStorage->isRecording())
     {
         s_recordingsStorage->toggleRecording(0, 0, "exit_app");
     }
-    std::abort();
+    std::_Exit(0);
 }
 
 //===================================================================================
