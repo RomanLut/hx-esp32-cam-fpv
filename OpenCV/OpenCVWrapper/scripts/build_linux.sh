@@ -33,6 +33,67 @@ if [[ "${OPENCV_TAG}" != "${EXPECTED_OPENCV_TAG}" ]]; then
     exit 1
 fi
 
+# Minimal Ubuntu WSL images often lack cmake. When OPENCV_WRAPPER_BOOTSTRAP_CMAKE is unset or 1,
+# download a standalone Kitware CMake tarball to /tmp (no sudo). Set OPENCV_WRAPPER_BOOTSTRAP_CMAKE=0 to fail fast with apt hints instead.
+ensure_cmake_on_path()
+{
+    if command -v cmake >/dev/null 2>&1
+    then
+        return 0
+    fi
+
+    if [[ "${OPENCV_WRAPPER_BOOTSTRAP_CMAKE:-1}" == "0" ]]
+    then
+        echo "cmake was not found in PATH. Install with: sudo apt-get update && sudo apt-get install -y cmake build-essential" >&2
+        echo "Or do not set OPENCV_WRAPPER_BOOTSTRAP_CMAKE=0 so this script can download portable CMake to /tmp." >&2
+        exit 1
+    fi
+
+    if ! command -v curl >/dev/null 2>&1
+    then
+        echo "cmake was not found and curl is missing. Install: sudo apt-get update && sudo apt-get install -y curl ca-certificates cmake build-essential" >&2
+        exit 1
+    fi
+
+    local uname_m arch cmake_ver cmake_dir tarname url
+    uname_m="$(uname -m)"
+    cmake_ver="3.29.6"
+    case "${uname_m}" in
+        x86_64)
+            arch="x86_64"
+            ;;
+        aarch64|arm64)
+            arch="aarch64"
+            ;;
+        *)
+            echo "cmake was not found; portable bootstrap only supports x86_64 or aarch64 (uname -m=${uname_m}). Install cmake from your distro." >&2
+            exit 1
+            ;;
+    esac
+
+    cmake_dir="/tmp/cmake-${cmake_ver}-linux-${arch}"
+    tarname="cmake-${cmake_ver}-linux-${arch}.tar.gz"
+    url="https://github.com/Kitware/CMake/releases/download/v${cmake_ver}/${tarname}"
+
+    if [[ ! -x "${cmake_dir}/bin/cmake" ]]
+    then
+        echo "cmake not found; downloading portable CMake ${cmake_ver} for linux-${arch} to ${cmake_dir} ..."
+        rm -rf "${cmake_dir}" "/tmp/${tarname}"
+        curl -L --fail --show-error -o "/tmp/${tarname}" "${url}"
+        tar -xzf "/tmp/${tarname}" -C /tmp
+    fi
+
+    export PATH="${cmake_dir}/bin:${PATH}"
+    if ! command -v cmake >/dev/null 2>&1
+    then
+        echo "Portable CMake bootstrap failed (expected ${cmake_dir}/bin/cmake)." >&2
+        exit 1
+    fi
+    echo "Using portable CMake: $(command -v cmake) ($("${cmake_dir}/bin/cmake" --version | head -n 1))"
+}
+
+ensure_cmake_on_path
+
 echo "Building OpenCVWrapper Linux prebuilt with ${BUILD_JOBS} parallel jobs."
 
 cmake -S "${OPENCV_SOURCE}" -B "${OPENCV_BUILD}" \
