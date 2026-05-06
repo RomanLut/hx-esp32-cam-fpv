@@ -16,6 +16,7 @@
 #include "gs_camera_calibration_shared.h"
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_controller.h"
+#include "Log.h"
 
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
@@ -101,7 +102,7 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
         gs::runtime::handleRecordingKeysFromImGui(config, "keyboard_g");
     }
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Space) || (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape)))
+    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape))
     {
         s_RuntimePlatformServices->exitApp();
     }
