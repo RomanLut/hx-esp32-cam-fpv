@@ -38,6 +38,7 @@ public:
     virtual void decreaseSpeed();
     virtual void increaseSpeed();
     virtual void togglePaused();
+    virtual void stepForward();
     virtual PlaybackStatus status() const;
 
 protected:
@@ -78,6 +79,7 @@ protected:
     PlaybackStatus m_status = {};
     std::atomic<bool> m_stop_requested = false;
     std::atomic<int> m_speed_index = kPlaybackNormalSpeedIndex;
+    std::atomic<int> m_step_frames = 0;
 
 private:
     void adjustSpeed(int delta);

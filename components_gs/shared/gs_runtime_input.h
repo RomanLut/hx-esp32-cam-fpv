@@ -67,6 +67,15 @@ bool handlePlaybackKeysFromImGui(PlaybackManager* playback_manager, OpenPlayback
         return true;
     }
 
+    if (ImGui::IsKeyPressed(ImGuiKey_Space, false))
+    {
+        if (playback_manager->status().speed_multiplier != 0)
+            playback_manager->togglePaused();
+        else
+            playback_manager->stepForward();
+        return true;
+    }
+
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
         ImGui::IsKeyPressed(ImGuiKey_DownArrow, false))
     {

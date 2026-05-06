@@ -65,6 +65,14 @@ void PlaybackManager::togglePaused()
 
 //===================================================================================
 //===================================================================================
+// Queues a single-frame advance when playback is paused.
+void PlaybackManager::stepForward()
+{
+    m_step_frames.fetch_add(1);
+}
+
+//===================================================================================
+//===================================================================================
 // Returns a snapshot of the current playback progress.
 PlaybackStatus PlaybackManager::status() const
 {
@@ -241,7 +249,15 @@ void PlaybackManager::runPlaybackFile(std::string path)
         status.speed_multiplier = speed;
         int64_t next_frame_position = frame_position + speed;
         int visible_speed = speed;
-        if (speed < 0 && next_frame_position < 0)
+        if (speed == 0)
+        {
+            const int steps = m_step_frames.exchange(0);
+            next_frame_position = std::clamp(
+                frame_position + steps,
+                static_cast<int64_t>(0),
+                static_cast<int64_t>(frame_index.size()) - 1);
+        }
+        else if (speed < 0 && next_frame_position < 0)
         {
             next_frame_position = 0;
             visible_speed = 0;
