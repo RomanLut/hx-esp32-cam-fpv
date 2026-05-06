@@ -3,6 +3,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -11,20 +12,45 @@
 #include <thread>
 
 #include <signal.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "../../components/common/Clock.h"
 #include "util.h"
 #include "utils.h"
 
-static const char* GS_PID_FILE = "/tmp/esp32_cam_fpv_gs.pid";
+//===================================================================================
+//===================================================================================
+// Returns the single-instance pid file path: prefer XDG_RUNTIME_DIR so a root-run gs
+// cannot leave an unwritable /tmp pid that blocks a normal-user verify or dev launch.
+static std::string gsLinuxInstancePidPath()
+{
+    const char* xdg = std::getenv("XDG_RUNTIME_DIR");
+    if(xdg != nullptr && xdg[0] != '\0')
+    {
+        std::string base(xdg);
+        if(base.back() == '/')
+        {
+            return base + "esp32_cam_fpv_gs.pid";
+        }
+        return base + "/esp32_cam_fpv_gs.pid";
+    }
+    // Non-interactive shells (e.g. wsl.exe bash -lc) often omit XDG_RUNTIME_DIR; use /run/user/<uid> when present.
+    const std::string run_user = std::string("/run/user/") + std::to_string(static_cast<long long>(getuid()));
+    struct stat st;
+    if(stat(run_user.c_str(), &st) == 0 && S_ISDIR(st.st_mode) != 0 && access(run_user.c_str(), W_OK) == 0)
+    {
+        return run_user + "/esp32_cam_fpv_gs.pid";
+    }
+    return std::string("/tmp/esp32_cam_fpv_gs.pid");
+}
 
 //===================================================================================
 //===================================================================================
 // Removes PID file from previous application run
 void cleanupLinuxSingleInstancePidFile()
 {
-    unlink(GS_PID_FILE);
+    unlink(gsLinuxInstancePidPath().c_str());
 }
 
 //===================================================================================
@@ -32,7 +58,8 @@ void cleanupLinuxSingleInstancePidFile()
 // Reads PID of running GS instance from file
 static pid_t readRunningInstancePid()
 {
-    std::ifstream pid_file(GS_PID_FILE);
+    const std::string path = gsLinuxInstancePidPath();
+    std::ifstream pid_file(path);
     pid_t pid = 0;
     pid_file >> pid;
     return pid;
@@ -85,10 +112,11 @@ bool ensureLinuxSingleInstance()
         }
     }
 
-    std::ofstream pid_file(GS_PID_FILE, std::ios::trunc);
+    const std::string pid_path = gsLinuxInstancePidPath();
+    std::ofstream pid_file(pid_path, std::ios::trunc);
     if (!pid_file.is_open())
     {
-        printf("Can not open pid file %s\n", GS_PID_FILE);
+        printf("Can not open pid file %s\n", pid_path.c_str());
         return false;
     }
 
