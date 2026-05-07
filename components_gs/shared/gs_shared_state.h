@@ -42,14 +42,12 @@ struct LensCorrectionState
 struct ImageStabilizationState
 {
     bool enabled = false;
+    bool debug = false;
     uint8_t rc_channel = 0;
-    float roi_divisor = 3.5f;
-    float zoom_factor = 0.9f;
-    float process_var = 0.03f;
-    float measurement_var = 2.0f;
-    int max_corners = 400;
-    float quality_level = 0.01f;
-    float min_distance = 30.0f;
+    float roi_divisor = 4.0f;
+    float zoom = 1.15f;
+    float stabilization_decay = 0.05f;
+    float limit_release_boost = 0.5f;
 };
 
 //===================================================================================

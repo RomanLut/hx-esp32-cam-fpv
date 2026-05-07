@@ -48,12 +48,9 @@ constexpr int kImageStabilizationRepeatResetMs = 200;
 constexpr int kImageStabilizationAccelerationStepMs = 3000;
 constexpr int kImageStabilizationMaxStepMultiplier = 64;
 constexpr float kImageStabilizationRoiDivisorStep = 0.1f;
-constexpr float kImageStabilizationZoomFactorStep = 0.01f;
-constexpr float kImageStabilizationProcessVarStep = 0.001f;
-constexpr float kImageStabilizationMeasurementVarStep = 0.1f;
-constexpr int kImageStabilizationMaxCornersStep = 25;
-constexpr float kImageStabilizationQualityLevelStep = 0.001f;
-constexpr float kImageStabilizationMinDistanceStep = 1.0f;
+constexpr float kImageStabilizationZoomStep = 0.01f;
+constexpr float kImageStabilizationDecayStep = 0.01f;
+constexpr float kImageStabilizationLimitReleaseBoostStep = 0.1f;
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -2252,7 +2249,19 @@ void OSDMenuController::drawGSImageStabilizationMenu(Ground2Air_Config_Packet& c
         }
     }
 
-    if ( this->drawMenuItem( "Parameters...##parameters", 1) )
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Debug: %s##debug", this->m_image_stabilization_draft.debug ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 1) )
+        {
+            this->m_image_stabilization_draft.debug = !this->m_image_stabilization_draft.debug;
+            s_imageStabilizationState.debug = this->m_image_stabilization_draft.debug;
+            this->m_image_stabilization_original.debug = this->m_image_stabilization_draft.debug;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
+    if ( this->drawMenuItem( "Parameters...##parameters", 2) )
     {
         this->resetImageStabilizationStepMultiplier();
         this->goForward( OSDMenuId::GSImageStabilizationParameters, 0 );
@@ -2272,7 +2281,7 @@ void OSDMenuController::drawGSImageStabilizationMenu(Ground2Air_Config_Packet& c
 
 //===================================================================================
 //===================================================================================
-// Draws GS image stabilization parameter controls with draft values until Apply.
+// Draws GS image stabilization parameter controls; only Apply commits changes.
 void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config_Packet& config)
 {
     (void)config;
@@ -2328,51 +2337,40 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         this->drawMenuItem(buf, item_index, true);
     };
 
-    auto draw_int_parameter = [&](const char* label,
-                                  const char* imgui_id,
-                                  int item_index,
-                                  int& value,
-                                  int step,
-                                  int min_value,
-                                  int max_value)
-    {
-        const bool focused = (this->selectedItem == item_index);
-        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
-        {
-            if (isMenuAdjustIncreasePressed())
-            {
-                value = std::clamp(
-                    value + step * this->getImageStabilizationStepMultiplier(item_index, +1),
-                    min_value,
-                    max_value);
-                this->keyHandled = true;
-                parameter_handled = true;
-            }
-            else if (isMenuAdjustDecreasePressed())
-            {
-                value = std::clamp(
-                    value - step * this->getImageStabilizationStepMultiplier(item_index, -1),
-                    min_value,
-                    max_value);
-                this->keyHandled = true;
-                parameter_handled = true;
-            }
-        }
+    draw_float_parameter("roi_divisor",
+                         "roi_divisor",
+                         0,
+                         this->m_image_stabilization_draft.roi_divisor,
+                         kImageStabilizationRoiDivisorStep,
+                         1.2f,
+                         10.0f,
+                         1);
+    draw_float_parameter("zoom",
+                         "zoom",
+                         1,
+                         this->m_image_stabilization_draft.zoom,
+                         kImageStabilizationZoomStep,
+                         1.0f,
+                         2.0f,
+                         2);
+    draw_float_parameter("stabilization_decay",
+                         "stabilization_decay",
+                         2,
+                         this->m_image_stabilization_draft.stabilization_decay,
+                         kImageStabilizationDecayStep,
+                         0.01f,
+                         1.0f,
+                         2);
+    draw_float_parameter("limit_release_boost",
+                         "limit_release_boost",
+                         3,
+                         this->m_image_stabilization_draft.limit_release_boost,
+                         kImageStabilizationLimitReleaseBoostStep,
+                         0.0f,
+                         10.0f,
+                         1);
 
-        char buf[256];
-        snprintf(buf, sizeof(buf), "%s: <>%d##%s", label, value, imgui_id);
-        this->drawMenuItem(buf, item_index, true);
-    };
-
-    draw_float_parameter("roi_divisor", "roi_divisor", 0, this->m_image_stabilization_draft.roi_divisor, kImageStabilizationRoiDivisorStep, 1.2f, 10.0f, 1);
-    draw_float_parameter("zoom_factor", "zoom_factor", 1, this->m_image_stabilization_draft.zoom_factor, kImageStabilizationZoomFactorStep, 0.5f, 1.0f, 2);
-    draw_float_parameter("process_var", "process_var", 2, this->m_image_stabilization_draft.process_var, kImageStabilizationProcessVarStep, 0.001f, 1.0f, 3);
-    draw_float_parameter("measurement_var", "measurement_var", 3, this->m_image_stabilization_draft.measurement_var, kImageStabilizationMeasurementVarStep, 0.1f, 20.0f, 1);
-    draw_int_parameter("max_corners", "max_corners", 4, this->m_image_stabilization_draft.max_corners, kImageStabilizationMaxCornersStep, 50, 1000);
-    draw_float_parameter("quality_level", "quality_level", 5, this->m_image_stabilization_draft.quality_level, kImageStabilizationQualityLevelStep, 0.001f, 0.1f, 3);
-    draw_float_parameter("min_distance", "min_distance", 6, this->m_image_stabilization_draft.min_distance, kImageStabilizationMinDistanceStep, 1.0f, 100.0f, 0);
-
-    if ( this->drawMenuItem( "Apply##apply", 7, true) )
+    if ( this->drawMenuItem( "Apply##apply", 4, true) )
     {
         s_imageStabilizationState = this->m_image_stabilization_draft;
         s_settingsStorage.saveGroundStationConfig();
@@ -2380,23 +2378,29 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         this->m_image_stabilization_draft_active = false;
         this->resetImageStabilizationStepMultiplier();
         this->goBack();
-        this->goBack();
         return;
     }
 
-    if ( this->drawMenuItem( "Reset##reset", 8, true) )
+    if ( this->drawMenuItem( "Reset##reset", 5, true) )
     {
         const bool enabled = this->m_image_stabilization_draft.enabled;
+        const bool debug = this->m_image_stabilization_draft.debug;
+        const uint8_t rc_channel = this->m_image_stabilization_draft.rc_channel;
         this->m_image_stabilization_draft = {};
         this->m_image_stabilization_draft.enabled = enabled;
+        this->m_image_stabilization_draft.debug = debug;
+        this->m_image_stabilization_draft.rc_channel = rc_channel;
         s_imageStabilizationState = this->m_image_stabilization_draft;
         gs::stabilization::reset();
         this->resetImageStabilizationStepMultiplier();
         return;
     }
 
-    if ( this->drawMenuItem( "Exit##exit", 9, true) )
+    if ( this->drawMenuItem( "Discard##discard", 6, true) )
     {
+        this->m_image_stabilization_draft = this->m_image_stabilization_original;
+        s_imageStabilizationState = this->m_image_stabilization_original;
+        gs::stabilization::reset();
         this->resetImageStabilizationStepMultiplier();
         this->goBack();
         return;
@@ -2410,6 +2414,9 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
 
     if (!parameter_handled && this->exitKeyPressed())
     {
+        this->m_image_stabilization_draft = this->m_image_stabilization_original;
+        s_imageStabilizationState = this->m_image_stabilization_original;
+        gs::stabilization::reset();
         this->resetImageStabilizationStepMultiplier();
         this->goBack();
     }

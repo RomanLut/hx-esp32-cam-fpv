@@ -79,8 +79,6 @@ typedef struct GsVisionStabilizerConfig
 {
     float roi_divisor;
     float zoom_factor;
-    float process_variance;
-    float measurement_variance;
     int32_t max_corners;
     float quality_level;
     float min_distance;
@@ -113,6 +111,19 @@ typedef struct GsVisionStabilizerFrameResult
     float transform_10;
     float transform_11;
     float transform_12;
+    float measured_dx;
+    float measured_dy;
+    float measured_angle_radians;
+    float compensated_dx;
+    float compensated_dy;
+    float compensated_angle_radians;
+    float feature_old_x[512];
+    float feature_old_y[512];
+    float feature_new_x[512];
+    float feature_new_y[512];
+    float feature_confidence[512];
+    int32_t feature_status[512];
+    int32_t feature_count;
 } GsVisionStabilizerFrameResult;
 
 //===================================================================================

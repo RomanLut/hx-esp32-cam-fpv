@@ -303,6 +303,10 @@ void SettingsStorage::loadGroundStationConfig()
         std::string& temp = (*this)["gs"]["image_stabilization_enabled"];
         if (!temp.empty()) s_imageStabilizationState.enabled = std::atoi(temp.c_str()) != 0;
     }
+    {
+        std::string& temp = (*this)["gs"]["image_stabilization_debug"];
+        if (!temp.empty()) s_imageStabilizationState.debug = std::atoi(temp.c_str()) != 0;
+    }
 
     {
         std::string& temp = (*this)["gs"]["image_stabilization_channel"];
@@ -313,36 +317,20 @@ void SettingsStorage::loadGroundStationConfig()
         std::string& temp = (*this)["gs"]["image_stabilization_roi_divisor"];
         if (!temp.empty()) s_imageStabilizationState.roi_divisor = std::clamp(std::stof(temp), 1.2f, 10.0f);
     }
-
     {
-        std::string& temp = (*this)["gs"]["image_stabilization_zoom_factor"];
-        if (!temp.empty()) s_imageStabilizationState.zoom_factor = std::clamp(std::stof(temp), 0.5f, 1.0f);
+        std::string& temp = (*this)["gs"]["image_stabilization_zoom"];
+        if (!temp.empty()) s_imageStabilizationState.zoom = std::clamp(std::stof(temp), 1.0f, 2.0f);
+    }
+    {
+        std::string& temp = (*this)["gs"]["image_stabilization_decay"];
+        if (!temp.empty()) s_imageStabilizationState.stabilization_decay = std::clamp(std::stof(temp), 0.01f, 1.0f);
+    }
+    {
+        std::string& temp = (*this)["gs"]["image_stabilization_limit_release_boost"];
+        s_imageStabilizationState.limit_release_boost = 0.5f;
+        if (!temp.empty()) s_imageStabilizationState.limit_release_boost = std::clamp(std::stof(temp), 0.0f, 10.0f);
     }
 
-    {
-        std::string& temp = (*this)["gs"]["image_stabilization_process_var"];
-        if (!temp.empty()) s_imageStabilizationState.process_var = std::clamp(std::stof(temp), 0.001f, 1.0f);
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["image_stabilization_measurement_var"];
-        if (!temp.empty()) s_imageStabilizationState.measurement_var = std::clamp(std::stof(temp), 0.1f, 20.0f);
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["image_stabilization_max_corners"];
-        if (!temp.empty()) s_imageStabilizationState.max_corners = std::clamp(std::atoi(temp.c_str()), 50, 1000);
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["image_stabilization_quality_level"];
-        if (!temp.empty()) s_imageStabilizationState.quality_level = std::clamp(std::stof(temp), 0.001f, 0.1f);
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["image_stabilization_min_distance"];
-        if (!temp.empty()) s_imageStabilizationState.min_distance = std::clamp(std::stof(temp), 1.0f, 100.0f);
-    }
 }
 
 void SettingsStorage::loadGround2AirConfig()
@@ -454,14 +442,12 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["lens_correction_p1"] = std::to_string(s_lensCorrectionState.p1);
     (*this)["gs"]["lens_correction_p2"] = std::to_string(s_lensCorrectionState.p2);
     (*this)["gs"]["image_stabilization_enabled"] = std::to_string(s_imageStabilizationState.enabled ? 1 : 0);
+    (*this)["gs"]["image_stabilization_debug"] = std::to_string(s_imageStabilizationState.debug ? 1 : 0);
     (*this)["gs"]["image_stabilization_channel"] = std::to_string(s_imageStabilizationState.rc_channel);
     (*this)["gs"]["image_stabilization_roi_divisor"] = std::to_string(s_imageStabilizationState.roi_divisor);
-    (*this)["gs"]["image_stabilization_zoom_factor"] = std::to_string(s_imageStabilizationState.zoom_factor);
-    (*this)["gs"]["image_stabilization_process_var"] = std::to_string(s_imageStabilizationState.process_var);
-    (*this)["gs"]["image_stabilization_measurement_var"] = std::to_string(s_imageStabilizationState.measurement_var);
-    (*this)["gs"]["image_stabilization_max_corners"] = std::to_string(s_imageStabilizationState.max_corners);
-    (*this)["gs"]["image_stabilization_quality_level"] = std::to_string(s_imageStabilizationState.quality_level);
-    (*this)["gs"]["image_stabilization_min_distance"] = std::to_string(s_imageStabilizationState.min_distance);
+    (*this)["gs"]["image_stabilization_zoom"] = std::to_string(s_imageStabilizationState.zoom);
+    (*this)["gs"]["image_stabilization_decay"] = std::to_string(s_imageStabilizationState.stabilization_decay);
+    (*this)["gs"]["image_stabilization_limit_release_boost"] = std::to_string(s_imageStabilizationState.limit_release_boost);
     save();
 }
 

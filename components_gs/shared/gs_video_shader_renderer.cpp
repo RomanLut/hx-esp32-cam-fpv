@@ -581,20 +581,21 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     float inv12 = 0.0f;
     bool stabilization_enabled = false;
     if (stabilization_transform.enabled &&
-        stabilization_transform.width == frame_width &&
-        stabilization_transform.height == frame_height)
+             stabilization_transform.width == frame_width &&
+             stabilization_transform.height == frame_height)
     {
         const float det = stabilization_transform.m00 * stabilization_transform.m11 -
                           stabilization_transform.m01 * stabilization_transform.m10;
         if (std::abs(det) > 0.000001f)
         {
-            const float inv_det = 1.0f / det;
-            inv00 = stabilization_transform.m11 * inv_det;
-            inv01 = -stabilization_transform.m01 * inv_det;
-            inv10 = -stabilization_transform.m10 * inv_det;
-            inv11 = stabilization_transform.m00 * inv_det;
-            inv02 = -(inv00 * stabilization_transform.m02 + inv01 * stabilization_transform.m12);
-            inv12 = -(inv10 * stabilization_transform.m02 + inv11 * stabilization_transform.m12);
+            // OpenCV warp matrices used by the stabilizer already map output pixel -> source sample.
+            // Feed the same mapping to the shader (do not invert), otherwise compensation direction flips.
+            inv00 = stabilization_transform.m00;
+            inv01 = stabilization_transform.m01;
+            inv10 = stabilization_transform.m10;
+            inv11 = stabilization_transform.m11;
+            inv02 = stabilization_transform.m02;
+            inv12 = stabilization_transform.m12;
             stabilization_enabled = true;
         }
     }

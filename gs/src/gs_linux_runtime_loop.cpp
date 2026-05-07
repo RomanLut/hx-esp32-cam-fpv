@@ -5,8 +5,11 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdlib>
+#include <limits>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 #include "linux_raw_broadcast_transport.h"
@@ -25,6 +28,7 @@
 #include "gs_playback_manager.h"
 #include "gs_runtime_frame_ui.h"
 #include "gs_runtime_menu_ui.h"
+#include "gs_shared_state.h"
 #include "gs_camera_calibration_shared.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
@@ -37,6 +41,7 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "jpeg_parser.h"
+#include "Log.h"
 #include "main.h"
 #include "util.h"
 #include "utils/utils.h"
@@ -50,6 +55,7 @@ namespace
 {
 
 std::thread s_comms_thread;
+
 
 //===================================================================================
 //===================================================================================
@@ -487,7 +493,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
             input.now = Clock::now();
-            input.transport_message = s_transport->getTransportMessage();
+            input.transport_message = s_transport != nullptr ? s_transport->getTransportMessage() : "";
 
             gs::imgui::drawTopOverlayStatus(input, overlay_width);
             //------------------------------------------------
@@ -499,8 +505,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
 
             drawPlaybackProgressOverlay(overlay_width, display_size.y);
 
-            float roi_divisor = 0.0f;
-            if (gs::menu::g_osdMenuController.tryGetImageStabilizationRoiOverlaySettings(roi_divisor))
+            if (s_imageStabilizationState.debug)
             {
                 const ImVec2 frame_res = s_decoder.get_video_resolution();
                 const int frame_w = static_cast<int>(frame_res.x);
@@ -508,47 +513,21 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
                 if (frame_w > 0 && frame_h > 0)
                 {
                     const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
-                    const int viewport_w = static_cast<int>(std::lround(
-                        frame_ui.vr_mode ? (display_size.x * 0.5f) : display_size.x));
-                    const float half_w = display_size.x * 0.5f;
-                    const int quad_x = static_cast<int>(std::lround(
-                        frame_ui.vr_mode ? (s_groundstation_config.screenVrSeparation * half_w) : 0.0f));
-                    const int display_h = static_cast<int>(std::lround(display_size.y));
-                    gs::render::StabilizationRoiScreenRect roi_rect{};
-                    if (gs::render::computeStabilizationRoiScreenRectLetterboxed(quad_x,
-                                                                                 0,
-                                                                                 viewport_w,
-                                                                                 display_h,
-                                                                                 video_aspect,
-                                                                                 s_groundstation_config.screenAspectRatio,
-                                                                                 s_groundstation_config.screenZoom,
-                                                                                 frame_w,
-                                                                                 frame_h,
-                                                                                 roi_divisor,
-                                                                                 roi_rect))
-                    {
-                        ImDrawList* draw_list = ImGui::GetWindowDrawList();
-                        if (draw_list != nullptr)
-                        {
-                            const float min_x =
-                                std::clamp(std::min(roi_rect.min_x, roi_rect.max_x), 0.0f, overlay_width);
-                            const float max_x =
-                                std::clamp(std::max(roi_rect.min_x, roi_rect.max_x), 0.0f, overlay_width);
-                            const float min_y =
-                                std::clamp(std::min(roi_rect.min_y, roi_rect.max_y), 0.0f, display_size.y);
-                            const float max_y =
-                                std::clamp(std::max(roi_rect.min_y, roi_rect.max_y), 0.0f, display_size.y);
-                            if (max_x - min_x >= 1.0f && max_y - min_y >= 1.0f)
-                            {
-                                draw_list->AddRect(ImVec2(min_x, min_y),
-                                                     ImVec2(max_x, max_y),
-                                                     IM_COL32(255, 255, 255, 255),
-                                                     0.0f,
-                                                     0,
-                                                     1.0f);
-                            }
-                        }
-                    }
+                    const float viewport_w =
+                        frame_ui.vr_mode ? (display_size.x * 0.5f) : display_size.x;
+                    // PI_HAL replays one canonical left-eye ImGui frame into both eyes.
+                    // Keep overlay geometry in canonical eye space here to avoid applying
+                    // VR separation twice (once here, once during replay).
+                    gs::stabilization::drawStabilizationRoiOverlayLetterboxed(
+                        0.0f,
+                        viewport_w,
+                        overlay_width,
+                        display_size.y,
+                        video_aspect,
+                        s_groundstation_config.screenAspectRatio,
+                        s_groundstation_config.screenZoom,
+                        frame_w,
+                        frame_h);
                 }
             }
 
@@ -661,3 +640,4 @@ int runLinuxRuntimeLoop(char* argv[])
 
     return 0;
 }
+

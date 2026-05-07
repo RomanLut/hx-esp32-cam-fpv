@@ -286,7 +286,7 @@ void drawVideoInViewport(int quad_x,
     const gs::render::LensCorrectionParams lens_params =
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
     const gs::stabilization::StabilizationTransform stabilization_transform =
-        gs::stabilization::getLatestTransform();
+        s_decoder.getRenderStabilizationTransform();
     const gs::render::VideoPostprocessingParams postprocessing_params =
         s_decoder.get_postprocessing_params();
     g_VideoShaderRenderer.draw(g_VideoTexture,

@@ -1,6 +1,8 @@
 #include "Video_Decoder.h"
 #include "Log.h"
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 #include <deque>
 #include <mutex>
@@ -15,6 +17,7 @@
 #include "gs_camera_calibration_shared.h"
 #include "gs_jpeg_dct_postprocessing.h"
 #include "gs_video_stabilization_shared.h"
+#include "gs_shared_state.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
 
@@ -113,7 +116,6 @@ static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_
            (old_frame_id >= 10u && new_frame_id < old_frame_id - 10u);
 }
 
-
 //===================================================================================
 //===================================================================================
 Video_Decoder::Video_Decoder()
@@ -181,6 +183,13 @@ gs::render::VideoPostprocessingParams Video_Decoder::get_postprocessing_params()
     return m_impl->current_postprocessing_params;
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the latest GPU render stabilization transform with trajectory decay applied.
+gs::stabilization::StabilizationTransform Video_Decoder::getRenderStabilizationTransform() const
+{
+    return gs::stabilization::getRenderTrajectoryTransform();
+}
 
 //===================================================================================
 //===================================================================================
@@ -337,13 +346,23 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             s_gs_stats.decodedJpegTimeMaxMS = std::max( s_gs_stats.decodedJpegTimeMaxMS, duration );
         }
 
+        // Linux `gs` estimates stabilization here on the decoded RGB buffer before upload. Android uses
+        // GsVideoRenderer::submitFrame instead; never run both on the same frame (stateful OpenCV path).
         if (gs::stabilization::isEnabled())
         {
-            gs::stabilization::estimateRgbFrame(output->rgb_data.data(),
-                                                output->rgb_data.size(),
-                                                output->width,
-                                                output->height,
-                                                output->width * 3);
+            gs::stabilization::estimateFrame(output->rgb_data.data(),
+                                             output->rgb_data.size(),
+                                             output->width,
+                                             output->height,
+                                             output->width * 3,
+                                             GS_VISION_IMAGE_FORMAT_RGB8,
+                                             true,
+                                             output->frame_id);
+            gs::stabilization::updateRenderTrajectoryStateForFrame(output->frame_id, output->width, output->height);
+        }
+        else
+        {
+            gs::stabilization::resetRenderTrajectoryState();
         }
 
         {
@@ -380,7 +399,17 @@ size_t Video_Decoder::lock_output()
         if (!m_impl->has_pending_output)
             return 0;
 
-        m_impl->locked_outputs.push_back(std::move(m_impl->pending_output));
+        // Playback pause can repeatedly decode/publish the same frame_id. Keep one latest
+        // copy for that id so debug previous-frame toggle can still reach the last distinct frame.
+        if(!m_impl->locked_outputs.empty() &&
+           m_impl->locked_outputs.back()->frame_id == m_impl->pending_output->frame_id)
+        {
+            m_impl->locked_outputs.back() = std::move(m_impl->pending_output);
+        }
+        else
+        {
+            m_impl->locked_outputs.push_back(std::move(m_impl->pending_output));
+        }
         m_impl->pending_output.reset();
         m_impl->has_pending_output = false;
         count = 1;
@@ -418,16 +447,20 @@ size_t Video_Decoder::lock_output()
     size_t pbo_size = output.rgb_data.size();
 
     {
-            GLCHK(glBufferData(GL_PIXEL_UNPACK_BUFFER, pbo_size, nullptr, GL_STREAM_DRAW));
+        GLCHK(glBufferData(GL_PIXEL_UNPACK_BUFFER, pbo_size, nullptr, GL_STREAM_DRAW));
         output.pbo_size = pbo_size;
     }
 
     // map the buffer object into client's memory
-    uint8_t* ptr = (uint8_t*)glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, pbo_size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
-    if (ptr)
+    uint8_t* ptr = (uint8_t*)glMapBufferRange(GL_PIXEL_UNPACK_BUFFER,
+                                              0,
+                                              pbo_size,
+                                              GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT |
+                                                  GL_MAP_UNSYNCHRONIZED_BIT);
+    if(ptr)
     {
         //copy the page into the pbo, aligned to 16 bytes
-        memcpy(ptr,output.rgb_data.data(),output.rgb_data.size());
+        memcpy(ptr, output.rgb_data.data(), output.rgb_data.size());
         glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER); // release the mapped buffer
     }
 
@@ -506,6 +539,7 @@ void Video_Decoder::invalidate_displayed_frame()
     m_texture = 0;
     m_resolution = ImVec2(0.0f, 0.0f);
     m_impl->current_postprocessing_params = {};
+    gs::stabilization::resetRenderTrajectoryState();
     gs::stabilization::reset();
 }
 

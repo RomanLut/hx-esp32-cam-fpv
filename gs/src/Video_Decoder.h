@@ -23,6 +23,7 @@ public:
     uint32_t get_video_texture_id() const;
     ImVec2 get_video_resolution() const;
     gs::render::VideoPostprocessingParams get_postprocessing_params() const;
+    gs::stabilization::StabilizationTransform getRenderStabilizationTransform() const;
     bool unlock_output();
     void invalidate_displayed_frame();
 

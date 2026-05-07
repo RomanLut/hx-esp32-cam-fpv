@@ -19,17 +19,29 @@ struct GsVisionStabilizer
 {
     GsVisionStabilizerConfig config = {};
     cv::Mat previous_gray_roi;
+    cv::Mat reference_gray_roi;
     cv::Mat current_gray;
     float trajectory_x = 0.0f;
     float trajectory_y = 0.0f;
     float trajectory_angle = 0.0f;
-    float estimate_x = 0.0f;
-    float estimate_y = 0.0f;
-    float estimate_angle = 0.0f;
-    float covariance_x = 1.0f;
-    float covariance_y = 1.0f;
-    float covariance_angle = 1.0f;
     int32_t frame_count = 0;
+    float inc_ema_x = 0.0f;
+    float inc_ema_y = 0.0f;
+    float inc_ema_angle = 0.0f;
+    float last_valid_dx = 0.0f;
+    float last_valid_dy = 0.0f;
+    float last_valid_angle = 0.0f;
+    float compensated_out_x = 0.0f;
+    float compensated_out_y = 0.0f;
+    float compensated_out_angle = 0.0f;
+    bool has_prev_measured = false;
+    float prev_measured_dx = 0.0f;
+    float prev_measured_dy = 0.0f;
+    int32_t reject_hold_frames = 0;
+    bool has_prev_filtered = false;
+    float prev_filtered_dx = 0.0f;
+    float prev_filtered_dy = 0.0f;
+    float prev_filtered_angle = 0.0f;
 };
 
 namespace
@@ -46,17 +58,24 @@ float ElapsedMs(StabilizerClock::time_point start)
 
 //===================================================================================
 //===================================================================================
+// Moves current toward target using a bounded step magnitude.
+float StepTowards(float current, float target, float max_step)
+{
+    const float delta = target - current;
+    return current + std::clamp(delta, -max_step, max_step);
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the default stabilization tuning used when callers omit config values.
 GsVisionStabilizerConfig BuildDefaultConfig()
 {
     GsVisionStabilizerConfig config = {};
     config.roi_divisor = 3.5f;
-    config.zoom_factor = 0.9f;
-    config.process_variance = 0.03f;
-    config.measurement_variance = 2.0f;
+    config.zoom_factor = 0.75f;
     config.max_corners = 400;
     config.quality_level = 0.01f;
-    config.min_distance = 30.0f;
+    config.min_distance = 20.0f;
     return config;
 }
 
@@ -76,14 +95,6 @@ GsVisionStabilizerConfig NormalizeConfig(const GsVisionStabilizerConfig* input)
         {
             config.zoom_factor = input->zoom_factor;
         }
-        if(input->process_variance > 0.0f)
-        {
-            config.process_variance = input->process_variance;
-        }
-        if(input->measurement_variance > 0.0f)
-        {
-            config.measurement_variance = input->measurement_variance;
-        }
         if(input->max_corners > 0)
         {
             config.max_corners = input->max_corners;
@@ -97,6 +108,10 @@ GsVisionStabilizerConfig NormalizeConfig(const GsVisionStabilizerConfig* input)
             config.min_distance = input->min_distance;
         }
     }
+
+    // Enforce a strong anti-shake baseline even when legacy saved settings are weak.
+    config.zoom_factor = std::clamp(std::min(config.zoom_factor, 0.60f), 0.1f, 1.0f);
+    config.min_distance = std::clamp(std::min(config.min_distance, 20.0f), 1.0f, 200.0f);
 
     return config;
 }
@@ -221,22 +236,6 @@ cv::Rect BuildRoi(const cv::Size& size, float roi_divisor)
     return cv::Rect(x, y, width, height);
 }
 
-//===================================================================================
-//===================================================================================
-// Applies one scalar Kalman-style smoothing step to a cumulative trajectory axis.
-float SmoothAxis(float measurement,
-                 float& estimate,
-                 float& covariance,
-                 const GsVisionStabilizerConfig& config)
-{
-    const float predicted_estimate = estimate;
-    const float predicted_covariance = covariance + config.process_variance;
-    const float kalman_gain = predicted_covariance / (predicted_covariance + config.measurement_variance);
-    estimate = predicted_estimate + kalman_gain * (measurement - predicted_estimate);
-    covariance = (1.0f - kalman_gain) * predicted_covariance;
-    return estimate;
-}
-
 }
 
 //===================================================================================
@@ -309,6 +308,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         {
             const StabilizerClock::time_point store_start = StabilizerClock::now();
             current_gray_roi.copyTo(stabilizer->previous_gray_roi);
+            current_gray_roi.copyTo(stabilizer->reference_gray_roi);
             const float store_ms = ElapsedMs(store_start);
             if(result != nullptr)
             {
@@ -322,6 +322,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
             return 1;
         }
 
+        // Detect features on the old frame every cycle, then track to the new frame.
         std::vector<cv::Point2f> previous_points;
         const StabilizerClock::time_point feature_start = StabilizerClock::now();
         cv::goodFeaturesToTrack(stabilizer->previous_gray_roi,
@@ -334,6 +335,9 @@ int32_t gs_vision_stabilizer_estimate_frame(
         float dx = 0.0f;
         float dy = 0.0f;
         float angle = 0.0f;
+        float measured_dx = 0.0f;
+        float measured_dy = 0.0f;
+        float measured_angle = 0.0f;
         int32_t tracked_points = 0;
         int32_t inlier_count = 0;
         float optical_flow_ms = 0.0f;
@@ -358,22 +362,81 @@ int32_t gs_vision_stabilizer_estimate_frame(
 
             std::vector<cv::Point2f> previous_full_points;
             std::vector<cv::Point2f> current_full_points;
+            std::vector<cv::Point2f> visualization_old_points;
+            std::vector<cv::Point2f> visualization_new_points;
+            std::vector<float> visualization_confidence;
+            std::vector<int32_t> visualization_status;
             previous_full_points.reserve(previous_points.size());
             current_full_points.reserve(current_points.size());
+            visualization_old_points.reserve(previous_points.size());
+            visualization_new_points.reserve(previous_points.size());
+            visualization_confidence.reserve(previous_points.size());
+            visualization_status.reserve(previous_points.size());
             const cv::Point2f roi_offset(static_cast<float>(roi.x), static_cast<float>(roi.y));
+            constexpr float kConfidenceErrorScale = 0.08f;
             for(size_t i = 0; i < status.size(); ++i)
             {
+                const cv::Point2f old_full = previous_points[i] + roi_offset;
+                visualization_old_points.push_back(old_full);
                 if(status[i] == 0)
                 {
+                    visualization_new_points.push_back(old_full);
+                    visualization_confidence.push_back(0.0f);
+                    visualization_status.push_back(0);
                     continue;
                 }
-                previous_full_points.push_back(previous_points[i] + roi_offset);
-                current_full_points.push_back(current_points[i] + roi_offset);
+                const cv::Point2f new_full = current_points[i] + roi_offset;
+                previous_full_points.push_back(old_full);
+                current_full_points.push_back(new_full);
+                visualization_new_points.push_back(new_full);
+                const float err = i < error.size() ? std::max(0.0f, error[i]) : 0.0f;
+                const float confidence = 1.0f / (1.0f + err * kConfidenceErrorScale);
+                visualization_confidence.push_back(std::clamp(confidence, 0.0f, 1.0f));
+                visualization_status.push_back(1);
             }
 
             tracked_points = static_cast<int32_t>(previous_full_points.size());
             if(previous_full_points.size() >= 3)
             {
+                // Reject flow outliers before affine fit: large local movers can still produce
+                // high inlier counts for a wrong global model in vibration-heavy clips.
+                std::vector<float> disp_x;
+                std::vector<float> disp_y;
+                disp_x.reserve(previous_full_points.size());
+                disp_y.reserve(previous_full_points.size());
+                for(size_t i = 0; i < previous_full_points.size(); ++i)
+                {
+                    disp_x.push_back(current_full_points[i].x - previous_full_points[i].x);
+                    disp_y.push_back(current_full_points[i].y - previous_full_points[i].y);
+                }
+                const size_t mid = disp_x.size() / 2u;
+                std::nth_element(disp_x.begin(), disp_x.begin() + mid, disp_x.end());
+                std::nth_element(disp_y.begin(), disp_y.begin() + mid, disp_y.end());
+                const float median_dx = disp_x[mid];
+                const float median_dy = disp_y[mid];
+
+                std::vector<cv::Point2f> previous_filtered;
+                std::vector<cv::Point2f> current_filtered;
+                previous_filtered.reserve(previous_full_points.size());
+                current_filtered.reserve(current_full_points.size());
+                constexpr float kMedianGatePx = 10.0f;
+                for(size_t i = 0; i < previous_full_points.size(); ++i)
+                {
+                    const float ddx = (current_full_points[i].x - previous_full_points[i].x) - median_dx;
+                    const float ddy = (current_full_points[i].y - previous_full_points[i].y) - median_dy;
+                    if(std::fabs(ddx) <= kMedianGatePx && std::fabs(ddy) <= kMedianGatePx)
+                    {
+                        previous_filtered.push_back(previous_full_points[i]);
+                        current_filtered.push_back(current_full_points[i]);
+                    }
+                }
+                if(previous_filtered.size() >= 3)
+                {
+                    previous_full_points.swap(previous_filtered);
+                    current_full_points.swap(current_filtered);
+                    tracked_points = static_cast<int32_t>(previous_full_points.size());
+                }
+
                 cv::Mat inliers;
                 const StabilizerClock::time_point affine_start = StabilizerClock::now();
                 cv::Mat measured_transform = cv::estimateAffinePartial2D(previous_full_points, current_full_points, inliers);
@@ -383,31 +446,166 @@ int32_t gs_vision_stabilizer_estimate_frame(
                     dx = static_cast<float>(measured_transform.at<double>(0, 2));
                     dy = static_cast<float>(measured_transform.at<double>(1, 2));
                     angle = static_cast<float>(std::atan2(measured_transform.at<double>(1, 0), measured_transform.at<double>(0, 0)));
+                    measured_dx = dx;
+                    measured_dy = dy;
+                    measured_angle = angle;
                     inlier_count = cv::countNonZero(inliers);
                 }
             }
+
+            if(result != nullptr)
+            {
+                constexpr int32_t kMaxResultFeatures = 512;
+                const int32_t count =
+                    std::min(static_cast<int32_t>(visualization_old_points.size()), kMaxResultFeatures);
+                result->feature_count = count;
+                for(int32_t i = 0; i < count; ++i)
+                {
+                    result->feature_old_x[i] = visualization_old_points[i].x;
+                    result->feature_old_y[i] = visualization_old_points[i].y;
+                    result->feature_new_x[i] = visualization_new_points[i].x;
+                    result->feature_new_y[i] = visualization_new_points[i].y;
+                    result->feature_confidence[i] = visualization_confidence[i];
+                    result->feature_status[i] = visualization_status[i];
+                }
+            }
         }
+
+        // Weak RANSAC fits (few inliers vs tracked points) produce erratic affines; skip those samples.
+        const int32_t kMinTrackedPoints = 8;
+        const int32_t min_inliers_for_fit = std::max(6, tracked_points / 5);
+        if(tracked_points < kMinTrackedPoints || inlier_count < min_inliers_for_fit)
+        {
+            // Brief feature-drop windows are common on vibration blur; keep a decayed last valid motion
+            // instead of dropping to identity for one frame (that manifests as visible shake rebound).
+            constexpr float kWeakFitCarry = 0.85f;
+            dx = stabilizer->last_valid_dx * kWeakFitCarry;
+            dy = stabilizer->last_valid_dy * kWeakFitCarry;
+            angle = stabilizer->last_valid_angle * kWeakFitCarry;
+        }
+        else
+        {
+            // Even accepted fits can spike one frame; clamp incremental motion before the smoother.
+            constexpr float kMaxTransPerFramePx = 16.0f;
+            constexpr float kMaxAnglePerFrameRad = 0.12f;
+            dx = std::clamp(dx, -kMaxTransPerFramePx, kMaxTransPerFramePx);
+            dy = std::clamp(dy, -kMaxTransPerFramePx, kMaxTransPerFramePx);
+            angle = std::clamp(angle, -kMaxAnglePerFrameRad, kMaxAnglePerFrameRad);
+        }
+
+        // Reject/hold on sudden measured-vector spikes so single bad frames cannot pollute trajectory.
+        if(tracked_points >= kMinTrackedPoints)
+        {
+            const float inlier_ratio =
+                tracked_points > 0 ? static_cast<float>(inlier_count) / static_cast<float>(tracked_points) : 0.0f;
+            float measured_jump = 0.0f;
+            if(stabilizer->has_prev_measured)
+            {
+                measured_jump = std::hypot(measured_dx - stabilizer->prev_measured_dx,
+                                           measured_dy - stabilizer->prev_measured_dy);
+            }
+            const float measured_mag = std::hypot(measured_dx, measured_dy);
+            const bool bad_vector =
+                measured_jump > 18.0f || measured_mag > 28.0f || (inlier_ratio < 0.45f && measured_mag > 10.0f);
+            stabilizer->prev_measured_dx = measured_dx;
+            stabilizer->prev_measured_dy = measured_dy;
+            stabilizer->has_prev_measured = true;
+            if(bad_vector)
+            {
+                stabilizer->reject_hold_frames = 2;
+            }
+        }
+        if(stabilizer->reject_hold_frames > 0)
+        {
+            // Keep continuity during reject windows; forcing identity here creates visible rebound.
+            constexpr float kRejectCarry = 0.92f;
+            dx = stabilizer->last_valid_dx * kRejectCarry;
+            dy = stabilizer->last_valid_dy * kRejectCarry;
+            angle = stabilizer->last_valid_angle * kRejectCarry;
+            stabilizer->reject_hold_frames--;
+        }
+        else
+        {
+            stabilizer->last_valid_dx = dx;
+            stabilizer->last_valid_dy = dy;
+            stabilizer->last_valid_angle = angle;
+        }
+
+        // Clamp per-frame derivative of accepted motion to suppress one-frame spikes that pass RANSAC.
+        constexpr float kMaxDeltaDxDyPerFrame = 3.0f;
+        constexpr float kMaxDeltaAnglePerFrame = 0.020f;
+        if(stabilizer->has_prev_filtered)
+        {
+            dx = StepTowards(stabilizer->prev_filtered_dx, dx, kMaxDeltaDxDyPerFrame);
+            dy = StepTowards(stabilizer->prev_filtered_dy, dy, kMaxDeltaDxDyPerFrame);
+            angle = StepTowards(stabilizer->prev_filtered_angle, angle, kMaxDeltaAnglePerFrame);
+        }
+        stabilizer->has_prev_filtered = true;
+        stabilizer->prev_filtered_dx = dx;
+        stabilizer->prev_filtered_dy = dy;
+        stabilizer->prev_filtered_angle = angle;
+
+        // Low-pass frame-to-frame motion so zero-mean vibration does not wiggle the warp (playback of
+        // shake-only clips stays visually locked on the ROI); slow pans still integrate through the EMA.
+        constexpr float kIncrementEmaAlpha = 0.22f;
+        stabilizer->inc_ema_x = kIncrementEmaAlpha * dx + (1.0f - kIncrementEmaAlpha) * stabilizer->inc_ema_x;
+        stabilizer->inc_ema_y = kIncrementEmaAlpha * dy + (1.0f - kIncrementEmaAlpha) * stabilizer->inc_ema_y;
+        stabilizer->inc_ema_angle =
+            kIncrementEmaAlpha * angle + (1.0f - kIncrementEmaAlpha) * stabilizer->inc_ema_angle;
+        dx = stabilizer->inc_ema_x;
+        dy = stabilizer->inc_ema_y;
+        angle = stabilizer->inc_ema_angle;
 
         stabilizer->trajectory_x += dx;
         stabilizer->trajectory_y += dy;
         stabilizer->trajectory_angle += angle;
 
-        const float smooth_x = SmoothAxis(stabilizer->trajectory_x,
-                                          stabilizer->estimate_x,
-                                          stabilizer->covariance_x,
-                                          stabilizer->config);
-        const float smooth_y = SmoothAxis(stabilizer->trajectory_y,
-                                          stabilizer->estimate_y,
-                                          stabilizer->covariance_y,
-                                          stabilizer->config);
-        const float smooth_angle = SmoothAxis(stabilizer->trajectory_angle,
-                                              stabilizer->estimate_angle,
-                                              stabilizer->covariance_angle,
-                                              stabilizer->config);
+        const bool should_reanchor =
+            stabilizer->reference_gray_roi.empty() ||
+            stabilizer->reference_gray_roi.size() != current_gray_roi.size() ||
+            inlier_count < 10 ||
+            (stabilizer->frame_count % 240) == 0;
+        if(should_reanchor)
+        {
+            current_gray_roi.copyTo(stabilizer->reference_gray_roi);
+            stabilizer->trajectory_x = 0.0f;
+            stabilizer->trajectory_y = 0.0f;
+            stabilizer->trajectory_angle = 0.0f;
+        }
 
-        dx += smooth_x - stabilizer->trajectory_x;
-        dy += smooth_y - stabilizer->trajectory_y;
-        angle += smooth_angle - stabilizer->trajectory_angle;
+        // Lock around the initial view (strong anti-shake): compensate cumulative trajectory directly.
+        // Small leak prevents indefinite drift when optical flow has slow bias over long clips.
+        constexpr float kTrajectoryLeak = 0.9985f;
+        stabilizer->trajectory_x *= kTrajectoryLeak;
+        stabilizer->trajectory_y *= kTrajectoryLeak;
+        stabilizer->trajectory_angle *= kTrajectoryLeak;
+
+        constexpr float kCompensationGain = 0.75f;
+        constexpr float kMaxCompensatedTransPx = 24.0f;
+        constexpr float kMaxCompensatedAngleRad = 0.14f;
+        constexpr float kMaxCompensationStepPx = 2.8f;
+        constexpr float kMaxCompensationStepRad = 0.015f;
+        const float target_dx = std::clamp(-stabilizer->trajectory_x * kCompensationGain,
+                                           -kMaxCompensatedTransPx,
+                                           kMaxCompensatedTransPx);
+        const float target_dy = std::clamp(-stabilizer->trajectory_y * kCompensationGain,
+                                           -kMaxCompensatedTransPx,
+                                           kMaxCompensatedTransPx);
+        const float target_angle = std::clamp(-stabilizer->trajectory_angle * kCompensationGain,
+                                              -kMaxCompensatedAngleRad,
+                                              kMaxCompensatedAngleRad);
+        stabilizer->compensated_out_x =
+            StepTowards(stabilizer->compensated_out_x, target_dx, kMaxCompensationStepPx);
+        stabilizer->compensated_out_y =
+            StepTowards(stabilizer->compensated_out_y, target_dy, kMaxCompensationStepPx);
+        stabilizer->compensated_out_angle =
+            StepTowards(stabilizer->compensated_out_angle, target_angle, kMaxCompensationStepRad);
+        dx = stabilizer->compensated_out_x;
+        dy = stabilizer->compensated_out_y;
+        angle = stabilizer->compensated_out_angle;
+        const float compensated_dx = dx;
+        const float compensated_dy = dy;
+        const float compensated_angle = angle;
 
         cv::Matx23d transform(std::cos(angle),
                               -std::sin(angle),
@@ -432,6 +630,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         const StabilizerClock::time_point store_start = StabilizerClock::now();
         current_gray_roi.copyTo(stabilizer->previous_gray_roi);
         const float store_ms = ElapsedMs(store_start);
+
         stabilizer->frame_count++;
 
         if(result != nullptr)
@@ -458,6 +657,12 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->transform_10 = static_cast<float>(transform(1, 0));
             result->transform_11 = static_cast<float>(transform(1, 1));
             result->transform_12 = static_cast<float>(transform(1, 2));
+            result->measured_dx = measured_dx;
+            result->measured_dy = measured_dy;
+            result->measured_angle_radians = measured_angle;
+            result->compensated_dx = compensated_dx;
+            result->compensated_dy = compensated_dy;
+            result->compensated_angle_radians = compensated_angle;
         }
 
         return 1;

@@ -11,6 +11,7 @@
 #include "gs_recordings_storage.h"
 #include "gs_runtime_input.h"
 #include "gs_runtime_state.h"
+#include "gs_shared_state.h"
 #include "gs_runtime_menu_ui.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_camera_calibration_shared.h"
@@ -197,6 +198,8 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
                                               frame.stride);
     }
 
+    // Android / submitFrame paths: estimate once per frame here. Linux `gs` live video uses Video_Decoder
+    // only — do not add a second estimate on the same RGB buffer in that pipeline.
     if (gs::stabilization::isEnabled() &&
         (frame.pixel_format == PixelFormat::RGB24 || frame.pixel_format == PixelFormat::RGB565))
     {
@@ -204,20 +207,33 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
         const size_t source_size = frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size();
         if (frame.pixel_format == PixelFormat::RGB565)
         {
-            gs::stabilization::estimateRgb565Frame(source_pixels,
-                                                   source_size,
-                                                   frame.width,
-                                                   frame.height,
-                                                   frame.stride);
+            gs::stabilization::estimateFrame(source_pixels,
+                                             source_size,
+                                             frame.width,
+                                             frame.height,
+                                             frame.stride,
+                                             GS_VISION_IMAGE_FORMAT_RGB565,
+                                             false,
+                                             0);
         }
         else
         {
-            gs::stabilization::estimateRgbFrame(source_pixels,
-                                                source_size,
-                                                frame.width,
-                                                frame.height,
-                                                frame.stride);
+            gs::stabilization::estimateFrame(source_pixels,
+                                             source_size,
+                                             frame.width,
+                                             frame.height,
+                                             frame.stride,
+                                             GS_VISION_IMAGE_FORMAT_RGB8,
+                                             true,
+                                             frame.frame_id);
         }
+        gs::stabilization::updateRenderTrajectoryStateForFrame(frame.frame_id,
+                                                               static_cast<uint32_t>(frame.width),
+                                                               static_cast<uint32_t>(frame.height));
+    }
+    else
+    {
+        gs::stabilization::resetRenderTrajectoryState();
     }
 
     {
@@ -1136,8 +1152,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
 
     const gs::render::LensCorrectionParams lens_params =
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
-    const gs::stabilization::StabilizationTransform stabilization_transform =
-        gs::stabilization::getLatestTransform();
+    gs::stabilization::StabilizationTransform stabilization_transform =
+        gs::stabilization::getRenderTrajectoryTransform();
     m_video_shader_renderer.draw(m_texture,
                                  quad,
                                  clip_x,
@@ -1151,86 +1167,6 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
                                  lens_params,
                                  stabilization_transform,
                                  m_locked_frame.postprocessing_params);
-}
-
-//===================================================================================
-//===================================================================================
-// Draws a 1px white outline of the stabilization feature ROI while the GS image
-// stabilization menus are open. Coordinates follow the same letterbox/zoom layout as
-// the video quad; when live stabilization is on, the image is warped in the shader so
-// this axis-aligned box remains the source-frame ROI used for tracking, not a tight
-// outline of stabilized pixels.
-void GsVideoRenderer::drawStabilizationRoiOverlay(float overlay_width, float surface_height)
-{
-    float roi_divisor = 0.0f;
-    bool want_overlay = false;
-    if (m_menu_controller != nullptr)
-    {
-        if (m_menu_mutex != nullptr)
-        {
-            std::lock_guard<std::mutex> menu_lock(*m_menu_mutex);
-            want_overlay = m_menu_controller->tryGetImageStabilizationRoiOverlaySettings(roi_divisor);
-        }
-        else
-        {
-            want_overlay = m_menu_controller->tryGetImageStabilizationRoiOverlaySettings(roi_divisor);
-        }
-    }
-    if (!want_overlay || !m_has_uploaded_frame || m_frame_width <= 0 || m_frame_height <= 0 ||
-        overlay_width <= 0.0f || surface_height <= 0.0f)
-    {
-        return;
-    }
-
-    auto draw_one_eye = [&](float quad_x, float viewport_width)
-    {
-        gs::render::StabilizationRoiScreenRect r{};
-        if (!gs::render::computeStabilizationRoiScreenRect(quad_x,
-                                                           0.0f,
-                                                           viewport_width,
-                                                           surface_height,
-                                                           m_frame_width,
-                                                           m_frame_height,
-                                                           m_screen_mode,
-                                                           m_zoom,
-                                                           roi_divisor,
-                                                           r))
-        {
-            return;
-        }
-        // After drawMenuLocked the current window is not FULLSCREEN_OVERLAY; use the
-        // foreground draw list so ROI lines land in screen space on top of the menu.
-        ImDrawList* draw_list = ImGui::GetForegroundDrawList();
-        if (draw_list == nullptr)
-        {
-            return;
-        }
-        const float min_x = std::clamp(std::min(r.min_x, r.max_x), 0.0f, overlay_width);
-        const float max_x = std::clamp(std::max(r.min_x, r.max_x), 0.0f, overlay_width);
-        const float min_y = std::clamp(std::min(r.min_y, r.max_y), 0.0f, surface_height);
-        const float max_y = std::clamp(std::max(r.min_y, r.max_y), 0.0f, surface_height);
-        if (max_x - min_x < 1.0f || max_y - min_y < 1.0f)
-        {
-            return;
-        }
-        draw_list->AddRect(ImVec2(min_x, min_y),
-                           ImVec2(max_x, max_y),
-                           IM_COL32(255, 255, 255, 255),
-                           0.0f,
-                           0,
-                           1.0f);
-    };
-
-    if (m_vr_mode)
-    {
-        const float half_w = static_cast<float>(m_surface_width) * 0.5f;
-        const float offset = m_vr_separation * half_w;
-        draw_one_eye(+offset, half_w);
-    }
-    else
-    {
-        draw_one_eye(0.0f, overlay_width);
-    }
 }
 
 //===================================================================================
@@ -1287,7 +1223,14 @@ void GsVideoRenderer::drawOverlayLocked()
         }
         drawPlaybackProgressOverlay(overlay_width, static_cast<float>(m_surface_height));
         drawMenuLocked();
-        drawStabilizationRoiOverlay(overlay_width, static_cast<float>(m_surface_height));
+        gs::stabilization::drawStabilizationRoiOverlay(0.0f,
+                                                       overlay_width,
+                                                       overlay_width,
+                                                       static_cast<float>(m_surface_height),
+                                                       m_frame_width,
+                                                       m_frame_height,
+                                                       m_screen_mode,
+                                                       m_zoom);
         gs::calibration::drawCalibrationOverlay(overlay_width, static_cast<float>(m_surface_height));
     }
 
@@ -1357,3 +1300,4 @@ void GsVideoRenderer::drawFrameLocked()
     {
     }
 }
+
