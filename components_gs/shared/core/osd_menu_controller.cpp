@@ -27,6 +27,8 @@
 
 namespace
 {
+
+constexpr int kScrollableMenuVisibleItems = 7;
 constexpr float kScreenZoomStep = 0.01f;
 constexpr float kScreenZoomStepScale = 100.0f;
 constexpr float kScreenVrSeparationMin = -0.30f;
@@ -590,10 +592,11 @@ void OSDMenuController::drawLargeGapIfTallScreen()
 bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool clip )
 {
     int d = itemIndex - this->selectedItem;
-    int d1 = 2;
-    int d2 = -2;
-    if ( this->selectedItem == 0) d1+=2;
-    if ( this->selectedItem == 1) d1+=1;
+    const int half_window = kScrollableMenuVisibleItems / 2;
+    // Keep the first pages top-aligned until the selection moves past the half-window.
+    const int top_bias = std::max(0, half_window - this->selectedItem);
+    const int d1 = half_window + top_bias;
+    const int d2 = -half_window;
     if (clip)
     {
         m_has_clip_items = true;
@@ -675,13 +678,14 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 
     gs::menu::imgui::beginMenuWindow(window_name, m_imgui_layout, extra_flags);
     drawCurrentMenu(config);
-    if (m_has_clip_items && m_clip_y_started && m_clip_total_items > 5)
+    if (m_has_clip_items && m_clip_y_started && m_clip_total_items > kScrollableMenuVisibleItems)
     {
         const float sb_x = m_clip_item_right_x + 12.0f * m_imgui_layout.scale;
         const float sb_width = 16.0f * m_imgui_layout.scale; 
-        const float sb_height = 5.0f * (m_imgui_layout.button_height + m_imgui_layout.item_gap_y) - m_imgui_layout.item_gap_y;
+        const float sb_height = static_cast<float>(kScrollableMenuVisibleItems) *
+                                (m_imgui_layout.button_height + m_imgui_layout.item_gap_y) - m_imgui_layout.item_gap_y;
         gs::menu::imgui::drawScrollbar(sb_x, m_clip_y_start, sb_height,
-                                       this->selectedItem, m_clip_total_items, 5, sb_width);
+                                       this->selectedItem, m_clip_total_items, kScrollableMenuVisibleItems, sb_width);
     }
     gs::menu::imgui::endMenuWindow();
 
@@ -2086,7 +2090,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
             }
         }
         char buf[256];
-        sprintf(buf, "Zoom: <>%d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
+        sprintf(buf, "<>Zoom: %d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
         this->drawMenuItem( buf, 3);
     }
 
@@ -2208,7 +2212,7 @@ void OSDMenuController::drawGSVRModeMenu(Ground2Air_Config_Packet& config)
             }
         }
         char buf[256];
-        sprintf(buf, "VR Separation: <>%+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
+        sprintf(buf, "<>VR Separation: %+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
         this->drawMenuItem( buf, 1);
     }
 
@@ -2331,10 +2335,10 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         }
 
         char format[64];
-        snprintf(format, sizeof(format), "%%s: <>%%.%df##%%s", precision);
+        snprintf(format, sizeof(format), "<>%%s: %%.%df##%%s", precision);
         char buf[256];
         snprintf(buf, sizeof(buf), format, label, value, imgui_id);
-        this->drawMenuItem(buf, item_index, true);
+        this->drawMenuItem(buf, item_index);
     };
 
     draw_float_parameter("roi_divisor",
@@ -2370,7 +2374,7 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
                          10.0f,
                          1);
 
-    if ( this->drawMenuItem( "Apply##apply", 4, true) )
+    if ( this->drawMenuItem( "Apply##apply", 4) )
     {
         s_imageStabilizationState = this->m_image_stabilization_draft;
         s_settingsStorage.saveGroundStationConfig();
@@ -2381,7 +2385,7 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         return;
     }
 
-    if ( this->drawMenuItem( "Reset##reset", 5, true) )
+    if ( this->drawMenuItem( "Reset to Defaults##reset", 5) )
     {
         const bool enabled = this->m_image_stabilization_draft.enabled;
         const bool debug = this->m_image_stabilization_draft.debug;
@@ -2396,7 +2400,7 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         return;
     }
 
-    if ( this->drawMenuItem( "Discard##discard", 6, true) )
+    if ( this->drawMenuItem( "Discard##discard", 6) )
     {
         this->m_image_stabilization_draft = this->m_image_stabilization_original;
         s_imageStabilizationState = this->m_image_stabilization_original;
@@ -2510,7 +2514,7 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
         }
 
         char buf[256];
-        snprintf(buf, sizeof(buf), "%s: <>%.6f##%s", label, value, imgui_id);
+        snprintf(buf, sizeof(buf), "<>%s: %.6f##%s", label, value, imgui_id);
         this->drawMenuItem(buf, item_index, true);
     };
 
@@ -2550,7 +2554,21 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
         return;
     }
 
-    if ( this->drawMenuItem( "Exit##exit", 10, true) )
+    if ( this->drawMenuItem( "Reset to Defaults##reset", 10, true) )
+    {
+        LensCorrectionState defaults{};
+        defaults.image_width = this->m_lens_correction_draft.image_width;
+        defaults.image_height = this->m_lens_correction_draft.image_height;
+        s_lensCorrectionState = defaults;
+        s_settingsStorage.saveGroundStationConfig();
+        this->m_lens_correction_draft_active = false;
+        this->resetLensCorrectionStepMultiplier();
+        this->goBack();
+        this->goBack();
+        return;
+    }
+
+    if ( this->drawMenuItem( "Discard##discard", 11, true) )
     {
         s_lensCorrectionState = this->m_lens_correction_original;
         this->m_lens_correction_draft_active = false;
