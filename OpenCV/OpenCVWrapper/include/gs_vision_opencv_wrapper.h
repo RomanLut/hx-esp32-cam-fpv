@@ -89,38 +89,45 @@ typedef struct GsVisionStabilizerConfig
 // Reports details from the most recent stabilization frame.
 typedef struct GsVisionStabilizerFrameResult
 {
-    int32_t stabilized;
-    int32_t tracked_points;
-    int32_t inliers;
-    float dx;
-    float dy;
-    float angle_radians;
-    float total_ms;
-    float convert_ms;
-    float feature_ms;
-    float motion_ms;
-    float optical_flow_ms;
-    float affine_ms;
-    float store_ms;
-    float transform_00;
-    float transform_01;
-    float transform_02;
-    float transform_10;
-    float transform_11;
-    float transform_12;
-    float measured_dx;
-    float measured_dy;
-    float measured_angle_radians;
-    float compensated_dx;
-    float compensated_dy;
-    float compensated_angle_radians;
-    float feature_old_x[512];
-    float feature_old_y[512];
-    float feature_new_x[512];
-    float feature_new_y[512];
-    float feature_confidence[512];
-    int32_t feature_status[512];
-    int32_t feature_count;
+    int32_t stabilized;           // 1 if a valid motion estimate was produced; 0 on the first (bootstrap) frame or on error
+    int32_t tracked_points;       // optical-flow points that survived LK tracking and median-gate outlier rejection
+    int32_t inliers;              // RANSAC inlier count from the robust affine fit; low values indicate a weak or rejected frame
+
+    // Final compensated warp values ready to be applied to the frame.
+    // These are the smoothed, trajectory-corrected outputs after EMA, spike rejection, and step-rate limiting.
+    float dx;                     // compensated X translation in pixels (positive = shift right)
+    float dy;                     // compensated Y translation in pixels (positive = shift down)
+    float angle_radians;          // compensated rotation in radians
+
+    float feature_ms;             // milliseconds spent detecting Shi-Tomasi corners for the next frame (precomputed at end of current frame)
+    float motion_ms;              // milliseconds spent on optical flow, RANSAC fit, and the full smoothing pipeline
+
+    // Final 2x3 affine matrix translation column, zoom-composed with the compensated warp.
+    // Pass these directly into warpAffine or equivalent; they subsume both stabilization and zoom.
+    float transform_02;           // element [0][2] of the 2x3 affine matrix: final X translation after zoom composition
+    float transform_12;           // element [1][2] of the 2x3 affine matrix: final Y translation after zoom composition
+
+    // Raw inter-frame motion from estimateAffinePartial2D, before any smoothing, clamping, or trajectory accumulation.
+    // Useful for diagnosing sensor drift or sudden camera movement.
+    float measured_dx;            // raw frame-to-frame X translation in pixels
+    float measured_dy;            // raw frame-to-frame Y translation in pixels
+    float measured_angle_radians; // raw frame-to-frame rotation in radians
+
+    // Output of the trajectory-compensation stage: negated + gain-scaled cumulative trajectory,
+    // step-rate-limited but not yet zoom-composed. Represents how much the warp is actively countering accumulated drift.
+    float compensated_dx;            // anti-shake X correction in pixels before zoom composition
+    float compensated_dy;            // anti-shake Y correction in pixels before zoom composition
+    float compensated_angle_radians; // anti-shake rotation correction in radians before zoom composition
+
+    // Per-feature visualization data for all corners seen by LK optical flow this frame (up to feature_count entries).
+    // Coordinates are in full-frame pixel space (ROI offset already added back).
+    float feature_old_x[512];    // X position of each feature in the previous frame
+    float feature_old_y[512];    // Y position of each feature in the previous frame
+    float feature_new_x[512];    // X position of each feature in the current frame; echoes old position if tracking was lost
+    float feature_new_y[512];    // Y position of each feature in the current frame; echoes old position if tracking was lost
+    float feature_confidence[512]; // per-feature quality in [0, 1] derived from LK reprojection error; 0 means lost
+    int32_t feature_status[512]; // 1 if LK tracking succeeded for this feature, 0 if tracking was lost
+    int32_t feature_count;       // number of valid entries in the feature arrays above
 } GsVisionStabilizerFrameResult;
 
 //===================================================================================

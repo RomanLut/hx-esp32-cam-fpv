@@ -19,7 +19,6 @@ struct GsVisionStabilizer
 {
     GsVisionStabilizerConfig config = {};
     cv::Mat previous_gray_roi;
-    cv::Mat reference_gray_roi;
     cv::Mat current_gray;
     float trajectory_x = 0.0f;
     float trajectory_y = 0.0f;
@@ -43,7 +42,6 @@ struct GsVisionStabilizer
     float prev_filtered_dy = 0.0f;
     float prev_filtered_angle = 0.0f;
     std::vector<cv::Point2f> cached_previous_points;
-    bool has_cached_previous_points = false;
 };
 
 namespace
@@ -282,7 +280,7 @@ void gs_vision_stabilizer_reset(GsVisionStabilizer* stabilizer)
 
 //===================================================================================
 //===================================================================================
-// Estimates stabilization motion without producing a CPU-warped output frame.
+// Estimates stabilization motion
 int32_t gs_vision_stabilizer_estimate_frame(
     GsVisionStabilizer* stabilizer,
     const GsVisionImage* input,
@@ -290,24 +288,26 @@ int32_t gs_vision_stabilizer_estimate_frame(
 {
     try
     {
-        const StabilizerClock::time_point total_start = StabilizerClock::now();
+        // Phase 1: validate input and convert the configured ROI to grayscale for tracking.
         if(stabilizer == nullptr || input == nullptr)
         {
             return 0;
         }
 
+        // Reuse two ROI buffers in ping-pong mode: previous owns last frame, current is rewritten now.
+        stabilizer->previous_gray_roi.swap(stabilizer->current_gray);
+
         const cv::Rect roi = BuildRoi(cv::Size(input->width, input->height), stabilizer->config.roi_divisor);
-        const StabilizerClock::time_point convert_start = StabilizerClock::now();
         if(!ConvertRoiToGray(*input, roi, stabilizer->current_gray))
         {
             return 0;
         }
-        const float convert_ms = ElapsedMs(convert_start);
         const cv::Mat& current_gray_roi = stabilizer->current_gray;
 
         if(stabilizer->previous_gray_roi.empty() ||
            stabilizer->previous_gray_roi.size() != current_gray_roi.size())
         {
+            // Phase 2 (bootstrap): seed temporal buffers/features; no motion estimate on first frame.
             const StabilizerClock::time_point feature_start = StabilizerClock::now();
             std::vector<cv::Point2f> seeded_points;
             cv::goodFeaturesToTrack(current_gray_roi,
@@ -316,40 +316,19 @@ int32_t gs_vision_stabilizer_estimate_frame(
                                     stabilizer->config.quality_level,
                                     stabilizer->config.min_distance);
             const float feature_ms = ElapsedMs(feature_start);
-            const StabilizerClock::time_point store_start = StabilizerClock::now();
-            current_gray_roi.copyTo(stabilizer->previous_gray_roi);
-            current_gray_roi.copyTo(stabilizer->reference_gray_roi);
             stabilizer->cached_previous_points = std::move(seeded_points);
-            stabilizer->has_cached_previous_points = true;
-            const float store_ms = ElapsedMs(store_start);
             if(result != nullptr)
             {
                 *result = {};
-                result->convert_ms = convert_ms;
                 result->feature_ms = feature_ms;
-                result->store_ms = store_ms;
-                result->total_ms = ElapsedMs(total_start);
-                result->transform_00 = 1.0f;
-                result->transform_11 = 1.0f;
             }
             return 1;
         }
 
-        std::vector<cv::Point2f> previous_points;
-        if(stabilizer->has_cached_previous_points)
-        {
-            previous_points = stabilizer->cached_previous_points;
-        }
-        else
-        {
-            cv::goodFeaturesToTrack(stabilizer->previous_gray_roi,
-                                    previous_points,
-                                    stabilizer->config.max_corners,
-                                    stabilizer->config.quality_level,
-                                    stabilizer->config.min_distance);
-        }
+        std::vector<cv::Point2f> previous_points = stabilizer->cached_previous_points;
         const StabilizerClock::time_point motion_start = StabilizerClock::now();
 
+        // Phase 3: estimate raw inter-frame motion from tracked corners + robust affine fit.
         float dx = 0.0f;
         float dy = 0.0f;
         float angle = 0.0f;
@@ -358,15 +337,12 @@ int32_t gs_vision_stabilizer_estimate_frame(
         float measured_angle = 0.0f;
         int32_t tracked_points = 0;
         int32_t inlier_count = 0;
-        float optical_flow_ms = 0.0f;
-        float affine_ms = 0.0f;
 
         if(!previous_points.empty())
         {
             std::vector<cv::Point2f> current_points;
             std::vector<uint8_t> status;
             std::vector<float> error;
-            const StabilizerClock::time_point optical_flow_start = StabilizerClock::now();
             cv::calcOpticalFlowPyrLK(stabilizer->previous_gray_roi,
                                      current_gray_roi,
                                      previous_points,
@@ -376,7 +352,6 @@ int32_t gs_vision_stabilizer_estimate_frame(
                                      cv::Size(15, 15),
                                      3,
                                      cv::TermCriteria(cv::TermCriteria::EPS | cv::TermCriteria::COUNT, 10, 0.03));
-            optical_flow_ms = ElapsedMs(optical_flow_start);
 
             std::vector<cv::Point2f> previous_full_points;
             std::vector<cv::Point2f> current_full_points;
@@ -456,9 +431,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
                 }
 
                 cv::Mat inliers;
-                const StabilizerClock::time_point affine_start = StabilizerClock::now();
                 cv::Mat measured_transform = cv::estimateAffinePartial2D(previous_full_points, current_full_points, inliers);
-                affine_ms = ElapsedMs(affine_start);
                 if(!measured_transform.empty())
                 {
                     dx = static_cast<float>(measured_transform.at<double>(0, 2));
@@ -489,6 +462,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
             }
         }
 
+        // Phase 4: harden raw motion against weak fits/spikes, then smooth for visual stability.
         // Weak RANSAC fits (few inliers vs tracked points) produce erratic affines; skip those samples.
         const int32_t kMinTrackedPoints = 8;
         const int32_t min_inliers_for_fit = std::max(6, tracked_points / 5);
@@ -578,14 +552,13 @@ int32_t gs_vision_stabilizer_estimate_frame(
         stabilizer->trajectory_y += dy;
         stabilizer->trajectory_angle += angle;
 
+        // Phase 5: maintain a bounded long-term trajectory and derive bounded compensation output.
         const bool should_reanchor =
-            stabilizer->reference_gray_roi.empty() ||
-            stabilizer->reference_gray_roi.size() != current_gray_roi.size() ||
+            stabilizer->previous_gray_roi.size() != current_gray_roi.size() ||
             inlier_count < 10 ||
             (stabilizer->frame_count % 240) == 0;
         if(should_reanchor)
         {
-            current_gray_roi.copyTo(stabilizer->reference_gray_roi);
             stabilizer->trajectory_x = 0.0f;
             stabilizer->trajectory_y = 0.0f;
             stabilizer->trajectory_angle = 0.0f;
@@ -625,6 +598,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         const float compensated_dy = dy;
         const float compensated_angle = angle;
 
+        // Phase 6: build the final 2x3 transform matrix (optionally composed with zoom).
         cv::Matx23d transform(std::cos(angle),
                               -std::sin(angle),
                               dx,
@@ -646,6 +620,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         }
         const float motion_ms = ElapsedMs(motion_start);
 
+        // Phase 7: refresh cached frame/features so the next call can run tracking immediately.
         // Precompute feature points for this frame so the next call can immediately run motion.
         const StabilizerClock::time_point feature_start = StabilizerClock::now();
         std::vector<cv::Point2f> next_points;
@@ -656,14 +631,10 @@ int32_t gs_vision_stabilizer_estimate_frame(
                                 stabilizer->config.min_distance);
         const float feature_ms = ElapsedMs(feature_start);
 
-        const StabilizerClock::time_point store_start = StabilizerClock::now();
-        current_gray_roi.copyTo(stabilizer->previous_gray_roi);
         stabilizer->cached_previous_points = std::move(next_points);
-        stabilizer->has_cached_previous_points = true;
-        const float store_ms = ElapsedMs(store_start);
-
         stabilizer->frame_count++;
 
+        // Phase 8: publish diagnostics, measured motion, and final compensated transform.
         if(result != nullptr)
         {
             result->stabilized = 1;
@@ -672,18 +643,9 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->dx = dx;
             result->dy = dy;
             result->angle_radians = angle;
-            result->total_ms = ElapsedMs(total_start);
-            result->convert_ms = convert_ms;
             result->feature_ms = feature_ms;
             result->motion_ms = motion_ms;
-            result->optical_flow_ms = optical_flow_ms;
-            result->affine_ms = affine_ms;
-            result->store_ms = store_ms;
-            result->transform_00 = static_cast<float>(transform(0, 0));
-            result->transform_01 = static_cast<float>(transform(0, 1));
             result->transform_02 = static_cast<float>(transform(0, 2));
-            result->transform_10 = static_cast<float>(transform(1, 0));
-            result->transform_11 = static_cast<float>(transform(1, 1));
             result->transform_12 = static_cast<float>(transform(1, 2));
             result->measured_dx = measured_dx;
             result->measured_dy = measured_dy;
