@@ -643,14 +643,10 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->angle_radians = angle;
             result->total_ms = ElapsedMs(total_start);
             result->convert_ms = convert_ms;
-            result->gray_ms = 0.0f;
             result->feature_ms = feature_ms;
             result->optical_flow_ms = optical_flow_ms;
             result->affine_ms = affine_ms;
-            result->first_warp_ms = 0.0f;
-            result->zoom_warp_ms = 0.0f;
             result->store_ms = store_ms;
-            result->output_ms = 0.0f;
             result->transform_00 = static_cast<float>(transform(0, 0));
             result->transform_01 = static_cast<float>(transform(0, 1));
             result->transform_02 = static_cast<float>(transform(0, 2));
