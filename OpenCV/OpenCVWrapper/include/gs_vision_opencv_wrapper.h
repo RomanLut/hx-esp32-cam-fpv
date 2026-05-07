@@ -99,7 +99,7 @@ typedef struct GsVisionStabilizerFrameResult
     float dy;                     // compensated Y translation in pixels (positive = shift down)
     float angle_radians;          // compensated rotation in radians
 
-    float feature_ms;             // milliseconds spent detecting Shi-Tomasi corners for the next frame (precomputed at end of current frame)
+    float feature_ms;             // milliseconds spent in the last explicit Shi-Tomasi prepare call
     float motion_ms;              // milliseconds spent on optical flow, RANSAC fit, and the full smoothing pipeline
 
     // Final 2x3 affine matrix translation column, zoom-composed with the compensated warp.
@@ -171,6 +171,14 @@ GS_VISION_API int32_t gs_vision_stabilizer_estimate_frame(
     GsVisionStabilizer* stabilizer,
     const GsVisionImage* input,
     GsVisionStabilizerFrameResult* result);
+
+//===================================================================================
+//===================================================================================
+// Explicitly prepares Shi-Tomasi points on the provided frame for the next estimate call.
+GS_VISION_API int32_t gs_vision_stabilizer_prepare_frame_features(
+    GsVisionStabilizer* stabilizer,
+    const GsVisionImage* input,
+    float* feature_ms);
 
 #ifdef __cplusplus
 }

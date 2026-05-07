@@ -205,6 +205,7 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
     {
         const uint8_t* source_pixels = frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data();
         const size_t source_size = frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size();
+        GsVisionImageFormat prepare_format = GS_VISION_IMAGE_FORMAT_RGB8;
         if (frame.pixel_format == PixelFormat::RGB565)
         {
             gs::stabilization::estimateFrame(source_pixels,
@@ -215,6 +216,7 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
                                              GS_VISION_IMAGE_FORMAT_RGB565,
                                              false,
                                              0);
+            prepare_format = GS_VISION_IMAGE_FORMAT_RGB565;
         }
         else
         {
@@ -226,10 +228,46 @@ void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
                                              GS_VISION_IMAGE_FORMAT_RGB8,
                                              true,
                                              frame.frame_id);
+            prepare_format = GS_VISION_IMAGE_FORMAT_RGB8;
         }
         gs::stabilization::updateRenderTrajectoryStateForFrame(frame.frame_id,
                                                                static_cast<uint32_t>(frame.width),
                                                                static_cast<uint32_t>(frame.height));
+
+        const uint8_t* prepared_pixels = source_pixels;
+        const size_t prepared_size = source_size;
+        const int prepared_width = frame.width;
+        const int prepared_height = frame.height;
+        const int prepared_stride = frame.stride;
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_has_pending_frame)
+            {
+                if (!shouldReplacePendingFrame(frame.frame_id, m_pending_frame.frame_id))
+                {
+                    m_discarded_pending_count.fetch_add(1);
+                    releaseFrameRefLocked(frame);
+                    return;
+                }
+                m_discarded_pending_count.fetch_add(1);
+            }
+            releaseFrameRefLocked(m_pending_frame);
+            m_pending_frame = std::move(frame);
+            m_has_pending_frame = true;
+            m_frame_dirty.store(true);
+        }
+        m_cv.notify_all();
+
+        // Keep current-frame estimation on submit-path, then defer feature extraction
+        // until after render thread wake-up so draw can begin before next-frame prep.
+        gs::stabilization::prepareFrameFeatures(prepared_pixels,
+                                                prepared_size,
+                                                prepared_width,
+                                                prepared_height,
+                                                prepared_stride,
+                                                prepare_format);
+        return;
     }
     else
     {

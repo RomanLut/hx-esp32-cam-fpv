@@ -42,6 +42,12 @@ struct GsVisionStabilizer
     float prev_filtered_dy = 0.0f;
     float prev_filtered_angle = 0.0f;
     std::vector<cv::Point2f> cached_previous_points;
+    float last_feature_ms = 0.0f;
+    const uint8_t* last_estimate_input_data = nullptr;
+    int32_t last_estimate_width = 0;
+    int32_t last_estimate_height = 0;
+    int32_t last_estimate_stride_bytes = 0;
+    GsVisionImageFormat last_estimate_format = GS_VISION_IMAGE_FORMAT_RGB8;
 };
 
 namespace
@@ -295,7 +301,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         }
 
         // Reuse two ROI buffers in ping-pong mode: previous owns last frame, current is rewritten now.
-        stabilizer->previous_gray_roi.swap(stabilizer->current_gray);
+        std::swap(stabilizer->previous_gray_roi, stabilizer->current_gray);
 
         const cv::Rect roi = BuildRoi(cv::Size(input->width, input->height), stabilizer->config.roi_divisor);
         if(!ConvertRoiToGray(*input, roi, stabilizer->current_gray))
@@ -303,29 +309,38 @@ int32_t gs_vision_stabilizer_estimate_frame(
             return 0;
         }
         const cv::Mat& current_gray_roi = stabilizer->current_gray;
+        stabilizer->last_estimate_input_data = input->data;
+        stabilizer->last_estimate_width = input->width;
+        stabilizer->last_estimate_height = input->height;
+        stabilizer->last_estimate_stride_bytes = input->stride_bytes;
+        stabilizer->last_estimate_format = input->format;
 
         if(stabilizer->previous_gray_roi.empty() ||
            stabilizer->previous_gray_roi.size() != current_gray_roi.size())
         {
-            // Phase 2 (bootstrap): seed temporal buffers/features; no motion estimate on first frame.
-            const StabilizerClock::time_point feature_start = StabilizerClock::now();
-            std::vector<cv::Point2f> seeded_points;
-            cv::goodFeaturesToTrack(current_gray_roi,
-                                    seeded_points,
-                                    stabilizer->config.max_corners,
-                                    stabilizer->config.quality_level,
-                                    stabilizer->config.min_distance);
-            const float feature_ms = ElapsedMs(feature_start);
-            stabilizer->cached_previous_points = std::move(seeded_points);
+            // Phase 2: estimate never bootstraps features. Caller must seed via
+            // gs_vision_stabilizer_prepare_frame_features; gracefully report "not stabilized".
+            stabilizer->cached_previous_points.clear();
             if(result != nullptr)
             {
                 *result = {};
-                result->feature_ms = feature_ms;
+                result->feature_ms = stabilizer->last_feature_ms;
             }
             return 1;
         }
 
         std::vector<cv::Point2f> previous_points = stabilizer->cached_previous_points;
+        if(previous_points.empty())
+        {
+            // Feature preparation may have been skipped or state may have been reset
+            // between calls; do not synthesize motion from stale carry terms.
+            if(result != nullptr)
+            {
+                *result = {};
+                result->feature_ms = stabilizer->last_feature_ms;
+            }
+            return 1;
+        }
         const StabilizerClock::time_point motion_start = StabilizerClock::now();
 
         // Phase 3: estimate raw inter-frame motion from tracked corners + robust affine fit.
@@ -391,8 +406,11 @@ int32_t gs_vision_stabilizer_estimate_frame(
             tracked_points = static_cast<int32_t>(previous_full_points.size());
             if(previous_full_points.size() >= 3)
             {
-                // Reject flow outliers before affine fit: large local movers can still produce
-                // high inlier counts for a wrong global model in vibration-heavy clips.
+                // Outlier rejection is done in displacement space before affine fitting:
+                // 1) compute per-track motion (dx, dy), 2) take the median motion as the
+                // dominant camera movement, 3) keep only tracks inside a fixed gate around
+                // that median on both axes. This drops independently moving objects and bad
+                // LK tracks so estimateAffinePartial2D sees a mostly global-motion set.
                 std::vector<float> disp_x;
                 std::vector<float> disp_y;
                 disp_x.reserve(previous_full_points.size());
@@ -620,21 +638,9 @@ int32_t gs_vision_stabilizer_estimate_frame(
         }
         const float motion_ms = ElapsedMs(motion_start);
 
-        // Phase 7: refresh cached frame/features so the next call can run tracking immediately.
-        // Precompute feature points for this frame so the next call can immediately run motion.
-        const StabilizerClock::time_point feature_start = StabilizerClock::now();
-        std::vector<cv::Point2f> next_points;
-        cv::goodFeaturesToTrack(current_gray_roi,
-                                next_points,
-                                stabilizer->config.max_corners,
-                                stabilizer->config.quality_level,
-                                stabilizer->config.min_distance);
-        const float feature_ms = ElapsedMs(feature_start);
-
-        stabilizer->cached_previous_points = std::move(next_points);
         stabilizer->frame_count++;
 
-        // Phase 8: publish diagnostics, measured motion, and final compensated transform.
+        // Phase 7: publish diagnostics, measured motion, and final compensated transform.
         if(result != nullptr)
         {
             result->stabilized = 1;
@@ -643,7 +649,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->dx = dx;
             result->dy = dy;
             result->angle_radians = angle;
-            result->feature_ms = feature_ms;
+            result->feature_ms = stabilizer->last_feature_ms;
             result->motion_ms = motion_ms;
             result->transform_02 = static_cast<float>(transform(0, 2));
             result->transform_12 = static_cast<float>(transform(1, 2));
@@ -655,6 +661,76 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->compensated_angle_radians = compensated_angle;
         }
 
+        return 1;
+    }
+    catch(const cv::Exception&)
+    {
+        return 0;
+    }
+    catch(const std::exception&)
+    {
+        return 0;
+    }
+    catch(...)
+    {
+        return 0;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Prepares feature tracking input by reusing or rebuilding the ROI grayscale image,
+// then detecting Shi-Tomasi corners and caching them as the previous-point set that
+// the next stabilization estimate consumes.
+int32_t gs_vision_stabilizer_prepare_frame_features(
+    GsVisionStabilizer* stabilizer,
+    const GsVisionImage* input,
+    float* feature_ms)
+{
+    try
+    {
+        if(stabilizer == nullptr || input == nullptr)
+        {
+            return 0;
+        }
+
+        const cv::Rect roi = BuildRoi(cv::Size(input->width, input->height), stabilizer->config.roi_divisor);
+        cv::Mat current_gray_roi;
+        const bool can_reuse_estimate_gray =
+            stabilizer->last_estimate_input_data == input->data &&
+            stabilizer->last_estimate_width == input->width &&
+            stabilizer->last_estimate_height == input->height &&
+            stabilizer->last_estimate_stride_bytes == input->stride_bytes &&
+            stabilizer->last_estimate_format == input->format &&
+            !stabilizer->current_gray.empty() &&
+            stabilizer->current_gray.size() == roi.size();
+        if(can_reuse_estimate_gray)
+        {
+            current_gray_roi = stabilizer->current_gray;
+        }
+        else
+        {
+            if(!ConvertRoiToGray(*input, roi, current_gray_roi))
+            {
+                return 0;
+            }
+        }
+
+        const StabilizerClock::time_point feature_start = StabilizerClock::now();
+        std::vector<cv::Point2f> points;
+        // Detect strong Shi-Tomasi corners in the ROI; these become LK tracking seeds
+        // and are limited/filtered by configured count, quality threshold, and spacing.
+        cv::goodFeaturesToTrack(current_gray_roi,
+                                points,
+                                stabilizer->config.max_corners,
+                                stabilizer->config.quality_level,
+                                stabilizer->config.min_distance);
+        stabilizer->last_feature_ms = ElapsedMs(feature_start);
+        stabilizer->cached_previous_points = std::move(points);
+        if(feature_ms != nullptr)
+        {
+            *feature_ms = stabilizer->last_feature_ms;
+        }
         return 1;
     }
     catch(const cv::Exception&)

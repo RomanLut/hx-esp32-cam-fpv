@@ -28,6 +28,10 @@ using EstimateFrameFn = int32_t (*)(
     GsVisionStabilizer* stabilizer,
     const GsVisionImage* input,
     GsVisionStabilizerFrameResult* result);
+using PrepareFrameFeaturesFn = int32_t (*)(
+    GsVisionStabilizer* stabilizer,
+    const GsVisionImage* input,
+    float* feature_ms);
 
 //===================================================================================
 //===================================================================================
@@ -43,6 +47,7 @@ struct StabilizationApi
     DestroyFn destroy = nullptr;
     ResetFn reset = nullptr;
     EstimateFrameFn estimate_frame = nullptr;
+    PrepareFrameFeaturesFn prepare_frame_features = nullptr;
     GsVisionStabilizer* stabilizer = nullptr;
     GsVisionStabilizerConfig config = {};
     bool attempted = false;
@@ -216,11 +221,15 @@ StabilizationApi& loadStabilizationApiLocked()
         s_stabilization_api.destroy = loadOpenCvSymbol<DestroyFn>(s_stabilization_api, "gs_vision_stabilizer_destroy");
         s_stabilization_api.reset = loadOpenCvSymbol<ResetFn>(s_stabilization_api, "gs_vision_stabilizer_reset");
         s_stabilization_api.estimate_frame = loadOpenCvSymbol<EstimateFrameFn>(s_stabilization_api, "gs_vision_stabilizer_estimate_frame");
+        s_stabilization_api.prepare_frame_features = loadOpenCvSymbol<PrepareFrameFeaturesFn>(
+            s_stabilization_api,
+            "gs_vision_stabilizer_prepare_frame_features");
 
         if(s_stabilization_api.create == nullptr ||
            s_stabilization_api.destroy == nullptr ||
            s_stabilization_api.reset == nullptr ||
-           s_stabilization_api.estimate_frame == nullptr)
+           s_stabilization_api.estimate_frame == nullptr ||
+           s_stabilization_api.prepare_frame_features == nullptr)
         {
             s_stabilization_api.error = "OpenCV wrapper is missing stabilization symbols.";
             return s_stabilization_api;
@@ -697,7 +706,10 @@ bool estimateFrame(const uint8_t* pixels,
     s_last_frame_id_valid = frame_id_valid;
 
     StabilizationApi& api = loadStabilizationApiLocked();
-    if(api.estimate_frame == nullptr || !ensureConfiguredLocked(api) || api.stabilizer == nullptr)
+    if(api.estimate_frame == nullptr ||
+       api.prepare_frame_features == nullptr ||
+       !ensureConfiguredLocked(api) ||
+       api.stabilizer == nullptr)
     {
         return false;
     }
@@ -720,7 +732,6 @@ bool estimateFrame(const uint8_t* pixels,
     {
         return false;
     }
-
     {
         std::lock_guard<std::mutex> debug_lock(s_motion_estimate_mutex);
         gs::stabilization::StabilizationMotionEstimate state = {};
@@ -755,6 +766,62 @@ bool estimateFrame(const uint8_t* pixels,
     recordStabilizationDurations(static_cast<uint32_t>(std::max(0.0f, result.feature_ms)),
                                  static_cast<uint32_t>(std::max(0.0f, result.motion_ms)));
     return result.stabilized != 0;
+}
+
+//===================================================================================
+//===================================================================================
+// Explicitly prepares Shi-Tomasi features for the next stabilization estimate.
+bool prepareFrameFeatures(const uint8_t* pixels,
+                          size_t size,
+                          int width,
+                          int height,
+                          int stride,
+                          GsVisionImageFormat format)
+{
+    if(!isEnabled())
+    {
+        return false;
+    }
+    if(pixels == nullptr ||
+       size == 0 ||
+       width <= 0 ||
+       height <= 0 ||
+       stride < width * (format == GS_VISION_IMAGE_FORMAT_RGB565 ? 2 : 3) ||
+       size < static_cast<size_t>(stride) * static_cast<size_t>(height))
+    {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(s_stabilization_mutex);
+    StabilizationApi& api = loadStabilizationApiLocked();
+    if(api.prepare_frame_features == nullptr ||
+       !ensureConfiguredLocked(api) ||
+       api.stabilizer == nullptr)
+    {
+        return false;
+    }
+
+    const GsVisionImage input = {
+        pixels,
+        width,
+        height,
+        stride,
+        format
+    };
+    float feature_ms = 0.0f;
+    if(api.prepare_frame_features(api.stabilizer, &input, &feature_ms) == 0)
+    {
+        return false;
+    }
+
+    s_stabilization_feature_last_ms.store(static_cast<uint32_t>(std::max(0.0f, feature_ms)));
+    uint32_t current_feature_max = s_stabilization_feature_max_ms.load();
+    const uint32_t feature_ms_u32 = static_cast<uint32_t>(std::max(0.0f, feature_ms));
+    while(feature_ms_u32 > current_feature_max &&
+          !s_stabilization_feature_max_ms.compare_exchange_weak(current_feature_max, feature_ms_u32))
+    {
+    }
+    return true;
 }
 
 //===================================================================================

@@ -365,6 +365,22 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             gs::stabilization::resetRenderTrajectoryState();
         }
 
+        const uint8_t* prepared_pixels = nullptr;
+        size_t prepared_size = 0;
+        int prepared_width = 0;
+        int prepared_height = 0;
+        int prepared_stride = 0;
+        bool run_prepare_after_publish = false;
+        if(gs::stabilization::isEnabled())
+        {
+            prepared_pixels = output->rgb_data.data();
+            prepared_size = output->rgb_data.size();
+            prepared_width = output->width;
+            prepared_height = output->height;
+            prepared_stride = output->width * 3;
+            run_prepare_after_publish = true;
+        }
+
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
             if (m_impl->has_pending_output)
@@ -384,6 +400,18 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             m_impl->has_pending_output = true;
         }
         m_impl->output_ready_cv.notify_one();
+
+        if(run_prepare_after_publish)
+        {
+            // Keep current-frame estimate on the critical path, but defer next-frame
+            // feature extraction until after publish/notify so rendering can start first.
+            gs::stabilization::prepareFrameFeatures(prepared_pixels,
+                                                    prepared_size,
+                                                    prepared_width,
+                                                    prepared_height,
+                                                    prepared_stride,
+                                                    GS_VISION_IMAGE_FORMAT_RGB8);
+        }
 
         //LOGI("Decompressed in {}us, {}", std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start_tp).count(), input->jpeg_buffer->data.size() - size);
     }

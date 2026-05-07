@@ -191,6 +191,16 @@ bool estimateFrame(const uint8_t* pixels,
 
 //===================================================================================
 //===================================================================================
+// Explicitly prepares Shi-Tomasi features for the next stabilization estimate.
+bool prepareFrameFeatures(const uint8_t* pixels,
+                          size_t size,
+                          int width,
+                          int height,
+                          int stride,
+                          GsVisionImageFormat format);
+
+//===================================================================================
+//===================================================================================
 // Returns the latest per-frame motion estimate used by render-time stabilization.
 StabilizationMotionEstimate getLatestMotionEstimate();
 
