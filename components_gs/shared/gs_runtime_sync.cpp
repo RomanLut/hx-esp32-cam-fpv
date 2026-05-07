@@ -74,8 +74,10 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.gpuWaitLastFrameMS = static_cast<int>(core.acc_gpu_wait_last_ms);
         core.gs_stats.gpuWaitMaxMS = static_cast<int>(core.acc_gpu_wait_max_ms);
         core.gs_stats.stabilizationCount = static_cast<int>(stabilization_stats.count);
-        core.gs_stats.stabilizationTimeMinMS = static_cast<int>(stabilization_stats.min_ms);
-        core.gs_stats.stabilizationTimeMaxMS = static_cast<int>(stabilization_stats.max_ms);
+        core.gs_stats.stabilizationFeaturesLastMS = static_cast<int>(stabilization_stats.feature_last_ms);
+        core.gs_stats.stabilizationFeaturesMaxMS = static_cast<int>(stabilization_stats.feature_max_ms);
+        core.gs_stats.stabilizationMotionLastMS = static_cast<int>(stabilization_stats.motion_last_ms);
+        core.gs_stats.stabilizationMotionMaxMS = static_cast<int>(stabilization_stats.motion_max_ms);
         core.gs_stats.discardedFramesAssemblerPoolOverflow =
             static_cast<int>(assembler_stats.discarded_frames);
         core.gs_stats.discardedFramesDecoderInput =

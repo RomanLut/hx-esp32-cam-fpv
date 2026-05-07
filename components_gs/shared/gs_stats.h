@@ -41,8 +41,10 @@ struct GSStats
     int gpuWaitLastFrameMS = 0;
     int gpuWaitMaxMS = 0;
     int stabilizationCount = 0;
-    int stabilizationTimeMinMS = 0;
-    int stabilizationTimeMaxMS = 0;
+    int stabilizationFeaturesLastMS = 0;
+    int stabilizationFeaturesMaxMS = 0;
+    int stabilizationMotionLastMS = 0;
+    int stabilizationMotionMaxMS = 0;
     int discardedFramesAssemblerPoolOverflow = 0;
     int discardedFramesDecoderInput = 0;
     int discardedFramesDecodedOutput = 0;

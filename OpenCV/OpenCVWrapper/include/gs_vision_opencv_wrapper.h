@@ -98,6 +98,7 @@ typedef struct GsVisionStabilizerFrameResult
     float total_ms;
     float convert_ms;
     float feature_ms;
+    float motion_ms;
     float optical_flow_ms;
     float affine_ms;
     float store_ms;

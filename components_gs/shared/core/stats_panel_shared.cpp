@@ -211,9 +211,11 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
         });
         row("Stabilization", [&]
         {
-            ImGui::Text("%d/%d ms",
-                        ground_stats.stabilizationTimeMinMS,
-                        ground_stats.stabilizationTimeMaxMS);
+            ImGui::Text("%d/%d+%d/%d ms",
+                        ground_stats.stabilizationFeaturesLastMS,
+                        ground_stats.stabilizationFeaturesMaxMS,
+                        ground_stats.stabilizationMotionLastMS,
+                        ground_stats.stabilizationMotionMaxMS);
         });
         row("Discarded frames", [&]
         {

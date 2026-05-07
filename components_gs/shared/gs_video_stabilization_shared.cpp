@@ -53,8 +53,10 @@ struct StabilizationApi
 std::mutex s_stabilization_mutex;
 StabilizationApi s_stabilization_api;
 std::atomic<uint32_t> s_stabilization_count = 0;
-std::atomic<uint32_t> s_stabilization_min_ms = 9999;
-std::atomic<uint32_t> s_stabilization_max_ms = 0;
+std::atomic<uint32_t> s_stabilization_feature_last_ms = 0;
+std::atomic<uint32_t> s_stabilization_feature_max_ms = 0;
+std::atomic<uint32_t> s_stabilization_motion_last_ms = 0;
+std::atomic<uint32_t> s_stabilization_motion_max_ms = 0;
 std::mutex s_motion_estimate_mutex;
 gs::stabilization::StabilizationMotionEstimate s_latest_motion_estimate;
 std::mutex s_render_trajectory_state_mutex;
@@ -68,16 +70,20 @@ bool s_last_frame_id_valid = false;
 
 //===================================================================================
 //===================================================================================
-// Records one measured stabilization duration for the current stats window.
-void recordStabilizationDuration(uint32_t duration_ms)
+// Records one measured stabilization feature and motion duration for the current stats window.
+void recordStabilizationDurations(uint32_t feature_ms, uint32_t motion_ms)
 {
     s_stabilization_count.fetch_add(1);
-    uint32_t current_min = s_stabilization_min_ms.load();
-    while(duration_ms < current_min && !s_stabilization_min_ms.compare_exchange_weak(current_min, duration_ms))
+    s_stabilization_feature_last_ms.store(feature_ms);
+    s_stabilization_motion_last_ms.store(motion_ms);
+    uint32_t current_feature_max = s_stabilization_feature_max_ms.load();
+    while(feature_ms > current_feature_max &&
+          !s_stabilization_feature_max_ms.compare_exchange_weak(current_feature_max, feature_ms))
     {
     }
-    uint32_t current_max = s_stabilization_max_ms.load();
-    while(duration_ms > current_max && !s_stabilization_max_ms.compare_exchange_weak(current_max, duration_ms))
+    uint32_t current_motion_max = s_stabilization_motion_max_ms.load();
+    while(motion_ms > current_motion_max &&
+          !s_stabilization_motion_max_ms.compare_exchange_weak(current_motion_max, motion_ms))
     {
     }
 }
@@ -668,7 +674,6 @@ bool estimateFrame(const uint8_t* pixels,
         return false;
     }
 
-    const Clock::time_point start = Clock::now();
     std::lock_guard<std::mutex> lock(s_stabilization_mutex);
 
     if(frame_id_valid &&
@@ -747,9 +752,8 @@ bool estimateFrame(const uint8_t* pixels,
         s_latest_motion_estimate = state;
     }
 
-    const uint32_t duration_ms = static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - start).count());
-    recordStabilizationDuration(duration_ms);
+    recordStabilizationDurations(static_cast<uint32_t>(std::max(0.0f, result.feature_ms)),
+                                 static_cast<uint32_t>(std::max(0.0f, result.motion_ms)));
     return result.stabilized != 0;
 }
 
@@ -769,12 +773,16 @@ StabilizationStats consumeStats()
 {
     StabilizationStats stats = {};
     stats.count = s_stabilization_count.exchange(0);
-    stats.min_ms = s_stabilization_min_ms.exchange(9999);
-    stats.max_ms = s_stabilization_max_ms.exchange(0);
+    stats.feature_last_ms = s_stabilization_feature_last_ms.exchange(0);
+    stats.feature_max_ms = s_stabilization_feature_max_ms.exchange(0);
+    stats.motion_last_ms = s_stabilization_motion_last_ms.exchange(0);
+    stats.motion_max_ms = s_stabilization_motion_max_ms.exchange(0);
     if(stats.count == 0)
     {
-        stats.min_ms = 0;
-        stats.max_ms = 0;
+        stats.feature_last_ms = 0;
+        stats.feature_max_ms = 0;
+        stats.motion_last_ms = 0;
+        stats.motion_max_ms = 0;
     }
     return stats;
 }
@@ -892,4 +900,3 @@ void resetRenderTrajectoryState()
 }
 
 } // namespace gs::stabilization
-

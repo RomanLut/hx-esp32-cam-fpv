@@ -17,8 +17,10 @@ namespace gs::stabilization
 struct StabilizationStats
 {
     uint32_t count = 0;
-    uint32_t min_ms = 0;
-    uint32_t max_ms = 0;
+    uint32_t feature_last_ms = 0;
+    uint32_t feature_max_ms = 0;
+    uint32_t motion_last_ms = 0;
+    uint32_t motion_max_ms = 0;
 };
 
 //===================================================================================

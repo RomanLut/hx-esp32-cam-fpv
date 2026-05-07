@@ -42,6 +42,8 @@ struct GsVisionStabilizer
     float prev_filtered_dx = 0.0f;
     float prev_filtered_dy = 0.0f;
     float prev_filtered_angle = 0.0f;
+    std::vector<cv::Point2f> cached_previous_points;
+    bool has_cached_previous_points = false;
 };
 
 namespace
@@ -306,14 +308,25 @@ int32_t gs_vision_stabilizer_estimate_frame(
         if(stabilizer->previous_gray_roi.empty() ||
            stabilizer->previous_gray_roi.size() != current_gray_roi.size())
         {
+            const StabilizerClock::time_point feature_start = StabilizerClock::now();
+            std::vector<cv::Point2f> seeded_points;
+            cv::goodFeaturesToTrack(current_gray_roi,
+                                    seeded_points,
+                                    stabilizer->config.max_corners,
+                                    stabilizer->config.quality_level,
+                                    stabilizer->config.min_distance);
+            const float feature_ms = ElapsedMs(feature_start);
             const StabilizerClock::time_point store_start = StabilizerClock::now();
             current_gray_roi.copyTo(stabilizer->previous_gray_roi);
             current_gray_roi.copyTo(stabilizer->reference_gray_roi);
+            stabilizer->cached_previous_points = std::move(seeded_points);
+            stabilizer->has_cached_previous_points = true;
             const float store_ms = ElapsedMs(store_start);
             if(result != nullptr)
             {
                 *result = {};
                 result->convert_ms = convert_ms;
+                result->feature_ms = feature_ms;
                 result->store_ms = store_ms;
                 result->total_ms = ElapsedMs(total_start);
                 result->transform_00 = 1.0f;
@@ -322,15 +335,20 @@ int32_t gs_vision_stabilizer_estimate_frame(
             return 1;
         }
 
-        // Detect features on the old frame every cycle, then track to the new frame.
         std::vector<cv::Point2f> previous_points;
-        const StabilizerClock::time_point feature_start = StabilizerClock::now();
-        cv::goodFeaturesToTrack(stabilizer->previous_gray_roi,
-                                previous_points,
-                                stabilizer->config.max_corners,
-                                stabilizer->config.quality_level,
-                                stabilizer->config.min_distance);
-        const float feature_ms = ElapsedMs(feature_start);
+        if(stabilizer->has_cached_previous_points)
+        {
+            previous_points = stabilizer->cached_previous_points;
+        }
+        else
+        {
+            cv::goodFeaturesToTrack(stabilizer->previous_gray_roi,
+                                    previous_points,
+                                    stabilizer->config.max_corners,
+                                    stabilizer->config.quality_level,
+                                    stabilizer->config.min_distance);
+        }
+        const StabilizerClock::time_point motion_start = StabilizerClock::now();
 
         float dx = 0.0f;
         float dy = 0.0f;
@@ -626,9 +644,22 @@ int32_t gs_vision_stabilizer_estimate_frame(
                                     zoom(1, 0) * transform(0, 1) + zoom(1, 1) * transform(1, 1),
                                     zoom(1, 0) * transform(0, 2) + zoom(1, 1) * transform(1, 2) + zoom(1, 2));
         }
+        const float motion_ms = ElapsedMs(motion_start);
+
+        // Precompute feature points for this frame so the next call can immediately run motion.
+        const StabilizerClock::time_point feature_start = StabilizerClock::now();
+        std::vector<cv::Point2f> next_points;
+        cv::goodFeaturesToTrack(current_gray_roi,
+                                next_points,
+                                stabilizer->config.max_corners,
+                                stabilizer->config.quality_level,
+                                stabilizer->config.min_distance);
+        const float feature_ms = ElapsedMs(feature_start);
 
         const StabilizerClock::time_point store_start = StabilizerClock::now();
         current_gray_roi.copyTo(stabilizer->previous_gray_roi);
+        stabilizer->cached_previous_points = std::move(next_points);
+        stabilizer->has_cached_previous_points = true;
         const float store_ms = ElapsedMs(store_start);
 
         stabilizer->frame_count++;
@@ -644,6 +675,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
             result->total_ms = ElapsedMs(total_start);
             result->convert_ms = convert_ms;
             result->feature_ms = feature_ms;
+            result->motion_ms = motion_ms;
             result->optical_flow_ms = optical_flow_ms;
             result->affine_ms = affine_ms;
             result->store_ms = store_ms;
