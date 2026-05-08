@@ -24,6 +24,18 @@ add_library(OpenCVWrapper::OpenCVWrapper ALIAS OpenCVWrapper)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc calib3d video)
 
+if(ANDROID)
+    foreach(OpenCVLib IN LISTS OpenCV_LIBS)
+        if(TARGET ${OpenCVLib})
+            get_target_property(OpenCVInterfaceLinkOptions ${OpenCVLib} INTERFACE_LINK_OPTIONS)
+            if(OpenCVInterfaceLinkOptions)
+                list(REMOVE_ITEM OpenCVInterfaceLinkOptions "-fuse-ld=gold")
+                set_target_properties(${OpenCVLib} PROPERTIES INTERFACE_LINK_OPTIONS "${OpenCVInterfaceLinkOptions}")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 target_include_directories(OpenCVWrapper
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -39,6 +51,10 @@ target_compile_definitions(OpenCVWrapper
     PRIVATE
         OPENCV_WRAPPER_BUILDING_LIBRARY
 )
+
+if(ANDROID)
+    set_target_properties(OpenCVWrapper PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+endif()
 
 if(MSVC)
     target_compile_options(OpenCVWrapper PRIVATE /W4)

@@ -156,6 +156,8 @@ $OpenCVConfigureArgs = @(
     "-DCMAKE_TOOLCHAIN_FILE=$Toolchain",
     "-DANDROID_ABI=$Abi",
     "-DANDROID_PLATFORM=android-$MinSdk",
+    "-DCMAKE_C_LINK_OPTIONS_IPO=-fuse-ld=lld",
+    "-DCMAKE_CXX_LINK_OPTIONS_IPO=-fuse-ld=lld",
     "-DCMAKE_BUILD_TYPE=$Config",
     "-DCMAKE_INSTALL_PREFIX=$OpenCVInstall",
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
@@ -204,6 +206,8 @@ $WrapperConfigureArgs = @(
     "-DCMAKE_TOOLCHAIN_FILE=$Toolchain",
     "-DANDROID_ABI=$Abi",
     "-DANDROID_PLATFORM=android-$MinSdk",
+    "-DCMAKE_C_LINK_OPTIONS_IPO=-fuse-ld=lld",
+    "-DCMAKE_CXX_LINK_OPTIONS_IPO=-fuse-ld=lld",
     "-DCMAKE_BUILD_TYPE=$Config",
     "-DOpenCV_DIR=$OpenCVBuild",
     "-DOPENCV_WRAPPER_PREBUILT_PLATFORM=$PrebuiltPlatform"
