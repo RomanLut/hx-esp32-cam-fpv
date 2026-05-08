@@ -448,6 +448,7 @@ void polling_thread_func()
   int ticks[MAX_PINS] = {0};
   int press_start_msec[MAX_PINS] = {0};
   bool pressed[MAX_PINS] = {false};
+  bool key_down_sent[MAX_PINS] = {false};
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
@@ -470,10 +471,32 @@ void polling_thread_func()
 
     for (int i = 0; i < npins; i++)
     {
+      const Mapping *m = get_mapping(pins[i]);
+      if (m == NULL)
+      {
+        continue;
+      }
+
+      // Edge-triggered sysfs GPIO can occasionally miss transitions under noise.
+      // Reconcile held key state against live pin level every loop so a stuck key
+      // is always released even when a release edge is lost.
+      if (m->keys_double == NULL && key_down_sent[i])
+      {
+        const int live_state = get_pin_state(pins[i]);
+        if (live_state == released_state)
+        {
+          const unsigned int key_code = m->keys_single[0] & 0xFF;
+          emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+          emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+          key_down_sent[i] = false;
+        }
+      }
+
       if (fdset[i].revents & POLLPRI)
       {
         int pin = pins[i];
         char buff[50];
+        lseek(fdset[i].fd, 0, SEEK_SET);
         const ssize_t bytes_read = read(fdset[i].fd, buff, sizeof(buff));
         (void)bytes_read;
 
@@ -485,7 +508,6 @@ void polling_thread_func()
           if (state == 0 || state == 1)
           {
             dbglog("GPIO state change: pin %d, state %d\n", pin, state);
-            const Mapping *m = get_mapping(pin);
             if (m != NULL && m->keys_double != NULL)
             {
               // Mappings with a secondary action emit on release:
@@ -509,10 +531,27 @@ void polling_thread_func()
             }
             else
             {
-              // Mappings without a secondary action emit on press.
+              // Mappings without a secondary action emulate a real held key:
+              // send keydown once on press and keyup once on release.
               if (state == pressed_state)
               {
-                button_pressed(uinput_fd, pin, false);
+                if (!key_down_sent[i])
+                {
+                  const unsigned int key_code = m->keys_single[0] & 0xFF;
+                  emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 1);
+                  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+                  key_down_sent[i] = true;
+                }
+              }
+              else if (state == released_state)
+              {
+                if (key_down_sent[i])
+                {
+                  const unsigned int key_code = m->keys_single[0] & 0xFF;
+                  emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+                  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+                  key_down_sent[i] = false;
+                }
               }
             }
           }
@@ -611,6 +650,10 @@ void gpio_buttons_start()
     }
     fdset_base[i].fd = gpio_fd;
     fdset_base[i].events = POLLPRI;
+    lseek(fdset_base[i].fd, 0, SEEK_SET);
+    char initial_state[8];
+    const ssize_t initial_read = read(fdset_base[i].fd, initial_state, sizeof(initial_state));
+    (void)initial_read;
   }
 
   dbglog("Creating GPIO polling thread\n");
