@@ -1974,7 +1974,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Screen Settings...##1");
+        sprintf(buf, "Display Settings...##1");
         if ( this->drawMenuItem( buf, 1) )
         {
             this->goForward( OSDMenuId::GSScreen, 0 );
@@ -2032,11 +2032,11 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the ground station screen settings menu.
+// Draws the ground station display settings menu.
 void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
-    this->drawMenuTitle( "Menu -> GS Screen" );
+    this->drawMenuTitle( "Menu -> GS Display" );
     drawSpacing();
 
     {
@@ -2048,30 +2048,35 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    if ( this->drawMenuItem( "Postprocessing...##postprocessing", 1) )
     {
-        char buf[256];
-        sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 1) )
-        {
-            gs_config.vsync = !gs_config.vsync;
-            s_RuntimePlatformServices->setVsync(gs_config.vsync);
-            s_settingsStorage.saveGroundStationConfig();
-        }
+        this->goForward( OSDMenuId::GSPostprocessing, 0 );
+        return;
+    }
+
+    if ( this->drawMenuItem( "Image Stabilization...##image_stabilization", 2) )
+    {
+        this->m_image_stabilization_draft = s_imageStabilizationState;
+        this->m_image_stabilization_original = s_imageStabilizationState;
+        this->m_image_stabilization_draft_active = true;
+        this->resetImageStabilizationStepMultiplier();
+        this->goForward( OSDMenuId::GSImageStabilization, 0 );
+        return;
     }
 
     {
         char buf[256];
-        sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 2) )
+        sprintf(buf, "VR Mode...##vr_mode");
+        if ( this->drawMenuItem( buf, 3) )
         {
-            gs_config.screenFlipV = !gs_config.screenFlipV;
-            s_settingsStorage.saveGroundStationConfig();
+            this->goForward( OSDMenuId::GSVRMode, 0 );
+            return;
         }
     }
 
     bool zoom_handled = false;
     {
-        const bool zoom_focused = (this->selectedItem == 3);
+        const bool zoom_focused = (this->selectedItem == 4);
         if (m_draw_mode == DrawMode::Interactive && zoom_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -2091,33 +2096,28 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "<>Zoom: %d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
-        this->drawMenuItem( buf, 3);
+        this->drawMenuItem( buf, 4);
     }
 
     {
         char buf[256];
-        sprintf(buf, "VR Mode...##vr_mode");
-        if ( this->drawMenuItem( buf, 4) )
+        sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
+        if ( this->drawMenuItem( buf, 5) )
         {
-            this->goForward( OSDMenuId::GSVRMode, 0 );
-            return;
+            gs_config.screenFlipV = !gs_config.screenFlipV;
+            s_settingsStorage.saveGroundStationConfig();
         }
     }
 
-    if ( this->drawMenuItem( "Image Stabilization...##image_stabilization", 5) )
     {
-        this->m_image_stabilization_draft = s_imageStabilizationState;
-        this->m_image_stabilization_original = s_imageStabilizationState;
-        this->m_image_stabilization_draft_active = true;
-        this->resetImageStabilizationStepMultiplier();
-        this->goForward( OSDMenuId::GSImageStabilization, 0 );
-        return;
-    }
-
-    if ( this->drawMenuItem( "Postprocessing...##postprocessing", 6) )
-    {
-        this->goForward( OSDMenuId::GSPostprocessing, 0 );
-        return;
+        char buf[256];
+        sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
+        if ( this->drawMenuItem( buf, 6) )
+        {
+            gs_config.vsync = !gs_config.vsync;
+            s_RuntimePlatformServices->setVsync(gs_config.vsync);
+            s_settingsStorage.saveGroundStationConfig();
+        }
     }
 
     if (!zoom_handled && this->exitKeyPressed())
