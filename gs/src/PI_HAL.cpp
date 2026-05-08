@@ -569,21 +569,57 @@ bool PI_HAL::init_display_sdl()
             desiredMode.refresh_rate = 0;  // Refresh rate 0 means any refresh rate
             desiredMode.driverdata = 0;  // Driverdata should be 0
 
-            // Closest display mode found
+            // Closest display mode found (fallback when no exact resolution mode exists)
             SDL_DisplayMode closestMode;
 
             printf("Trying mode %d %d...\n", desiredMode.w, desiredMode.h);
 
-            if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode)) 
+            if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode))
             {
-                printf("Display mode:");
-                printf("  Width: %d\n", closestMode.w);
-                printf("  Height: %d\n", closestMode.h);
-                printf("  Refresh Rate: %d\n", closestMode.refresh_rate);
-                printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(closestMode.format));            
+                // Prefer the highest refresh mode among exact width/height matches.
+                SDL_DisplayMode selectedMode = closestMode;
+                int best_refresh_rate = closestMode.refresh_rate;
+                int best_pixel_format = static_cast<int>(closestMode.format);
+                const int display_modes_count = SDL_GetNumDisplayModes(0);
+                for (int mode_index = 0; mode_index < display_modes_count; mode_index++)
+                {
+                    SDL_DisplayMode candidate_mode = {};
+                    if (SDL_GetDisplayMode(0, mode_index, &candidate_mode) != 0)
+                    {
+                        continue;
+                    }
 
-                m_impl->width = closestMode.w;
-                m_impl->height = closestMode.h;
+                    if (candidate_mode.w != closestMode.w || candidate_mode.h != closestMode.h)
+                    {
+                        continue;
+                    }
+
+                    const int candidate_refresh_rate = candidate_mode.refresh_rate > 0 ? candidate_mode.refresh_rate : 0;
+                    const int candidate_pixel_format = static_cast<int>(candidate_mode.format);
+                    const bool is_better_refresh = candidate_refresh_rate > best_refresh_rate;
+                    const bool is_refresh_tie_with_preferred_format =
+                        (candidate_refresh_rate == best_refresh_rate) &&
+                        (candidate_pixel_format == static_cast<int>(closestMode.format)) &&
+                        (best_pixel_format != static_cast<int>(closestMode.format));
+                    const bool is_refresh_tie_with_higher_format_id =
+                        (candidate_refresh_rate == best_refresh_rate) &&
+                        (candidate_pixel_format > best_pixel_format);
+                    if (is_better_refresh || is_refresh_tie_with_preferred_format || is_refresh_tie_with_higher_format_id)
+                    {
+                        selectedMode = candidate_mode;
+                        best_refresh_rate = candidate_refresh_rate;
+                        best_pixel_format = candidate_pixel_format;
+                    }
+                }
+
+                printf("Display mode:");
+                printf("  Width: %d\n", selectedMode.w);
+                printf("  Height: %d\n", selectedMode.h);
+                printf("  Refresh Rate: %d\n", selectedMode.refresh_rate);
+                printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(selectedMode.format));
+
+                m_impl->width = selectedMode.w;
+                m_impl->height = selectedMode.h;
 
                 SDL_WindowFlags window_flags = (SDL_WindowFlags)(
                     SDL_WINDOW_FULLSCREEN | 
@@ -592,7 +628,7 @@ bool PI_HAL::init_display_sdl()
                     SDL_WINDOW_BORDERLESS );
                 m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
 
-                if (SDL_SetWindowDisplayMode(m_impl->window, &closestMode) != 0) 
+                if (SDL_SetWindowDisplayMode(m_impl->window, &selectedMode) != 0)
                 {
                     printf("SDL_SetWindowDisplayMode Error: %s\n", SDL_GetError());
                     SDL_DestroyWindow(m_impl->window);
