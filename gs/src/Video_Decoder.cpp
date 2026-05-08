@@ -49,6 +49,8 @@ struct Output
     uint32_t pbo;
     size_t pbo_size = 0;
     uint32_t texture=0;
+    uint32_t texture_width = 0;
+    uint32_t texture_height = 0;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t frame_id = 0;
@@ -466,7 +468,14 @@ size_t Video_Decoder::lock_output()
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     Clock::time_point upload_t1 = Clock::now();
     GLCHK(glBindTexture(GL_TEXTURE_2D, output.texture));
-    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+    const bool texture_size_changed = output.texture_width != output.width || output.texture_height != output.height;
+    if (texture_size_changed)
+    {
+        GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr));
+        output.texture_width = output.width;
+        output.texture_height = output.height;
+    }
+    GLCHK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, output.width, output.height, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
     Clock::time_point upload_t2 = Clock::now();
 #else
     Clock::time_point upload_t1 = Clock::now();
@@ -493,7 +502,14 @@ size_t Video_Decoder::lock_output()
     }
 
     GLCHK(glBindTexture(GL_TEXTURE_2D, output.texture));
-    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0));
+    const bool texture_size_changed = output.texture_width != output.width || output.texture_height != output.height;
+    if (texture_size_changed)
+    {
+        GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr));
+        output.texture_width = output.width;
+        output.texture_height = output.height;
+    }
+    GLCHK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, output.width, output.height, GL_RGB, GL_UNSIGNED_BYTE, 0));
 
     GLCHK(glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0));
     Clock::time_point upload_t2 = Clock::now();
