@@ -43,11 +43,14 @@ $buildCmd += "make -j4"
 # Windows tar / SCP strips +x; rsync uses --no-perms. Normalize LF and chmod for scripts/ and gs/ (e.g. launch.sh).
 $remoteScriptsDir = "$RemoteProjectDir/scripts"
 $remoteGsDir = "$RemoteProjectDir/gs"
+$remoteWrapperScriptsDir = "$RemoteProjectDir/OpenCV/OpenCVWrapper/scripts"
 $normalizeShellArtifacts = @(
     "find '$remoteScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +",
     "find '$remoteScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +",
     "find '$remoteGsDir' \( -path '$remoteGsDir/build' -o -path '$remoteGsDir/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +",
-    "find '$remoteGsDir' \( -path '$remoteGsDir/build' -o -path '$remoteGsDir/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
+    "find '$remoteGsDir' \( -path '$remoteGsDir/build' -o -path '$remoteGsDir/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +",
+    "find '$remoteWrapperScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +",
+    "find '$remoteWrapperScriptsDir' -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
 ) -join " && "
 
 Write-Host "Syncing GS runtime tree to ${User}@${RemoteHost}:${RemoteProjectDir} ..."
