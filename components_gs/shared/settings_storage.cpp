@@ -329,7 +329,7 @@ void SettingsStorage::loadGroundStationConfig()
 
     {
         std::string& temp = (*this)["gs"]["image_stabilization_roi_divisor"];
-        if (!temp.empty()) s_imageStabilizationState.roi_divisor = std::clamp(std::stof(temp), 1.2f, 10.0f);
+        if (!temp.empty()) s_imageStabilizationState.roi_divisor = std::clamp(std::stof(temp), 3.0f, 10.0f);
     }
     {
         std::string& temp = (*this)["gs"]["image_stabilization_zoom"];

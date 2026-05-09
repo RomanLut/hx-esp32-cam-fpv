@@ -2369,7 +2369,7 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
                          0,
                          this->m_image_stabilization_draft.roi_divisor,
                          kImageStabilizationRoiDivisorStep,
-                         1.2f,
+                         3.0f,
                          10.0f,
                          1);
     draw_float_parameter("zoom",
