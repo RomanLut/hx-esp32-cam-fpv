@@ -802,7 +802,33 @@ void main() { frag = texture(u_tex, v_uv); }
             return;
         }
 
-        auto pollBool = [&](XrAction action, bool& prev, ImGuiKey key)
+        // Match Linux kernel auto-repeat defaults so held controller inputs
+        // produce the same cadence as GPIO buttons routed through uinput.
+        constexpr auto k_repeat_delay = std::chrono::milliseconds(250);
+        constexpr auto k_repeat_period = std::chrono::milliseconds(33);
+        const auto now = std::chrono::steady_clock::now();
+
+        auto handleRepeat = [&](bool current, InputState::Repeat& r, ImGuiKey key)
+        {
+            if (current && !r.prev)
+            {
+                gs::openxr::publishImGuiKey(static_cast<int>(key));
+                r.press_time = now;
+                r.last_repeat = now;
+            }
+            else if (current && r.prev)
+            {
+                if (now - r.press_time >= k_repeat_delay &&
+                    now - r.last_repeat >= k_repeat_period)
+                {
+                    gs::openxr::publishImGuiKey(static_cast<int>(key));
+                    r.last_repeat = now;
+                }
+            }
+            r.prev = current;
+        };
+
+        auto pollBool = [&](XrAction action, InputState::Repeat& r, ImGuiKey key)
         {
             XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
             gi.action = action;
@@ -812,14 +838,10 @@ void main() { frag = texture(u_tex, v_uv); }
                 return;
             }
             const bool current = (s.isActive == XR_TRUE) && (s.currentState == XR_TRUE);
-            if (current && !prev)
-            {
-                gs::openxr::publishImGuiKey(static_cast<int>(key));
-            }
-            prev = current;
+            handleRepeat(current, r, key);
         };
 
-        auto pollFloatPress = [&](XrAction action, bool& prev, ImGuiKey key)
+        auto pollFloatPress = [&](XrAction action, InputState::Repeat& r, ImGuiKey key)
         {
             XrActionStateGetInfo gi{XR_TYPE_ACTION_STATE_GET_INFO};
             gi.action = action;
@@ -829,44 +851,30 @@ void main() { frag = texture(u_tex, v_uv); }
                 return;
             }
             const bool current = (s.isActive == XR_TRUE) && (s.currentState > 0.5f);
-            if (current && !prev)
-            {
-                gs::openxr::publishImGuiKey(static_cast<int>(key));
-            }
-            prev = current;
+            handleRepeat(current, r, key);
         };
 
-        pollBool(m_input.action_b, m_input.prev_b, ImGuiKey_R);
-        pollBool(m_input.action_a, m_input.prev_a, ImGuiKey_G);
-        pollBool(m_input.action_thumb_click, m_input.prev_thumb_click, ImGuiKey_Enter);
-        pollFloatPress(m_input.action_trigger, m_input.prev_trigger, ImGuiKey_Enter);
+        pollBool(m_input.action_b, m_input.r_b, ImGuiKey_R);
+        pollBool(m_input.action_a, m_input.r_a, ImGuiKey_G);
+        pollBool(m_input.action_thumb_click, m_input.r_thumb_click, ImGuiKey_Enter);
+        pollFloatPress(m_input.action_trigger, m_input.r_trigger, ImGuiKey_Enter);
 
         XrActionStateGetInfo tgi{XR_TYPE_ACTION_STATE_GET_INFO};
         tgi.action = m_input.action_thumbstick;
         XrActionStateVector2f tv{XR_TYPE_ACTION_STATE_VECTOR2F};
+        bool up = false, down = false, left = false, right = false;
         if (m_xrGetActionStateVector2f(m_session, &tgi, &tv) == XR_SUCCESS && tv.isActive == XR_TRUE)
         {
             constexpr float k_thr = 0.6f;
-            const bool up    = tv.currentState.y >  k_thr;
-            const bool down  = tv.currentState.y < -k_thr;
-            const bool left  = tv.currentState.x < -k_thr;
-            const bool right = tv.currentState.x >  k_thr;
-            if (up    && !m_input.prev_thumb_up)    gs::openxr::publishImGuiKey(static_cast<int>(ImGuiKey_UpArrow));
-            if (down  && !m_input.prev_thumb_down)  gs::openxr::publishImGuiKey(static_cast<int>(ImGuiKey_DownArrow));
-            if (left  && !m_input.prev_thumb_left)  gs::openxr::publishImGuiKey(static_cast<int>(ImGuiKey_LeftArrow));
-            if (right && !m_input.prev_thumb_right) gs::openxr::publishImGuiKey(static_cast<int>(ImGuiKey_RightArrow));
-            m_input.prev_thumb_up = up;
-            m_input.prev_thumb_down = down;
-            m_input.prev_thumb_left = left;
-            m_input.prev_thumb_right = right;
+            up    = tv.currentState.y >  k_thr;
+            down  = tv.currentState.y < -k_thr;
+            left  = tv.currentState.x < -k_thr;
+            right = tv.currentState.x >  k_thr;
         }
-        else
-        {
-            m_input.prev_thumb_up = false;
-            m_input.prev_thumb_down = false;
-            m_input.prev_thumb_left = false;
-            m_input.prev_thumb_right = false;
-        }
+        handleRepeat(up,    m_input.r_thumb_up,    ImGuiKey_UpArrow);
+        handleRepeat(down,  m_input.r_thumb_down,  ImGuiKey_DownArrow);
+        handleRepeat(left,  m_input.r_thumb_left,  ImGuiKey_LeftArrow);
+        handleRepeat(right, m_input.r_thumb_right, ImGuiKey_RightArrow);
     }
 
     //===================================================================================
@@ -992,14 +1000,20 @@ void main() { frag = texture(u_tex, v_uv); }
         XrAction action_thumbstick = XR_NULL_HANDLE;
         XrAction action_thumb_click = XR_NULL_HANDLE;
         bool attached = false;
-        bool prev_a = false;
-        bool prev_b = false;
-        bool prev_trigger = false;
-        bool prev_thumb_click = false;
-        bool prev_thumb_up = false;
-        bool prev_thumb_down = false;
-        bool prev_thumb_left = false;
-        bool prev_thumb_right = false;
+        struct Repeat
+        {
+            bool prev = false;
+            std::chrono::steady_clock::time_point press_time{};
+            std::chrono::steady_clock::time_point last_repeat{};
+        };
+        Repeat r_a;
+        Repeat r_b;
+        Repeat r_trigger;
+        Repeat r_thumb_click;
+        Repeat r_thumb_up;
+        Repeat r_thumb_down;
+        Repeat r_thumb_left;
+        Repeat r_thumb_right;
     };
     InputState m_input;
 
