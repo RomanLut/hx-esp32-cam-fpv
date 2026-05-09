@@ -9,6 +9,7 @@ set "BUSID="
 set "IFACE="
 set "GS_WSL_DIR="
 set "ATTACHED="
+set "IFACE_RETRY_MAX=5"
 set "BUSID_FILE=%TEMP%\gs_wsl_busid.txt"
 set "WSL_HELPER_PS1=%GS_DIR%\launch_gs_wsl_helper.ps1"
 set "LAUNCH_MODE=normal"
@@ -77,11 +78,10 @@ if /i "%ATTACHED%"=="1" (
   )
 )
 
-echo Waiting for Wifi interface in WSL...
-call :detect_iface
+call :wait_iface_with_restarts
 if defined IFACE goto :iface_ready
 
-echo Could not detect Wifi interface in WSL after USB attach.
+echo Could not detect Wifi interface in WSL after %IFACE_RETRY_MAX% retries.
 exit /b 1
 
 :iface_ready
@@ -89,7 +89,9 @@ echo Using interface %IFACE%.
 
 echo Waiting for Wifi interface readiness in WSL...
 for /l %%N in (1,1,60) do (
-  call :probe_iface_ready
+  set "IFACE_READY="
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" probe_iface_ready "%WSL_DISTRO%" "%IFACE%"
+  if not errorlevel 1 set "IFACE_READY=1"
   if /i "!IFACE_READY!"=="1" goto :iface_ready_ok
   timeout /t 1 /nobreak >nul
 )
@@ -137,15 +139,32 @@ exit /b 0
 :detect_iface
 set "IFACE="
 del /q "%BUSID_FILE%" 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%" "75"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%" "5"
 if exist "%BUSID_FILE%" set /p "IFACE="<"%BUSID_FILE%"
 :detect_iface_done
 exit /b 0
 
-:probe_iface_ready
-set "IFACE_READY="
-powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" probe_iface_ready "%WSL_DISTRO%" "%IFACE%"
-if not errorlevel 1 set "IFACE_READY=1"
+:wait_iface_with_restarts
+set "IFACE="
+for /l %%R in (1,1,%IFACE_RETRY_MAX%) do (
+  echo Waiting for Wifi interface in WSL... attempt %%R/%IFACE_RETRY_MAX%
+  call :detect_iface
+  if defined IFACE goto :wait_iface_with_restarts_done
+  if %%R lss %IFACE_RETRY_MAX% (
+    echo Wifi interface not found in 5 seconds. Restarting WSL and retrying...
+    call :restart_wsl_and_reattach
+  )
+)
+:wait_iface_with_restarts_done
+exit /b 0
+
+:restart_wsl_and_reattach
+wsl.exe --shutdown >nul 2>&1
+timeout /t 1 /nobreak >nul
+wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "nohup sleep 300 >/dev/null 2>&1 &" >nul 2>&1
+timeout /t 2 /nobreak >nul
+"%USBIPD_EXE%" bind --busid %BUSID% >nul 2>&1
+"%USBIPD_EXE%" attach --wsl %WSL_DISTRO% --busid %BUSID% >nul 2>&1
 exit /b 0
 
 :resolve_wsl_dir
