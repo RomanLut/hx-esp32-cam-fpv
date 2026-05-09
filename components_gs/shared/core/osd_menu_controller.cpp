@@ -2395,8 +2395,11 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
         this->m_image_stabilization_draft.debug = debug;
         this->m_image_stabilization_draft.rc_channel = rc_channel;
         s_imageStabilizationState = this->m_image_stabilization_draft;
+        s_settingsStorage.saveGroundStationConfig();
         gs::stabilization::reset();
+        this->m_image_stabilization_draft_active = false;
         this->resetImageStabilizationStepMultiplier();
+        this->goBack();
         return;
     }
 
