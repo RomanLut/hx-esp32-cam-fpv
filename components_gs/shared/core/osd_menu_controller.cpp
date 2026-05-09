@@ -2141,12 +2141,29 @@ void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& confi
         return static_cast<uint8_t>((level + 1) % 4);
     };
 
+    if (s_RuntimePlatformServices != nullptr &&
+        s_RuntimePlatformServices->supportsPipelineModeSelection())
+    {
+        const bool is_rgb565 = s_postprocessingState.pipeline_mode == PostprocessingState::PipelineMode::RGB565;
+        char buf[256];
+        sprintf(buf,
+                "Pipeline: %s##pipeline_mode",
+                is_rgb565 ? "RGB565 (faster)" : "RGB888 (quality)");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            s_postprocessingState.pipeline_mode = is_rgb565
+                ? PostprocessingState::PipelineMode::RGB888
+                : PostprocessingState::PipelineMode::RGB565;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
     {
         char buf[256];
         sprintf(buf,
                 "JPEG Deblocking: %s##jpeg_deblocking",
                 s_postprocessingState.jpeg_deblocking_enabled ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 0) )
+        if ( this->drawMenuItem( buf, 1) )
         {
             s_postprocessingState.jpeg_deblocking_enabled =
                 !s_postprocessingState.jpeg_deblocking_enabled;
@@ -2158,7 +2175,7 @@ void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& confi
         char buf[256];
         const uint8_t level = std::min<uint8_t>(s_postprocessingState.adaptive_dithering_level, 3);
         sprintf(buf, "Adaptive dithering: %s##adaptive_dithering", level_names[level]);
-        if ( this->drawMenuItem( buf, 1) )
+        if ( this->drawMenuItem( buf, 2) )
         {
             s_postprocessingState.adaptive_dithering_level = next_level(level);
             s_settingsStorage.saveGroundStationConfig();

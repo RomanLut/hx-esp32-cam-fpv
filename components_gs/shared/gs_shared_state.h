@@ -55,8 +55,15 @@ struct ImageStabilizationState
 // Holds lightweight shader postprocessing controls for decoded MJPEG video.
 struct PostprocessingState
 {
+    enum class PipelineMode : uint8_t
+    {
+        RGB565 = 0,
+        RGB888 = 1,
+    };
+
     bool jpeg_deblocking_enabled = true;
     uint8_t adaptive_dithering_level = 2; // 0 off, 1 low, 2 medium, 3 high
+    PipelineMode pipeline_mode = PipelineMode::RGB888;
 };
 
 //===================================================================================

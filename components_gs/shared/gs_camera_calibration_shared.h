@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "../../OpenCV/OpenCVWrapper/include/gs_vision_opencv_wrapper.h"
 #include "gs_shared_state.h"
 #include "imgui.h"
 
@@ -16,13 +17,14 @@ constexpr int kRequiredCalibrationFrames = 10;
 
 //===================================================================================
 //===================================================================================
-// Stores one RGB frame captured for camera calibration.
+// Stores one captured frame and pixel format for camera calibration.
 struct CalibrationFrame
 {
-    std::vector<uint8_t> rgb_pixels;
+    std::vector<uint8_t> pixels;
     int width = 0;
     int height = 0;
     int stride = 0;
+    GsVisionImageFormat format = GS_VISION_IMAGE_FORMAT_RGB8;
 };
 
 //===================================================================================
@@ -45,6 +47,12 @@ void begin();
 void cancel();
 void requestCapture();
 bool handleCalibrationKeysFromImGui();
+void captureReadyFrame(const uint8_t* pixels,
+                       size_t size,
+                       int width,
+                       int height,
+                       int stride,
+                       GsVisionImageFormat format);
 void captureReadyRgbFrame(const uint8_t* pixels,
                           size_t size,
                           int width,

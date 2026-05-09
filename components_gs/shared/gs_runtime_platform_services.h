@@ -15,6 +15,7 @@ public:
     virtual float getCpuTemperatureCelsius() const = 0;
     virtual std::string getSystemIPv4() const = 0;
     virtual bool supportsCustomScreenAspectModes() const = 0;
+    virtual bool supportsPipelineModeSelection() const { return false; }
     virtual void setVsync(bool enabled) = 0;
     virtual void exitApp() = 0;
     virtual bool supportsGPIOKeys() const { return true; }

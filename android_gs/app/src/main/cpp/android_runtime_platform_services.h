@@ -16,6 +16,7 @@ public:
     float getCpuTemperatureCelsius() const override;
     std::string getSystemIPv4() const override;
     bool supportsCustomScreenAspectModes() const override;
+    bool supportsPipelineModeSelection() const override;
     bool supportsGPIOKeys() const override { return false; }
     void setVsync(bool enabled) override;
     void exitApp() override;

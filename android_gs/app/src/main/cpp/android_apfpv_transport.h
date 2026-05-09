@@ -22,8 +22,8 @@
 // - Every decoded payload is passed through the shared GS session/event pipeline, which
 //   parses telemetry/config/video packets and feeds completed JPEG frame buffers into
 //   the Android JPEG decoder workers as soon as a full video frame is assembled.
-// - The Android JPEG decoder worker threads decode those JPEG frame buffers to RGB565
-//   bitmaps and submit the decoded pixel buffers to `GsVideoRenderer`.
+// - The Android JPEG decoder worker threads decode those JPEG frame buffers using the
+//   selected GS pipeline mode (RGB565 or RGB888) and submit them to `GsVideoRenderer`.
 // - The renderer thread uploads the latest decoded frame into the GL texture and then
 //   displays that ready texture during the next render pass together with overlay/menu UI.
 class AndroidAPFPVTransport final : public gs::core::TransportBase

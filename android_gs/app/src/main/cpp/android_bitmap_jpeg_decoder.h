@@ -14,8 +14,8 @@
 //===================================================================================
 //===================================================================================
 // Decodes JPEG frames received from the video assembler using the Android Bitmap API
-// via JNI, running a single worker thread and submitting decoded RGB565 frames
-// to the video renderer.
+// via JNI, running a single worker thread and submitting decoded frames to the
+// video renderer in the pipeline format selected from GS postprocessing settings.
 class AndroidBitmapJpegDecoder
 {
 public:

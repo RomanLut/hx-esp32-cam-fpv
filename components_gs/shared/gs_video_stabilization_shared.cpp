@@ -75,6 +75,28 @@ bool s_last_frame_id_valid = false;
 
 //===================================================================================
 //===================================================================================
+// Returns bytes per pixel for OpenCV wrapper image formats used in GS.
+int bytesPerPixelForFormat(GsVisionImageFormat format)
+{
+    switch (format)
+    {
+        case GS_VISION_IMAGE_FORMAT_GRAY8:
+            return 1;
+        case GS_VISION_IMAGE_FORMAT_BGR8:
+        case GS_VISION_IMAGE_FORMAT_RGB8:
+            return 3;
+        case GS_VISION_IMAGE_FORMAT_BGRA8:
+        case GS_VISION_IMAGE_FORMAT_RGBA8:
+            return 4;
+        case GS_VISION_IMAGE_FORMAT_RGB565:
+            return 2;
+        default:
+            return 0;
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Records one measured stabilization feature and motion duration for the current stats window.
 void recordStabilizationDurations(uint32_t feature_ms, uint32_t motion_ms)
 {
@@ -673,11 +695,13 @@ bool estimateFrame(const uint8_t* pixels,
         return false;
     }
 
+    const int bytes_per_pixel = bytesPerPixelForFormat(format);
     if(pixels == nullptr ||
        size == 0 ||
        width <= 0 ||
        height <= 0 ||
-       stride < width * (format == GS_VISION_IMAGE_FORMAT_RGB565 ? 2 : 3) ||
+       bytes_per_pixel <= 0 ||
+       stride < width * bytes_per_pixel ||
        size < static_cast<size_t>(stride) * static_cast<size_t>(height))
     {
         return false;
@@ -782,11 +806,13 @@ bool prepareFrameFeatures(const uint8_t* pixels,
     {
         return false;
     }
+    const int bytes_per_pixel = bytesPerPixelForFormat(format);
     if(pixels == nullptr ||
        size == 0 ||
        width <= 0 ||
        height <= 0 ||
-       stride < width * (format == GS_VISION_IMAGE_FORMAT_RGB565 ? 2 : 3) ||
+       bytes_per_pixel <= 0 ||
+       stride < width * bytes_per_pixel ||
        size < static_cast<size_t>(stride) * static_cast<size_t>(height))
     {
         return false;

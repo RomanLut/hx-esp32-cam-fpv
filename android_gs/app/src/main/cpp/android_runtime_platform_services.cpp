@@ -156,6 +156,14 @@ bool AndroidRuntimePlatformServices::supportsCustomScreenAspectModes() const
 
 //===================================================================================
 //===================================================================================
+// Reports that Android supports runtime decode-pipeline mode selection.
+bool AndroidRuntimePlatformServices::supportsPipelineModeSelection() const
+{
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
 // Updates the Android VSync setting consumed by the renderer path.
 void AndroidRuntimePlatformServices::setVsync(bool enabled)
 {

@@ -12,6 +12,7 @@
 
 #include "Log.h"
 #include "gs_jpeg_dct_postprocessing.h"
+#include "gs_shared_state.h"
 #include "gs_video_stabilization_shared.h"
 
 namespace
@@ -23,6 +24,7 @@ JavaVM* g_java_vm = nullptr;
 AAssetManager* g_asset_manager = nullptr;
 jclass g_bitmap_decode_bridge_class = nullptr;
 jmethodID g_decode_rgb565_method = nullptr;
+jmethodID g_decode_rgb8888_method = nullptr;
 jclass g_decode_result_class = nullptr;
 jfieldID g_decode_result_pixels = nullptr;
 jfieldID g_decode_result_width = nullptr;
@@ -185,6 +187,15 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
         return JNI_ERR;
     }
 
+    g_decode_rgb8888_method = env->GetStaticMethodID(
+        g_bitmap_decode_bridge_class,
+        "decodeRgb8888",
+        "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;");
+    if (g_decode_rgb8888_method == nullptr)
+    {
+        return JNI_ERR;
+    }
+
     jclass result_class_local =
         env->FindClass("com/esp32camfpv/androidgs/BitmapDecodeBridge$Result");
     if (result_class_local == nullptr)
@@ -322,7 +333,7 @@ AndroidBitmapJpegDecoder::DecodeStats AndroidBitmapJpegDecoder::consumeStats()
 //===================================================================================
 //===================================================================================
 // Worker thread loop: waits for queued JPEG frames, decodes each one via the
-// Android BitmapDecodeBridge JNI call, and submits the resulting RGB565 pixels
+// Android BitmapDecodeBridge JNI call, and submits the resulting RGBA8888 pixels
 // to the renderer.
 void AndroidBitmapJpegDecoder::workerThreadProc()
 {
@@ -369,9 +380,11 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
         input.jpeg_buffer.reset();
 
         const auto decode_begin = Clock::now();
+        const bool use_rgb565 =
+            s_postprocessingState.pipeline_mode == PostprocessingState::PipelineMode::RGB565;
         jobject result = jni.env->CallStaticObjectMethod(
             g_bitmap_decode_bridge_class,
-            g_decode_rgb565_method,
+            use_rgb565 ? g_decode_rgb565_method : g_decode_rgb8888_method,
             jpeg_array);
         jni.env->DeleteLocalRef(jpeg_array);
 
@@ -399,7 +412,8 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             ? 0
             : jni.env->GetDirectBufferCapacity(pixels_buffer);
 
-        if (pixels == nullptr || capacity <= 0 || width <= 0 || height <= 0 || stride < width * 2)
+        const jint minimum_stride = use_rgb565 ? width * 2 : width * 4;
+        if (pixels == nullptr || capacity <= 0 || width <= 0 || height <= 0 || stride < minimum_stride)
         {
             if (pixels_buffer != nullptr)
             {
@@ -444,11 +458,9 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
         }
 
         bool run_prepare_after_publish = false;
-        const uint8_t* prepared_pixels = nullptr;
-        size_t prepared_size = 0;
-        int prepared_width = 0;
-        int prepared_height = 0;
-        int prepared_stride = 0;
+        const GsVisionImageFormat vision_format = use_rgb565
+            ? GS_VISION_IMAGE_FORMAT_RGB565
+            : GS_VISION_IMAGE_FORMAT_RGBA8;
         if (gs::stabilization::isEnabled())
         {
             gs::stabilization::estimateFrame(pixels,
@@ -456,7 +468,7 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
                                              static_cast<int>(width),
                                              static_cast<int>(height),
                                              static_cast<int>(stride),
-                                             GS_VISION_IMAGE_FORMAT_RGB565,
+                                             vision_format,
                                              false,
                                              0);
             gs::stabilization::updateRenderTrajectoryStateForFrame(
@@ -464,11 +476,6 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
                 static_cast<uint32_t>(width),
                 static_cast<uint32_t>(height));
             run_prepare_after_publish = true;
-            prepared_pixels = pixels;
-            prepared_size = static_cast<size_t>(capacity);
-            prepared_width = static_cast<int>(width);
-            prepared_height = static_cast<int>(height);
-            prepared_stride = static_cast<int>(stride);
         }
         else
         {
@@ -483,7 +490,9 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             static_cast<int>(height),
             static_cast<int>(stride),
             input.frame_id,
-            GsVideoRenderer::PixelFormat::RGB565,
+            use_rgb565
+                ? GsVideoRenderer::PixelFormat::RGB565
+                : GsVideoRenderer::PixelFormat::RGBA8888,
             true,
             postprocessing_params);
         m_submitted_frames.fetch_add(1);
@@ -491,12 +500,12 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
         if (run_prepare_after_publish)
         {
             // Mirror Linux ordering: publish first, then precompute next-frame features.
-            gs::stabilization::prepareFrameFeatures(prepared_pixels,
-                                                    prepared_size,
-                                                    prepared_width,
-                                                    prepared_height,
-                                                    prepared_stride,
-                                                    GS_VISION_IMAGE_FORMAT_RGB565);
+            gs::stabilization::prepareFrameFeatures(pixels,
+                                                    static_cast<size_t>(capacity),
+                                                    static_cast<int>(width),
+                                                    static_cast<int>(height),
+                                                    static_cast<int>(stride),
+                                                    vision_format);
         }
     }
 }

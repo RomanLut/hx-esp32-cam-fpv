@@ -122,7 +122,9 @@ void GsVideoRenderer::submitFrame(const uint8_t* pixels,
                                        PixelFormat pixel_format,
                                        const gs::render::VideoPostprocessingParams& postprocessing_params)
 {
-    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
+    const int min_stride = pixel_format == PixelFormat::RGB565
+        ? width * 2
+        : (pixel_format == PixelFormat::RGBA8888 ? width * 4 : width * 3);
     if (pixels == nullptr || size == 0 || width <= 0 || height <= 0 || stride < min_stride)
     {
         return;
@@ -153,7 +155,9 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
                                        bool stabilization_prepared,
                                        const gs::render::VideoPostprocessingParams& postprocessing_params)
 {
-    const int min_stride = pixel_format == PixelFormat::RGB565 ? width * 2 : width * 3;
+    const int min_stride = pixel_format == PixelFormat::RGB565
+        ? width * 2
+        : (pixel_format == PixelFormat::RGBA8888 ? width * 4 : width * 3);
     if (!external_frame_ref ||
         pixels == nullptr ||
         size == 0 ||
@@ -183,22 +187,17 @@ void GsVideoRenderer::submitFrame(std::shared_ptr<void> external_frame_ref,
 // Queues a validated frame for the render thread, replacing older pending frames.
 void GsVideoRenderer::submitPendingFrame(PendingFrame&& frame)
 {
-    if (frame.pixel_format == PixelFormat::RGB565)
-    {
-        gs::calibration::captureReadyRgb565Frame(frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data(),
-                                                 frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size(),
-                                                 frame.width,
-                                                 frame.height,
-                                                 frame.stride);
-    }
-    else
-    {
-        gs::calibration::captureReadyRgbFrame(frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data(),
-                                              frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size(),
-                                              frame.width,
-                                              frame.height,
-                                              frame.stride);
-    }
+    const GsVisionImageFormat calibration_format = frame.pixel_format == PixelFormat::RGB565
+        ? GS_VISION_IMAGE_FORMAT_RGB565
+        : (frame.pixel_format == PixelFormat::RGBA8888
+            ? GS_VISION_IMAGE_FORMAT_RGBA8
+            : GS_VISION_IMAGE_FORMAT_RGB8);
+    gs::calibration::captureReadyFrame(frame.external_pixels != nullptr ? frame.external_pixels : frame.pixels.data(),
+                                       frame.external_pixels != nullptr ? frame.external_size : frame.pixels.size(),
+                                       frame.width,
+                                       frame.height,
+                                       frame.stride,
+                                       calibration_format);
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -790,6 +789,9 @@ void GsVideoRenderer::uploadFrameLocked()
     const GLenum upload_type = m_locked_frame.pixel_format == PixelFormat::RGB565
         ? GL_UNSIGNED_SHORT_5_6_5
         : GL_UNSIGNED_BYTE;
+    const GLenum upload_format = m_locked_frame.pixel_format == PixelFormat::RGBA8888
+        ? GL_RGBA
+        : GL_RGB;
     glTexSubImage2D(
         GL_TEXTURE_2D,
         0,
@@ -797,7 +799,7 @@ void GsVideoRenderer::uploadFrameLocked()
         0,
         m_frame_width,
         m_frame_height,
-        GL_RGB,
+        upload_format,
         upload_type,
         upload_pixels);
     logGlError("glTexSubImage2D");
@@ -837,14 +839,20 @@ void GsVideoRenderer::ensureTextureLocked()
     const GLenum texture_type = m_locked_frame.pixel_format == PixelFormat::RGB565
         ? GL_UNSIGNED_SHORT_5_6_5
         : GL_UNSIGNED_BYTE;
+    const GLenum texture_internal_format = m_locked_frame.pixel_format == PixelFormat::RGB565
+        ? GL_RGB565
+        : (m_locked_frame.pixel_format == PixelFormat::RGBA8888 ? GL_RGBA : GL_RGB);
+    const GLenum texture_format = m_locked_frame.pixel_format == PixelFormat::RGBA8888
+        ? GL_RGBA
+        : GL_RGB;
     glTexImage2D(
         GL_TEXTURE_2D,
         0,
-        GL_RGB,
+        texture_internal_format,
         m_frame_width,
         m_frame_height,
         0,
-        GL_RGB,
+        texture_format,
         texture_type,
         nullptr);
     logGlError("glTexImage2D");

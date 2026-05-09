@@ -144,21 +144,23 @@ OpenCvWrapperApi& loadOpenCvWrapper()
 
 //===================================================================================
 //===================================================================================
-// Converts one RGB565 pixel row to RGB24.
-void appendRgb565RowAsRgb24(std::vector<uint8_t>& output,
-                            const uint8_t* row,
-                            int width)
+// Returns bytes-per-pixel for formats accepted by calibration capture.
+int bytesPerPixelForFormat(GsVisionImageFormat format)
 {
-    for (int x = 0; x < width; ++x)
+    switch (format)
     {
-        const uint16_t pixel = static_cast<uint16_t>(row[x * 2]) |
-                               (static_cast<uint16_t>(row[x * 2 + 1]) << 8);
-        const uint8_t r5 = static_cast<uint8_t>((pixel >> 11) & 0x1f);
-        const uint8_t g6 = static_cast<uint8_t>((pixel >> 5) & 0x3f);
-        const uint8_t b5 = static_cast<uint8_t>(pixel & 0x1f);
-        output.push_back(static_cast<uint8_t>((r5 << 3) | (r5 >> 2)));
-        output.push_back(static_cast<uint8_t>((g6 << 2) | (g6 >> 4)));
-        output.push_back(static_cast<uint8_t>((b5 << 3) | (b5 >> 2)));
+        case GS_VISION_IMAGE_FORMAT_GRAY8:
+            return 1;
+        case GS_VISION_IMAGE_FORMAT_BGR8:
+        case GS_VISION_IMAGE_FORMAT_RGB8:
+            return 3;
+        case GS_VISION_IMAGE_FORMAT_BGRA8:
+        case GS_VISION_IMAGE_FORMAT_RGBA8:
+            return 4;
+        case GS_VISION_IMAGE_FORMAT_RGB565:
+            return 2;
+        default:
+            return 0;
     }
 }
 
@@ -176,7 +178,7 @@ void finishCalibrationLocked(bool completed_successfully, const std::string& sta
 
 //===================================================================================
 //===================================================================================
-// Appends a captured RGB frame and finishes when the required count is reached.
+// Appends a captured frame and finishes when the required count is reached.
 void appendCapturedFrameLocked(gs::calibration::CalibrationFrame&& frame)
 {
     if (!s_calibration_state.active ||
@@ -304,14 +306,20 @@ bool handleCalibrationKeysFromImGui()
 
 //===================================================================================
 //===================================================================================
-// Captures an RGB24 frame when calibration mode is waiting for the next drawn frame.
-void captureReadyRgbFrame(const uint8_t* pixels,
-                          size_t size,
-                          int width,
-                          int height,
-                          int stride)
+// Captures one frame with explicit format when calibration mode waits for capture.
+void captureReadyFrame(const uint8_t* pixels,
+                       size_t size,
+                       int width,
+                       int height,
+                       int stride,
+                       GsVisionImageFormat format)
 {
-    if (pixels == nullptr || width <= 0 || height <= 0 || stride < width * 3)
+    const int bytes_per_pixel = bytesPerPixelForFormat(format);
+    if (pixels == nullptr ||
+        width <= 0 ||
+        height <= 0 ||
+        bytes_per_pixel <= 0 ||
+        stride < width * bytes_per_pixel)
     {
         return;
     }
@@ -331,11 +339,12 @@ void captureReadyRgbFrame(const uint8_t* pixels,
     CalibrationFrame frame;
     frame.width = width;
     frame.height = height;
-    frame.stride = width * 3;
-    frame.rgb_pixels.resize(static_cast<size_t>(frame.stride) * static_cast<size_t>(height));
+    frame.stride = stride;
+    frame.format = format;
+    frame.pixels.resize(static_cast<size_t>(frame.stride) * static_cast<size_t>(height));
     for (int y = 0; y < height; ++y)
     {
-        std::memcpy(frame.rgb_pixels.data() + static_cast<size_t>(y) * frame.stride,
+        std::memcpy(frame.pixels.data() + static_cast<size_t>(y) * frame.stride,
                     pixels + static_cast<size_t>(y) * stride,
                     static_cast<size_t>(frame.stride));
     }
@@ -345,43 +354,26 @@ void captureReadyRgbFrame(const uint8_t* pixels,
 
 //===================================================================================
 //===================================================================================
-// Captures an RGB565 frame by converting it to RGB24 for the calibration wrapper.
+// Captures an RGB24 frame when calibration mode is waiting for the next drawn frame.
+void captureReadyRgbFrame(const uint8_t* pixels,
+                          size_t size,
+                          int width,
+                          int height,
+                          int stride)
+{
+    captureReadyFrame(pixels, size, width, height, stride, GS_VISION_IMAGE_FORMAT_RGB8);
+}
+
+//===================================================================================
+//===================================================================================
+// Captures an RGB565 frame when calibration mode is waiting for the next drawn frame.
 void captureReadyRgb565Frame(const uint8_t* pixels,
                              size_t size,
                              int width,
                              int height,
                              int stride)
 {
-    if (pixels == nullptr || width <= 0 || height <= 0 || stride < width * 2)
-    {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(s_calibration_mutex);
-    if (!s_calibration_state.active || !s_calibration_state.capture_requested)
-    {
-        return;
-    }
-
-    const size_t required_size = static_cast<size_t>(stride) * static_cast<size_t>(height);
-    if (size < required_size)
-    {
-        return;
-    }
-
-    CalibrationFrame frame;
-    frame.width = width;
-    frame.height = height;
-    frame.stride = width * 3;
-    frame.rgb_pixels.reserve(static_cast<size_t>(frame.stride) * static_cast<size_t>(height));
-    for (int y = 0; y < height; ++y)
-    {
-        appendRgb565RowAsRgb24(frame.rgb_pixels,
-                               pixels + static_cast<size_t>(y) * stride,
-                               width);
-    }
-
-    appendCapturedFrameLocked(std::move(frame));
+    captureReadyFrame(pixels, size, width, height, stride, GS_VISION_IMAGE_FORMAT_RGB565);
 }
 
 //===================================================================================
@@ -402,7 +394,7 @@ bool consumeFinishRequest(bool& completed_successfully)
 
 //===================================================================================
 //===================================================================================
-// Runs OpenCV calibration and copies resulting coefficients into lens correction state.
+// Runs OpenCV calibration using captured frame formats and copies coefficients into lens correction state.
 bool applyCapturedCalibrationToLensCorrection(LensCorrectionState& state)
 {
     std::vector<CalibrationFrame> frames;
@@ -422,11 +414,11 @@ bool applyCapturedCalibrationToLensCorrection(LensCorrectionState& state)
     for (const CalibrationFrame& frame : frames)
     {
         images.push_back({
-            frame.rgb_pixels.data(),
+            frame.pixels.data(),
             frame.width,
             frame.height,
             frame.stride,
-            GS_VISION_IMAGE_FORMAT_RGB8
+            frame.format
         });
     }
 

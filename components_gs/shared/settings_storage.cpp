@@ -177,6 +177,20 @@ void SettingsStorage::loadGroundStationConfig()
             s_postprocessingState.adaptive_dithering_level = static_cast<uint8_t>(std::clamp(stored_level, 0, 3));
         }
     }
+    {
+        std::string& temp = (*this)["gs"]["postprocessing_pipeline_mode"];
+        if (!temp.empty())
+        {
+            const int stored_mode = std::atoi(temp.c_str());
+            s_postprocessingState.pipeline_mode = stored_mode == 0
+                ? PostprocessingState::PipelineMode::RGB565
+                : PostprocessingState::PipelineMode::RGB888;
+        }
+        else
+        {
+            s_postprocessingState.pipeline_mode = PostprocessingState::PipelineMode::RGB888;
+        }
+    }
 
     {
         std::string& temp = (*this)["gs"]["transport_kind"];
@@ -412,6 +426,8 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["postprocessing_jpeg_deblocking"] = std::to_string(s_postprocessingState.jpeg_deblocking_enabled ? 1 : 0);
     (*this)["gs"].remove("postprocessing_debanding_level");
     (*this)["gs"]["postprocessing_adaptive_dithering_level"] = std::to_string(std::clamp<int>(s_postprocessingState.adaptive_dithering_level, 0, 3));
+    (*this)["gs"]["postprocessing_pipeline_mode"] =
+        std::to_string(s_postprocessingState.pipeline_mode == PostprocessingState::PipelineMode::RGB565 ? 0 : 1);
     (*this)["gs"].remove("postprocessing_jpeg_deblocking_level");
     (*this)["gs"].remove("postprocessing_adaptive_dithering");
     (*this)["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
