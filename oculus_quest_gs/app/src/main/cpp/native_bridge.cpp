@@ -52,6 +52,7 @@
 #include "gs_runtime_video_flow.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
+#include "gs_shared_state.h"
 #include "gs_runtime_state.h"
 #include "gs_stats.h"
 #include "gs_camera_calibration_shared.h"
@@ -152,6 +153,9 @@ struct NativeHandle
         s_playbackManager = &playback_manager;
         s_runtimeCore.resetState(gs_device_id_value);
         loadSharedSettings(s_runtimeCore.gs_device_id);
+        s_postprocessingState.pipeline_mode = PostprocessingState::PipelineMode::RGB888;
+        s_groundstation_config.vrMode = false;
+        s_groundstation_config.screenFlipV = false;
         prepAviBuffers();
         s_recordingsStorage->refreshGroundStorageStatus();
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();

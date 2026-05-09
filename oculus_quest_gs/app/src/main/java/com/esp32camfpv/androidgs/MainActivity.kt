@@ -57,6 +57,12 @@ class MainActivity : ComponentActivity() {
     private fun exitFromRuntimeMenu() {
         stopService(Intent(this, KeepAliveService::class.java))
         finishAndRemoveTask()
+        // Kill the process so the next launch starts fresh. Quest's OpenXR runtime
+        // and the renderer's EGL share-group bridge keep process-global state that
+        // does not survive Activity recreation cleanly — relaunching in the same
+        // process hangs (stale EGLContext in openxr_video_bridge, second
+        // xrCreateInstance refused by the Quest runtime).
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     private fun applyImmersiveFullscreen() {

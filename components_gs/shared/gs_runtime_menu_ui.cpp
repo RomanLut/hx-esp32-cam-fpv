@@ -140,6 +140,10 @@ void drawRuntimeMenuOverlay(const RuntimeMenuUiState& state)
 // Draws the runtime touch navigation pad above the menu when touch input is enabled.
 void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
 {
+#ifdef OCULUS_QUEST_GS
+    (void)state;
+    return;
+#else
     if (!state.visible || !state.touch_nav_enabled)
     {
         return;
@@ -241,4 +245,5 @@ void drawRuntimeMenuTouchNav(const RuntimeMenuUiState& state)
 
     ImGui::End();
     ImGui::PopStyleVar(2);
+#endif
 }

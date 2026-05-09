@@ -116,7 +116,7 @@ set_target_properties(opencv_wrapper_prebuilt PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../OpenCV/OpenCVWrapper/Prebuilt/android/${ANDROID_ABI}/libOpenCVWrapper.so
 )
 
-target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2)
+target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2 OCULUS_QUEST_GS=1)
 
 find_library(log-lib log)
 find_library(android-lib android)

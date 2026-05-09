@@ -2064,6 +2064,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         return;
     }
 
+#ifndef OCULUS_QUEST_GS
     {
         char buf[256];
         sprintf(buf, "VR Mode...##vr_mode");
@@ -2073,6 +2074,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
             return;
         }
     }
+#endif
 
     bool zoom_handled = false;
     {
@@ -2099,6 +2101,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         this->drawMenuItem( buf, 4);
     }
 
+#ifndef OCULUS_QUEST_GS
     {
         char buf[256];
         sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
@@ -2119,6 +2122,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
             s_settingsStorage.saveGroundStationConfig();
         }
     }
+#endif
 
     if (!zoom_handled && this->exitKeyPressed())
     {
@@ -2141,6 +2145,7 @@ void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& confi
         return static_cast<uint8_t>((level + 1) % 4);
     };
 
+#ifndef OCULUS_QUEST_GS
     if (s_RuntimePlatformServices != nullptr &&
         s_RuntimePlatformServices->supportsPipelineModeSelection())
     {
@@ -2157,6 +2162,7 @@ void OSDMenuController::drawGSPostprocessingMenu(Ground2Air_Config_Packet& confi
             s_settingsStorage.saveGroundStationConfig();
         }
     }
+#endif
 
     {
         char buf[256];
