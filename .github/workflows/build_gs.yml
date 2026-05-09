@@ -1,4 +1,4 @@
-name: Build GS Linux
+name: Build Linux GS
 
 on:
   push:

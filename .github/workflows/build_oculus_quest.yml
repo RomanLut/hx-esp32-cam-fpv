@@ -1,4 +1,4 @@
-name: Build Oculus Quest APK
+name: Build Oculus Quest GS
 
 on:
   push:
