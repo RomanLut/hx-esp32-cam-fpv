@@ -18,6 +18,7 @@
 
 # Exception: prebuilt Android libraries
 !android_gs/app/src/main/cpp/third_party/prebuilt/**/*.so
+!oculus_quest_gs/app/src/main/cpp/third_party/prebuilt/**/*.so
 
 # Fortran module files
 *.mod
