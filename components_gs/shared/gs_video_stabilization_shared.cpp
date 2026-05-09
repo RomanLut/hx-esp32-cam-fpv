@@ -313,51 +313,6 @@ float computeLimitDelayScale(float dx,
 
 //===================================================================================
 //===================================================================================
-// Estimates one weighted translation from tracked old/new feature points.
-bool computeTrackedFeaturePairTranslation(const StabilizationMotionEstimate& latest_motion_estimate,
-                                          float& out_dx,
-                                          float& out_dy)
-{
-    out_dx = 0.0f;
-    out_dy = 0.0f;
-    if(!latest_motion_estimate.valid ||
-       latest_motion_estimate.feature_old_xs.empty() ||
-       latest_motion_estimate.feature_old_xs.size() != latest_motion_estimate.feature_old_ys.size() ||
-       latest_motion_estimate.feature_old_xs.size() != latest_motion_estimate.feature_new_xs.size() ||
-       latest_motion_estimate.feature_old_xs.size() != latest_motion_estimate.feature_new_ys.size() ||
-       latest_motion_estimate.feature_old_xs.size() != latest_motion_estimate.feature_confidence.size() ||
-       latest_motion_estimate.feature_old_xs.size() != latest_motion_estimate.feature_status.size())
-    {
-        return false;
-    }
-
-    float sum_dx = 0.0f;
-    float sum_dy = 0.0f;
-    float sum_w = 0.0f;
-    for(size_t i = 0; i < latest_motion_estimate.feature_old_xs.size(); ++i)
-    {
-        if(latest_motion_estimate.feature_status[i] == 0)
-        {
-            continue;
-        }
-        const float confidence = std::clamp(latest_motion_estimate.feature_confidence[i], 0.0f, 1.0f);
-        const float w = std::max(0.05f, confidence);
-        sum_dx += (latest_motion_estimate.feature_new_xs[i] - latest_motion_estimate.feature_old_xs[i]) * w;
-        sum_dy += (latest_motion_estimate.feature_new_ys[i] - latest_motion_estimate.feature_old_ys[i]) * w;
-        sum_w += w;
-    }
-
-    if(sum_w <= 0.0f)
-    {
-        return false;
-    }
-    out_dx = sum_dx / sum_w;
-    out_dy = sum_dy / sum_w;
-    return true;
-}
-
-//===================================================================================
-//===================================================================================
 // Draws tracked stabilization feature vectors in screen space from ROI and motion state.
 void drawStabilizationFeatureOverlay(ImDrawList* draw_list,
                                      float roi_min_x,
@@ -903,15 +858,11 @@ void updateRenderTrajectoryStateForFrame(uint32_t frame_id, uint32_t width, uint
 
     if(latest_motion_estimate.valid)
     {
-        float measured_dx = latest_motion_estimate.measured_dx;
-        float measured_dy = latest_motion_estimate.measured_dy;
-        float pair_dx = 0.0f;
-        float pair_dy = 0.0f;
-        if(gs::stabilization::computeTrackedFeaturePairTranslation(latest_motion_estimate, pair_dx, pair_dy))
-        {
-            measured_dx = pair_dx;
-            measured_dy = pair_dy;
-        }
+        // The OpenCV wrapper already publishes RANSAC-filtered affine translation.
+        // Replacing it with raw pair-averaged feature displacement reintroduces
+        // outlier/object motion jitter into the render trajectory.
+        const float measured_dx = latest_motion_estimate.measured_dx;
+        const float measured_dy = latest_motion_estimate.measured_dy;
 
         const std::chrono::steady_clock::time_point now_tp = std::chrono::steady_clock::now();
         const std::chrono::duration<float> frame_delta =

@@ -103,13 +103,6 @@ float computeLimitDelayScale(float dx,
 
 //===================================================================================
 //===================================================================================
-// Estimates one weighted translation from tracked old/new feature points.
-bool computeTrackedFeaturePairTranslation(const StabilizationMotionEstimate& latest_motion_estimate,
-                                          float& out_dx,
-                                          float& out_dy);
-
-//===================================================================================
-//===================================================================================
 // Draws tracked stabilization feature vectors in screen space from ROI and motion state.
 void drawStabilizationFeatureOverlay(ImDrawList* draw_list,
                                      float roi_min_x,
