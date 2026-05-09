@@ -1,4 +1,4 @@
-#include "Video_Decoder.h"
+#include "gs_linux_video_decoder.h"
 #include "Log.h"
 
 #include <algorithm>
@@ -63,7 +63,7 @@ struct Output
             glDeleteTextures(1,&texture);
             LOGI("die texture:{}",texture);
         }
-        if (pbo != 0) 
+        if (pbo != 0)
         {
             glDeleteBuffers(1, &pbo);
         }
@@ -73,7 +73,7 @@ using Output_ptr = Pool<Output>::Ptr;
 
 //===================================================================================
 //===================================================================================
-struct Video_Decoder::Impl
+struct gs_linux_video_decoder::Impl
 {
     SDL_Window* window = nullptr;
     std::vector<SDL_GLContext> contexts;
@@ -98,20 +98,6 @@ struct Video_Decoder::Impl
 
 //===================================================================================
 //===================================================================================
-// Chooses how many parallel JPEG decode worker threads to spawn for Video_Decoder.
-// On low core-count boards (for example Radxa Zero 3W), four workers can finish RGB
-// decompresses between display-thread lock_output() calls, which inflates
-// discardedFramesDecodedOutput even though only the latest frame is ever shown.
-static size_t decoder_worker_count()
-{
-    const unsigned hc = std::thread::hardware_concurrency();
-    if (hc == 0u)
-    {
-        return 1;
-    }
-    return hc <= 4u ? 1u : 4u;
-}
-
 static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_id)
 {
     return new_frame_id > old_frame_id ||
@@ -120,14 +106,14 @@ static bool shouldReplaceDecodedFrame(uint32_t new_frame_id, uint32_t old_frame_
 
 //===================================================================================
 //===================================================================================
-Video_Decoder::Video_Decoder()
+gs_linux_video_decoder::gs_linux_video_decoder()
     : m_texture(0), m_impl(new Impl)
 {
 }
 
 //===================================================================================
 //===================================================================================
-Video_Decoder::~Video_Decoder()
+gs_linux_video_decoder::~gs_linux_video_decoder()
 {
     {
         std::unique_lock<std::mutex> lg(m_impl->input_queue_mutex);
@@ -142,29 +128,25 @@ Video_Decoder::~Video_Decoder()
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::init(IHAL& hal)
+bool gs_linux_video_decoder::init(IHAL& hal)
 {
     m_hal = &hal;
 
     m_impl->window = (SDL_Window*)hal.get_window();
     assert(m_impl->window != nullptr);
 
-    m_impl->output_pool.on_acquire = [this](Output& output) 
+    m_impl->output_pool.on_acquire = [this](Output& output)
     {
     };
 
-    const size_t worker_count = decoder_worker_count();
-    for (size_t i = 0; i < worker_count; ++i)
-    {
-        m_impl->threads.push_back(std::thread([this, i]() { decoder_thread_proc(i); }));
-    }
+    m_impl->threads.push_back(std::thread([this]() { decoder_thread_proc(0); }));
 
     return true;
 }
 
 //===================================================================================
 //===================================================================================
-uint32_t Video_Decoder::get_video_texture_id() const
+uint32_t gs_linux_video_decoder::get_video_texture_id() const
 {
     return m_texture;
 }
@@ -172,7 +154,7 @@ uint32_t Video_Decoder::get_video_texture_id() const
 
 //===================================================================================
 //===================================================================================
-ImVec2 Video_Decoder::get_video_resolution() const
+ImVec2 gs_linux_video_decoder::get_video_resolution() const
 {
     return m_resolution;
 }
@@ -180,7 +162,7 @@ ImVec2 Video_Decoder::get_video_resolution() const
 //===================================================================================
 //===================================================================================
 // Returns postprocessing params extracted from the currently uploaded JPEG frame.
-gs::render::VideoPostprocessingParams Video_Decoder::get_postprocessing_params() const
+gs::render::VideoPostprocessingParams gs_linux_video_decoder::get_postprocessing_params() const
 {
     return m_impl->current_postprocessing_params;
 }
@@ -188,14 +170,14 @@ gs::render::VideoPostprocessingParams Video_Decoder::get_postprocessing_params()
 //===================================================================================
 //===================================================================================
 // Returns the latest GPU render stabilization transform with trajectory decay applied.
-gs::stabilization::StabilizationTransform Video_Decoder::getRenderStabilizationTransform() const
+gs::stabilization::StabilizationTransform gs_linux_video_decoder::getRenderStabilizationTransform() const
 {
     return gs::stabilization::getRenderTrajectoryTransform();
 }
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id)
+bool gs_linux_video_decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id)
 {
     if (!jpeg_buffer || jpeg_buffer->data.empty())
     {
@@ -203,7 +185,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
         s_gs_stats.brokenFrames++;
         return false;
     }
-        
+
     Input_ptr input = m_impl->input_pool.acquire();
     input->jpeg_buffer = std::move(jpeg_buffer);
     input->frame_id = frame_id;
@@ -227,7 +209,7 @@ bool Video_Decoder::decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jp
 
 //===================================================================================
 //===================================================================================
-void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
+void gs_linux_video_decoder::decoder_thread_proc(size_t /* thread_index */)
 {
     while (!m_exit)
     {
@@ -265,7 +247,7 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
                 dptr += 2;
                 size = dptr - data;
                 if ((size & 0x1FF) == 0)
-                    size += 1; 
+                    size += 1;
                 if ((size % 100) == 0)
                     size += 1;
                 break;
@@ -276,6 +258,19 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
         //LOGI("In size = {}, correct size = {}", _size, size);
 
         //auto start_tp = Clock::now();
+
+        {
+            std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
+            if (m_impl->has_pending_output &&
+                !shouldReplaceDecodedFrame(input->frame_id, m_impl->pending_output->frame_id))
+            {
+                // The display thread has not consumed pending_output yet, and this JPEG is
+                // strictly older than what is already decoded. A full RGB decode would be
+                // discarded immediately, so skip it and return the assembler buffer sooner.
+                input->jpeg_buffer.reset();
+                continue;
+            }
+        }
 
         int width, height;
         int inSubsamp, inColorspace;
@@ -290,20 +285,6 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             tjDestroy(tjInstance);
             LOGE("Jpeg header error: {}", tjGetErrorStr());
             continue;
-        }
-
-        {
-            std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-            if (m_impl->has_pending_output &&
-                !shouldReplaceDecodedFrame(input->frame_id, m_impl->pending_output->frame_id))
-            {
-                // The display thread has not consumed pending_output yet, and this JPEG is
-                // strictly older than what is already decoded. A full RGB decode would be
-                // discarded immediately, so skip it and return the assembler buffer sooner.
-                input->jpeg_buffer.reset();
-                tjDestroy(tjInstance);
-                continue;
-            }
         }
 
         Output_ptr output = m_impl->output_pool.acquire();
@@ -324,7 +305,7 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
         //without flags decoding performance is 80% slower
         //visually there is no impact on image quality
         int flags = TJ_FASTUPSAMPLE | TJFLAG_FASTDCT;
-        
+
         //if (tjDecompressToYUVPlanes(tjInstance, data, size, planesPtr.data(), 0, nullptr, 0, flags) < 0)
         if(tjDecompress2(tjInstance, data, size,output->rgb_data.data(),width,0,height,TJPF_RGB,flags))
         {
@@ -334,7 +315,7 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
             LOGE("decompressing JPEG image: {}", tjGetErrorStr());
             //return false;
         }
-        
+
         tjDestroy(tjInstance);
         input->jpeg_buffer.reset();
 
@@ -391,6 +372,9 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
                 {
                     std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
                     s_gs_stats.discardedFramesDecodedOutput++;
+                    //if we skip frame, we also do not prepare features for it, to save CPU time. 
+                    //This means that stabilization features for the next frame will be calculated based on the last actually used frame, 
+                    //which should be fine for stabilization purposes.
                     continue;
                 }
 
@@ -421,7 +405,7 @@ void Video_Decoder::decoder_thread_proc(size_t /* thread_index */)
 
 //===================================================================================
 //===================================================================================
-size_t Video_Decoder::lock_output()
+size_t gs_linux_video_decoder::lock_output()
 {
     size_t count = 0;
     {
@@ -533,7 +517,7 @@ size_t Video_Decoder::lock_output()
 
 //===================================================================================
 //===================================================================================
-void Video_Decoder::wait_for_output(std::chrono::milliseconds timeout)
+void gs_linux_video_decoder::wait_for_output(std::chrono::milliseconds timeout)
 {
     std::unique_lock<std::mutex> lg(m_impl->output_queue_mutex);
     if (m_impl->has_pending_output || m_exit)
@@ -553,7 +537,7 @@ void Video_Decoder::wait_for_output(std::chrono::milliseconds timeout)
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::unlock_output()
+bool gs_linux_video_decoder::unlock_output()
 {
     if (m_impl->locked_outputs.empty())
         return false;
@@ -567,7 +551,7 @@ bool Video_Decoder::unlock_output()
 //===================================================================================
 //===================================================================================
 // Invalidates the currently displayed decoder output and drops queued stale frames.
-void Video_Decoder::invalidate_displayed_frame()
+void gs_linux_video_decoder::invalidate_displayed_frame()
 {
     {
         std::lock_guard<std::mutex> input_lock(m_impl->input_queue_mutex);
@@ -589,7 +573,7 @@ void Video_Decoder::invalidate_displayed_frame()
 
 //===================================================================================
 //===================================================================================
-bool Video_Decoder::isAspect16x9()
+bool gs_linux_video_decoder::isAspect16x9()
 {
    if ( m_resolution.y == 0 ) return false;
    float aspect =  m_resolution.x / m_resolution.y;

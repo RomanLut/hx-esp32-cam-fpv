@@ -8,11 +8,11 @@
 
 class IHAL;
 
-class Video_Decoder
+class gs_linux_video_decoder
 {
 public:
-    Video_Decoder();
-    ~Video_Decoder();
+    gs_linux_video_decoder();
+    ~gs_linux_video_decoder();
 
     bool decode_data(gs::core::VideoFrameAssembler::FrameBufferPtr jpeg_buffer, uint32_t frame_id);
 
@@ -41,4 +41,3 @@ private:
     uint32_t videoWidth;
     std::unique_ptr<Impl> m_impl;
 };
-

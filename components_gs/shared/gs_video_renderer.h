@@ -136,6 +136,7 @@ public:
                      int stride,
                      uint32_t frame_id,
                      PixelFormat pixel_format = PixelFormat::RGB24,
+                     bool stabilization_prepared = false,
                      const gs::render::VideoPostprocessingParams& postprocessing_params =
                          gs::render::VideoPostprocessingParams());
     void setVsync(bool enabled);
@@ -175,6 +176,7 @@ private:
         int stride = 0;
         uint32_t frame_id = 0;
         PixelFormat pixel_format = PixelFormat::RGB24;
+        bool stabilization_prepared = false;
         gs::render::VideoPostprocessingParams postprocessing_params = {};
     };
 

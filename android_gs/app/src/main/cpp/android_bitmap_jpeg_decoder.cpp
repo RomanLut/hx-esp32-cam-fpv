@@ -12,12 +12,12 @@
 
 #include "Log.h"
 #include "gs_jpeg_dct_postprocessing.h"
+#include "gs_video_stabilization_shared.h"
 
 namespace
 {
 
 constexpr uint32_t kDefaultMinDecodeMs = 99;
-constexpr size_t kWorkerCount = 2;
 
 JavaVM* g_java_vm = nullptr;
 AAssetManager* g_asset_manager = nullptr;
@@ -218,14 +218,11 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
 
 //===================================================================================
 //===================================================================================
-// Constructor. Starts the worker threads that process the decode queue.
+// Constructor. Starts the single decode worker thread that processes the decode queue.
 AndroidBitmapJpegDecoder::AndroidBitmapJpegDecoder(GsVideoRenderer& renderer)
     : m_renderer(renderer)
 {
-    for (size_t index = 0; index < kWorkerCount; ++index)
-    {
-        m_threads.emplace_back(&AndroidBitmapJpegDecoder::workerThreadProc, this);
-    }
+    m_thread = std::thread(&AndroidBitmapJpegDecoder::workerThreadProc, this);
 }
 
 //===================================================================================
@@ -236,12 +233,9 @@ AndroidBitmapJpegDecoder::~AndroidBitmapJpegDecoder()
     m_exit.store(true);
     m_input_cv.notify_all();
 
-    for (std::thread& thread : m_threads)
+    if (m_thread.joinable())
     {
-        if (thread.joinable())
-        {
-            thread.join();
-        }
+        m_thread.join();
     }
 }
 
@@ -449,6 +443,38 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
         {
         }
 
+        bool run_prepare_after_publish = false;
+        const uint8_t* prepared_pixels = nullptr;
+        size_t prepared_size = 0;
+        int prepared_width = 0;
+        int prepared_height = 0;
+        int prepared_stride = 0;
+        if (gs::stabilization::isEnabled())
+        {
+            gs::stabilization::estimateFrame(pixels,
+                                             static_cast<size_t>(capacity),
+                                             static_cast<int>(width),
+                                             static_cast<int>(height),
+                                             static_cast<int>(stride),
+                                             GS_VISION_IMAGE_FORMAT_RGB565,
+                                             false,
+                                             0);
+            gs::stabilization::updateRenderTrajectoryStateForFrame(
+                input.frame_id,
+                static_cast<uint32_t>(width),
+                static_cast<uint32_t>(height));
+            run_prepare_after_publish = true;
+            prepared_pixels = pixels;
+            prepared_size = static_cast<size_t>(capacity);
+            prepared_width = static_cast<int>(width);
+            prepared_height = static_cast<int>(height);
+            prepared_stride = static_cast<int>(stride);
+        }
+        else
+        {
+            gs::stabilization::resetRenderTrajectoryState();
+        }
+
         m_renderer.submitFrame(
             makeDirectBufferRef(global_pixels_buffer),
             pixels,
@@ -458,7 +484,19 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             static_cast<int>(stride),
             input.frame_id,
             GsVideoRenderer::PixelFormat::RGB565,
+            true,
             postprocessing_params);
         m_submitted_frames.fetch_add(1);
+
+        if (run_prepare_after_publish)
+        {
+            // Mirror Linux ordering: publish first, then precompute next-frame features.
+            gs::stabilization::prepareFrameFeatures(prepared_pixels,
+                                                    prepared_size,
+                                                    prepared_width,
+                                                    prepared_height,
+                                                    prepared_stride,
+                                                    GS_VISION_IMAGE_FORMAT_RGB565);
+        }
     }
 }

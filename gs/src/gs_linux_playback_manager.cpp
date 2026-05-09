@@ -4,7 +4,7 @@
 #include <thread>
 
 #include "Log.h"
-#include "Video_Decoder.h"
+#include "gs_linux_video_decoder.h"
 #include "main.h"
 
 //===================================================================================

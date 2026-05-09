@@ -10,12 +10,11 @@
 #include <deque>
 #include <mutex>
 #include <thread>
-#include <vector>
 
 //===================================================================================
 //===================================================================================
 // Decodes JPEG frames received from the video assembler using the Android Bitmap API
-// via JNI, running multiple worker threads and submitting decoded RGB565 frames
+// via JNI, running a single worker thread and submitting decoded RGB565 frames
 // to the video renderer.
 class AndroidBitmapJpegDecoder
 {
@@ -53,7 +52,7 @@ private:
     std::mutex m_input_mutex;
     std::condition_variable m_input_cv;
     std::deque<InputFrame> m_input_queue;
-    std::vector<std::thread> m_threads;
+    std::thread m_thread;
     std::atomic<bool> m_exit = false;
     std::atomic<uint64_t> m_submitted_frames = 0;
     std::atomic<uint32_t> m_broken_frames = 0;

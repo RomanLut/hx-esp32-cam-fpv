@@ -584,7 +584,7 @@ void processLinuxFrameTick(size_t& video_frame_count,
     size_t count = s_decoder.lock_output();
     if (count == 0)
     {
-        //Wait areasonable big interval to make sure we do no swap and stuck in vsynk before new frame is produced
+        //Wait reasonably big interval to make sure we do no swap and stuck in vsynk before new frame is produced
         //50ms is still enougth to produce 20 fps for ui update
         s_decoder.wait_for_output(std::chrono::milliseconds(50));
         count = s_decoder.lock_output();

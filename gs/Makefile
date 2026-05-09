@@ -55,7 +55,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
 	src/linux_raw_broadcast_transport.cpp \
-	src/Video_Decoder.cpp \
+	src/gs_linux_video_decoder.cpp \
 	src/dct_calibration.cpp \
 	../components_gs/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \

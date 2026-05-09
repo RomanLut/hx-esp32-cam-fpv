@@ -19,7 +19,7 @@
 #include "gs_linux_bootstrap.h"
 #include "gs_linux_transport_manager.h"
 #include "gs_linux_playback_manager.h"
-#include "Video_Decoder.h"
+#include "gs_linux_video_decoder.h"
 #include "gs_runtime_state.h"
 #include "ISerialTelemetry.h"
 #include "linux_serial_telemetry.h"
@@ -36,7 +36,7 @@ Changes on the PI:
 */
 
 std::unique_ptr<IHAL> s_hal;
-Video_Decoder s_decoder;
+gs_linux_video_decoder s_decoder;
 
 static LinuxSerialTelemetry s_linuxSerialTelemetry;
 ISerialTelemetry* g_serialTelemetry = &s_linuxSerialTelemetry;
