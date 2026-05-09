@@ -62,6 +62,16 @@ void logGlError(const char* stage)
     }
 }
 
+// Weak hooks defined by the Quest build's OpenXR bridge; absent on android_gs
+// and Linux. Their presence also acts as the "Quest immersive build" sentinel.
+//
+// gsTryConsumeXrImGuiKey: returns the next pending ImGui key produced by the
+// OpenXR controller-input thread (or 0 when the queue is empty).
+// gsPublishRendererTexture: receives the renderer's offscreen color texture id
+// so the OpenXR thread can sample it directly into the head-locked swapchain.
+extern "C" int gsTryConsumeXrImGuiKey() __attribute__((weak));
+extern "C" void gsPublishRendererTexture(unsigned int gl_texture, int width, int height) __attribute__((weak));
+
 } // namespace
 
 //===================================================================================
@@ -232,10 +242,17 @@ void GsVideoRenderer::setScreenMode(int screen_mode)
 
 //===================================================================================
 //===================================================================================
-// Enables or disables vertical sync for rendering.
+// Enables or disables vertical sync for rendering. On Quest (OpenXR bridge
+// present) the SurfaceView is never visible, so we always force vsync off —
+// otherwise eglSwapBuffers blocks on SurfaceFlinger throttling and pins the
+// renderer thread to a few FPS.
 void GsVideoRenderer::setVsync(bool enabled)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (gsPublishRendererTexture != nullptr)
+    {
+        enabled = false;
+    }
     m_vsync = enabled;
     m_surface_backend.setVsync(enabled);
 }
@@ -246,6 +263,11 @@ void GsVideoRenderer::setVsync(bool enabled)
 void GsVideoRenderer::setVrMode(bool enabled)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (gsPublishRendererTexture != nullptr)
+    {
+        // OpenXR layer is already presented to both eyes; force single-eye render.
+        enabled = false;
+    }
     m_vr_mode = enabled;
     m_mode_dirty = true;
     m_cv.notify_all();
@@ -315,8 +337,13 @@ void GsVideoRenderer::setFrameUiState(const RuntimeFrameUiState& frame_ui_state)
     std::lock_guard<std::mutex> lock(m_mutex);
     m_frame_ui_state = frame_ui_state;
     m_screen_mode = std::clamp(static_cast<int>(frame_ui_state.screen_mode), 0, 2);
-    m_vsync = frame_ui_state.vsync;
-    m_vr_mode = frame_ui_state.vr_mode;
+    // On Quest (OpenXR bridge present) the SurfaceView is hidden behind the
+    // head-locked layer; vsync on its EGL surface only blocks the renderer.
+    m_vsync = (gsPublishRendererTexture != nullptr) ? false : frame_ui_state.vsync;
+    // OpenXR composition presents the same quad to both eyes natively, so the
+    // renderer should output a single-eye view (otherwise the framebuffer is
+    // 2x wider, doubling glReadPixels cost and stretching content on the quad).
+    m_vr_mode = (gsPublishRendererTexture != nullptr) ? false : frame_ui_state.vr_mode;
     m_zoom = frame_ui_state.screen_zoom;
     m_vr_separation = frame_ui_state.vr_separation;
     m_menu_footer = frame_ui_state.menu_footer;
@@ -555,7 +582,9 @@ void GsVideoRenderer::run()
     std::unique_lock<std::mutex> lock(m_mutex);
     while (!m_exit)
     {
-        m_cv.wait(lock, [this] {
+        // Cap the idle wait at 50 ms so the menu/UI keeps ticking at >= 20 FPS
+        // even when no video frames are arriving. Mirrors processLinuxFrameTick().
+        m_cv.wait_for(lock, std::chrono::milliseconds(50), [this] {
             return m_exit ||
                    m_surface_dirty ||
                    m_frame_dirty.load() ||
@@ -600,11 +629,17 @@ void GsVideoRenderer::run()
             {
                 uploadFrameLocked();
             }
+            else
+            {
+                drawFrameLocked();
+            }
 
             m_frame_dirty.store(m_has_pending_frame);
         }
-        else if (m_mode_dirty || m_overlay_dirty || !m_pending_key_presses.empty())
+        else
         {
+            // Always redraw on tick (event-driven OR 50 ms timeout) so the
+            // menu animates and queued key presses surface without video.
             drawFrameLocked();
         }
 
@@ -620,6 +655,22 @@ void GsVideoRenderer::run()
         glDeleteTextures(1, &m_texture);
         m_texture = 0;
     }
+    if (m_offscreen_fbo != 0)
+    {
+        glDeleteFramebuffers(1, &m_offscreen_fbo);
+        m_offscreen_fbo = 0;
+    }
+    if (m_offscreen_tex != 0)
+    {
+        glDeleteTextures(1, &m_offscreen_tex);
+        m_offscreen_tex = 0;
+    }
+    m_offscreen_w = 0;
+    m_offscreen_h = 0;
+    if (gsPublishRendererTexture != nullptr)
+    {
+        gsPublishRendererTexture(0, 0, 0);
+    }
 }
 
 //===================================================================================
@@ -633,6 +684,22 @@ void GsVideoRenderer::applyPendingSurfaceLocked()
     {
         glDeleteTextures(1, &m_texture);
         m_texture = 0;
+    }
+    if (m_offscreen_fbo != 0)
+    {
+        glDeleteFramebuffers(1, &m_offscreen_fbo);
+        m_offscreen_fbo = 0;
+    }
+    if (m_offscreen_tex != 0)
+    {
+        glDeleteTextures(1, &m_offscreen_tex);
+        m_offscreen_tex = 0;
+    }
+    m_offscreen_w = 0;
+    m_offscreen_h = 0;
+    if (gsPublishRendererTexture != nullptr)
+    {
+        gsPublishRendererTexture(0, 0, 0);
     }
     m_surface_dirty = false;
     m_has_uploaded_frame = false;
@@ -656,6 +723,15 @@ void GsVideoRenderer::applyPendingSurfaceLocked()
 
         m_surface_width = m_surface_backend.surfaceWidth();
         m_surface_height = m_surface_backend.surfaceHeight();
+        // On Quest the SurfaceView's pixel size is irrelevant — we render into
+        // an offscreen FBO sampled into the OpenXR head-locked quad, which is
+        // a fixed 1280x720 swapchain. Forcing the renderer's working size to
+        // match avoids any scaling and keeps text/overlays pixel-perfect.
+        if (gsPublishRendererTexture != nullptr)
+        {
+            m_surface_width = 1280;
+            m_surface_height = 720;
+        }
 
         glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -822,6 +898,77 @@ void GsVideoRenderer::uploadFrameLocked()
 //===================================================================================
 //===================================================================================
 // Ensures that a suitable OpenGL texture is available for frame rendering.
+// Allocates (or re-allocates on size change) the offscreen FBO+texture used on
+// Quest. The texture id is published to the bridge so the OpenXR thread can
+// sample it directly into the head-locked quad swapchain.
+void GsVideoRenderer::ensureOffscreenTargetLocked()
+{
+    if (m_surface_width <= 0 || m_surface_height <= 0)
+    {
+        return;
+    }
+    if (m_offscreen_fbo != 0 &&
+        m_offscreen_w == m_surface_width &&
+        m_offscreen_h == m_surface_height)
+    {
+        return;
+    }
+
+    if (m_offscreen_fbo != 0)
+    {
+        glDeleteFramebuffers(1, &m_offscreen_fbo);
+        m_offscreen_fbo = 0;
+    }
+    if (m_offscreen_tex != 0)
+    {
+        glDeleteTextures(1, &m_offscreen_tex);
+        m_offscreen_tex = 0;
+    }
+
+    glGenTextures(1, &m_offscreen_tex);
+    glBindTexture(GL_TEXTURE_2D, m_offscreen_tex);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 m_surface_width,
+                 m_surface_height,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glGenFramebuffers(1, &m_offscreen_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, m_offscreen_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_offscreen_tex, 0);
+    const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (status != GL_FRAMEBUFFER_COMPLETE)
+    {
+        LOGE("Offscreen FBO incomplete: 0x{:04x}", static_cast<unsigned int>(status));
+        glDeleteFramebuffers(1, &m_offscreen_fbo);
+        glDeleteTextures(1, &m_offscreen_tex);
+        m_offscreen_fbo = 0;
+        m_offscreen_tex = 0;
+        return;
+    }
+
+    m_offscreen_w = m_surface_width;
+    m_offscreen_h = m_surface_height;
+
+    if (gsPublishRendererTexture != nullptr)
+    {
+        gsPublishRendererTexture(m_offscreen_tex, m_offscreen_w, m_offscreen_h);
+    }
+    LOGI("renderer: offscreen FBO ready {}x{} tex={}", m_offscreen_w, m_offscreen_h, m_offscreen_tex);
+}
+
+//===================================================================================
+//===================================================================================
 void GsVideoRenderer::ensureTextureLocked()
 {
     if (m_texture == 0 || m_frame_width <= 0 || m_frame_height <= 0)
@@ -1157,6 +1304,16 @@ void GsVideoRenderer::drawOverlayLocked()
     io.FontGlobalScale = kLinuxMenuFontGlobalScale * gs::menu::imgui::calcOsdScale(static_cast<float>(m_surface_height));
     io.DeltaTime = 1.0f / 60.0f;
     gs::mcp::drainInjectedKeysToImGui();
+    if (gsTryConsumeXrImGuiKey != nullptr)
+    {
+        int xr_key = 0;
+        while ((xr_key = gsTryConsumeXrImGuiKey()) != 0)
+        {
+            const ImGuiKey k = static_cast<ImGuiKey>(xr_key);
+            io.AddKeyEvent(k, true);
+            io.AddKeyEvent(k, false);
+        }
+    }
     for (const ImGuiKey key : m_pending_key_presses)
     {
         io.AddKeyEvent(key, true);
@@ -1236,6 +1393,19 @@ void GsVideoRenderer::drawFrameLocked()
         return;
     }
 
+    // On Quest the SurfaceView is hidden behind the OpenXR composition layer;
+    // render into an offscreen FBO whose texture is shared with the OpenXR
+    // thread instead of into the SurfaceView's default framebuffer.
+    const bool offscreen = (gsPublishRendererTexture != nullptr);
+    if (offscreen)
+    {
+        ensureOffscreenTargetLocked();
+        if (m_offscreen_fbo != 0)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, m_offscreen_fbo);
+        }
+    }
+
     glViewport(0, 0, m_surface_width, m_surface_height);
     glClearColor(0.04f, 0.05f, 0.08f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -1256,8 +1426,25 @@ void GsVideoRenderer::drawFrameLocked()
     }
     drawOverlayLocked();
 
+    if (offscreen)
+    {
+        // Restore default framebuffer binding and let GL flush the queue so the
+        // OpenXR thread can sample the fresh contents on its next iteration.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
     const auto swap_begin = Clock::now();
-    m_surface_backend.swapBuffers();
+    if (offscreen)
+    {
+        // Quest immersive: nothing to swap (we rendered into the shared texture
+        // directly). Just drain the GL queue so the OpenXR thread sees the
+        // updated pixels on its next sample.
+        glFlush();
+    }
+    else
+    {
+        m_surface_backend.swapBuffers();
+    }
     const uint32_t swap_duration_ms = static_cast<uint32_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
     m_gpu_wait_last_ms.store(swap_duration_ms);

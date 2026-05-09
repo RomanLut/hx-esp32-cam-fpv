@@ -188,6 +188,7 @@ private:
     void drawFrameLocked();
     void uploadFrameLocked();
     void ensureTextureLocked();
+    void ensureOffscreenTargetLocked();
     void submitPendingFrame(PendingFrame&& frame);
     static void renderDrawDataWithVrReplication(ImDrawData* draw_data, float surface_width, float vr_separation);
     void drawOverlayLocked();
@@ -223,6 +224,12 @@ private:
     bool m_redraw_after_current_frame = false;
 
     unsigned int m_texture = 0;
+    // Offscreen FBO+texture used on Quest to render directly into a GL texture
+    // shared with the OpenXR thread (avoids glReadPixels CPU round-trip).
+    unsigned int m_offscreen_fbo = 0;
+    unsigned int m_offscreen_tex = 0;
+    int m_offscreen_w = 0;
+    int m_offscreen_h = 0;
     gs::render::VideoShaderRenderer m_video_shader_renderer;
     void* m_imgui_context = nullptr;
     bool m_imgui_backend_initialized = false;
