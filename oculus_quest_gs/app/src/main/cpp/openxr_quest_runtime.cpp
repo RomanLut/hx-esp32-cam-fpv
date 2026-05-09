@@ -741,7 +741,9 @@ void main() { frag = texture(u_tex, v_uv); }
 
         const XrActionSuggestedBinding bindings[] = {
             { m_input.action_a,           stringToPath("/user/hand/right/input/a/click") },
+            { m_input.action_a,           stringToPath("/user/hand/left/input/x/click") },
             { m_input.action_b,           stringToPath("/user/hand/right/input/b/click") },
+            { m_input.action_b,           stringToPath("/user/hand/left/input/y/click") },
             { m_input.action_trigger,     stringToPath("/user/hand/right/input/trigger/value") },
             { m_input.action_trigger,     stringToPath("/user/hand/left/input/trigger/value") },
             { m_input.action_thumbstick,  stringToPath("/user/hand/right/input/thumbstick") },
