@@ -297,6 +297,10 @@ void RecordingsStorage::stopRecordingLocked(const char* reason)
     }
 
     buildAviHdr(m_avi_fps, m_avi_frame_width, m_avi_frame_height, static_cast<uint16_t>(m_avi_frame_count));
+    // Force frames+idx out to storage before rewinding to overwrite the header.
+    // On Android the recording FD is FUSE-backed; writeback errors only surface
+    // here, and we want them visible before we trust the file is finalized.
+    flushRecordingFile();
     seekRecordingFile(0, SEEK_SET);
     writeRecordingData(aviHeader, AVI_HEADER_LEN);
 #endif

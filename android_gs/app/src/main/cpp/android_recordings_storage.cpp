@@ -1,8 +1,14 @@
 #include "android_recordings_storage.h"
 
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <sys/statvfs.h>
+#include <sys/types.h>
 #include <unistd.h>
 
+#include "Log.h"
 #include "gs_shared_runtime.h"
 #include "settings_storage.h"
 
@@ -103,29 +109,47 @@ std::string AndroidRecordingsStorage::recordingsListDirectory() const
 
 //===================================================================================
 //===================================================================================
-// Opens an Android recording file via MediaStore and wraps the returned FD.
+// Opens an Android recording file via MediaStore and keeps the raw FD.
 bool AndroidRecordingsStorage::openRecordingFile(const std::string& path)
 {
-    const int fd = createRecordingFdFromNative(path);
-    if (fd < 0)
-    {
-        return false;
-    }
-    m_record_file = ::fdopen(fd, "wb+");
-    if (m_record_file == nullptr)
-    {
-        ::close(fd);
-        return false;
-    }
-    return true;
+    m_record_fd = createRecordingFdFromNative(path);
+    return m_record_fd >= 0;
 }
 
 //===================================================================================
 //===================================================================================
-// Writes raw recording bytes into the current Android recording file.
+// Writes raw recording bytes into the current Android recording file. Writes go
+// directly via ::write() (no stdio buffering) and short writes are retried so a
+// FUSE-shim partial write surfaces as a real failure instead of being hidden.
 bool AndroidRecordingsStorage::writeRecordingData(const void* data, size_t size)
 {
-    return m_record_file != nullptr && std::fwrite(data, size, 1, m_record_file) == 1;
+    if (m_record_fd < 0)
+    {
+        return false;
+    }
+    const uint8_t* cursor = static_cast<const uint8_t*>(data);
+    size_t remaining = size;
+    while (remaining > 0)
+    {
+        const ssize_t written = ::write(m_record_fd, cursor, remaining);
+        if (written < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            LOGW("recording write failed errno={} ({})", errno, std::strerror(errno));
+            return false;
+        }
+        if (written == 0)
+        {
+            LOGW("recording write returned 0 (FUSE drop?)");
+            return false;
+        }
+        cursor += written;
+        remaining -= static_cast<size_t>(written);
+    }
+    return true;
 }
 
 //===================================================================================
@@ -133,17 +157,19 @@ bool AndroidRecordingsStorage::writeRecordingData(const void* data, size_t size)
 // Repositions the current Android recording file cursor.
 bool AndroidRecordingsStorage::seekRecordingFile(long offset, int origin)
 {
-    return m_record_file != nullptr && std::fseek(m_record_file, offset, origin) == 0;
+    return m_record_fd >= 0 &&
+           ::lseek(m_record_fd, static_cast<off_t>(offset), origin) != static_cast<off_t>(-1);
 }
 
 //===================================================================================
 //===================================================================================
-// Flushes buffered Android recording data to disk.
+// Forces buffered kernel/FUSE writeback for the recording. Errors here surface
+// silent FUSE writeback failures that ::write() returned success for.
 void AndroidRecordingsStorage::flushRecordingFile()
 {
-    if (m_record_file != nullptr)
+    if (m_record_fd >= 0 && ::fsync(m_record_fd) != 0)
     {
-        std::fflush(m_record_file);
+        LOGW("recording fsync failed errno={} ({})", errno, std::strerror(errno));
     }
 }
 
@@ -152,9 +178,9 @@ void AndroidRecordingsStorage::flushRecordingFile()
 // Closes the active Android recording file.
 void AndroidRecordingsStorage::closeRecordingFile()
 {
-    if (m_record_file != nullptr)
+    if (m_record_fd >= 0)
     {
-        std::fclose(m_record_file);
-        m_record_file = nullptr;
+        ::close(m_record_fd);
+        m_record_fd = -1;
     }
 }

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdio>
-
 #include "gs_recordings_storage.h"
 
 //===================================================================================
@@ -20,7 +18,9 @@ protected:
     void closeRecordingFile() override;
 
 private:
-    FILE* m_record_file = nullptr;
+    // MediaStore-backed FDs run through Android's FUSE shim; stdio buffering hid
+    // silent partial writes there, so the recorder uses raw POSIX I/O directly.
+    int m_record_fd = -1;
 };
 
 //===================================================================================
