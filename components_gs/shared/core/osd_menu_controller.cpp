@@ -2338,6 +2338,18 @@ void OSDMenuController::drawGSVRSettingsMenu(Ground2Air_Config_Packet& config)
         this->drawMenuItem( buf, 1);
     }
 
+    {
+        const char* passthrough_labels[] = { "Off", "2%", "5%", "10%", "20%", "50%", "75%", "100%" };
+        const uint8_t level = std::min<uint8_t>(gs_config.screenVrPassthroughLevel, 7);
+        char buf[256];
+        sprintf(buf, "Passthrough: %s##vr_passthrough", passthrough_labels[level]);
+        if ( this->drawMenuItem( buf, 2) )
+        {
+            gs_config.screenVrPassthroughLevel = static_cast<uint8_t>((level + 1) % 8);
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
     if (!adjust_handled && this->exitKeyPressed())
     {
         this->goBack();

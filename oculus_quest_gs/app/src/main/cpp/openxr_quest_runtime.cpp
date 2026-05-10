@@ -194,13 +194,17 @@ private:
                             if (strcmp(p.extensionName, XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME) == 0)
                             {
                                 m_cylinder_supported = true;
-                                break;
+                            }
+                            else if (strcmp(p.extensionName, XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0)
+                            {
+                                m_passthrough_supported = true;
                             }
                         }
                     }
                 }
             }
             LOGI("OpenXR: cylinder layer extension {}", m_cylinder_supported ? "supported" : "not supported");
+            LOGI("OpenXR: passthrough extension {}", m_passthrough_supported ? "supported" : "not supported");
         }
 
         std::vector<const char*> exts;
@@ -209,6 +213,10 @@ private:
         if (m_cylinder_supported)
         {
             exts.push_back(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
+        }
+        if (m_passthrough_supported)
+        {
+            exts.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
         }
         instance_info.enabledExtensionCount = static_cast<uint32_t>(exts.size());
         instance_info.enabledExtensionNames = exts.data();
@@ -297,6 +305,35 @@ private:
             return false;
         }
 
+        if (m_passthrough_supported)
+        {
+            XrPassthroughCreateInfoFB pt_info{XR_TYPE_PASSTHROUGH_CREATE_INFO_FB};
+            pt_info.flags = 0;
+            if (m_xrCreatePassthroughFB(m_session, &pt_info, &m_passthrough) == XR_SUCCESS)
+            {
+                XrPassthroughLayerCreateInfoFB layer_info{XR_TYPE_PASSTHROUGH_LAYER_CREATE_INFO_FB};
+                layer_info.passthrough = m_passthrough;
+                layer_info.purpose = XR_PASSTHROUGH_LAYER_PURPOSE_RECONSTRUCTION_FB;
+                layer_info.flags = XR_PASSTHROUGH_IS_RUNNING_AT_CREATION_BIT_FB;
+                if (m_xrCreatePassthroughLayerFB(m_session, &layer_info, &m_passthrough_layer) != XR_SUCCESS)
+                {
+                    LOGW("OpenXR: xrCreatePassthroughLayerFB failed; disabling passthrough");
+                    m_xrDestroyPassthroughFB(m_passthrough);
+                    m_passthrough = XR_NULL_HANDLE;
+                    m_passthrough_supported = false;
+                }
+                else
+                {
+                    LOGI("OpenXR: passthrough created");
+                }
+            }
+            else
+            {
+                LOGW("OpenXR: xrCreatePassthroughFB failed; disabling passthrough");
+                m_passthrough_supported = false;
+            }
+        }
+
         frameLoop();
         return true;
     }
@@ -340,6 +377,28 @@ private:
         if (!load("xrGetActionStateBoolean", &fn)) return false; m_xrGetActionStateBoolean = reinterpret_cast<PFN_xrGetActionStateBoolean>(fn);
         if (!load("xrGetActionStateFloat", &fn)) return false; m_xrGetActionStateFloat = reinterpret_cast<PFN_xrGetActionStateFloat>(fn);
         if (!load("xrGetActionStateVector2f", &fn)) return false; m_xrGetActionStateVector2f = reinterpret_cast<PFN_xrGetActionStateVector2f>(fn);
+
+        if (m_passthrough_supported)
+        {
+            auto load_opt = [&](const char* name, PFN_xrVoidFunction* outFn) -> bool
+            {
+                return m_xrGetInstanceProcAddr(m_instance, name, outFn) == XR_SUCCESS && *outFn != nullptr;
+            };
+            PFN_xrVoidFunction pfn = nullptr;
+            bool ok = true;
+            ok = ok && load_opt("xrCreatePassthroughFB", &pfn); m_xrCreatePassthroughFB = reinterpret_cast<PFN_xrCreatePassthroughFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrDestroyPassthroughFB", &pfn); m_xrDestroyPassthroughFB = reinterpret_cast<PFN_xrDestroyPassthroughFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrPassthroughStartFB", &pfn); m_xrPassthroughStartFB = reinterpret_cast<PFN_xrPassthroughStartFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrPassthroughPauseFB", &pfn); m_xrPassthroughPauseFB = reinterpret_cast<PFN_xrPassthroughPauseFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrCreatePassthroughLayerFB", &pfn); m_xrCreatePassthroughLayerFB = reinterpret_cast<PFN_xrCreatePassthroughLayerFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrDestroyPassthroughLayerFB", &pfn); m_xrDestroyPassthroughLayerFB = reinterpret_cast<PFN_xrDestroyPassthroughLayerFB>(pfn); pfn = nullptr;
+            ok = ok && load_opt("xrPassthroughLayerSetStyleFB", &pfn); m_xrPassthroughLayerSetStyleFB = reinterpret_cast<PFN_xrPassthroughLayerSetStyleFB>(pfn); pfn = nullptr;
+            if (!ok)
+            {
+                LOGW("OpenXR: failed to resolve passthrough functions; disabling passthrough");
+                m_passthrough_supported = false;
+            }
+        }
         return true;
     }
 
@@ -513,6 +572,38 @@ private:
             end_info.displayTime = frame_state.predictedDisplayTime;
             end_info.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 
+            // Reconcile passthrough state with current settings.
+            const uint8_t pt_level = std::min<uint8_t>(s_groundstation_config.screenVrPassthroughLevel, 7);
+            const bool pt_active = m_passthrough_supported && (pt_level > 0);
+            if (m_passthrough_supported)
+            {
+                if (pt_active && !m_passthrough_running)
+                {
+                    if (m_xrPassthroughStartFB(m_passthrough) == XR_SUCCESS)
+                    {
+                        m_passthrough_running = true;
+                        m_passthrough_level_applied = 255;
+                    }
+                }
+                else if (!pt_active && m_passthrough_running)
+                {
+                    m_xrPassthroughPauseFB(m_passthrough);
+                    m_passthrough_running = false;
+                }
+
+                if (m_passthrough_running && pt_level != m_passthrough_level_applied)
+                {
+                    static constexpr float kPassthroughOpacities[] = { 0.0f, 0.02f, 0.05f, 0.10f, 0.20f, 0.50f, 0.75f, 1.00f };
+                    XrPassthroughStyleFB style{XR_TYPE_PASSTHROUGH_STYLE_FB};
+                    style.textureOpacityFactor = kPassthroughOpacities[pt_level];
+                    style.edgeColor = {0.0f, 0.0f, 0.0f, 0.0f};
+                    if (m_xrPassthroughLayerSetStyleFB(m_passthrough_layer, &style) == XR_SUCCESS)
+                    {
+                        m_passthrough_level_applied = pt_level;
+                    }
+                }
+            }
+
             if (frame_state.shouldRender == XR_TRUE && renderQuadFrame())
             {
                 const float distance = std::clamp(s_groundstation_config.screenVrDistance, 1.0f, 3.0f);
@@ -553,16 +644,27 @@ private:
                     layer = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&m_quad_layer);
                 }
 
-                end_info.layerCount = 1;
-                end_info.layers = &layer;
+                const XrCompositionLayerBaseHeader* layers[2] = { nullptr, nullptr };
+                uint32_t layer_count = 0;
+                if (pt_active && m_passthrough_running)
+                {
+                    m_passthrough_layer_composition = {XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
+                    m_passthrough_layer_composition.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+                    m_passthrough_layer_composition.space = XR_NULL_HANDLE;
+                    m_passthrough_layer_composition.layerHandle = m_passthrough_layer;
+                    layers[layer_count++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&m_passthrough_layer_composition);
+                }
+                layers[layer_count++] = layer;
+                end_info.layerCount = layer_count;
+                end_info.layers = layers;
+                m_xrEndFrame(m_session, &end_info);
             }
             else
             {
                 end_info.layerCount = 0;
                 end_info.layers = nullptr;
+                m_xrEndFrame(m_session, &end_info);
             }
-
-            m_xrEndFrame(m_session, &end_info);
         }
     }
 
@@ -976,6 +1078,22 @@ void main() { frag = texture(u_tex, v_uv); }
 
         destroyActions();
 
+        if (m_passthrough_layer != XR_NULL_HANDLE && m_xrDestroyPassthroughLayerFB != nullptr)
+        {
+            m_xrDestroyPassthroughLayerFB(m_passthrough_layer);
+            m_passthrough_layer = XR_NULL_HANDLE;
+        }
+        if (m_passthrough != XR_NULL_HANDLE && m_xrDestroyPassthroughFB != nullptr)
+        {
+            if (m_passthrough_running && m_xrPassthroughPauseFB != nullptr)
+            {
+                m_xrPassthroughPauseFB(m_passthrough);
+                m_passthrough_running = false;
+            }
+            m_xrDestroyPassthroughFB(m_passthrough);
+            m_passthrough = XR_NULL_HANDLE;
+        }
+
         if (m_view_space != XR_NULL_HANDLE)
         {
             m_xrDestroySpace(m_view_space);
@@ -1042,7 +1160,20 @@ void main() { frag = texture(u_tex, v_uv); }
     SwapchainState m_quad_swapchain;
     XrCompositionLayerQuad m_quad_layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
     XrCompositionLayerCylinderKHR m_cylinder_layer{XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
+    XrCompositionLayerPassthroughFB m_passthrough_layer_composition{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     bool m_cylinder_supported = false;
+    bool m_passthrough_supported = false;
+    XrPassthroughFB m_passthrough = XR_NULL_HANDLE;
+    XrPassthroughLayerFB m_passthrough_layer = XR_NULL_HANDLE;
+    bool m_passthrough_running = false;
+    uint8_t m_passthrough_level_applied = 255;
+    PFN_xrCreatePassthroughFB m_xrCreatePassthroughFB = nullptr;
+    PFN_xrDestroyPassthroughFB m_xrDestroyPassthroughFB = nullptr;
+    PFN_xrPassthroughStartFB m_xrPassthroughStartFB = nullptr;
+    PFN_xrPassthroughPauseFB m_xrPassthroughPauseFB = nullptr;
+    PFN_xrCreatePassthroughLayerFB m_xrCreatePassthroughLayerFB = nullptr;
+    PFN_xrDestroyPassthroughLayerFB m_xrDestroyPassthroughLayerFB = nullptr;
+    PFN_xrPassthroughLayerSetStyleFB m_xrPassthroughLayerSetStyleFB = nullptr;
 
     struct BlitPipelineGL
     {
