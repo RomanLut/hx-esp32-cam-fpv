@@ -671,6 +671,7 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 
     m_has_clip_items = false;
     m_clip_y_started = false;
+    m_force_scrollbar = false;
     m_clip_y_start = 0.0f;
     m_clip_y_end = 0.0f;
     m_clip_item_right_x = 0.0f;
@@ -678,14 +679,16 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 
     gs::menu::imgui::beginMenuWindow(window_name, m_imgui_layout, extra_flags);
     drawCurrentMenu(config);
-    if (m_has_clip_items && m_clip_y_started && m_clip_total_items > kScrollableMenuVisibleItems)
+    if (m_has_clip_items && m_clip_y_started &&
+        (m_clip_total_items > kScrollableMenuVisibleItems || m_force_scrollbar))
     {
         const float sb_x = m_clip_item_right_x + 12.0f * m_imgui_layout.scale;
-        const float sb_width = 16.0f * m_imgui_layout.scale; 
+        const float sb_width = 16.0f * m_imgui_layout.scale;
         const float sb_height = static_cast<float>(kScrollableMenuVisibleItems) *
                                 (m_imgui_layout.button_height + m_imgui_layout.item_gap_y) - m_imgui_layout.item_gap_y;
         gs::menu::imgui::drawScrollbar(sb_x, m_clip_y_start, sb_height,
-                                       this->selectedItem, m_clip_total_items, kScrollableMenuVisibleItems, sb_width);
+                                       this->selectedItem, m_clip_total_items, kScrollableMenuVisibleItems, sb_width,
+                                       m_force_scrollbar);
     }
     gs::menu::imgui::endMenuWindow();
 
@@ -3028,6 +3031,8 @@ void OSDMenuController::drawPlaybackMenu(Ground2Air_Config_Packet& /*config*/)
         this->drawStatus("No recordings found");
     }
 
+    m_force_scrollbar = !recordings.empty();
+
     for (unsigned int i = 0; i < recordings.size(); i++)
     {
         char buf[256];
@@ -3044,10 +3049,20 @@ void OSDMenuController::drawPlaybackMenu(Ground2Air_Config_Packet& /*config*/)
 
     if (!recordings.empty())
     {
-        for (int i = 0; i < 5; ++i)
+        if (m_clip_y_started)
         {
-            drawSpacing();
+            const float row_h = m_imgui_layout.button_height + m_imgui_layout.item_gap_y;
+            const float target_y = m_clip_y_start + static_cast<float>(kScrollableMenuVisibleItems) * row_h;
+            const float current_y = ImGui::GetCursorScreenPos().y;
+            // Subtract one item_gap_y because ImGui adds ItemSpacing after the Dummy too,
+            // which would otherwise push the next item one gap below the 7-items baseline.
+            const float pad_y = target_y - current_y - m_imgui_layout.item_gap_y;
+            if (pad_y > 0.0f)
+            {
+                ImGui::Dummy(ImVec2(0.0f, pad_y));
+            }
         }
+        drawLargeGapIfTallScreen();
         this->drawStatus("AIR REC - Delete file");
 
         {

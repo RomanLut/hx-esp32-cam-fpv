@@ -91,6 +91,7 @@ private:
 
     bool m_has_clip_items = false;
     bool m_clip_y_started = false;
+    bool m_force_scrollbar = false;
     float m_clip_y_start = 0.0f;
     float m_clip_y_end = 0.0f;
     float m_clip_item_right_x = 0.0f;
