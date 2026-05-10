@@ -155,8 +155,7 @@ void finalizeRecordingFdFromNative()
     }
 }
 
-static AndroidSerialTelemetry s_androidSerialTelemetry;
-ISerialTelemetry* g_serialTelemetry = &s_androidSerialTelemetry;
+ISerialTelemetry* g_serialTelemetry = &g_androidSerialTelemetry;
 
 static AndroidGSUDPBroadcast s_androidGSUDPBroadcast;
 IGSUDPBroadcast* g_gsUDPBroadcast = &s_androidGSUDPBroadcast;
@@ -1132,6 +1131,10 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
     handle->background_runtime_thread = std::make_unique<std::thread>(
         [handle]()
         {
+            // Stats mutex used solely by processIncomingTelemetry to update
+            // gs_stats.RCPeriodMax. Kept distinct from handle->mutex which is
+            // already held when the call runs.
+            static std::mutex s_telemetry_stats_mutex;
             while (!handle->stop_background.load())
             {
                 {
@@ -1142,6 +1145,16 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                         pumpSharedControlPacketLocked(*handle, Clock::now());
                         processPendingRawBroadcastChannelChange(
                             handle->transport_manager.rawBroadcastTransport());
+                    }
+                    // Drain incoming serial telemetry (USB-UART) and forward to
+                    // the air side. Mirrors the Linux GS runtime loop.
+                    if (g_serialTelemetry->isOpen())
+                    {
+                        s_runtimeCore.session.processIncomingTelemetry(
+                            s_runtimeCore.gs_device_id,
+                            handle->transport_manager.activeTransport(),
+                            s_telemetry_stats_mutex,
+                            s_runtimeCore.gs_stats);
                     }
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
@@ -2064,4 +2077,40 @@ Java_com_esp32camfpv_androidgs_NativeCore_destroyHandle(JNIEnv* /* env */,
                                                         jlong handle)
 {
     delete fromJLong(handle);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnOpen(JNIEnv* /* env */,
+                                                                jclass /* clazz */)
+{
+    g_androidSerialTelemetry.onJavaOpened();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnClose(JNIEnv* /* env */,
+                                                                 jclass /* clazz */)
+{
+    g_androidSerialTelemetry.onJavaClosed();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnBytes(JNIEnv* env,
+                                                                 jclass /* clazz */,
+                                                                 jbyteArray data,
+                                                                 jint length)
+{
+    if (data == nullptr || length <= 0)
+    {
+        return;
+    }
+    const jsize jlen = env->GetArrayLength(data);
+    const jsize n = std::min<jsize>(jlen, length);
+    jbyte* ptr = env->GetByteArrayElements(data, nullptr);
+    if (ptr == nullptr)
+    {
+        return;
+    }
+    g_androidSerialTelemetry.onJavaBytesReceived(reinterpret_cast<const uint8_t*>(ptr),
+                                                 static_cast<size_t>(n));
+    env->ReleaseByteArrayElements(data, ptr, JNI_ABORT);
 }

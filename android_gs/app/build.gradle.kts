@@ -70,6 +70,10 @@ android {
                 file("src/main/assets"),
                 file("../../assets_gs")
             )
+            java.srcDirs(
+                file("src/main/java"),
+                file("../../components_gs/android_shared/java")
+            )
         }
     }
 
@@ -88,6 +92,7 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

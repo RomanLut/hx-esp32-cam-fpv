@@ -164,4 +164,25 @@ object NativeCore {
     external fun consumeExitRequested(handle: Long): Boolean
     external fun resetSession(handle: Long)
     external fun destroyHandle(handle: Long)
+
+    @JvmStatic external fun serialTelemetryOnOpen()
+    @JvmStatic external fun serialTelemetryOnClose()
+    @JvmStatic external fun serialTelemetryOnBytes(data: ByteArray, length: Int)
+
+    @Volatile private var serialTelemetryWriter: ((ByteArray) -> Unit)? = null
+
+    fun setSerialTelemetryWriter(writer: ((ByteArray) -> Unit)?) {
+        serialTelemetryWriter = writer
+    }
+
+    // Called from C++ via JNI on the session thread to deliver outbound bytes
+    // to the active UsbSerialPort owned by SerialTelemetryUsbController.
+    @JvmStatic
+    fun serialTelemetryWrite(data: ByteArray) {
+        try {
+            serialTelemetryWriter?.invoke(data)
+        } catch (t: Throwable) {
+            android.util.Log.w("AndroidGs", "serialTelemetryWrite failed", t)
+        }
+    }
 }

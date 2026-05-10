@@ -12,7 +12,7 @@ add_library(android_gs_core SHARED
     android_playback_manager.cpp
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
-    android_serial_telemetry.cpp
+    ../../../../../components_gs/android_shared/cpp/android_serial_telemetry.cpp
     android_transport_manager.cpp
     android_wifi_scan_transport.cpp
     native_bridge.cpp
@@ -101,6 +101,7 @@ target_include_directories(android_gs_core PRIVATE
     third_party/devourer/hal
     ../../../../../components_gs
     ../../../../../components_gs/shared
+    ../../../../../components_gs/android_shared/cpp
     ../../../../../components_gs/utils
     ../../../../../components_gs/imgui
     ../../../../../components_gs/imgui/backends

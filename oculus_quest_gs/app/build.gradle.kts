@@ -70,6 +70,10 @@ android {
                 file("src/main/assets"),
                 file("../../assets_gs")
             )
+            java.srcDirs(
+                file("src/main/java"),
+                file("../../components_gs/android_shared/java")
+            )
         }
     }
 

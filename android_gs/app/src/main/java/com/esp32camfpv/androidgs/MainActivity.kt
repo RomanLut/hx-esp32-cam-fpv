@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var apfpvWifiController: ApfpvWifiController
     private lateinit var rawBroadcastUsbController: RawBroadcastUsbController
     private lateinit var wifiScanUsbController: WifiScanUsbController
+    private lateinit var serialTelemetryUsbController: SerialTelemetryUsbController
     private var powerManager: PowerManager? = null
     private var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
 
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
         rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
         wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
+        serialTelemetryUsbController = SerialTelemetryUsbController(this)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
@@ -113,6 +115,7 @@ class MainActivity : ComponentActivity() {
         apfpvWifiController.start()
         rawBroadcastUsbController.start()
         wifiScanUsbController.start()
+        serialTelemetryUsbController.start()
     }
 
     override fun onResume() {
@@ -121,6 +124,7 @@ class MainActivity : ComponentActivity() {
         apfpvWifiController.start()
         rawBroadcastUsbController.start()
         wifiScanUsbController.start()
+        serialTelemetryUsbController.start()
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -133,6 +137,7 @@ class MainActivity : ComponentActivity() {
         NativeCore.setActivity(null)
         teardownThermalStatusMonitoring()
         teardownBatteryMonitoring()
+        serialTelemetryUsbController.stop()
         wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
