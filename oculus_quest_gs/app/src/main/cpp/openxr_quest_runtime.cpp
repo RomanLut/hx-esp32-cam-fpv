@@ -3,6 +3,7 @@
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <dlfcn.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -14,6 +15,7 @@
 #include "android_jni_shared.h"
 #include "openxr_video_bridge.h"
 #include "imgui.h"
+#include "gs_shared_state.h"
 #define XR_USE_PLATFORM_ANDROID
 #define XR_USE_GRAPHICS_API_OPENGL_ES
 #define XR_NO_PROTOTYPES
@@ -172,12 +174,44 @@ private:
         instance_info.applicationInfo.engineVersion = 1;
         instance_info.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
 
-        const char* exts[] = {
-            XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
-            XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME
-        };
-        instance_info.enabledExtensionCount = 2;
-        instance_info.enabledExtensionNames = exts;
+        // Query available extensions to optionally enable the cylinder layer.
+        m_cylinder_supported = false;
+        {
+            PFN_xrVoidFunction enum_ext_fn = nullptr;
+            if (raw_get_proc(XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties", &enum_ext_fn) == XR_SUCCESS &&
+                enum_ext_fn != nullptr)
+            {
+                auto xrEnumerateInstanceExtensionPropertiesFn =
+                    reinterpret_cast<PFN_xrEnumerateInstanceExtensionProperties>(enum_ext_fn);
+                uint32_t ext_count = 0;
+                if (xrEnumerateInstanceExtensionPropertiesFn(nullptr, 0, &ext_count, nullptr) == XR_SUCCESS && ext_count > 0)
+                {
+                    std::vector<XrExtensionProperties> props(ext_count, XrExtensionProperties{XR_TYPE_EXTENSION_PROPERTIES});
+                    if (xrEnumerateInstanceExtensionPropertiesFn(nullptr, ext_count, &ext_count, props.data()) == XR_SUCCESS)
+                    {
+                        for (const auto& p : props)
+                        {
+                            if (strcmp(p.extensionName, XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME) == 0)
+                            {
+                                m_cylinder_supported = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            LOGI("OpenXR: cylinder layer extension {}", m_cylinder_supported ? "supported" : "not supported");
+        }
+
+        std::vector<const char*> exts;
+        exts.push_back(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
+        exts.push_back(XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME);
+        if (m_cylinder_supported)
+        {
+            exts.push_back(XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME);
+        }
+        instance_info.enabledExtensionCount = static_cast<uint32_t>(exts.size());
+        instance_info.enabledExtensionNames = exts.data();
 
         PFN_xrVoidFunction create_instance_fn = nullptr;
         if (raw_get_proc(XR_NULL_HANDLE, "xrCreateInstance", &create_instance_fn) != XR_SUCCESS ||
@@ -481,19 +515,44 @@ private:
 
             if (frame_state.shouldRender == XR_TRUE && renderQuadFrame())
             {
-                m_quad_layer = {XR_TYPE_COMPOSITION_LAYER_QUAD};
-                m_quad_layer.space = m_view_space;
-                m_quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-                m_quad_layer.pose.orientation.w = 1.0f;
-                m_quad_layer.pose.position = {0.0f, 0.0f, k_quad_z};
-                m_quad_layer.size = {k_quad_size_x, k_quad_size_y};
-                m_quad_layer.subImage.swapchain = m_quad_swapchain.handle;
-                m_quad_layer.subImage.imageRect.offset = {0, 0};
-                m_quad_layer.subImage.imageRect.extent = {k_quad_width, k_quad_height};
-                m_quad_layer.subImage.imageArrayIndex = 0;
+                const float distance = std::clamp(s_groundstation_config.screenVrDistance, 1.0f, 3.0f);
+                const bool use_cylinder = m_cylinder_supported && s_groundstation_config.screenVrCurved;
+                const XrCompositionLayerBaseHeader* layer = nullptr;
 
-                const XrCompositionLayerBaseHeader* layer =
-                    reinterpret_cast<const XrCompositionLayerBaseHeader*>(&m_quad_layer);
+                if (use_cylinder)
+                {
+                    constexpr float kPi = 3.14159265358979323846f;
+                    const float angle_deg = std::clamp(s_groundstation_config.screenVrCurvatureAngleDeg, 30.0f, 85.0f);
+                    const float central_angle_rad = angle_deg * (kPi / 180.0f);
+                    m_cylinder_layer = {XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
+                    m_cylinder_layer.space = m_view_space;
+                    m_cylinder_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+                    m_cylinder_layer.pose.orientation.w = 1.0f;
+                    m_cylinder_layer.pose.position = {0.0f, 0.0f, 0.0f};
+                    m_cylinder_layer.radius = distance;
+                    m_cylinder_layer.centralAngle = central_angle_rad;
+                    m_cylinder_layer.aspectRatio = k_quad_size_x / k_quad_size_y;
+                    m_cylinder_layer.subImage.swapchain = m_quad_swapchain.handle;
+                    m_cylinder_layer.subImage.imageRect.offset = {0, 0};
+                    m_cylinder_layer.subImage.imageRect.extent = {k_quad_width, k_quad_height};
+                    m_cylinder_layer.subImage.imageArrayIndex = 0;
+                    layer = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&m_cylinder_layer);
+                }
+                else
+                {
+                    m_quad_layer = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+                    m_quad_layer.space = m_view_space;
+                    m_quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+                    m_quad_layer.pose.orientation.w = 1.0f;
+                    m_quad_layer.pose.position = {0.0f, 0.0f, -distance};
+                    m_quad_layer.size = {k_quad_size_x, k_quad_size_y};
+                    m_quad_layer.subImage.swapchain = m_quad_swapchain.handle;
+                    m_quad_layer.subImage.imageRect.offset = {0, 0};
+                    m_quad_layer.subImage.imageRect.extent = {k_quad_width, k_quad_height};
+                    m_quad_layer.subImage.imageArrayIndex = 0;
+                    layer = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&m_quad_layer);
+                }
+
                 end_info.layerCount = 1;
                 end_info.layers = &layer;
             }
@@ -982,6 +1041,8 @@ void main() { frag = texture(u_tex, v_uv); }
     };
     SwapchainState m_quad_swapchain;
     XrCompositionLayerQuad m_quad_layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    XrCompositionLayerCylinderKHR m_cylinder_layer{XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
+    bool m_cylinder_supported = false;
 
     struct BlitPipelineGL
     {

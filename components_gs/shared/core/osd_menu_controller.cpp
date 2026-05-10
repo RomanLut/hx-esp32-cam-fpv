@@ -36,6 +36,13 @@ constexpr float kScreenVrSeparationMax = 0.30f;
 constexpr float kScreenVrSeparationStep = 0.02f;
 constexpr float kScreenVrSeparationStepScale = 50.0f;
 constexpr float kScreenVrSeparationDisplayScale = 100.0f;
+constexpr float kScreenVrDistanceMin = 1.0f;
+constexpr float kScreenVrDistanceMax = 3.0f;
+constexpr float kScreenVrDistanceStep = 0.1f;
+constexpr float kScreenVrDistanceStepScale = 10.0f;
+constexpr float kScreenVrCurvatureMinDeg = 30.0f;
+constexpr float kScreenVrCurvatureMaxDeg = 85.0f;
+constexpr float kScreenVrCurvatureStepDeg = 5.0f;
 constexpr double kLensCorrectionNormalizedStep = 0.001;
 constexpr double kLensCorrectionNormalizedDefaultFocal = 0.5;
 constexpr double kLensCorrectionNormalizedDefaultCenter = 0.5;
@@ -815,6 +822,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::GSPostprocessing: this->drawGSPostprocessingMenu(config); break;
         case OSDMenuId::GSVRMode: this->drawGSVRModeMenu(config); break;
+        case OSDMenuId::GSVRSettings: this->drawGSVRSettingsMenu(config); break;
         case OSDMenuId::GSImageStabilization: this->drawGSImageStabilizationMenu(config); break;
         case OSDMenuId::GSImageStabilizationParameters: this->drawGSImageStabilizationParametersMenu(config); break;
         case OSDMenuId::GSLensCorrection: this->drawGSLensCorrectionMenu(config); break;
@@ -2082,6 +2090,11 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     }
 #else
     int next_screen_item_index = 3;
+    if ( this->drawMenuItem( "VR Settings...##vr_settings", next_screen_item_index++) )
+    {
+        this->goForward( OSDMenuId::GSVRSettings, 0 );
+        return;
+    }
 #endif
 
     const int zoom_item_index = next_screen_item_index++;
@@ -2249,6 +2262,83 @@ void OSDMenuController::drawGSVRModeMenu(Ground2Air_Config_Packet& config)
     }
 
     if (!vr_separation_handled && this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the VR settings submenu (Oculus): adjusts virtual screen distance.
+void OSDMenuController::drawGSVRSettingsMenu(Ground2Air_Config_Packet& config)
+{
+    (void)config;
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "Menu -> GS Display -> VR Settings" );
+    drawSpacing();
+
+    bool adjust_handled = false;
+
+    {
+        char buf[256];
+        sprintf(buf, "Screen shape: %s##vr_shape", gs_config.screenVrCurved ? "Curved" : "Flat");
+        if ( this->drawMenuItem( buf, 0) )
+        {
+            gs_config.screenVrCurved = !gs_config.screenVrCurved;
+            s_settingsStorage.saveGroundStationConfig();
+        }
+    }
+
+    if (gs_config.screenVrCurved)
+    {
+        const bool focused = (this->selectedItem == 1);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                gs_config.screenVrCurvatureAngleDeg = std::clamp(gs_config.screenVrCurvatureAngleDeg + kScreenVrCurvatureStepDeg, kScreenVrCurvatureMinDeg, kScreenVrCurvatureMaxDeg);
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                gs_config.screenVrCurvatureAngleDeg = std::clamp(gs_config.screenVrCurvatureAngleDeg - kScreenVrCurvatureStepDeg, kScreenVrCurvatureMinDeg, kScreenVrCurvatureMaxDeg);
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+        }
+        char buf[256];
+        sprintf(buf, "<>Curvature: %d deg##vr_curvature", static_cast<int>(std::roundf(gs_config.screenVrCurvatureAngleDeg)));
+        this->drawMenuItem( buf, 1);
+    }
+    else
+    {
+        const bool focused = (this->selectedItem == 1);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                gs_config.screenVrDistance = std::roundf(std::clamp(gs_config.screenVrDistance + kScreenVrDistanceStep, kScreenVrDistanceMin, kScreenVrDistanceMax) * kScreenVrDistanceStepScale) / kScreenVrDistanceStepScale;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                gs_config.screenVrDistance = std::roundf(std::clamp(gs_config.screenVrDistance - kScreenVrDistanceStep, kScreenVrDistanceMin, kScreenVrDistanceMax) * kScreenVrDistanceStepScale) / kScreenVrDistanceStepScale;
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+        }
+        char buf[256];
+        sprintf(buf, "<>Screen distance: %.1f m##vr_distance", gs_config.screenVrDistance);
+        this->drawMenuItem( buf, 1);
+    }
+
+    if (!adjust_handled && this->exitKeyPressed())
     {
         this->goBack();
     }

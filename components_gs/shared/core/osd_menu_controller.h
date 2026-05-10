@@ -153,6 +153,7 @@ private:
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
     void drawGSPostprocessingMenu(Ground2Air_Config_Packet& config);
     void drawGSVRModeMenu(Ground2Air_Config_Packet& config);
+    void drawGSVRSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSImageStabilizationMenu(Ground2Air_Config_Packet& config);
     void drawGSImageStabilizationParametersMenu(Ground2Air_Config_Packet& config);
     void drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config);

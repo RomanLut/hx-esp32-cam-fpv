@@ -160,6 +160,30 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["vr_distance"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.screenVrDistance = std::clamp(std::stof(temp), 1.0f, 3.0f);
+        }
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["vr_curved"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.screenVrCurved = std::atoi(temp.c_str()) != 0;
+        }
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["vr_curvature_angle_deg"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.screenVrCurvatureAngleDeg = std::clamp(std::stof(temp), 30.0f, 85.0f);
+        }
+    }
+
+    {
         s_postprocessingState.jpeg_deblocking_enabled = true;
         std::string& temp = (*this)["gs"]["postprocessing_jpeg_deblocking"];
         if (!temp.empty())
@@ -423,6 +447,9 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["screen_flip_v"] = std::to_string(s_groundstation_config.screenFlipV ? 1 : 0);
     (*this)["gs"]["screen_zoom"] = std::to_string(s_groundstation_config.screenZoom);
     (*this)["gs"]["vr_separation"] = std::to_string(s_groundstation_config.screenVrSeparation);
+    (*this)["gs"]["vr_distance"] = std::to_string(s_groundstation_config.screenVrDistance);
+    (*this)["gs"]["vr_curved"] = std::to_string(s_groundstation_config.screenVrCurved ? 1 : 0);
+    (*this)["gs"]["vr_curvature_angle_deg"] = std::to_string(s_groundstation_config.screenVrCurvatureAngleDeg);
     (*this)["gs"]["postprocessing_jpeg_deblocking"] = std::to_string(s_postprocessingState.jpeg_deblocking_enabled ? 1 : 0);
     (*this)["gs"].remove("postprocessing_debanding_level");
     (*this)["gs"]["postprocessing_adaptive_dithering_level"] = std::to_string(std::clamp<int>(s_postprocessingState.adaptive_dithering_level, 0, 3));

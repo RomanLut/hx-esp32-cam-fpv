@@ -82,6 +82,9 @@ struct TGroundstationConfig
     bool screenFlipV = false;
     float screenZoom = 1.0f;
     float screenVrSeparation = 0.0f; // -30%...+30%, default 0
+    float screenVrDistance = 1.5f; // meters, 1.0...3.0, used by Oculus Quest VR quad layer
+    bool screenVrCurved = false; // false=flat quad, true=cylinder layer (Oculus)
+    float screenVrCurvatureAngleDeg = 55.0f; // 30...85 degrees, central angle of cylinder
     std::string txInterface = "";
     std::string apfpvInterface = "";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;

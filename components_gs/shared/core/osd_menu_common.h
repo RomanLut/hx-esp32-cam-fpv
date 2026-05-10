@@ -29,6 +29,7 @@ enum class OSDMenuId
     GSScreen,
     GSPostprocessing,
     GSVRMode,
+    GSVRSettings,
     GSImageStabilization,
     GSImageStabilizationParameters,
     GSLensCorrection,
