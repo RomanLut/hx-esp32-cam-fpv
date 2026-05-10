@@ -5,9 +5,11 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import android.view.Surface
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -21,6 +23,8 @@ object NativeCore {
     fun setActivity(activity: Activity?) {
         activityRef = if (activity != null) WeakReference(activity) else null
     }
+
+    @Volatile private var pendingRecordingUri: Uri? = null
 
     @JvmStatic
     fun createRecordingFd(filename: String): Int {
@@ -49,10 +53,12 @@ object NativeCore {
             val resolver = activity.contentResolver
             val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
                 ?: return -1
-            return resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
+            val fd = resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
                 resolver.delete(uri, null, null)
-                -1
+                return -1
             }
+            pendingRecordingUri = uri
+            return fd
         }
 
         @Suppress("InlinedApi")
@@ -60,13 +66,35 @@ object NativeCore {
             put(MediaStore.Video.Media.DISPLAY_NAME, filename)
             put(MediaStore.Video.Media.MIME_TYPE, "video/x-msvideo")
             put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/esp32-cam-fpv")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val resolver = activity.contentResolver
         val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
             ?: return -1
-        return resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
+        val fd = resolver.openFileDescriptor(uri, "rwt")?.detachFd() ?: run {
             resolver.delete(uri, null, null)
-            -1
+            return -1
+        }
+        pendingRecordingUri = uri
+        return fd
+    }
+
+    @JvmStatic
+    fun finalizeRecordingFd() {
+        val uri = pendingRecordingUri ?: return
+        pendingRecordingUri = null
+        val activity = activityRef?.get() ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return
+        }
+        try {
+            @Suppress("InlinedApi")
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.IS_PENDING, 0)
+            }
+            activity.contentResolver.update(uri, values, null, null)
+        } catch (t: Throwable) {
+            Log.w("AndroidGs", "finalizeRecordingFd failed", t)
         }
     }
 

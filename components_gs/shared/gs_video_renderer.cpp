@@ -1072,7 +1072,11 @@ void GsVideoRenderer::handleImGuiKeysLocked()
         return;
     }
 
-    if (gs::runtime::handleRecordingKeysFromImGui(*m_menu_config, "imgui_g"))
+    const OSDMenuId active_menu_id = m_menu_controller->currentMenuId();
+    const bool in_playback_menu = m_menu_visible &&
+        (active_menu_id == OSDMenuId::Playback || active_menu_id == OSDMenuId::PlaybackDelete);
+
+    if (!in_playback_menu && gs::runtime::handleRecordingKeysFromImGui(*m_menu_config, "imgui_g"))
     {
         return;
     }

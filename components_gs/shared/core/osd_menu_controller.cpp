@@ -830,6 +830,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
         case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
+        case OSDMenuId::PlaybackDelete: this->drawPlaybackDeleteMenu(config); break;
     }
 }
 
@@ -3041,7 +3042,76 @@ void OSDMenuController::drawPlaybackMenu(Ground2Air_Config_Packet& /*config*/)
         }
     }
 
+    if (!recordings.empty())
+    {
+        for (int i = 0; i < 5; ++i)
+        {
+            drawSpacing();
+        }
+        this->drawStatus("AIR REC - Delete file");
+
+        {
+            const auto gs_storage = s_recordingsStorage->groundStorageStatus();
+            std::string line = this->formatGroundStorageStatusLine(gs_storage);
+            line += "##playback_gs_status";
+            this->drawStatus(line.c_str());
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_R, false) && s_recordingsStorage != nullptr)
+        {
+            const int index = std::clamp(this->selectedItem, 0, static_cast<int>(recordings.size()) - 1);
+            this->m_playback_delete_index = index;
+            this->m_playback_delete_path = recordings[index].path;
+            this->goForward(OSDMenuId::PlaybackDelete, 0);
+            return;
+        }
+    }
+
     if (this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Confirms deletion of the selected recording file and returns to the file list.
+void OSDMenuController::drawPlaybackDeleteMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    this->drawMenuTitle("Delete recording?");
+    drawSpacing();
+
+    bool cancel = false;
+
+    if (this->drawMenuItem("Yes", 0))
+    {
+        if (s_recordingsStorage != nullptr && !this->m_playback_delete_path.empty())
+        {
+            s_recordingsStorage->deleteRecording(this->m_playback_delete_path);
+        }
+        this->goBack();
+        const auto recordings = (s_recordingsStorage != nullptr)
+            ? s_recordingsStorage->listRecordings()
+            : std::vector<RecordingEntry>{};
+        if (recordings.empty())
+        {
+            this->selectedItem = 0;
+        }
+        else
+        {
+            this->selectedItem = std::min(this->m_playback_delete_index,
+                                          static_cast<int>(recordings.size()) - 1);
+        }
+        this->m_playback_delete_path.clear();
+        return;
+    }
+
+    if (this->drawMenuItem("No", 1))
+    {
+        cancel = true;
+    }
+
+    if (cancel || this->exitKeyPressed())
     {
         this->goBack();
     }

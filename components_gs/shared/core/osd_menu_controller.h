@@ -49,6 +49,7 @@ public:
     void openPlaybackMenu();
     void close();
     bool isVisible() const;
+    OSDMenuId currentMenuId() const { return menuId; }
     CapturedMenuBuffer copyCapturedMenuBuffer() const;
     bool tryGetImageStabilizationRoiOverlaySettings(float& out_roi_divisor) const;
 
@@ -167,6 +168,10 @@ private:
     void drawDebugMenu(Ground2Air_Config_Packet& config);
     void drawPlaybackMenu(Ground2Air_Config_Packet& config);
     void drawPlaybackRunMenu(Ground2Air_Config_Packet& config);
+    void drawPlaybackDeleteMenu(Ground2Air_Config_Packet& config);
+
+    int m_playback_delete_index = 0;
+    std::string m_playback_delete_path;
     void drawSearchModeMenu(Ground2Air_Config_Packet& config);
     void drawSearchRunMenu(Ground2Air_Config_Packet& config);
     void drawCurrentMenu(Ground2Air_Config_Packet& config);

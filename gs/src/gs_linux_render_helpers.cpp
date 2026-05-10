@@ -99,7 +99,13 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 
     if (!ignore_keys)
     {
-        gs::runtime::handleRecordingKeysFromImGui(config, "keyboard_g");
+        const OSDMenuId active_menu_id = gs::menu::g_osdMenuController.currentMenuId();
+        const bool in_playback_menu = gs::menu::g_osdMenuController.isVisible() &&
+            (active_menu_id == OSDMenuId::Playback || active_menu_id == OSDMenuId::PlaybackDelete);
+        if (!in_playback_menu)
+        {
+            gs::runtime::handleRecordingKeysFromImGui(config, "keyboard_g");
+        }
     }
 
     if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_Escape))

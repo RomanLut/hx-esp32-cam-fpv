@@ -14,6 +14,9 @@
 
 // Implemented in native_bridge.cpp — creates a MediaStore file and returns its FD.
 int createRecordingFdFromNative(const std::string& path);
+// Implemented in native_bridge.cpp — clears IS_PENDING on the most recent
+// MediaStore recording so the file becomes visible to the media scanner.
+void finalizeRecordingFdFromNative();
 
 namespace
 {
@@ -182,5 +185,6 @@ void AndroidRecordingsStorage::closeRecordingFile()
     {
         ::close(m_record_fd);
         m_record_fd = -1;
+        finalizeRecordingFdFromNative();
     }
 }

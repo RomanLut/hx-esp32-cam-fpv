@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
@@ -163,6 +164,14 @@ void RecordingsStorage::writeVideoFrame(const uint8_t* frame_data, size_t frame_
     {
         stopRecordingLocked("avi_write_failed");
         return;
+    }
+
+    // Periodic fsync to bound the FUSE writeback queue on Android MediaStore-backed
+    // FDs. Without this, ::write() returns success but the kernel can silently drop
+    // pages once writeback pressure builds, leaving truncated files at stop.
+    if ((m_avi_frame_count % 30U) == 0U)
+    {
+        flushRecordingFile();
     }
 
     m_previous_video_frame.assign(frame_data, frame_data + frame_size);
@@ -479,4 +488,25 @@ std::vector<RecordingEntry> RecordingsStorage::listRecordings() const
     });
 
     return entries;
+}
+
+//===================================================================================
+//===================================================================================
+// Deletes a recording file from disk and refreshes ground storage statistics.
+bool RecordingsStorage::deleteRecording(const std::string& path)
+{
+    if (path.empty())
+    {
+        return false;
+    }
+
+    if (std::remove(path.c_str()) != 0)
+    {
+        LOGW("delete recording failed: {}", path);
+        return false;
+    }
+
+    LOGI("deleted recording: {}", path);
+    refreshGroundStorageStatus();
+    return true;
 }

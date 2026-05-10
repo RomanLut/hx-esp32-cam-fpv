@@ -67,6 +67,7 @@
 
 static jclass s_nativeCoreClass = nullptr;
 static jmethodID s_createRecordingFdMethod = nullptr;
+static jmethodID s_finalizeRecordingFdMethod = nullptr;
 
 void initRecordingJniRefs(JNIEnv* env)
 {
@@ -79,6 +80,8 @@ void initRecordingJniRefs(JNIEnv* env)
     env->DeleteLocalRef(localClass);
     s_createRecordingFdMethod = env->GetStaticMethodID(
         s_nativeCoreClass, "createRecordingFd", "(Ljava/lang/String;)I");
+    s_finalizeRecordingFdMethod = env->GetStaticMethodID(
+        s_nativeCoreClass, "finalizeRecordingFd", "()V");
 }
 
 int createRecordingFdFromNative(const std::string& path)
@@ -118,6 +121,38 @@ int createRecordingFdFromNative(const std::string& path)
     }
 
     return static_cast<int>(fd);
+}
+
+void finalizeRecordingFdFromNative()
+{
+    JavaVM* javaVm = androidGetJavaVm();
+    if (javaVm == nullptr || s_nativeCoreClass == nullptr || s_finalizeRecordingFdMethod == nullptr)
+    {
+        return;
+    }
+
+    JNIEnv* env = nullptr;
+    bool didAttach = false;
+    const jint getEnvResult = javaVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (getEnvResult == JNI_EDETACHED)
+    {
+        if (javaVm->AttachCurrentThread(&env, nullptr) != JNI_OK)
+        {
+            return;
+        }
+        didAttach = true;
+    }
+    else if (getEnvResult != JNI_OK || env == nullptr)
+    {
+        return;
+    }
+
+    env->CallStaticVoidMethod(s_nativeCoreClass, s_finalizeRecordingFdMethod);
+
+    if (didAttach)
+    {
+        javaVm->DetachCurrentThread();
+    }
 }
 
 static AndroidSerialTelemetry s_androidSerialTelemetry;

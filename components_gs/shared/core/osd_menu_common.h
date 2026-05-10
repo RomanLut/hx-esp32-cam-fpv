@@ -46,7 +46,8 @@ enum class OSDMenuId
     ImageStabilizationCH,
     Debug,
     Playback,
-    PlaybackRun
+    PlaybackRun,
+    PlaybackDelete
 };
 
 namespace gs::menu

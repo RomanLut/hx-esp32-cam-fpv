@@ -42,6 +42,7 @@ public:
     void toggleRecording(int width, int height, const char* reason);
     void writeVideoFrame(const uint8_t* frame_data, size_t frame_size, uint32_t frame_index);
     std::vector<RecordingEntry> listRecordings() const;
+    bool deleteRecording(const std::string& path);
 
 protected:
     virtual bool queryGroundStorageStatus(GroundStorageStatus& status) const = 0;
