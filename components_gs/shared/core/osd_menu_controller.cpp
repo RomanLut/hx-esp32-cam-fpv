@@ -837,6 +837,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::GSTxPower: this->drawGSTxPowerMenu(config); break;
         case OSDMenuId::GSTxInterface: this->drawGSTxInterfaceMenu(config); break;
         case OSDMenuId::GSApfpvInterface: this->drawGSApfpvInterfaceMenu(config); break;
+        case OSDMenuId::GSTelemetryUart: this->drawGSTelemetryUartMenu(config); break;
         case OSDMenuId::Image: this->drawImageSettingsMenu(config); break;
         case OSDMenuId::CameraRC: this->drawCameraRCMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
@@ -1933,6 +1934,61 @@ void OSDMenuController::drawGSApfpvInterfaceMenu(Ground2Air_Config_Packet& confi
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Draws the GS-side telemetry UART selection menu (None / Auto / detected UARTs).
+void OSDMenuController::drawGSTelemetryUartMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "GS Wifi Settings -> Telemetry UART" );
+    drawSpacing();
+
+    bool saveAndExit = false;
+    int item_index = 0;
+
+    if ( this->drawMenuItem( "None", item_index++, true) )
+    {
+        if ( gs_config.telemetryUart != "none" )
+        {
+            gs_config.telemetryUart = "none";
+        }
+        saveAndExit = true;
+    }
+
+    if ( this->drawMenuItem( "Auto", item_index++, true) )
+    {
+        if ( gs_config.telemetryUart != "auto" )
+        {
+            gs_config.telemetryUart = "auto";
+        }
+        saveAndExit = true;
+    }
+
+    const auto uarts = listAvailableTelemetryUarts();
+    for ( size_t i = 0; i < uarts.size(); i++ )
+    {
+        char buf[512];
+        const std::string display = getTelemetryUartDisplayLabel(uarts[i]);
+        snprintf(buf, sizeof(buf), "%s##tu_dev_%zu", display.c_str(), i);
+        if ( this->drawMenuItem( buf, item_index++, true) )
+        {
+            gs_config.telemetryUart = uarts[i];
+            saveAndExit = true;
+        }
+    }
+
+    if ( saveAndExit )
+    {
+        s_settingsStorage.saveGroundStationConfig();
+        applySelectedTelemetryUart();
+    }
+
+    if ( saveAndExit || this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
 
 //===================================================================================
 //===================================================================================
@@ -1998,7 +2054,7 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Wifi Settings...##2");
+        sprintf(buf, "Wifi and UART Settings...##2");
         if ( this->drawMenuItem( buf, 2) )
         {
             this->goForward( OSDMenuId::GSWifiSettings, 0 );
@@ -2840,6 +2896,41 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
         {
             this->goForward( OSDMenuId::GSTxPower, gs_config.txPower - gs::menu::kMinTxPower);
         }
+        item_index++;
+    }
+
+    {
+        char buf[512];
+        const std::string& uart = gs_config.telemetryUart;
+        const char* label =
+            uart == "none" ? "None" :
+            uart == "auto" ? "Auto" :
+            uart.c_str();
+        const std::string display = (uart == "none" || uart == "auto")
+            ? std::string(label)
+            : getTelemetryUartDisplayLabel(uart);
+        snprintf(buf, sizeof(buf), "Telemetry UART: %s##tu0", display.c_str());
+        if ( this->drawMenuItem( buf, item_index) )
+        {
+            // Pre-select the current item index in the submenu: 0=None, 1=Auto,
+            // 2..N = available UARTs, with the saved value pre-selected when present.
+            int preselect = 0;
+            if ( uart == "auto" )
+            {
+                preselect = 1;
+            }
+            else if ( uart != "none" )
+            {
+                const auto uarts = listAvailableTelemetryUarts();
+                preselect = 2; // fallback if saved value isn't currently visible
+                for ( size_t i = 0; i < uarts.size(); i++ )
+                {
+                    if ( uarts[i] == uart ) { preselect = static_cast<int>(2 + i); break; }
+                }
+            }
+            this->goForward( OSDMenuId::GSTelemetryUart, preselect );
+        }
+        item_index++;
     }
 
     drawLargeGapIfTallScreen();

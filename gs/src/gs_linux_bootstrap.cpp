@@ -212,7 +212,14 @@ int initializeLinuxConfig(gs::core::RXDescriptor& rx_descriptor,
     tx_descriptor.coding_n = 3;
     tx_descriptor.mtu = GROUND2AIR_MAX_MTU;
 
-    g_serialTelemetry->init(serialPortName);
+    // Honor the persisted s_groundstation_config.telemetryUart selection.
+    // A non-empty serialPortName from the command line is treated as an explicit
+    // override of the saved setting for this run.
+    if (!serialPortName.empty())
+    {
+        s_groundstation_config.telemetryUart = serialPortName;
+    }
+    applySelectedTelemetryUart();
 
 #ifndef WRITE_RAW_MJPEG_STREAM
     prepAviBuffers();

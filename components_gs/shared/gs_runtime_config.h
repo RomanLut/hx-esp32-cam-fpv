@@ -33,3 +33,16 @@ void cancelSelectedTransportSearchOrConnect();
 bool isSelectedTransportConnected();
 std::vector<std::string> copyCurrentTransportInterfaces();
 void applySelectedTxInterfaceToTransport();
+
+// Returns the list of UART identifiers currently visible to the platform.
+// Linux: paths under /dev (/dev/ttyUSB*, /dev/ttyACM*, /dev/ttyS*, /dev/serial*).
+// Android: "<productName> (VID:PID)" entries published by SerialTelemetryUsbController.
+std::vector<std::string> listAvailableTelemetryUarts();
+
+// Returns a human-readable label for a telemetry UART identifier (Linux enriches
+// /dev/tty paths with the sysfs product name when available).
+std::string getTelemetryUartDisplayLabel(const std::string& identifier);
+
+// Notifies the platform layer that the telemetry UART selection changed so it
+// can close any open port that no longer matches and probe for the new one.
+void applySelectedTelemetryUart();

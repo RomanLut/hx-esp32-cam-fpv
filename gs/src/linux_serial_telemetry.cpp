@@ -1,12 +1,22 @@
 #include "linux_serial_telemetry.h"
 
+#include <algorithm>
 #include <cerrno>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 
+#include "gs_runtime_config.h"
+#include "gs_shared_state.h"
 #include "utils/utils.h"
 
 //===================================================================================
@@ -18,12 +28,18 @@ std::string LinuxSerialTelemetry::resolveSerialPortName(const std::string& port_
     {
         return port_name;
     }
+    return resolveAutoPortName();
+}
 
+//===================================================================================
+//===================================================================================
+// Picks the platform's default UART when "auto" is selected.
+std::string LinuxSerialTelemetry::resolveAutoPortName()
+{
     if (access("/dev/ttyUSB0", F_OK) == 0)
     {
         return "/dev/ttyUSB0";
     }
-
     return isRadxaZero3() ? "/dev/ttyS3" : "/dev/serial0";
 }
 
@@ -32,10 +48,19 @@ std::string LinuxSerialTelemetry::resolveSerialPortName(const std::string& port_
 // Closes the serial port if open.
 LinuxSerialTelemetry::~LinuxSerialTelemetry()
 {
+    close();
+}
+
+//===================================================================================
+//===================================================================================
+void LinuxSerialTelemetry::close()
+{
     if (m_fd != -1)
     {
         ::close(m_fd);
+        m_fd = -1;
     }
+    m_current_port.clear();
 }
 
 //===================================================================================
@@ -86,6 +111,7 @@ bool LinuxSerialTelemetry::init(const std::string& port_name)
         return false;
     }
 
+    m_current_port = resolved_port_name;
     return true;
 }
 
@@ -111,4 +137,136 @@ int LinuxSerialTelemetry::read(uint8_t* buf, size_t max_bytes)
 void LinuxSerialTelemetry::write(const uint8_t* data, size_t size)
 {
     [[maybe_unused]] ssize_t res = ::write(m_fd, data, size);
+}
+
+//===================================================================================
+//===================================================================================
+namespace
+{
+
+// Reads a single-line file under /sys (e.g., idVendor / idProduct / product) and
+// returns its trimmed contents, or an empty string on any error.
+std::string readSysfsLine(const std::string& path)
+{
+    std::ifstream f(path);
+    if (!f) return {};
+    std::string line;
+    std::getline(f, line);
+    while (!line.empty() && (line.back() == '\n' || line.back() == '\r' || line.back() == ' '))
+    {
+        line.pop_back();
+    }
+    return line;
+}
+
+// Returns the basename of /sys/class/tty/<name>'s parent device, used to look up
+// USB descriptors. e.g. /sys/class/tty/ttyUSB0/device -> usb0/0-1/0-1:1.0
+std::string sysfsDeviceDirForTty(const std::string& tty_basename)
+{
+    return "/sys/class/tty/" + tty_basename + "/device";
+}
+
+// Walks up from /sys/class/tty/<name>/device looking for the nearest ancestor
+// containing idVendor + idProduct (the USB device node). Returns its path or "".
+std::string sysfsUsbDeviceDirForTty(const std::string& tty_basename)
+{
+    std::string dev = sysfsDeviceDirForTty(tty_basename);
+    char resolved[PATH_MAX];
+    if (realpath(dev.c_str(), resolved) == nullptr) return {};
+    std::string cur = resolved;
+    for (int i = 0; i < 6; i++)
+    {
+        struct stat st;
+        std::string idv = cur + "/idVendor";
+        if (stat(idv.c_str(), &st) == 0) return cur;
+        const auto slash = cur.find_last_of('/');
+        if (slash == std::string::npos || slash == 0) return {};
+        cur = cur.substr(0, slash);
+    }
+    return {};
+}
+
+void scanGlobInto(const char* dir, const char* prefix, std::set<std::string>& out)
+{
+    DIR* d = opendir(dir);
+    if (!d) return;
+    while (dirent* ent = readdir(d))
+    {
+        if (ent->d_name[0] == '.') continue;
+        const std::string name = ent->d_name;
+        if (name.compare(0, std::strlen(prefix), prefix) != 0) continue;
+        out.insert(std::string(dir) + "/" + name);
+    }
+    closedir(d);
+}
+
+}  // namespace
+
+//===================================================================================
+//===================================================================================
+// Linux platform implementation: enumerates serial devices under /dev.
+std::vector<std::string> listAvailableTelemetryUarts()
+{
+    std::set<std::string> uarts;
+    scanGlobInto("/dev", "ttyUSB", uarts);
+    scanGlobInto("/dev", "ttyACM", uarts);
+    scanGlobInto("/dev", "ttyS", uarts);
+    scanGlobInto("/dev", "serial", uarts);
+    return std::vector<std::string>(uarts.begin(), uarts.end());
+}
+
+//===================================================================================
+//===================================================================================
+// Enriches a /dev/tty path with the sysfs product name when available.
+std::string getTelemetryUartDisplayLabel(const std::string& identifier)
+{
+    if (identifier.empty()) return identifier;
+    const auto slash = identifier.find_last_of('/');
+    const std::string tty = (slash == std::string::npos) ? identifier : identifier.substr(slash + 1);
+    const std::string usb_dir = sysfsUsbDeviceDirForTty(tty);
+    if (usb_dir.empty()) return identifier;
+
+    const std::string product = readSysfsLine(usb_dir + "/product");
+    if (product.empty()) return identifier;
+    return identifier + " (" + product + ")";
+}
+
+//===================================================================================
+//===================================================================================
+// Closes / opens the underlying serial port to match s_groundstation_config.telemetryUart.
+// Idempotent — safe to call from a periodic loop for hot-plug retries.
+void applySelectedTelemetryUart()
+{
+    LinuxSerialTelemetry* lst = static_cast<LinuxSerialTelemetry*>(g_serialTelemetry);
+    if (lst == nullptr) return;
+
+    const std::string& selection = s_groundstation_config.telemetryUart;
+    std::string desired_port;
+    if (selection == "none")
+    {
+        desired_port.clear();
+    }
+    else if (selection == "auto")
+    {
+        desired_port = LinuxSerialTelemetry::resolveAutoPortName();
+    }
+    else
+    {
+        desired_port = selection;
+    }
+
+    // Close if the open port no longer matches the desired one.
+    if (lst->isOpen() && lst->currentPort() != desired_port)
+    {
+        printf("Closing telemetry UART %s (selection changed)\n", lst->currentPort().c_str());
+        lst->close();
+    }
+
+    if (!lst->isOpen() && !desired_port.empty())
+    {
+        if (access(desired_port.c_str(), F_OK) == 0)
+        {
+            lst->init(desired_port);
+        }
+    }
 }

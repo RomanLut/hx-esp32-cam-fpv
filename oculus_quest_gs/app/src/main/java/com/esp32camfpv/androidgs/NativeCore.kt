@@ -177,6 +177,8 @@ object NativeCore {
     @JvmStatic external fun serialTelemetryOnOpen()
     @JvmStatic external fun serialTelemetryOnClose()
     @JvmStatic external fun serialTelemetryOnBytes(data: ByteArray, length: Int)
+    @JvmStatic external fun publishTelemetryUarts(uarts: Array<String>)
+    @JvmStatic external fun getTelemetryUartSelection(): String
 
     @Volatile private var serialTelemetryWriter: ((ByteArray) -> Unit)? = null
 

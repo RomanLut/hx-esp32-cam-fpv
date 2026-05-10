@@ -41,6 +41,7 @@ enum class OSDMenuId
     GSTxPower,
     GSTxInterface,
     GSApfpvInterface,
+    GSTelemetryUart,
     Image,
     CameraRC,
     CameraStopCH,

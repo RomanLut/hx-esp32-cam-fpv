@@ -89,6 +89,11 @@ struct TGroundstationConfig
     float screenVrTiltDeg = 0.0f; // -45...+45 degrees, pitch of virtual screen (Oculus)
     std::string txInterface = "";
     std::string apfpvInterface = "";
+    // Telemetry UART selection for the GS-side serial bridge.
+    //   "none" = do not initialize any UART
+    //   "auto" = let the platform pick (current default behavior)
+    //   else   = platform-specific identifier (Linux: /dev/tty* path; Android: "productName (VID:PID)")
+    std::string telemetryUart = "auto";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;
     uint16_t deviceId;
     uint16_t apfpvPreferredCameraId = 0;

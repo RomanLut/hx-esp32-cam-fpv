@@ -22,6 +22,7 @@
 #include "gs_linux_runtime.h"
 #include "gs_linux_runtime_sink.h"
 #include "gs_linux_startup.h"
+#include "gs_runtime_config.h"
 #include "gs_runtime_core.h"
 #include "gs_runtime_event_pipeline.h"
 #include "gs_recordings_storage.h"
@@ -283,6 +284,19 @@ void comms_thread_proc()
 
         g_CPUTemp.process();
         processPendingSelectedTransportReconnect();
+
+        // Telemetry UART hot-plug retry. Cheap when the desired port is already
+        // open or the selection is "none"; opens the port the first time it
+        // appears in /dev when a specific UART is selected.
+        {
+            static Clock::time_point last_uart_apply_tp = Clock::time_point{};
+            const Clock::time_point now_uart = Clock::now();
+            if (now_uart - last_uart_apply_tp >= std::chrono::seconds(2))
+            {
+                last_uart_apply_tp = now_uart;
+                applySelectedTelemetryUart();
+            }
+        }
 
         {
             std::unique_lock<std::mutex> transport_lock(s_transport_mutex, std::try_to_lock);

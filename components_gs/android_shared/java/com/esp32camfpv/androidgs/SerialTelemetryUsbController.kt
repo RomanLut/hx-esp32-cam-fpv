@@ -97,10 +97,23 @@ class SerialTelemetryUsbController(
 
     private suspend fun syncNow() {
         syncMutex.withLock {
-            val target = findSupportedDevice()
+            // Publish the current set of attached UART devices first so the OSD
+            // menu list reflects the latest state even when "None" is selected.
+            publishUartList()
+
+            val selection = try { NativeCore.getTelemetryUartSelection() } catch (_: Throwable) { "auto" }
+            if (selection == "none") {
+                if (activeDeviceName != null) {
+                    Log.i(LOG_TAG, "Adapter closed (telemetry UART set to None)")
+                    teardownActive()
+                }
+                return
+            }
+
+            val target = findSupportedDevice(selection)
             if (target == null) {
                 if (activeDeviceName != null) {
-                    Log.i(LOG_TAG, "Adapter detached")
+                    Log.i(LOG_TAG, "Adapter detached or no longer matches selection")
                     teardownActive()
                 }
                 return
@@ -198,9 +211,41 @@ class SerialTelemetryUsbController(
         activeDeviceName = null
     }
 
-    private fun findSupportedDevice(): UsbDevice? {
-        return usbManager.deviceList.values.firstOrNull { device ->
-            UART_VENDOR_IDS.contains(device.vendorId)
+    // Stable identifier shown in the menu and persisted as telemetryUart:
+    // "<productName> (vid:pid)" or just "(vid:pid)" if no product name is reported.
+    private fun deviceIdentifier(d: UsbDevice): String {
+        val vidpid = "%04x:%04x".format(d.vendorId, d.productId)
+        val name = d.productName?.takeIf { it.isNotBlank() }
+        return if (name != null) "$name ($vidpid)" else "($vidpid)"
+    }
+
+    // Returns the set of UsbDevices that usb-serial-for-android can actually
+    // drive as serial ports. Rejects same-VID non-UART peripherals (e.g. the
+    // WCH USB-Ethernet adapter that shares VID 0x1A86 with CH340).
+    private fun listSerialDevices(): List<UsbDevice> {
+        return UsbSerialProber.getDefaultProber()
+            .findAllDrivers(usbManager)
+            .map { it.device }
+            // Exclude RTL adapters owned by the WiFi raw-broadcast transport.
+            .filter { it.vendorId != RTL_VENDOR_ID }
+    }
+
+    private fun findSupportedDevice(selection: String): UsbDevice? {
+        val candidates = listSerialDevices()
+        return when (selection) {
+            "auto" -> candidates.firstOrNull()
+            else -> candidates.firstOrNull { deviceIdentifier(it) == selection }
+        }
+    }
+
+    private fun publishUartList() {
+        val list = listSerialDevices()
+            .map { deviceIdentifier(it) }
+            .toTypedArray()
+        try {
+            NativeCore.publishTelemetryUarts(list)
+        } catch (_: Throwable) {
+            // Native side may not be ready yet on very early calls.
         }
     }
 
@@ -227,19 +272,8 @@ class SerialTelemetryUsbController(
         const val LOG_TAG = "SerialTelemetryUsb"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.USB_PERMISSION"
         const val WRITE_TIMEOUT_MS = 100
-        // Common USB-UART chip vendor IDs used on flight controllers.
-        // Excludes RTL adapters (0x0BDA) which are owned by the WiFi transport.
-        val UART_VENDOR_IDS = setOf(
-            0x10C4, // Silicon Labs CP210x
-            0x1A86, // QinHeng CH340/CH341/CH9102
-            0x0403, // FTDI
-            0x067B, // Prolific PL2303
-            0x239A, // Adafruit (CDC-ACM)
-            0x2E8A, // Raspberry Pi (RP2040 CDC-ACM)
-            0x1209, // pid.codes (generic CDC-ACM)
-            0x16C0, // Van Ooijen / Teensy
-            0x0483, // STMicro (STM32 VCP)
-            0x303A  // Espressif (ESP32 CDC-ACM)
-        )
+        // RTL adapters are owned by the WiFi raw-broadcast transport and must
+        // not be opened as a serial port.
+        const val RTL_VENDOR_ID = 0x0BDA
     }
 }

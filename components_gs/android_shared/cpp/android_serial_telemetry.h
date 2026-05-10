@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "ISerialTelemetry.h"
@@ -36,6 +37,11 @@ private:
 };
 
 extern AndroidSerialTelemetry g_androidSerialTelemetry;
+
+// Snapshot of UART identifiers most-recently published by the Kotlin
+// SerialTelemetryUsbController. Read by the menu via listAvailableTelemetryUarts.
+void publishAndroidTelemetryUartList(const std::vector<std::string>& uarts);
+std::vector<std::string> copyAndroidTelemetryUartList();
 
 // Caches NativeCore.serialTelemetryWrite refs. Must run on a thread with the
 // app class loader (i.e. from JNI_OnLoad), because FindClass on a thread

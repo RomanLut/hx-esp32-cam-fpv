@@ -262,6 +262,12 @@ void SettingsStorage::loadGroundStationConfig()
         s_groundstation_config.apfpvInterface = "auto";
     }
 
+    s_groundstation_config.telemetryUart = (*this)["gs"]["telemetry_uart"];
+    if (s_groundstation_config.telemetryUart.empty())
+    {
+        s_groundstation_config.telemetryUart = "auto";
+    }
+
     {
         std::string& temp = (*this)["gs"]["lens_correction_enabled"];
         if (!temp.empty()) s_lensCorrectionState.enabled = std::atoi(temp.c_str()) != 0;
@@ -478,6 +484,7 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["tx_power"] = std::to_string((int)s_groundstation_config.txPower);
     (*this)["gs"]["tx_interface"] = s_groundstation_config.txInterface;
     (*this)["gs"]["apfpv_interface"] = s_groundstation_config.apfpvInterface;
+    (*this)["gs"]["telemetry_uart"] = s_groundstation_config.telemetryUart;
     (*this)["gs"]["transport_kind"] = std::to_string(gs::core::transportKindToInt(s_groundstation_config.transportKind));
     (*this)["gs"]["apfpv_camera_id"] = std::to_string(s_groundstation_config.apfpvPreferredCameraId);
     (*this)["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);

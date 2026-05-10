@@ -163,6 +163,7 @@ private:
     void drawGSTxPowerMenu(Ground2Air_Config_Packet& config);
     void drawGSTxInterfaceMenu(Ground2Air_Config_Packet& config);
     void drawGSApfpvInterfaceMenu(Ground2Air_Config_Packet& config);
+    void drawGSTelemetryUartMenu(Ground2Air_Config_Packet& config);
     void drawImageSettingsMenu(Ground2Air_Config_Packet& config);
     void drawCameraRCMenu(Ground2Air_Config_Packet& config);
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);

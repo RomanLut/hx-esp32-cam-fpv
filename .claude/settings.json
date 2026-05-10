@@ -4,7 +4,25 @@
       "*",
       "PowerShell(*)",
       "PowerShell($adb = \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb -s 192.168.3.111:5555 shell am force-stop com.esp32camfpv.androidgs; & $adb -s 192.168.3.111:5555 install -r d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\oculus_quest_gs\\\\app\\\\build\\\\outputs\\\\apk\\\\debug\\\\app-debug.apk; & $adb -s 192.168.3.111:5555 logcat -c; & $adb -s 192.168.3.111:5555 shell am start -n com.esp32camfpv.androidgs/.MainActivity; Start-Sleep -Seconds 10; & $adb -s 192.168.3.111:5555 logcat -d -s SerialTelemetryUsb:V esp32-cam-fpv:V | Select-String -Pattern \"SerialTelemetry|AndroidSerial|RX total|TX total|UART|port opened\" | Select-Object -Last 30)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(cat ~/.ssh/config 2>/dev/null | grep -i -A 4 -E \"radxa|zero3\"; echo \"---\"; grep -h -E \"radxa@|root@.*radxa|192\\\\.168\\\\.\" d:/Github/esp32-cam-fpv/esp32-cam-fpv/launch_gs_wsl_helper.ps1 d:/Github/esp32-cam-fpv/esp32-cam-fpv/launch_gs_wsl.bat 2>/dev/null | head -10)",
+      "Read(//c/Users/roman/.ssh/**)",
+      "Bash(awk '{print $2}')",
+      "Bash(ssh -o ConnectTimeout=5 -o BatchMode=yes radxa@192.168.3.148 \"echo OK; uname -a; ls /home/radxa/esp32-cam-fpv/gs/Makefile 2>&1\")",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(wsl.exe -d Ubuntu -- ssh:*)",
+      "Bash(wsl.exe -d Ubuntu -- rsync:*)",
+      "Bash(wsl.exe -d Ubuntu -- scp:*)",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"ssh*\")",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"rsync*\")",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"scp*\")",
+      "PowerShell(ssh:*)",
+      "PowerShell(scp:*)",
+      "PowerShell(rsync:*)",
+      "Bash(wsl.exe -d Ubuntu -- bash -c ' *)",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"find ~/.claude -type d 2>&1 | head -40\")"
     ]
   }
 }
