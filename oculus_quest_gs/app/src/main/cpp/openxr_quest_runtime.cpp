@@ -5,6 +5,7 @@
 #include <dlfcn.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <cstring>
 #include <mutex>
@@ -608,17 +609,20 @@ private:
             {
                 const float distance = std::clamp(s_groundstation_config.screenVrDistance, 1.0f, 3.0f);
                 const bool use_cylinder = m_cylinder_supported && s_groundstation_config.screenVrCurved;
+                constexpr float kPi = 3.14159265358979323846f;
+                const float tilt_rad = std::clamp(s_groundstation_config.screenVrTiltDeg, -20.0f, 20.0f) * (kPi / 180.0f);
+                const float tilt_qx = std::sin(tilt_rad * 0.5f);
+                const float tilt_qw = std::cos(tilt_rad * 0.5f);
                 const XrCompositionLayerBaseHeader* layer = nullptr;
 
                 if (use_cylinder)
                 {
-                    constexpr float kPi = 3.14159265358979323846f;
                     const float angle_deg = std::clamp(s_groundstation_config.screenVrCurvatureAngleDeg, 30.0f, 85.0f);
                     const float central_angle_rad = angle_deg * (kPi / 180.0f);
                     m_cylinder_layer = {XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR};
                     m_cylinder_layer.space = m_view_space;
                     m_cylinder_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-                    m_cylinder_layer.pose.orientation.w = 1.0f;
+                    m_cylinder_layer.pose.orientation = {tilt_qx, 0.0f, 0.0f, tilt_qw};
                     m_cylinder_layer.pose.position = {0.0f, 0.0f, 0.0f};
                     m_cylinder_layer.radius = distance;
                     m_cylinder_layer.centralAngle = central_angle_rad;
@@ -634,7 +638,7 @@ private:
                     m_quad_layer = {XR_TYPE_COMPOSITION_LAYER_QUAD};
                     m_quad_layer.space = m_view_space;
                     m_quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-                    m_quad_layer.pose.orientation.w = 1.0f;
+                    m_quad_layer.pose.orientation = {tilt_qx, 0.0f, 0.0f, tilt_qw};
                     m_quad_layer.pose.position = {0.0f, 0.0f, -distance};
                     m_quad_layer.size = {k_quad_size_x, k_quad_size_y};
                     m_quad_layer.subImage.swapchain = m_quad_swapchain.handle;

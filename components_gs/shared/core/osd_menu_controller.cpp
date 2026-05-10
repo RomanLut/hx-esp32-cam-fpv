@@ -43,6 +43,9 @@ constexpr float kScreenVrDistanceStepScale = 10.0f;
 constexpr float kScreenVrCurvatureMinDeg = 30.0f;
 constexpr float kScreenVrCurvatureMaxDeg = 85.0f;
 constexpr float kScreenVrCurvatureStepDeg = 5.0f;
+constexpr float kScreenVrTiltMinDeg = -20.0f;
+constexpr float kScreenVrTiltMaxDeg = 20.0f;
+constexpr float kScreenVrTiltStepDeg = 1.0f;
 constexpr double kLensCorrectionNormalizedStep = 0.001;
 constexpr double kLensCorrectionNormalizedDefaultFocal = 0.5;
 constexpr double kLensCorrectionNormalizedDefaultCenter = 0.5;
@@ -2339,11 +2342,35 @@ void OSDMenuController::drawGSVRSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     {
+        const bool focused = (this->selectedItem == 2);
+        if (m_draw_mode == DrawMode::Interactive && focused && !this->keyHandled)
+        {
+            if (isMenuAdjustIncreasePressed())
+            {
+                gs_config.screenVrTiltDeg = std::clamp(gs_config.screenVrTiltDeg + kScreenVrTiltStepDeg, kScreenVrTiltMinDeg, kScreenVrTiltMaxDeg);
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+            else if (isMenuAdjustDecreasePressed())
+            {
+                gs_config.screenVrTiltDeg = std::clamp(gs_config.screenVrTiltDeg - kScreenVrTiltStepDeg, kScreenVrTiltMinDeg, kScreenVrTiltMaxDeg);
+                s_settingsStorage.saveGroundStationConfig();
+                this->keyHandled = true;
+                adjust_handled = true;
+            }
+        }
+        char buf[256];
+        sprintf(buf, "<>Tilt: %+d deg##vr_tilt", static_cast<int>(std::roundf(gs_config.screenVrTiltDeg)));
+        this->drawMenuItem( buf, 2);
+    }
+
+    {
         const char* passthrough_labels[] = { "Off", "2%", "5%", "10%", "20%", "50%", "75%", "100%" };
         const uint8_t level = std::min<uint8_t>(gs_config.screenVrPassthroughLevel, 7);
         char buf[256];
         sprintf(buf, "Passthrough: %s##vr_passthrough", passthrough_labels[level]);
-        if ( this->drawMenuItem( buf, 2) )
+        if ( this->drawMenuItem( buf, 3) )
         {
             gs_config.screenVrPassthroughLevel = static_cast<uint8_t>((level + 1) % 8);
             s_settingsStorage.saveGroundStationConfig();

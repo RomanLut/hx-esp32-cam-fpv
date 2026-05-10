@@ -86,6 +86,7 @@ struct TGroundstationConfig
     bool screenVrCurved = false; // false=flat quad, true=cylinder layer (Oculus)
     float screenVrCurvatureAngleDeg = 55.0f; // 30...85 degrees, central angle of cylinder
     uint8_t screenVrPassthroughLevel = 0; // 0=Off, 1..7 = 2%,5%,10%,20%,50%,75%,100% opacity (Oculus passthrough)
+    float screenVrTiltDeg = 0.0f; // -45...+45 degrees, pitch of virtual screen (Oculus)
     std::string txInterface = "";
     std::string apfpvInterface = "";
     gs::core::TransportKind transportKind = gs::core::TransportKind::RawBroadcast;

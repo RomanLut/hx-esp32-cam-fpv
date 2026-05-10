@@ -192,6 +192,14 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["vr_tilt_deg"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.screenVrTiltDeg = std::clamp(std::stof(temp), -20.0f, 20.0f);
+        }
+    }
+
+    {
         s_postprocessingState.jpeg_deblocking_enabled = true;
         std::string& temp = (*this)["gs"]["postprocessing_jpeg_deblocking"];
         if (!temp.empty())
@@ -459,6 +467,7 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["vr_curved"] = std::to_string(s_groundstation_config.screenVrCurved ? 1 : 0);
     (*this)["gs"]["vr_curvature_angle_deg"] = std::to_string(s_groundstation_config.screenVrCurvatureAngleDeg);
     (*this)["gs"]["vr_passthrough_level"] = std::to_string(static_cast<int>(s_groundstation_config.screenVrPassthroughLevel));
+    (*this)["gs"]["vr_tilt_deg"] = std::to_string(s_groundstation_config.screenVrTiltDeg);
     (*this)["gs"]["postprocessing_jpeg_deblocking"] = std::to_string(s_postprocessingState.jpeg_deblocking_enabled ? 1 : 0);
     (*this)["gs"].remove("postprocessing_debanding_level");
     (*this)["gs"]["postprocessing_adaptive_dithering_level"] = std::to_string(std::clamp<int>(s_postprocessingState.adaptive_dithering_level, 0, 3));
