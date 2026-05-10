@@ -2069,20 +2069,25 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     }
 
 #ifndef OCULUS_QUEST_GS
+    int next_screen_item_index = 3;
     {
         char buf[256];
         sprintf(buf, "VR Mode...##vr_mode");
-        if ( this->drawMenuItem( buf, 3) )
+        if ( this->drawMenuItem( buf, next_screen_item_index) )
         {
             this->goForward( OSDMenuId::GSVRMode, 0 );
             return;
         }
+        next_screen_item_index++;
     }
+#else
+    int next_screen_item_index = 3;
 #endif
 
+    const int zoom_item_index = next_screen_item_index++;
     bool zoom_handled = false;
     {
-        const bool zoom_focused = (this->selectedItem == 4);
+        const bool zoom_focused = (this->selectedItem == zoom_item_index);
         if (m_draw_mode == DrawMode::Interactive && zoom_focused && !this->keyHandled)
         {
             if (isMenuAdjustIncreasePressed())
@@ -2102,14 +2107,14 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
         char buf[256];
         sprintf(buf, "<>Zoom: %d%%##5", static_cast<int>(std::roundf(gs_config.screenZoom * 100.0f)));
-        this->drawMenuItem( buf, 4);
+        this->drawMenuItem( buf, zoom_item_index);
     }
 
 #ifndef OCULUS_QUEST_GS
     {
         char buf[256];
         sprintf(buf, "Vertical Flip: %s##4", gs_config.screenFlipV ? "ON" : "OFF");
-        if ( this->drawMenuItem( buf, 5) )
+        if ( this->drawMenuItem( buf, next_screen_item_index++) )
         {
             gs_config.screenFlipV = !gs_config.screenFlipV;
             s_settingsStorage.saveGroundStationConfig();
@@ -2119,7 +2124,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         sprintf(buf, "Vertical Sync: %s##3", gs_config.vsync ? "Enabled" :"Disabled");
-        if ( this->drawMenuItem( buf, 6) )
+        if ( this->drawMenuItem( buf, next_screen_item_index++) )
         {
             gs_config.vsync = !gs_config.vsync;
             s_RuntimePlatformServices->setVsync(gs_config.vsync);
@@ -2239,7 +2244,7 @@ void OSDMenuController::drawGSVRModeMenu(Ground2Air_Config_Packet& config)
             }
         }
         char buf[256];
-        sprintf(buf, "<>VR Separation: %+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
+        sprintf(buf, "<>Stereo Separation: %+d%%##6", static_cast<int>(std::roundf(gs_config.screenVrSeparation * kScreenVrSeparationDisplayScale)));
         this->drawMenuItem( buf, 1);
     }
 
