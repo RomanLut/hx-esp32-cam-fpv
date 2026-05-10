@@ -151,6 +151,9 @@ void androidSetAssetManager(AAssetManager* asset_manager)
 // Defined in native_bridge.cpp — looks up NativeCore.createRecordingFd for MediaStore recording.
 void initRecordingJniRefs(JNIEnv* env);
 
+// Defined in android_serial_telemetry.cpp — caches NativeCore.serialTelemetryWrite.
+void initSerialTelemetryJniRefs(JNIEnv* env);
+
 //===================================================================================
 //===================================================================================
 // Called by the JVM when the native library is loaded. Stores the JavaVM pointer
@@ -223,6 +226,7 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     }
 
     initRecordingJniRefs(env);
+    initSerialTelemetryJniRefs(env);
 
     return JNI_VERSION_1_6;
 }

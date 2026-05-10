@@ -12,6 +12,7 @@ add_library(android_gs_core SHARED
     android_playback_manager.cpp
     android_recordings_storage.cpp
     android_runtime_platform_services.cpp
+    android_serial_telemetry.cpp
     android_transport_manager.cpp
     android_wifi_scan_transport.cpp
     native_bridge.cpp
