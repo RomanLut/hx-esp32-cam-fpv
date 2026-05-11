@@ -1296,6 +1296,43 @@ Java_com_esp32camfpv_androidgs_NativeCore_consumeApfpvReconnectRequest(JNIEnv* /
 
 //===================================================================================
 //===================================================================================
+// Returns and clears one queued APFPV Wi-Fi scan permission prompt request.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_consumeApfpvWifiScanPermissionPromptRequest(JNIEnv* /* env */,
+                                                                                       jobject /* thiz */,
+                                                                                       jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return consumeApfpvWifiScanPermissionPromptRequest() ? JNI_TRUE : JNI_FALSE;
+}
+
+//===================================================================================
+//===================================================================================
+// Publishes whether APFPV Wi-Fi scan is blocked by missing Android permissions.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_setApfpvWifiScanPermissionError(JNIEnv* /* env */,
+                                                                           jobject /* thiz */,
+                                                                           jlong handle,
+                                                                           jboolean enabled)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    setApfpvWifiScanPermissionError(enabled == JNI_TRUE);
+}
+
+//===================================================================================
+//===================================================================================
 // Returns whether Android APFPV has already received any UDP packets from the camera.
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_hasSeenApfpvUdpPackets(JNIEnv* /* env */,

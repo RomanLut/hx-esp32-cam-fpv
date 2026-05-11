@@ -150,6 +150,16 @@ void drawMenuStatus(const char* caption, const MenuFrameLayout& layout)
 
 //===================================================================================
 //===================================================================================
+// Draws a non-interactive status bar button in red across the full window width.
+void drawMenuStatusError(const char* caption, const MenuFrameLayout& layout)
+{
+    pushButtonStyle(ImColor(176, 44, 44));
+    ImGui::Button(caption, ImVec2(layout.status_width, layout.button_height));
+    popButtonStyle();
+}
+
+//===================================================================================
+//===================================================================================
 // Draws a right-aligned text label at the bottom of the menu window.
 // Does nothing if caption is null or empty.
 void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout)

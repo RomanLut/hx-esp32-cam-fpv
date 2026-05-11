@@ -92,6 +92,24 @@ static uint16_t& apfpvActiveCameraIdStorage()
 
 //===================================================================================
 //===================================================================================
+// Returns the lazily initialized APFPV Wi-Fi scan permission error flag.
+static bool& apfpvWifiScanPermissionErrorStorage()
+{
+    static bool enabled = false;
+    return enabled;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the lazily initialized APFPV permission-prompt request flag.
+static std::atomic<bool>& apfpvWifiScanPermissionPromptRequestStorage()
+{
+    static std::atomic<bool> requested = false;
+    return requested;
+}
+
+//===================================================================================
+//===================================================================================
 // Stores the latest shared link-progress state used by the top overlay.
 void setLinkState(LinkState state)
 {
@@ -245,7 +263,42 @@ void clearApfpvCameraRuntimeState()
     preferred_camera_id = s_groundstation_config.apfpvPreferredCameraId;
     apfpvActiveCameraIdStorage() = 0;
     apfpvDiscoveredCamerasStorage().clear();
+    apfpvWifiScanPermissionErrorStorage() = false;
     LOGI("clearApfpvCameraRuntimeState preferred={}", formatApfpvCameraId(preferred_camera_id));
+}
+
+//===================================================================================
+//===================================================================================
+// Stores whether APFPV Wi-Fi scanning is currently blocked by missing Android permissions.
+void setApfpvWifiScanPermissionError(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(apfpvCameraStateMutex());
+    apfpvWifiScanPermissionErrorStorage() = enabled;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether APFPV Wi-Fi scanning is currently blocked by missing Android permissions.
+bool getApfpvWifiScanPermissionError()
+{
+    std::lock_guard<std::mutex> lock(apfpvCameraStateMutex());
+    return apfpvWifiScanPermissionErrorStorage();
+}
+
+//===================================================================================
+//===================================================================================
+// Queues an explicit APFPV Wi-Fi scan permission prompt request from menu action.
+void requestApfpvWifiScanPermissionPrompt()
+{
+    apfpvWifiScanPermissionPromptRequestStorage().store(true, std::memory_order_release);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns and clears one queued APFPV Wi-Fi scan permission prompt request.
+bool consumeApfpvWifiScanPermissionPromptRequest()
+{
+    return apfpvWifiScanPermissionPromptRequestStorage().exchange(false, std::memory_order_acq_rel);
 }
 
 //===================================================================================
@@ -261,6 +314,7 @@ ApfpvCameraStateSnapshot copyApfpvCameraState()
     ApfpvCameraStateSnapshot snapshot = {};
     snapshot.preferred_camera_id = preferred_camera_id;
     snapshot.active_camera_id = active_camera_id;
+    snapshot.wifi_scan_permission_error = apfpvWifiScanPermissionErrorStorage();
 
     for (const auto& [device_id, ssid] : discovered_cameras)
     {

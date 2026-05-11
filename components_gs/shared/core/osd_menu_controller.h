@@ -104,6 +104,7 @@ private:
     void drawMenuTitle( const char* caption );
     bool drawMenuItem( const char* caption, int itemIndex, bool clip = false);
     void drawStatus( const char* caption );
+    void drawStatusError( const char* caption );
     void drawSpacing();
     void drawLargeGapIfTallScreen();
     std::string formatAirStorageStatusLine(bool detected,

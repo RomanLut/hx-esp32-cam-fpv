@@ -139,6 +139,8 @@ object NativeCore {
     external fun setPreferredApfpvCameraId(handle: Long, deviceId: Int)
     external fun isApfpvMenuSearchActive(handle: Long): Boolean
     external fun consumeApfpvReconnectRequest(handle: Long): Boolean
+    external fun consumeApfpvWifiScanPermissionPromptRequest(handle: Long): Boolean
+    external fun setApfpvWifiScanPermissionError(handle: Long, enabled: Boolean)
     external fun hasSeenApfpvUdpPackets(handle: Long): Boolean
     external fun syncApfpvCameraState(handle: Long, discoveredSsids: Array<String>, activeSsid: String?, gsRssiDbm: Int, connectingSsid: String?)
     external fun startUdpClient(

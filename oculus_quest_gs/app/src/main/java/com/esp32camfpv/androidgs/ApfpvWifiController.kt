@@ -2,6 +2,8 @@ package com.esp32camfpv.androidgs
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -10,9 +12,12 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +58,8 @@ class ApfpvWifiController(
     private var syncJob: Job? = null
     private var requestedSsid: String? = null
     private var requestedNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastScanRequestElapsedMs: Long = 0L
+    private var lastPermissionPromptElapsedMs: Long = 0L
     private var boundNetwork: Network? = null
     private var permissionRequestInFlight = false
     private var lastAirApfpvModeEnabled: Boolean? = null
@@ -110,15 +117,21 @@ class ApfpvWifiController(
             // Android scanResults is a platform cache. Clear the published camera list first so
             // the menu does not keep stale APFPV SSIDs after the air unit switches mode.
             syncCameraState(emptyList(), null)
-            wifiManager.startScan()
+            requestWifiScan("apfpvModeChanged", force = true)
         }
 
         acquireWifiStreamingLock()
 
+        val explicitPromptRequested = withContext(Dispatchers.Default) {
+            NativeCore.consumeApfpvWifiScanPermissionPromptRequest(handle)
+        }
+
         if (!hasRequiredPermissions()) {
-            requestRequiredPermissions()
+            syncScanPermissionError(handle, true)
+            requestRequiredPermissions(force = explicitPromptRequested)
             return
         }
+        syncScanPermissionError(handle, false)
 
         val currentSsid = currentConnectedCameraSsid()
         val cameraNetworks = withContext(Dispatchers.Default) {
@@ -153,7 +166,7 @@ class ApfpvWifiController(
                 val currentCameraId = parseCameraId(currentSsid)
                 if (preferredCameraId != 0 && currentCameraId != preferredCameraId) {
                     disconnectFromCurrentCamera(handle)
-                    wifiManager.startScan()
+                    requestWifiScan("preferredMismatch")
                     return
                 }
             }
@@ -168,7 +181,7 @@ class ApfpvWifiController(
         }
 
         if (preferredCameraId != 0 || reconnectRequested) {
-            wifiManager.startScan()
+            requestWifiScan("preferredOrReconnect")
             return
         }
 
@@ -176,7 +189,16 @@ class ApfpvWifiController(
     }
 
     private fun findCameraNetworks(): List<CameraNetwork> {
-        val scanResults = wifiManager.scanResults ?: return emptyList()
+        val scanResults = try {
+            wifiManager.scanResults
+        } catch (securityException: SecurityException) {
+            Log.w(LOG_TAG, "Wi-Fi scan permission error while reading scan results", securityException)
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
+            return emptyList()
+        } ?: return emptyList()
         val bestResults = scanResults
             .asSequence()
             .filter { !it.SSID.isNullOrBlank() }
@@ -205,7 +227,7 @@ class ApfpvWifiController(
         if (currentSsid != null) {
             disconnectFromCurrentCamera(handle)
             syncCameraState(cameraNetworks, null)
-            wifiManager.startScan()
+            requestWifiScan("menuSearchDisconnect")
             return
         }
 
@@ -223,7 +245,7 @@ class ApfpvWifiController(
             return
         }
 
-        wifiManager.startScan()
+        requestWifiScan("menuSearchNoTargets")
     }
 
     private suspend fun disconnectFromCurrentCamera(handle: Long) {
@@ -382,7 +404,55 @@ class ApfpvWifiController(
         }
     }
 
-    private fun requestRequiredPermissions() {
+    private fun syncScanPermissionError(handle: Long, enabled: Boolean) {
+        activity.lifecycleScope.launch(Dispatchers.Default) {
+            NativeCore.setApfpvWifiScanPermissionError(handle, enabled)
+        }
+    }
+
+    private fun requestWifiScan(reason: String, force: Boolean = false): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastScanRequestElapsedMs != 0L &&
+            (now - lastScanRequestElapsedMs) < SCAN_REQUEST_MIN_INTERVAL_MS) {
+            return false
+        }
+
+        if (!hasRequiredPermissions()) {
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
+            return false
+        }
+
+        return try {
+            val started = wifiManager.startScan()
+            lastScanRequestElapsedMs = now
+            if (!started) {
+                Log.w(LOG_TAG, "Wi-Fi scan request rejected by framework, reason=$reason")
+            }
+            started
+        } catch (securityException: SecurityException) {
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
+            Log.w(LOG_TAG, "Wi-Fi scan permission error, reason=$reason", securityException)
+            false
+        }
+    }
+
+    private fun requestRequiredPermissions(force: Boolean = false) {
+        if (!force) {
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (lastPermissionPromptElapsedMs != 0L &&
+            (now - lastPermissionPromptElapsedMs) < PERMISSION_PROMPT_MIN_INTERVAL_MS) {
+            return
+        }
+
         if (permissionRequestInFlight) {
             return
         }
@@ -394,7 +464,33 @@ class ApfpvWifiController(
                 add(Manifest.permission.NEARBY_WIFI_DEVICES)
             }
         }
+        lastPermissionPromptElapsedMs = now
+        Log.i(LOG_TAG, "Requesting Wi-Fi scan permissions due to explicit APFPV search action")
+        if (requiresManualPermissionGrant(permissions)) {
+            Log.w(LOG_TAG, "Permissions appear permanently denied; opening app settings")
+            openAppPermissionSettings()
+        }
         permissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    private fun requiresManualPermissionGrant(permissions: List<String>): Boolean {
+        return permissions.any { permission ->
+            ContextCompat.checkSelfPermission(activity, permission) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        }
+    }
+
+    private fun openAppPermissionSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", activity.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            activity.startActivity(intent)
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "Failed to open app settings: ${t.message}")
+        }
     }
 
     private fun syncCameraState(networks: List<CameraNetwork>, activeSsid: String?) {
@@ -441,6 +537,8 @@ class ApfpvWifiController(
         const val LOG_TAG = "ApfpvWifiController"
         const val CAMERA_SSID_PREFIX = "esp32cam-fpv-"
         const val SCAN_INTERVAL_MS = 3_000L
+        const val SCAN_REQUEST_MIN_INTERVAL_MS = 30_000L
+        const val PERMISSION_PROMPT_MIN_INTERVAL_MS = 30_000L
     }
 
     private fun getWifiStreamingLockMode(): Int {

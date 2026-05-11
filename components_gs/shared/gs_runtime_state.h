@@ -66,6 +66,7 @@ struct ApfpvCameraStateSnapshot
     uint16_t preferred_camera_id = 0;
     uint16_t active_camera_id = 0;
     std::vector<ApfpvCameraDescriptor> discovered_cameras;
+    bool wifi_scan_permission_error = false;
 };
 
 void syncAirStatusGlobals();
@@ -82,4 +83,8 @@ uint16_t getApfpvPreferredCameraId();
 void setApfpvActiveCamera(const std::string& ssid);
 void clearApfpvActiveCamera();
 void clearApfpvCameraRuntimeState();
+void setApfpvWifiScanPermissionError(bool enabled);
+bool getApfpvWifiScanPermissionError();
+void requestApfpvWifiScanPermissionPrompt();
+bool consumeApfpvWifiScanPermissionPromptRequest();
 ApfpvCameraStateSnapshot copyApfpvCameraState();

@@ -582,6 +582,18 @@ void OSDMenuController::drawStatus( const char* caption )
 
 //===================================================================================
 //===================================================================================
+// Draws a red error status text line in the menu.
+void OSDMenuController::drawStatusError( const char* caption )
+{
+    gs::menu::imgui::drawMenuStatusError(caption, m_imgui_layout);
+    if (m_draw_mode == DrawMode::Interactive)
+    {
+        appendCapturedLine("    " + sanitizeCapturedCaption(caption));
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Draws a small vertical gap between menu items.
 void OSDMenuController::drawSpacing()
 {
@@ -3033,12 +3045,22 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 
         if (this->drawMenuItem("Search...##apfpv_search", item_index))
         {
+            if (apfpv_camera_state.wifi_scan_permission_error)
+            {
+                requestApfpvWifiScanPermissionPrompt();
+                return;
+            }
             this->searchDone = false;
             beginSelectedTransportSearchOrConnect(config, this->search_tp);
             this->goForward(OSDMenuId::SearchRun, 0);
             return;
         }
         item_index++;
+
+        if (apfpv_camera_state.wifi_scan_permission_error)
+        {
+            this->drawStatusError("No Permissions for Wifi scanning##apfpv_perm_err");
+        }
 
         if (apfpv_camera_state.active_camera_id != 0)
         {
@@ -3175,6 +3197,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
     drawSpacing();
 
     bool bExit = false;
+    bool apfpv_permission_error = false;
 
     char buf[512];
     if (uses_channel_search)
@@ -3184,6 +3207,11 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
     else if (is_apfpv)
     {
         const ApfpvCameraStateSnapshot apfpv_camera_state = copyApfpvCameraState();
+        if (apfpv_camera_state.wifi_scan_permission_error)
+        {
+            this->drawStatusError("No Permissions for Wifi scanning##apfpv_perm_err_run");
+            apfpv_permission_error = true;
+        }
         if (apfpv_camera_state.discovered_cameras.size() >= 2)
         {
             sprintf(buf, "Found %d APFPV cameras.", static_cast<int>(apfpv_camera_state.discovered_cameras.size()));
@@ -3222,7 +3250,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
     }
     else if (is_apfpv)
     {
-        bExit = this->searchDone;
+        bExit = this->searchDone || apfpv_permission_error;
     }
     else if (isSelectedTransportConnected())
     {
