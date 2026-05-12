@@ -61,6 +61,7 @@ private:
     };
 
     DrawMode m_draw_mode = DrawMode::Interactive;
+    bool m_close_menu_requested = false;
 
     OSDMenuId menuId = OSDMenuId::Main;
     int selectedItem = 0;

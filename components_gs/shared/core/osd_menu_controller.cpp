@@ -281,6 +281,7 @@ std::string OSDMenuController::formatGroundStorageStatusLine(const GroundStorage
 OSDMenuController::OSDMenuController()
 {
     this->visible = false;
+    this->m_close_menu_requested = false;
     resetCapturedMenuBuffer();
 }
 
@@ -441,6 +442,7 @@ const char* OSDMenuController::getVisibleScreenAspectLabel(ScreenAspectRatio rat
 void OSDMenuController::open()
 {
     this->visible = true;
+    this->m_close_menu_requested = false;
     this->menuId = OSDMenuId::Main;
     this->selectedItem = 0;
     this->backMenuIds.clear();
@@ -453,6 +455,7 @@ void OSDMenuController::open()
 void OSDMenuController::openPlaybackMenu()
 {
     this->visible = true;
+    this->m_close_menu_requested = false;
     this->menuId = OSDMenuId::Playback;
     this->backMenuIds.clear();
     this->backMenuItems.clear();
@@ -466,6 +469,7 @@ void OSDMenuController::openPlaybackMenu()
 void OSDMenuController::close()
 {
     this->visible = false;
+    this->m_close_menu_requested = false;
     this->m_lens_correction_draft_active = false;
     resetCapturedMenuBuffer();
 }
@@ -1282,6 +1286,7 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 //===================================================================================
 //===================================================================================
 // Returns true if the user pressed a back/exit key during an interactive frame.
+// E requests a full menu close regardless of current submenu depth.
 bool OSDMenuController::exitKeyPressed()
 {
     if (m_draw_mode != DrawMode::Interactive)
@@ -1289,7 +1294,14 @@ bool OSDMenuController::exitKeyPressed()
         return false;
     }
 
-    return ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
+    const bool close_menu_now = ImGui::IsKeyPressed(ImGuiKey_E, false);
+    if (close_menu_now)
+    {
+        this->m_close_menu_requested = true;
+    }
+
+    return close_menu_now ||
+           ImGui::IsKeyPressed(ImGuiKey_LeftArrow) ||
            ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, false) ||
            ImGui::IsKeyPressed(ImGuiKey_R) ||
            ImGui::IsKeyPressed(ImGuiKey_G) ||
@@ -3484,8 +3496,16 @@ void OSDMenuController::goForward(OSDMenuId newMenuId, int newItem)
 //===================================================================================
 //===================================================================================
 // Navigates back to the previous menu page, or closes when no parent remains.
+// Pending full-close requests (E key) close immediately from any menu level.
 void OSDMenuController::goBack()
 {
+    if (this->m_close_menu_requested)
+    {
+        this->m_close_menu_requested = false;
+        this->close();
+        return;
+    }
+
     if ( this->backMenuIds.size() > 0 )
     {
         this->menuId = this->backMenuIds.back();
