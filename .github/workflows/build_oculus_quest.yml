@@ -63,6 +63,13 @@ jobs:
           name: opencv-wrapper-android-arm64-v8a
           path: OpenCV/OpenCVWrapper/Prebuilt/android/arm64-v8a/
 
+      - name: Get version name
+        id: version
+        run: |
+          fw=$(grep '#define FW_VERSION' components/common/packets.h | sed 's/.*"\(.*\)".*/\1/')
+          pkt=$(grep -oP '(?<=#define PACKET_VERSION\s)\d+' components/common/fec.h)
+          echo "version=$fw.$pkt" >> $GITHUB_OUTPUT
+
       - name: Build debug APK
         run: |
           cd oculus_quest_gs
@@ -73,10 +80,10 @@ jobs:
       - name: Rename APK
         run: |
           mv oculus_quest_gs/app/build/outputs/apk/debug/app-debug.apk \
-             oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-0.5.3.apk
+             oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-${{ steps.version.outputs.version }}.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: hx-esp32-cam-fpv-oculus-0.5.3
-          path: oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-0.5.3.apk
+          name: hx-esp32-cam-fpv-oculus-${{ steps.version.outputs.version }}
+          path: oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-${{ steps.version.outputs.version }}.apk
