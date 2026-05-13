@@ -164,6 +164,8 @@ static std::thread polling_thread;
 static int npins = 0;
 static int pins[MAX_PINS];
 
+void emit_event(int uinput_fd, int type, int code, int val);
+
 /*======================================================================
   dbglog
   Write debug logging to stderr, if debug==TRUE
@@ -334,12 +336,46 @@ static int open_uinput(void)
   }
 }
 
-/*======================================================================
-  close_uinput
-======================================================================*/
+//===================================================================================
+//===================================================================================
+// Releases every key used by the current GPIO mapping before the uinput device stops.
+static void release_mapped_keys(int uinput_fd)
+{
+  if (uinput_fd < 0)
+  {
+    return;
+  }
+
+  auto release_sequence = [uinput_fd](unsigned int *keystrokes)
+  {
+    if (keystrokes == NULL)
+    {
+      return;
+    }
+
+    while (*keystrokes)
+    {
+      const unsigned int key_code = *keystrokes & 0xFF;
+      emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+      keystrokes++;
+    }
+  };
+
+  for (int p = 0; mappings[p].pin != 0; p++)
+  {
+    release_sequence(mappings[p].keys_single);
+    release_sequence(mappings[p].keys_double);
+  }
+  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+}
+
+//===================================================================================
+//===================================================================================
+// Destroys the uinput device after releasing any mapped keys still held by the kernel.
 static void close_uinput(int fd)
 {
-  // Easy -- nothing else to do in this current implementation
+  release_mapped_keys(fd);
+  ioctl(fd, UI_DEV_DESTROY);
   close(fd);
 }
 
@@ -414,11 +450,9 @@ static void emit_sequence(int uinput_fd, unsigned int *keys)
   }
 }
 
-/*======================================================================
-  button_pressed
-  Emit the key sequence for this pin.
-  long_press=false emits keys_single, long_press=true emits keys_double.
-======================================================================*/
+//===================================================================================
+//===================================================================================
+// Emits the mapped short-press or long-press key sequence for a GPIO pin.
 static void button_pressed(int uinput_fd, int pin, bool long_press)
 {
   const Mapping *m = get_mapping(pin);
@@ -449,19 +483,6 @@ void polling_thread_func()
   int press_start_msec[MAX_PINS] = {0};
   bool pressed[MAX_PINS] = {false};
   bool key_down_sent[MAX_PINS] = {false};
-  bool wait_release_after_restart[MAX_PINS] = {false};
-
-  // If GPIO polling restarts while a key is physically held (for example after
-  // changing key layout from the menu), do not synthesize a new press until
-  // that key is released once. This prevents stuck "activate" behavior.
-  for (int i = 0; i < npins; i++)
-  {
-    const int state = get_pin_state(pins[i]);
-    if (state == pressed_state)
-    {
-      wait_release_after_restart[i] = true;
-    }
-  }
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
@@ -527,22 +548,11 @@ void polling_thread_func()
               // short press -> keys_single, long press -> keys_double.
               if (state == pressed_state)
               {
-                if (wait_release_after_restart[i])
-                {
-                  continue;
-                }
                 pressed[i] = true;
                 press_start_msec[i] = now_msec;
               }
               else if (state == released_state)
               {
-                if (wait_release_after_restart[i])
-                {
-                  wait_release_after_restart[i] = false;
-                  pressed[i] = false;
-                  press_start_msec[i] = 0;
-                  continue;
-                }
                 if (pressed[i])
                 {
                   int held_msec = now_msec - press_start_msec[i];
@@ -559,10 +569,6 @@ void polling_thread_func()
               // send keydown once on press and keyup once on release.
               if (state == pressed_state)
               {
-                if (wait_release_after_restart[i])
-                {
-                  continue;
-                }
                 if (!key_down_sent[i])
                 {
                   const unsigned int key_code = m->keys_single[0] & 0xFF;
@@ -573,12 +579,6 @@ void polling_thread_func()
               }
               else if (state == released_state)
               {
-                if (wait_release_after_restart[i])
-                {
-                  wait_release_after_restart[i] = false;
-                  key_down_sent[i] = false;
-                  continue;
-                }
                 if (key_down_sent[i])
                 {
                   const unsigned int key_code = m->keys_single[0] & 0xFF;
