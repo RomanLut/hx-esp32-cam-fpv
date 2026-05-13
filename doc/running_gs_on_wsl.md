@@ -47,10 +47,20 @@ sudo apt install --no-install-recommends -y \
   libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev \
   libturbojpeg0-dev libts-dev libfreetype-dev \
   libasound2-dev libudev-dev libdbus-1-dev libxext-dev \
-  libsdl2-dev aircrack-ng dkms
+  libsdl2-dev aircrack-ng dkms cmake
 ```
 
-## 4. Build Ground Station
+## 4. Build OpenCV wrapper and Ground Station
+
+Build OpenCV wrapper first, then build Ground Station.
+
+From Windows PowerShell:
+
+```powershell
+OpenCV\OpenCVWrapper\rebuild_wsl.bat
+```
+
+The script runs `OpenCV/OpenCVWrapper/scripts/build_linux.sh` inside WSL Ubuntu and refreshes Linux prebuilt wrapper artifacts used by `gs`.
 
 If repository is already cloned on Windows drive `D:`, build directly from WSL:
 

@@ -28,7 +28,7 @@ UPDATE: Armiban Ubuntu minimum 22.04 image is not available at Armbian site anym
   
 * Install required packages: 
 
-  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng```
+  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
 * Install rtl8812au driver:
 
@@ -44,7 +44,7 @@ UPDATE: Armiban Ubuntu minimum 22.04 image is not available at Armbian site anym
  
   ```cd ~```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv```
   
 * Adding GPIO keys support:
  
@@ -55,6 +55,8 @@ UPDATE: Armiban Ubuntu minimum 22.04 image is not available at Armbian site anym
   ```cd ~```
 
   ```cd esp32-cam-fpv```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd gs```
 

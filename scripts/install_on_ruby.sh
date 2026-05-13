@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
 # Function to determine the number of make jobs based on free memory
 get_make_jobs() {
     local threshold="$1"
@@ -37,7 +40,7 @@ echo "HOME_DIRECTORY=$HOME_DIRECTORY"
 
 sudo apt update
 
-sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng
+sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake
 
 if [ "$IS_RADXA" = true ]; then
     echo "Skipping SDL recompilation for Radxa."
@@ -59,13 +62,15 @@ else
 fi
 
 cd "$HOME_DIRECTORY"
-git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv
+git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv
 cd esp32-cam-fpv
-cd gs
 
 MAKE_JOBS=$(get_make_jobs 512 1 4)
 echo "MAKE_JOBS=$MAKE_JOBS"
 
+BUILD_JOBS="$MAKE_JOBS" bash OpenCV/OpenCVWrapper/scripts/build_linux.sh
+
+cd gs
 make -j"$MAKE_JOBS"
 
 PROFILE_FILE="/root/.profile"

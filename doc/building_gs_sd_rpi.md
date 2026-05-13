@@ -88,7 +88,7 @@ Save and reboot.
  
   ```cd /home/pi/```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv```
   
 * Adding GPIO keys support:
  
@@ -178,7 +178,7 @@ Save and reboot.
 
 * Install required packages: 
 
-  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng```
+  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev raspberrypi-kernel-headers dkms git aircrack-ng cmake```
 
 * Install and compile SDL library.
  
@@ -233,6 +233,8 @@ Save and reboot.
   ```cd /home/pi/```
 
   ```cd esp32-cam-fpv```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd gs```
 

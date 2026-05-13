@@ -449,6 +449,19 @@ void polling_thread_func()
   int press_start_msec[MAX_PINS] = {0};
   bool pressed[MAX_PINS] = {false};
   bool key_down_sent[MAX_PINS] = {false};
+  bool wait_release_after_restart[MAX_PINS] = {false};
+
+  // If GPIO polling restarts while a key is physically held (for example after
+  // changing key layout from the menu), do not synthesize a new press until
+  // that key is released once. This prevents stuck "activate" behavior.
+  for (int i = 0; i < npins; i++)
+  {
+    const int state = get_pin_state(pins[i]);
+    if (state == pressed_state)
+    {
+      wait_release_after_restart[i] = true;
+    }
+  }
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
@@ -514,11 +527,22 @@ void polling_thread_func()
               // short press -> keys_single, long press -> keys_double.
               if (state == pressed_state)
               {
+                if (wait_release_after_restart[i])
+                {
+                  continue;
+                }
                 pressed[i] = true;
                 press_start_msec[i] = now_msec;
               }
               else if (state == released_state)
               {
+                if (wait_release_after_restart[i])
+                {
+                  wait_release_after_restart[i] = false;
+                  pressed[i] = false;
+                  press_start_msec[i] = 0;
+                  continue;
+                }
                 if (pressed[i])
                 {
                   int held_msec = now_msec - press_start_msec[i];
@@ -535,6 +559,10 @@ void polling_thread_func()
               // send keydown once on press and keyup once on release.
               if (state == pressed_state)
               {
+                if (wait_release_after_restart[i])
+                {
+                  continue;
+                }
                 if (!key_down_sent[i])
                 {
                   const unsigned int key_code = m->keys_single[0] & 0xFF;
@@ -545,6 +573,12 @@ void polling_thread_func()
               }
               else if (state == released_state)
               {
+                if (wait_release_after_restart[i])
+                {
+                  wait_release_after_restart[i] = false;
+                  key_down_sent[i] = false;
+                  continue;
+                }
                 if (key_down_sent[i])
                 {
                   const unsigned int key_code = m->keys_single[0] & 0xFF;

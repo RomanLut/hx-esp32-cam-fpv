@@ -18,11 +18,13 @@ Internal wifi card may work or may not. Intel 6300 AGN card does not work for me
  
   ```cd ~```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
 
   ```cd esp32-cam-fpv```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd gs```
 
