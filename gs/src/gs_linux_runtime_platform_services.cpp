@@ -5,6 +5,7 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 
+#include "imgui.h"
 #include "cpu_temp.h"
 #include "gpio_buttons.h"
 #include "gs_recordings_storage.h"
@@ -19,6 +20,30 @@ namespace
 //===================================================================================
 // Owns the Linux runtime platform services instance for explicit shared binding.
 LinuxRuntimePlatformServices s_linux_runtime_platform_services;
+
+//===================================================================================
+//===================================================================================
+// Clears Linux GPIO menu key state after uinput is recreated.
+void releaseLinuxGPIOMenuKeys()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    const ImGuiKey keys[] =
+    {
+        ImGuiKey_Enter,
+        ImGuiKey_KeypadEnter,
+        ImGuiKey_LeftArrow,
+        ImGuiKey_RightArrow,
+        ImGuiKey_UpArrow,
+        ImGuiKey_DownArrow,
+        ImGuiKey_R,
+        ImGuiKey_G
+    };
+
+    for (ImGuiKey key : keys)
+    {
+        io.AddKeyEvent(key, false);
+    }
+}
 
 } // namespace
 
@@ -111,6 +136,9 @@ void LinuxRuntimePlatformServices::restartGPIOButtons()
 {
     gpio_buttons_stop();
     gpio_buttons_start();
+    // SDL does not always deliver key-up events from a uinput device that was
+    // destroyed while a GPIO key was held, so clear the menu keys explicitly.
+    releaseLinuxGPIOMenuKeys();
 }
 
 //===================================================================================
