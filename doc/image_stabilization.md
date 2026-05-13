@@ -23,3 +23,4 @@ The resulting offset is applied as an affine transform when the frame is rendere
 ## Notes
 
 - Stabilization is most reliable when the center of the image contains stable scene detail.
+- It it still in beta-state. More tuning is required.
