@@ -28,6 +28,7 @@ struct TopOverlayData
     float throughput_mbps = 0.0f;
     int video_fps = 0;
     bool video_fps_alert = false;
+    bool image_stabilization_enabled = false;
     bool no_ping = false;
     std::string transport_message;
     bool interference = false;

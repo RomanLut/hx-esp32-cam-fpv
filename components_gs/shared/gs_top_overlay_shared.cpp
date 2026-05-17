@@ -159,6 +159,7 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
 
     std::snprintf(buf, sizeof(buf), "%02d", input.video_fps);
     chips.push_back({buf, input.video_fps_alert, 45.0f});
+    if (input.image_stabilization_enabled) chips.push_back({"STAB", false, 65.0f});
 
     if (input.battery_percent >= 0)
     {
