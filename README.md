@@ -374,7 +374,7 @@ Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, t
 
 Currently only single adapter is supported.
 
-VR mode allows using the Android GS application with VR headsets.
+[VR mode](#vr-mode) allows using the Android GS application with VR headsets.
 
 **USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
 
@@ -724,6 +724,18 @@ Tested on inav microplane:
 ![alt text](doc/images/dart68.jpg "dart68")
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
+
+## VR Mode
+
+VR mode allows using the Android, Radxa or RPI GS with phone-based VR goggles or other headset viewers that expect a side-by-side image. It renders the same FPV video and OSD/menu UI into the left and right halves of the screen.
+
+![alt text](doc/images/vr_mode.jpg  "vr_mode.jpg")
+
+VR mode is configured from the OSD menu:
+
+- ```Menu -> GS Screen -> VR Mode -> VR Mode``` enables or disables side-by-side rendering. 
+- ```Menu -> GS Screen -> VR Mode -> Stereo Separation``` adjust horisontal images positions.
+
 
 ## Wifi channels scanning
 
