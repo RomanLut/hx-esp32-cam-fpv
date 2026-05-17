@@ -134,6 +134,9 @@ $rsyncExcludesByPath = @{
         "--exclude=gs"
         "--exclude=gs.ini"
         "--exclude=imgui.ini"
+        "--exclude=*.avi"
+        "--exclude=*.mjpeg"
+        "--exclude=recordings/"
     )
 }
 

@@ -66,6 +66,9 @@ try {
         --exclude=gs/build `
         --exclude=gs/.vscode `
         --exclude=gs/gs `
+        --exclude=gs/*.avi `
+        --exclude=gs/*.mjpeg `
+        --exclude=gs/recordings `
         @syncPaths
 }
 finally {
@@ -78,7 +81,16 @@ if (-not (Test-Path $localArchivePath)) {
 
 try {
     & $pscp -scp -batch -pw $Password $localArchivePath "${User}@${RemoteHost}:${remoteArchivePath}"
-    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "mkdir -p $RemoteProjectDir && find $RemoteProjectDir -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && cd $RemoteProjectDir && tar -xf $remoteArchivePath && rm -f $remoteArchivePath && $normalizeShellArtifacts"
+    $remotePreserveDir = "/tmp/esp32-cam-fpv-recordings-preserve"
+    $remoteSyncCommand = "rm -rf '$remotePreserveDir' && mkdir -p '$remotePreserveDir/files' && " +
+                         "if [ -d '$RemoteProjectDir/gs' ]; then find '$RemoteProjectDir/gs' -maxdepth 1 -type f \( -name '*.avi' -o -name '*.mjpeg' \) -exec mv -t '$remotePreserveDir/files' {} +; fi && " +
+                         "if [ -d '$RemoteProjectDir/gs/recordings' ]; then mv '$RemoteProjectDir/gs/recordings' '$remotePreserveDir/recordings'; fi && " +
+                         "mkdir -p '$RemoteProjectDir' && find '$RemoteProjectDir' -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && " +
+                         "cd '$RemoteProjectDir' && tar -xf '$remoteArchivePath' && rm -f '$remoteArchivePath' && mkdir -p '$RemoteProjectDir/gs' && " +
+                         "if [ -d '$remotePreserveDir/files' ]; then find '$remotePreserveDir/files' -maxdepth 1 -type f -exec mv -t '$RemoteProjectDir/gs' {} +; fi && " +
+                         "if [ -d '$remotePreserveDir/recordings' ]; then mv '$remotePreserveDir/recordings' '$RemoteProjectDir/gs/recordings'; fi && " +
+                         "rm -rf '$remotePreserveDir' && $normalizeShellArtifacts"
+    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $remoteSyncCommand
 }
 finally {
     if (Test-Path $localArchivePath) {

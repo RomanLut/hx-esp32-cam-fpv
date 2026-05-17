@@ -44,7 +44,7 @@ struct ImageStabilizationState
     bool enabled = false;
     bool debug = false;
     uint8_t rc_channel = 0;
-    float roi_divisor = 4.0f;
+    float roi_divisor = 6.0f;
     float zoom = 1.15f;
     float stabilization_decay = 0.05f;
     float limit_release_boost = 0.5f;

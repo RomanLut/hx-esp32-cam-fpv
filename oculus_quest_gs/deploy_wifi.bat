@@ -26,6 +26,8 @@ if errorlevel 1 exit /b 1
 
 timeout /t 1 /nobreak >nul
 
+rem Reinstall only the APK. Do not clear app data, uninstall, or delete external
+rem storage files here; Quest GS recordings are user data and must survive deploys.
 "%ADB%" -s %TARGET% install --user 0 -r "app\build\outputs\apk\debug\app-debug.apk"
 if errorlevel 1 exit /b 1
 
