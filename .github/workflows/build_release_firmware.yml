@@ -1,10 +1,14 @@
-name: Build Release Firmware
+name: Prepare Releass Draft
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  firmware:
+    name: Build Firmware (${{ matrix.project }}${{ matrix.artifact_suffix }})
     runs-on: ubuntu-latest
 
     strategy:
@@ -36,72 +40,222 @@ jobs:
             build_flags: "-DAPFPV_FIRMWARE"
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Install required Python dependencies
-      run: |
-        python -m pip install --upgrade pip setuptools
+      - name: Install required Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools
 
-    - name: Install PlatformIO latest
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install platformio
+      - name: Install PlatformIO latest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install platformio
 
-    - name: Verify toolchain versions
-      run: |
-        python --version
-        python -m platformio --version
+      - name: Verify toolchain versions
+        run: |
+          python --version
+          python -m platformio --version
 
-    - name: Build firmware
-      env:
-        PLATFORMIO_BUILD_FLAGS: ${{ matrix.build_flags }}
-      run: |
-        python -m platformio run -d ${{ matrix.project }}
+      - name: Build firmware
+        env:
+          PLATFORMIO_BUILD_FLAGS: ${{ matrix.build_flags }}
+        run: |
+          python -m platformio run -d ${{ matrix.project }}
 
-    - name: Create output directory
-      run: mkdir -p release_zips
+      - name: Zip firmware files
+        run: |
+          mkdir -p release_zips
+          build_dir="$(find "${{ matrix.project }}/.pio/build" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          files=(
+            "$build_dir/bootloader.bin"
+            "$build_dir/firmware.bin"
+            "$build_dir/flash_args"
+            "$build_dir/partitions.bin"
+          )
+          if [ -f "$build_dir/ota_data_initial.bin" ]; then
+            files+=("$build_dir/ota_data_initial.bin")
+          fi
+          zip -j "release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip" "${files[@]}"
 
-    - name: Zip firmware files
-      run: |
-        out="release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip"
-        zip -j "$out" \
-          ${{ matrix.project }}/.pio/build/**/bootloader.bin \
-          ${{ matrix.project }}/.pio/build/**/firmware.bin \
-          ${{ matrix.project }}/.pio/build/**/flash_args \
-          ${{ matrix.project }}/.pio/build/**/partitions.bin \
-          ${{ matrix.project }}/.pio/build/**/ota_data_initial.bin || true
+      - name: Upload firmware zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
+          path: release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
+          if-no-files-found: error
 
-    - name: Upload zip as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
-        path: release_zips/${{ matrix.project }}${{ matrix.artifact_suffix }}.zip
-
-  release:
-    needs: build
+  build-opencv-wrapper:
+    name: Build OpenCV Wrapper (Android arm64-v8a)
     runs-on: ubuntu-latest
 
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - name: Create release tag
-      id: tag
-      run: echo "tag=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+      - name: Fetch pinned OpenCV tag
+        run: git -C OpenCV/OpenCV fetch --force --depth=1 origin refs/tags/4.13.0:refs/tags/4.13.0
 
-    - name: Create GitHub draft release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ env.tag }}
-        name: Firmware Release ${{ env.tag }}
-        draft: true
-        files: |
-          **/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Install Android build tools
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+
+      - name: Build OpenCV Wrapper
+        env:
+          ANDROID_ABI: arm64-v8a
+          ANDROID_MIN_SDK: "23"
+        run: bash OpenCV/OpenCVWrapper/scripts/build_android.sh
+
+      - name: Upload prebuilt
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv-wrapper-android-arm64-v8a
+          path: OpenCV/OpenCVWrapper/Prebuilt/android/arm64-v8a/
+          if-no-files-found: error
+
+  android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: build-opencv-wrapper
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Download OpenCV Wrapper prebuilt
+        uses: actions/download-artifact@v4
+        with:
+          name: opencv-wrapper-android-arm64-v8a
+          path: OpenCV/OpenCVWrapper/Prebuilt/android/arm64-v8a/
+
+      - name: Get version name
+        id: version
+        run: |
+          fw=$(grep '#define FW_VERSION' components/common/packets.h | sed 's/.*"\(.*\)".*/\1/')
+          pkt=$(grep -oP '(?<=#define PACKET_VERSION\s)\d+' components/common/fec.h)
+          echo "version=$fw.$pkt" >> $GITHUB_OUTPUT
+
+      - name: Build debug APK
+        run: |
+          cd android_gs
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          mv android_gs/app/build/outputs/apk/debug/app-debug.apk \
+             android_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-${{ steps.version.outputs.version }}.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-gs-apk
+          path: android_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-${{ steps.version.outputs.version }}.apk
+          if-no-files-found: error
+
+  oculus-quest-apk:
+    name: Build Oculus Quest APK
+    runs-on: ubuntu-latest
+    needs: build-opencv-wrapper
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Download OpenCV Wrapper prebuilt
+        uses: actions/download-artifact@v4
+        with:
+          name: opencv-wrapper-android-arm64-v8a
+          path: OpenCV/OpenCVWrapper/Prebuilt/android/arm64-v8a/
+
+      - name: Get version name
+        id: version
+        run: |
+          fw=$(grep '#define FW_VERSION' components/common/packets.h | sed 's/.*"\(.*\)".*/\1/')
+          pkt=$(grep -oP '(?<=#define PACKET_VERSION\s)\d+' components/common/fec.h)
+          echo "version=$fw.$pkt" >> $GITHUB_OUTPUT
+
+      - name: Build debug APK
+        run: |
+          cd oculus_quest_gs
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        run: |
+          mv oculus_quest_gs/app/build/outputs/apk/debug/app-debug.apk \
+             oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-${{ steps.version.outputs.version }}.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: oculus-quest-gs-apk
+          path: oculus_quest_gs/app/build/outputs/apk/debug/hx-esp32-cam-fpv-oculus-${{ steps.version.outputs.version }}.apk
+          if-no-files-found: error
+
+  release:
+    name: Create Draft Release
+    needs:
+      - firmware
+      - android-apk
+      - oculus-quest-apk
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download firmware zip artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_payload
+          pattern: "*.zip"
+          merge-multiple: true
+
+      - name: Download Android APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-gs-apk
+          path: release_payload
+
+      - name: Download Oculus Quest APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: oculus-quest-gs-apk
+          path: release_payload
+
+      - name: Create release tag
+        run: echo "tag=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+
+      - name: Create GitHub draft release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.tag }}
+          name: Release ${{ env.tag }}
+          draft: true
+          files: release_payload/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
