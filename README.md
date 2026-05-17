@@ -376,6 +376,9 @@ Currently only single adapter is supported.
 
 VR mode allows using the Android GS application with VR headsets.
 
+**USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
+
+
 ![android gs](doc/images/android_gs.jpg "android gs")
 
 
@@ -392,6 +395,8 @@ In the future, this setup may become the recommended option, because the lens an
 The main downside of the Oculus Quest is the need to carry VR controller, since there is currently no other practical way to navigate the Oculus system menus. Hand tracking can be used instead, but its performance is poor under direct sunlight.
 
 To solve this properly, support for dual adapters, hardware navigation buttons, and a dedicated 3D-printed GS unit still need to be developed.
+
+**USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
 
 ![oculus gs](doc/images/oculus_gs.jpg "oculus gs")
 
@@ -435,7 +440,7 @@ Although **Mavlink 1** and even **MSP RC** are also compatible, the system is sp
 Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 ![alt text](doc/images/mavlink2_rc.png "mavlink2_rc")
 
-By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** (if present), otherwise **UART3**.
+By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** (if present), otherwise **UART3**. Port can be selected in **GS Settings->Wifi Settings** menu.
 
 
 ## MSP RC translation ( Mavlink2MspRC )
@@ -720,6 +725,20 @@ Tested on inav microplane:
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
+## Wifi channels scanning
+
+Wi-Fi Channel Scan is a ground-station diagnostic mode for finding busy or quiet Wi-Fi channels.
+
+When enabled, the GS puts rtl8812au adapter into monitor mode and continuously hops through the channels allowed by the selected Wi-Fi band:
+
+- 2.4 GHz: channels 1-13
+- 5.8 GHz: channels 44-165
+
+The result is shown as an OSD bar graph: taller bars mean more Wi-Fi airtime was observed on that channel, so that channel is busier and may be worse for video/control. Shorter or empty bars usually indicate a cleaner channel.
+
+This mode does not connect to the air unit and does not automatically change the configured air/GS link channel. It is only a measurement view to help the user manually choose a better Wi-Fi channel. 
+
+![alt text](doc/images/wifi_schannels_scan.jpg  "wifi_schannels_scan.jpg")
 
 # Drivers 
 
