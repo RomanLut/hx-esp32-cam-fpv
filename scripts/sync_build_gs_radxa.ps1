@@ -86,8 +86,7 @@ finally {
     }
 }
 
-Write-Host "Building OpenCV wrapper on remote host ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir && bash OpenCV/OpenCVWrapper/scripts/build_linux.sh"
+Write-Host "Skipping OpenCV wrapper rebuild in this flow (no rsync change detection here)."
 
 Write-Host "Building GS on remote host ..."
 & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $buildCmd

@@ -80,7 +80,7 @@ Radxa commands:
 - Sync/build all GS dependencies:
   `powershell -ExecutionPolicy Bypass -File scripts\sync_build_gs_radxa.ps1`
 - For small iterative fixes, prefer changed-file sync:
-  `powershell -ExecutionPolicy Bypass -File scripts\sync_changed_gs_radxa.ps1 -Build`
+  `powershell -ExecutionPolicy Bypass -File scripts\sync_changed_gs_target.ps1 -Target radxa -Build`
 - Remote build:
   `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && make -j4"`
 - Normal launch:
