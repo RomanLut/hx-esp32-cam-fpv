@@ -40,12 +40,25 @@ inline bool handleRecordingKeysFromImGui(Ground2Air_Config_Packet& config, const
 //===================================================================================
 //===================================================================================
 // Handles shared playback controls from the current ImGui frame.
-template <typename OpenPlaybackMenu>
-bool handlePlaybackKeysFromImGui(PlaybackManager* playback_manager, OpenPlaybackMenu open_playback_menu)
+template <typename OpenPlaybackMenu, typename OpenPlaybackDeleteMenu>
+bool handlePlaybackKeysFromImGui(PlaybackManager* playback_manager,
+                                 OpenPlaybackMenu open_playback_menu,
+                                 OpenPlaybackDeleteMenu open_playback_delete_menu)
 {
     if (playback_manager == nullptr || !playback_manager->status().active)
     {
         return false;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+    {
+        open_playback_delete_menu();
+        return true;
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_G, false))
+    {
+        return true;
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false))

@@ -1073,10 +1073,12 @@ void GsVideoRenderer::handleImGuiKeysLocked()
     }
 
     const OSDMenuId active_menu_id = m_menu_controller->currentMenuId();
+    const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
     const bool in_playback_menu = m_menu_visible &&
         (active_menu_id == OSDMenuId::Playback || active_menu_id == OSDMenuId::PlaybackDelete);
 
-    if (!in_playback_menu && gs::runtime::handleRecordingKeysFromImGui(*m_menu_config, "imgui_g"))
+    if (!in_playback_menu && !playback_active &&
+        gs::runtime::handleRecordingKeysFromImGui(*m_menu_config, "imgui_g"))
     {
         return;
     }
@@ -1086,6 +1088,10 @@ void GsVideoRenderer::handleImGuiKeysLocked()
                                                  [this]()
                                                  {
                                                      m_menu_controller->openPlaybackMenu();
+                                                 },
+                                                 [this]()
+                                                 {
+                                                     m_menu_controller->openPlaybackDeleteMenuForActivePlayback();
                                                  }))
     {
         return;

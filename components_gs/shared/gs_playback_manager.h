@@ -23,6 +23,7 @@ struct PlaybackStatus
     uint32_t total_ms = 0;
     int speed_multiplier = 1;
     std::string message;
+    std::string source_path;
 };
 
 //===================================================================================
@@ -80,6 +81,7 @@ protected:
     std::atomic<bool> m_stop_requested = false;
     std::atomic<int> m_speed_index = kPlaybackNormalSpeedIndex;
     std::atomic<int> m_step_frames = 0;
+    std::string m_source_path;
 
 private:
     void adjustSpeed(int delta);

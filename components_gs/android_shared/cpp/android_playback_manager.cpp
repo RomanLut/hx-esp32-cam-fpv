@@ -30,9 +30,11 @@ bool AndroidPlaybackManager::startPlayback(const RecordingEntry& entry)
     stopPlayback();
 
     m_speed_index.store(kPlaybackNormalSpeedIndex);
+    m_source_path = entry.path;
     PlaybackStatus status = {};
     status.active = true;
     status.speed_multiplier = speedMultiplier();
+    status.source_path = entry.path;
     setStatus(status);
 
     m_stop_requested.store(false);
@@ -59,6 +61,7 @@ void AndroidPlaybackManager::stopPlayback()
 
     PlaybackStatus status = {};
     setStatus(status);
+    m_source_path.clear();
     m_jpeg_decoder.clearPending();
 }
 

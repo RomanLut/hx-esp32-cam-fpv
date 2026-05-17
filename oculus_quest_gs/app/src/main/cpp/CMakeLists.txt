@@ -4,17 +4,17 @@ project(android_gs_core)
 add_library(android_gs_core SHARED
     openxr_quest_runtime.cpp
     openxr_video_bridge.cpp
-    android_apfpv_transport.cpp
-    android_raw_broadcast_transport.cpp
+    ../../../../../components_gs/android_shared/cpp/android_apfpv_transport.cpp
+    ../../../../../components_gs/android_shared/cpp/android_raw_broadcast_transport.cpp
     android_surface_backend.cpp
-    android_bitmap_jpeg_decoder.cpp
-    android_osd_font_storage.cpp
-    android_playback_manager.cpp
-    android_recordings_storage.cpp
-    android_runtime_platform_services.cpp
+    ../../../../../components_gs/android_shared/cpp/android_bitmap_jpeg_decoder.cpp
+    ../../../../../components_gs/android_shared/cpp/android_osd_font_storage.cpp
+    ../../../../../components_gs/android_shared/cpp/android_playback_manager.cpp
+    ../../../../../components_gs/android_shared/cpp/android_recordings_storage.cpp
+    ../../../../../components_gs/android_shared/cpp/android_runtime_platform_services.cpp
     ../../../../../components_gs/android_shared/cpp/android_serial_telemetry.cpp
-    android_transport_manager.cpp
-    android_wifi_scan_transport.cpp
+    ../../../../../components_gs/android_shared/cpp/android_transport_manager.cpp
+    ../../../../../components_gs/android_shared/cpp/android_wifi_scan_transport.cpp
     native_bridge.cpp
     ../../../../../components_gs/mcp/gs_mcp_server.cpp
     ../../../../../components_gs/shared/frame_packets_debug.cpp
@@ -89,7 +89,7 @@ add_library(android_gs_core SHARED
 )
 
 set_source_files_properties(
-    android_bitmap_jpeg_decoder.cpp
+    ../../../../../components_gs/android_shared/cpp/android_bitmap_jpeg_decoder.cpp
     PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math;-funroll-loops"
 )
 

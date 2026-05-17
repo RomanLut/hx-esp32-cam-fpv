@@ -47,6 +47,7 @@ public:
     void draw( Ground2Air_Config_Packet& config );
     void open();
     void openPlaybackMenu();
+    void openPlaybackDeleteMenuForActivePlayback();
     void close();
     bool isVisible() const;
     OSDMenuId currentMenuId() const { return menuId; }

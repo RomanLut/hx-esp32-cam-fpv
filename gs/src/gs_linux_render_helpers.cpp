@@ -36,6 +36,10 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
                                                      []()
                                                      {
                                                          gs::menu::g_osdMenuController.openPlaybackMenu();
+                                                     },
+                                                     []()
+                                                     {
+                                                         gs::menu::g_osdMenuController.openPlaybackDeleteMenuForActivePlayback();
                                                      }))
         {
             return;
@@ -100,9 +104,10 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
     if (!ignore_keys)
     {
         const OSDMenuId active_menu_id = gs::menu::g_osdMenuController.currentMenuId();
+        const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;
         const bool in_playback_menu = gs::menu::g_osdMenuController.isVisible() &&
             (active_menu_id == OSDMenuId::Playback || active_menu_id == OSDMenuId::PlaybackDelete);
-        if (!in_playback_menu)
+        if (!in_playback_menu && !playback_active)
         {
             gs::runtime::handleRecordingKeysFromImGui(config, "keyboard_g");
         }

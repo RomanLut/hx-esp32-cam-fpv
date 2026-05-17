@@ -465,6 +465,49 @@ void OSDMenuController::openPlaybackMenu()
 
 //===================================================================================
 //===================================================================================
+// Stops active playback and opens delete confirmation for the file being played.
+void OSDMenuController::openPlaybackDeleteMenuForActivePlayback()
+{
+    if (s_playbackManager == nullptr)
+    {
+        return;
+    }
+
+    const PlaybackStatus status = s_playbackManager->status();
+    if (!status.active || status.source_path.empty())
+    {
+        return;
+    }
+
+    int playback_index = 0;
+    if (s_recordingsStorage != nullptr)
+    {
+        const auto recordings = s_recordingsStorage->listRecordings();
+        for (int index = 0; index < static_cast<int>(recordings.size()); ++index)
+        {
+            if (recordings[index].path == status.source_path)
+            {
+                playback_index = index;
+                break;
+            }
+        }
+    }
+
+    s_playbackManager->stopPlayback();
+    this->visible = true;
+    this->m_close_menu_requested = false;
+    this->menuId = OSDMenuId::PlaybackDelete;
+    this->selectedItem = 0;
+    this->m_playback_delete_index = playback_index;
+    this->m_playback_delete_path = status.source_path;
+    this->backMenuIds.clear();
+    this->backMenuItems.clear();
+    this->backMenuIds.push_back(OSDMenuId::Playback);
+    this->backMenuItems.push_back(playback_index);
+}
+
+//===================================================================================
+//===================================================================================
 // Closes the OSD menu.
 void OSDMenuController::close()
 {
@@ -803,14 +846,14 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
         this->selectedItem = std::clamp(this->selectedItem, 0, this->itemsCount - 1);
     }
 
-    if ( isMenuUpPressed() && this->selectedItem > 0 )
+    if ( isMenuUpPressed() && this->itemsCount > 0 )
     {
-        this->selectedItem--;
+        this->selectedItem = (this->selectedItem + this->itemsCount - 1) % this->itemsCount;
     }
 
-    if ( isMenuDownPressed() && this->selectedItem < (this->itemsCount - 1) )
+    if ( isMenuDownPressed() && this->itemsCount > 0 )
     {
-        this->selectedItem++;
+        this->selectedItem = (this->selectedItem + 1) % this->itemsCount;
     }
 }
 

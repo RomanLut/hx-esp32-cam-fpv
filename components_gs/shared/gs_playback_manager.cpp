@@ -299,6 +299,10 @@ void PlaybackManager::setStatus(const PlaybackStatus& status)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_status = status;
+    if (m_status.active && m_status.source_path.empty())
+    {
+        m_status.source_path = m_source_path;
+    }
 }
 
 //===================================================================================

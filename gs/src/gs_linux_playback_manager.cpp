@@ -28,9 +28,11 @@ bool LinuxPlaybackManager::startPlayback(const RecordingEntry& entry)
     stopPlayback();
 
     m_speed_index.store(kPlaybackNormalSpeedIndex);
+    m_source_path = entry.path;
     PlaybackStatus status = {};
     status.active = true;
     status.speed_multiplier = speedMultiplier();
+    status.source_path = entry.path;
     setStatus(status);
 
     m_stop_requested.store(false);
@@ -57,6 +59,7 @@ void LinuxPlaybackManager::stopPlayback()
 
     PlaybackStatus status = {};
     setStatus(status);
+    m_source_path.clear();
     s_decoder.invalidate_displayed_frame();
 }
 
