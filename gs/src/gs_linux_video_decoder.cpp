@@ -452,14 +452,13 @@ size_t gs_linux_video_decoder::lock_output()
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     Clock::time_point upload_t1 = Clock::now();
     GLCHK(glBindTexture(GL_TEXTURE_2D, output.texture));
-    const bool texture_size_changed = output.texture_width != output.width || output.texture_height != output.height;
-    if (texture_size_changed)
-    {
-        GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr));
-        output.texture_width = output.width;
-        output.texture_height = output.height;
-    }
-    GLCHK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, output.width, output.height, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+    // Raspberry Pi's GLES driver can sample stale texture storage when the same
+    // texture object is repeatedly updated with glTexSubImage2D while frames are
+    // being presented. Re-specifying the image for each displayed frame forces
+    // fresh backing storage and prevents old camera frames from reappearing.
+    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+    output.texture_width = output.width;
+    output.texture_height = output.height;
     Clock::time_point upload_t2 = Clock::now();
 #else
     Clock::time_point upload_t1 = Clock::now();
