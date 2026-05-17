@@ -740,6 +740,12 @@ This mode does not connect to the air unit and does not automatically change the
 
 ![alt text](doc/images/wifi_schannels_scan.jpg  "wifi_schannels_scan.jpg")
 
+## Test mode
+
+Test mode continuously decodes a static JPEG stream to simulate a live connection. It is used to analyze GS performance.
+
+![alt text](doc/images/test_mode.jpg "test_mode.jpg")
+
 # Drivers 
 
 I am still searching for the best **RTL8812au** drivers for this project.
