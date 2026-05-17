@@ -29,3 +29,6 @@ Radxa deployment rule:
 - when updating Radxa sync or install flows, deploy the top-level scripts directory with the GS runtime tree
 - after syncing to Radxa, normalize remote shell and Python scripts to LF line endings and restore executable flags because Windows and rsync options may not preserve them; this must include [`gs/launch.sh`](/d:/Github/esp32-cam-fpv/esp32-cam-fpv/gs/launch.sh) and any other `*.sh` / `*.py` under the synced `gs/` tree (excluding `gs/build`), not only files under `scripts/`
 
+Linux script copy rule:
+- whenever a script is copied from Windows workspace to any Linux target (Raspberry Pi, Radxa, WSL, or other), convert it to LF on target before execution (for example `sed -i 's/\r$//' <script>`), then restore executable flags (`chmod +x`) as needed
+

@@ -15,7 +15,42 @@ get_make_jobs() {
     fi
 }
 
+version_ge() {
+    [ "$1" = "$2" ] && return 0
+    [ "$(printf "%s\n%s\n" "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+}
+
+ensure_legacy_ruby_apt_sources() {
+    if ! grep -q "raspbian.raspberrypi.org/raspbian/ buster" /etc/apt/sources.list 2>/dev/null; then
+        return
+    fi
+
+    echo "Detected legacy RubyFPV buster apt source. Switching to Debian archive mirrors."
+
+    cat <<'EOF' | sudo tee /etc/apt/sources.list > /dev/null
+deb [trusted=yes] http://archive.debian.org/debian buster main contrib non-free
+deb [trusted=yes] http://archive.debian.org/debian-security buster/updates main contrib non-free
+EOF
+
+    cat <<'EOF' | sudo tee /etc/apt/apt.conf.d/99archive-no-check-valid-until > /dev/null
+Acquire::Check-Valid-Until false;
+EOF
+}
+
+cmake_satisfies_min_version() {
+    local required_version="3.18.0"
+    local current_version=""
+
+    if ! command -v cmake >/dev/null 2>&1; then
+        return 1
+    fi
+
+    current_version=$(cmake --version | head -n 1 | awk '{print $3}')
+    version_ge "$current_version" "$required_version"
+}
+
 sudo timedatectl set-ntp true
+ensure_legacy_ruby_apt_sources
 
 IS_RADXA=false
 
@@ -32,11 +67,14 @@ fi
 
 if [ "$IS_RADXA" = true ]; then
     HOME_DIRECTORY="/home/radxa"
+    MAKE_JOBS=$(get_make_jobs 512 1 4)
 else
     HOME_DIRECTORY="/home/pi"
+    MAKE_JOBS=1
 fi
 
 echo "HOME_DIRECTORY=$HOME_DIRECTORY"
+echo "MAKE_JOBS=$MAKE_JOBS"
 
 sudo apt update
 
@@ -54,21 +92,34 @@ else
     ./autogen.sh
     ./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl
     
-    MAKE_JOBS=$(get_make_jobs 512 2 4)
-    echo "MAKE_JOBS=$MAKE_JOBS"
-
     make -j"$MAKE_JOBS"
     sudo make install
 fi
 
 cd "$HOME_DIRECTORY"
-git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv
+if [ ! -d esp32-cam-fpv/.git ]; then
+    git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv
+fi
 cd esp32-cam-fpv
 
-MAKE_JOBS=$(get_make_jobs 512 1 4)
-echo "MAKE_JOBS=$MAKE_JOBS"
+if [ -f OpenCV/OpenCVWrapper/scripts/build_linux.sh ]; then
+    BUILD_WRAPPER_SCRIPT="OpenCV/OpenCVWrapper/scripts/build_linux.sh"
+elif [ -f OpenCVWrapper/scripts/build_linux.sh ]; then
+    BUILD_WRAPPER_SCRIPT="OpenCVWrapper/scripts/build_linux.sh"
+else
+    echo "ERROR: OpenCV wrapper build script not found."
+    exit 1
+fi
 
-BUILD_JOBS="$MAKE_JOBS" bash OpenCV/OpenCVWrapper/scripts/build_linux.sh
+TOTAL_MEM_MB=$(free -m | awk '/^Mem:/{print $2}')
+
+if ! cmake_satisfies_min_version; then
+    echo "Skipping OpenCV wrapper build: cmake >= 3.18.0 is required."
+elif [ "$TOTAL_MEM_MB" -lt 512 ]; then
+    echo "Skipping OpenCV wrapper build: total memory is ${TOTAL_MEM_MB} MB (< 512 MB)."
+else
+    BUILD_JOBS="$MAKE_JOBS" bash "$BUILD_WRAPPER_SCRIPT"
+fi
 
 cd gs
 make -j"$MAKE_JOBS"
