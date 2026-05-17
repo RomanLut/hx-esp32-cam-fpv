@@ -80,7 +80,7 @@ float StepTowards(float current, float target, float max_step)
 GsVisionStabilizerConfig BuildDefaultConfig()
 {
     GsVisionStabilizerConfig config = {};
-    config.roi_divisor = 3.5f;
+    config.roi_divisor = 6.0f;
     config.zoom_factor = 0.75f;
     config.max_corners = 400;
     config.quality_level = 0.01f;
