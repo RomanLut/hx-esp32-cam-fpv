@@ -7,7 +7,6 @@ param(
     [string]$RemoteProjectDir = "",
     [string]$RemoteBuildSubdir = "gs",
     [switch]$Build,
-    [switch]$BuildOpenCVWrapper,
     [switch]$RunAfterBuild
 )
 
@@ -20,6 +19,20 @@ function Require-Tool([string]$path)
     if (-not (Test-Path $path))
     {
         throw "Required tool not found: $path"
+    }
+}
+
+function Invoke-RemoteCommand([string]$description, [string]$command)
+{
+    if (-not [string]::IsNullOrWhiteSpace($description))
+    {
+        Write-Host $description
+    }
+
+    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $command
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Remote command failed with exit code ${LASTEXITCODE}: $command"
     }
 }
 
@@ -51,7 +64,7 @@ function Test-RsyncHasChanges([object[]]$RsyncOutput)
             continue
         }
 
-        if ($line -match '^(>|\*deleting )')
+        if ($line -match '^(<|>|\*deleting )')
         {
             return $true
         }
@@ -139,8 +152,7 @@ $remoteDirs = @(
 
 $mkdirArgs = ($remoteDirs | ForEach-Object { Convert-ToBashSingleQuoted $_ }) -join " "
 $mkdirCommand = "mkdir -p $mkdirArgs"
-Write-Host "Preparing remote directories on ${User}@${RemoteHost}:${RemoteProjectDir} ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $mkdirCommand
+Invoke-RemoteCommand "Preparing remote directories on ${User}@${RemoteHost}:${RemoteProjectDir} ..." $mkdirCommand
 
 $repoRootForWsl = Convert-ToWslPath $repoRoot
 if ([string]::IsNullOrWhiteSpace($repoRootForWsl))
@@ -208,28 +220,23 @@ $remoteScriptsDir = Convert-ToBashSingleQuoted "$RemoteProjectDir/scripts"
 $remoteGsDir = Convert-ToBashSingleQuoted "$RemoteProjectDir/gs"
 $remoteGsDirUnquoted = "$RemoteProjectDir/gs"
 Write-Host "Normalizing line endings on remote scripts ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +"
+Invoke-RemoteCommand "" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec sed -i 's/\r`$//' {} +"
 Write-Host "Restoring executable flags on remote scripts ..."
-& $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
+Invoke-RemoteCommand "" "find $remoteScriptsDir -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} + && find $remoteGsDir \( -path '$remoteGsDirUnquoted/build' -o -path '$remoteGsDirUnquoted/.vscode' \) -prune -o -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} +"
 
 if ($Build)
 {
-    if ($BuildOpenCVWrapper -and $opencvWrapperHadRsyncChanges)
+    if ($opencvWrapperHadRsyncChanges)
     {
-        Write-Host "Building OpenCV wrapper on remote host ..."
-        & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir && bash OpenCV/OpenCVWrapper/scripts/build_linux.sh"
-    }
-    elseif ($BuildOpenCVWrapper -and -not $opencvWrapperHadRsyncChanges)
-    {
-        Write-Host "Skipping OpenCV wrapper rebuild: rsync reported no OpenCV/OpenCVWrapper changes."
+        Invoke-RemoteCommand "Building OpenCV wrapper on remote host ..." "cd $RemoteProjectDir && bash OpenCV/OpenCVWrapper/scripts/build_linux.sh"
     }
     else
     {
-        Write-Host "Skipping OpenCV wrapper rebuild (use -BuildOpenCVWrapper to enable)."
+        Write-Host "Skipping OpenCV wrapper rebuild: rsync reported no OpenCV/OpenCVWrapper changes."
     }
 
     Write-Host "Building GS on remote host ..."
-    & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" "cd $RemoteProjectDir/$RemoteBuildSubdir && make -j4"
+    Invoke-RemoteCommand "" "cd $RemoteProjectDir/$RemoteBuildSubdir && make -j4"
 
     if ($RunAfterBuild)
     {
@@ -243,6 +250,6 @@ if ($Build)
                      "  nohup ./launch.sh >/tmp/gs-launch.log 2>&1 < /dev/null & " +
                      "fi; " +
                      "echo GS_LAUNCH_TRIGGERED; exit 0"
-        & $plink -ssh -batch -no-antispoof -pw $Password "${User}@${RemoteHost}" $launchCmd
+        Invoke-RemoteCommand "" $launchCmd
     }
 }

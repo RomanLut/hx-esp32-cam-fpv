@@ -39,19 +39,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sync_changed_gs_target.ps1 `
   -Build
 ```
 
-By default, `-Build` compiles GS only and skips OpenCVWrapper rebuild.
+By default, `-Build` compiles GS and rebuilds OpenCVWrapper only when rsync transferred changes under `OpenCV/OpenCVWrapper` in the current sync.
 
-Rebuild OpenCVWrapper only when explicitly necessary:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\sync_changed_gs_target.ps1 `
-  -Target rpi4 `
-  -Build `
-  -BuildOpenCVWrapper
-```
-
-Rule: OpenCVWrapper rebuild runs only if `rsync` actually transferred changes under `OpenCV/OpenCVWrapper` in the current sync.  
-If no wrapper files changed, rebuild is skipped automatically even when `-BuildOpenCVWrapper` is passed.
+Rule: OpenCVWrapper rebuild runs only if `rsync` actually transferred changes under `OpenCV/OpenCVWrapper` in the current sync. If no wrapper files changed, rebuild is skipped automatically.
 
 ## Quick Remote Launch Check
 
