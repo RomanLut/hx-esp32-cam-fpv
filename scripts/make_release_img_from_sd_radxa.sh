@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USB_DEVICE="/dev/sdb1"
 SD_DEVICE="/dev/mmcblk1"
 USB_MOUNT="/mnt/usb1"
 IMAGE_PATH="$USB_MOUNT/espvrx_dualboot_radxa3w.img"
@@ -9,6 +8,35 @@ GS_DIR="$HOME/esp32-cam-fpv/gs"
 ZERO_SCRIPT_URL="https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh"
 
 MOUNTED_BY_SCRIPT=false
+
+#===================================================================================
+#===================================================================================
+# Selects the available USB partition used as the release image target.
+select_usb_device()
+{
+    if mountpoint -q "$USB_MOUNT"; then
+        MOUNT_SOURCE="$(findmnt -n -o SOURCE --target "$USB_MOUNT")"
+        case "$MOUNT_SOURCE" in
+            /dev/sda1|/dev/sdb1)
+                USB_DEVICE="$MOUNT_SOURCE"
+                return 0
+                ;;
+        esac
+
+        echo "USB mount point is already mounted from $MOUNT_SOURCE, expected /dev/sda1 or /dev/sdb1" >&2
+        exit 1
+    fi
+
+    for CANDIDATE in /dev/sda1 /dev/sdb1; do
+        if [ -b "$CANDIDATE" ]; then
+            USB_DEVICE="$CANDIDATE"
+            return 0
+        fi
+    done
+
+    echo "USB flash device is not available: expected /dev/sda1 or /dev/sdb1" >&2
+    exit 1
+}
 
 #===================================================================================
 #===================================================================================
@@ -24,11 +52,6 @@ trap cleanup EXIT
 
 if [ ! -b "$SD_DEVICE" ]; then
     echo "SD card device is not available: $SD_DEVICE" >&2
-    exit 1
-fi
-
-if [ ! -b "$USB_DEVICE" ]; then
-    echo "USB flash device is not available: $USB_DEVICE" >&2
     exit 1
 fi
 
@@ -48,6 +71,7 @@ sudo chmod +x zero_free_space.sh
 ./zero_free_space.sh
 
 sudo mkdir -p "$USB_MOUNT"
+select_usb_device
 
 if ! mountpoint -q "$USB_MOUNT"; then
     sudo mount "$USB_DEVICE" "$USB_MOUNT"
