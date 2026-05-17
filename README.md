@@ -1,7 +1,5 @@
 # hx-esp32-cam-fpv
 
-DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
-
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
 - [x] Mavlink telemetry and RC
@@ -35,6 +33,13 @@ Open source digital FPV system based on esp32cam.
 - [x] ESP32 C5 support
 - [x] ESP32 C5 5GHz wifi support
 - [x] **Release v0.5.3**
+- [x] fisheye correction shader
+- [x] EIS
+- [x] Android GS
+- [x] Meta Quest 2 GS
+- [x] APFPV firmware
+- [x] JPEG deblocking
+- [x] **Release v0.6.3**
 - [ ] adjust esp32c5 video modes
 - [ ] adjust esp32c5 air unit recording
 - [ ] design esp32c5 air unit PCB
@@ -46,11 +51,8 @@ Open source digital FPV system based on esp32cam.
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
+- [ ] vignetting correction shader
 - [ ] digital pan, zoom
-- [ ] fisheye correction shader, vignetting correction shader
-- [ ] EIS
-- [ ] Android GS
-- [ ] Meta Quest 2 GS
 - [ ] lost frames inpainting using neural network ?
 - [ ] JPEG artefacts removal using neural network?
 
@@ -76,6 +78,8 @@ Open source digital FPV system based on esp32cam.
 - **Radxa Zero 3W/3E** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
 - **Runcam WiFiLink VRX** - 5.8GHz only (experimental)
+- **Android Phone with rtl8812au USB adapter**
+- **Oculus Quest 2/3 rtl8812au USB adapter**
 - GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
 # Recommended hardware
@@ -157,6 +161,8 @@ However, compared to other open-source digital FPV solutions like OpenHD, RubyFP
 
 > [!NOTE]
 > Please use **release** branch (it contains lastest release). **master** branch can be unstable.
+
+Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 ## Air Unit
 
