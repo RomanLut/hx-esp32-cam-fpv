@@ -40,6 +40,8 @@ Open source digital FPV system based on esp32cam.
 - [x] APFPV firmware
 - [x] JPEG deblocking
 - [x] **Release v0.6.3**
+- [ ] dual adapters support for Android and Oculus Quest GS
+- [ ] dedicated GS unit with dual adapters and hardware buttons for Oculus Quest GS
 - [ ] adjust esp32c5 video modes
 - [ ] adjust esp32c5 air unit recording
 - [ ] design esp32c5 air unit PCB
@@ -359,6 +361,40 @@ Default channel is set to 7 on **esp32c5** after flashing. **Runcan VRX** will n
 No tested, but should work. However, this VRX contains single **RTL8812AU** card. Using single Wifi card is not recommented on GS.
 
 ![emax vrx](doc/images/emax_vrx.jpg "emax_vrx")
+
+## Ground station Variant: Ubuntu
+
+Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+
+## Ground Station Variant 6: Android GS
+
+Android GS application can receive video streams in RAW Broadcast mode using an RTL8812AU adapter, and in APFPV mode using the phone’s built-in Wi-Fi.
+
+Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, the adapter included with the Eachine Sphere Link.
+
+Currently only single adapter is supported.
+
+VR mode allows using the Android GS application with VR headsets.
+
+![android gs](doc/images/android_gs.jpg "android gs")
+
+
+## Ground Station Variant 7: Oculus Quest 2/3 GS
+
+Native OpenXR Oculus Quest 2/3 GS application supports both RAW Broadcast mode with an RTL8812AU adapter, and APFPV mode using the built-in Oculus Quest Wi-Fi.
+
+Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, the adapter included with the Eachine Sphere Link.
+
+Currently only single adapter is supported.
+
+In the future, this setup may become the recommended option, because the lens and screen quality of the Oculus Quest is significantly better than that of most FPV goggles.
+
+The main downside of the Oculus Quest is the need to carry VR controller, since there is currently no other practical way to navigate the Oculus system menus. Hand tracking can be used instead, but its performance is poor under direct sunlight.
+
+To solve this properly, support for dual adapters, hardware navigation buttons, and a dedicated 3D-printed GS unit still need to be developed.
+
+![oculus gs](doc/images/oculus_gs.jpg "oculus gs")
+
 
 ## Ground station Variant: Ubuntu
 
