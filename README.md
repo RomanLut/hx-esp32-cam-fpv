@@ -159,6 +159,28 @@ However, compared to other open-source digital FPV solutions like OpenHD, RubyFP
 - Low power usage (under 300mA at 5V)
 - The same ground station hardware used for OpenHD/RubyFPV/OpenIPC can be reused — just swap the SD card.
 
+# Modes of operation: Raw Broadcast / APFPV
+
+The Air Unit can transmit video either in **Raw Broadcast mode** or in **APFPV mode**.
+
+In **Raw Broadcast mode**, packets are transmitted using packet injection over a connectionless link.
+
+In **APFPV mode**, the camera creates a **Wi-Fi access point** and the GS connects to it.
+
+In both modes, only one GS can be connected to the Air Unit at the same time.
+
+**Raw Broadcast** is the primary and recommended mode of operation. **APFPV mode** is not recommended for general use. **APFPV** requires establishing and maintaining a Wi-Fi connection to the access point, which can be unreliable or may fail completely. At long distances or with weak signal strength, this can result in losing the video feed for an extended period of time on Android devices, and especially Oculus Quest.
+
+In general, **APFPV mode** is recommended only for ground vehicles.
+
+Air Unit can be flashed with either **Raw Broadcast** or **APFPV** firmware. In fact, the firmware itself is the same - the only difference is the initial mode setting.
+When switching between firmware types, make sure to fully erase the flash before reflashing. Otherwise, the mode may not change.
+
+The Air Unit mode can be changed either from the GS menu or from the [camera web interface](#camera-web-interface-and-ota-update)
+
+> [!NOTE]
+> If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.
+
 # Building
 
 > [!NOTE]
