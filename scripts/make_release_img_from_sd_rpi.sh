@@ -4,7 +4,9 @@ set -euo pipefail
 SD_DEVICE="/dev/mmcblk0"
 USB_MOUNT="/mnt/usb1"
 IMAGE_PATH="$USB_MOUNT/espvrx_rpi.img"
-GS_DIR="$HOME/esp32-cam-fpv/gs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+GS_DIR="$REPO_ROOT/gs"
 PISHRINK_URL="https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/pishrink.sh"
 PISHRINK_PATH="/usr/local/bin/pishrink.sh"
 

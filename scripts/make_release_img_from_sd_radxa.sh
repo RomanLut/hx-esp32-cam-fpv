@@ -4,7 +4,9 @@ set -euo pipefail
 SD_DEVICE="/dev/mmcblk1"
 USB_MOUNT="/mnt/usb1"
 IMAGE_PATH="$USB_MOUNT/espvrx_dualboot_radxa3w.img"
-GS_DIR="$HOME/esp32-cam-fpv/gs"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+GS_DIR="$REPO_ROOT/gs"
 ZERO_SCRIPT_URL="https://raw.githubusercontent.com/RomanLut/hx-esp32-cam-fpv/release/scripts/zero_free_space.sh"
 
 MOUNTED_BY_SCRIPT=false
