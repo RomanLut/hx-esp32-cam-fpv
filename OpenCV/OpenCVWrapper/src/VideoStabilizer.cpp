@@ -53,6 +53,9 @@ struct GsVisionStabilizer
 namespace
 {
 using StabilizerClock = std::chrono::steady_clock;
+constexpr int32_t kTrackingDownscale = 2;
+constexpr float kTrackingPointScale = static_cast<float>(kTrackingDownscale);
+constexpr float kTrackingPointOffset = (kTrackingPointScale - 1.0f) * 0.5f;
 
 //===================================================================================
 //===================================================================================
@@ -146,8 +149,8 @@ int32_t BytesPerPixel(GsVisionImageFormat format)
 
 //===================================================================================
 //===================================================================================
-// Converts only the requested ROI to grayscale for motion-estimation-only mode.
-bool ConvertRoiToGray(const GsVisionImage& image, const cv::Rect& roi, cv::Mat& out_gray_roi)
+// Converts only the requested ROI to a half-resolution grayscale image for tracking.
+bool ConvertRoiToDownscaledGray(const GsVisionImage& image, const cv::Rect& roi, cv::Mat& out_gray_roi)
 {
     const int32_t bytes_per_pixel = BytesPerPixel(image.format);
     if(image.data == nullptr ||
@@ -163,69 +166,87 @@ bool ConvertRoiToGray(const GsVisionImage& image, const cv::Rect& roi, cv::Mat& 
         return false;
     }
 
-    out_gray_roi.create(roi.height, roi.width, CV_8UC1);
-    const cv::Mat source(image.height,
-                         image.width,
-                         CV_8UC(bytes_per_pixel),
-                         const_cast<uint8_t*>(image.data),
-                         image.stride_bytes);
-    switch(image.format)
+    const int32_t out_width = std::max(1, (roi.width + kTrackingDownscale - 1) / kTrackingDownscale);
+    const int32_t out_height = std::max(1, (roi.height + kTrackingDownscale - 1) / kTrackingDownscale);
+    out_gray_roi.create(out_height, out_width, CV_8UC1);
+
+    const bool input_is_rgb =
+        image.format == GS_VISION_IMAGE_FORMAT_RGB8 || image.format == GS_VISION_IMAGE_FORMAT_RGBA8;
+    const bool input_has_alpha =
+        image.format == GS_VISION_IMAGE_FORMAT_BGRA8 || image.format == GS_VISION_IMAGE_FORMAT_RGBA8;
+    const int32_t color_channels = input_has_alpha ? 4 : 3;
+    for(int32_t y = 0; y < out_height; ++y)
     {
-        case GS_VISION_IMAGE_FORMAT_GRAY8:
-            source(roi).copyTo(out_gray_roi);
-            break;
-        case GS_VISION_IMAGE_FORMAT_BGR8:
-        case GS_VISION_IMAGE_FORMAT_RGB8:
+        uint8_t* gray_row = out_gray_roi.ptr(y);
+        const int32_t src_y0 = y * kTrackingDownscale;
+        const int32_t block_height = std::min(kTrackingDownscale, roi.height - src_y0);
+        for(int32_t x = 0; x < out_width; ++x)
         {
-            const bool input_is_rgb = image.format == GS_VISION_IMAGE_FORMAT_RGB8;
-            for(int32_t y = 0; y < roi.height; ++y)
+            const int32_t src_x0 = x * kTrackingDownscale;
+            const int32_t block_width = std::min(kTrackingDownscale, roi.width - src_x0);
+            uint32_t gray_sum = 0;
+            uint32_t sample_count = 0;
+            for(int32_t yy = 0; yy < block_height; ++yy)
             {
-                const uint8_t* input_row = source.ptr(roi.y + y) + static_cast<size_t>(roi.x) * 3u;
-                uint8_t* gray_row = out_gray_roi.ptr(y);
-                for(int32_t x = 0; x < roi.width; ++x)
+                const uint8_t* input_row =
+                    image.data +
+                    static_cast<size_t>(roi.y + src_y0 + yy) * static_cast<size_t>(image.stride_bytes) +
+                    static_cast<size_t>(roi.x + src_x0) * static_cast<size_t>(bytes_per_pixel);
+                for(int32_t xx = 0; xx < block_width; ++xx)
                 {
-                    const uint8_t c0 = input_row[x * 3];
-                    const uint8_t g = input_row[x * 3 + 1];
-                    const uint8_t c2 = input_row[x * 3 + 2];
-                    const uint8_t r = input_is_rgb ? c0 : c2;
-                    const uint8_t b = input_is_rgb ? c2 : c0;
-                    gray_row[x] = static_cast<uint8_t>((77u * r + 150u * g + 29u * b + 128u) >> 8);
+                    switch(image.format)
+                    {
+                        case GS_VISION_IMAGE_FORMAT_GRAY8:
+                            gray_sum += input_row[xx];
+                            break;
+                        case GS_VISION_IMAGE_FORMAT_BGR8:
+                        case GS_VISION_IMAGE_FORMAT_RGB8:
+                        case GS_VISION_IMAGE_FORMAT_BGRA8:
+                        case GS_VISION_IMAGE_FORMAT_RGBA8:
+                        {
+                            const uint8_t* pixel = input_row + static_cast<size_t>(xx) * color_channels;
+                            const uint8_t c0 = pixel[0];
+                            const uint8_t g = pixel[1];
+                            const uint8_t c2 = pixel[2];
+                            const uint8_t r = input_is_rgb ? c0 : c2;
+                            const uint8_t b = input_is_rgb ? c2 : c0;
+                            gray_sum += (77u * r + 150u * g + 29u * b + 128u) >> 8;
+                            break;
+                        }
+                        case GS_VISION_IMAGE_FORMAT_RGB565:
+                        {
+                            const uint8_t* pixel = input_row + static_cast<size_t>(xx) * 2u;
+                            const uint16_t packed =
+                                static_cast<uint16_t>(pixel[0]) | (static_cast<uint16_t>(pixel[1]) << 8);
+                            const uint8_t r5 = static_cast<uint8_t>((packed >> 11) & 0x1f);
+                            const uint8_t g6 = static_cast<uint8_t>((packed >> 5) & 0x3f);
+                            const uint8_t b5 = static_cast<uint8_t>(packed & 0x1f);
+                            const uint8_t r = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+                            const uint8_t g = static_cast<uint8_t>((g6 << 2) | (g6 >> 4));
+                            const uint8_t b = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
+                            gray_sum += (77u * r + 150u * g + 29u * b + 128u) >> 8;
+                            break;
+                        }
+                        default:
+                            return false;
+                    }
+                    sample_count++;
                 }
             }
-            break;
+            gray_row[x] = static_cast<uint8_t>((gray_sum + sample_count / 2u) / sample_count);
         }
-        case GS_VISION_IMAGE_FORMAT_RGB565:
-            for(int32_t y = 0; y < roi.height; ++y)
-            {
-                const uint8_t* input_row = source.ptr(roi.y + y) + static_cast<size_t>(roi.x) * 2u;
-                uint8_t* gray_row = out_gray_roi.ptr(y);
-                for(int32_t x = 0; x < roi.width; ++x)
-                {
-                    const uint16_t pixel = static_cast<uint16_t>(input_row[x * 2]) |
-                                           (static_cast<uint16_t>(input_row[x * 2 + 1]) << 8);
-                    const uint8_t r5 = static_cast<uint8_t>((pixel >> 11) & 0x1f);
-                    const uint8_t g6 = static_cast<uint8_t>((pixel >> 5) & 0x3f);
-                    const uint8_t b5 = static_cast<uint8_t>(pixel & 0x1f);
-                    const uint8_t r = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
-                    const uint8_t g = static_cast<uint8_t>((g6 << 2) | (g6 >> 4));
-                    const uint8_t b = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
-                    gray_row[x] = static_cast<uint8_t>((77u * r + 150u * g + 29u * b + 128u) >> 8);
-                }
-            }
-            break;
-        case GS_VISION_IMAGE_FORMAT_BGRA8:
-        case GS_VISION_IMAGE_FORMAT_RGBA8:
-        {
-            cv::Mat roi_bgr;
-            cv::cvtColor(source(roi), roi_bgr, image.format == GS_VISION_IMAGE_FORMAT_BGRA8 ? cv::COLOR_BGRA2BGR : cv::COLOR_RGBA2BGR);
-            cv::cvtColor(roi_bgr, out_gray_roi, cv::COLOR_BGR2GRAY);
-            break;
-        }
-        default:
-            return false;
     }
 
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Maps a point from the half-resolution ROI tracker space back into full-frame pixels.
+cv::Point2f TrackingPointToFullFrame(const cv::Point2f& point, const cv::Point2f& roi_offset)
+{
+    return cv::Point2f(point.x * kTrackingPointScale + kTrackingPointOffset + roi_offset.x,
+                       point.y * kTrackingPointScale + kTrackingPointOffset + roi_offset.y);
 }
 
 //===================================================================================
@@ -294,7 +315,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
 {
     try
     {
-        // Phase 1: validate input and convert the configured ROI to grayscale for tracking.
+        // Phase 1: validate input and convert the configured ROI to half-resolution grayscale for tracking.
         if(stabilizer == nullptr || input == nullptr)
         {
             return 0;
@@ -304,7 +325,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
         std::swap(stabilizer->previous_gray_roi, stabilizer->current_gray);
 
         const cv::Rect roi = BuildRoi(cv::Size(input->width, input->height), stabilizer->config.roi_divisor);
-        if(!ConvertRoiToGray(*input, roi, stabilizer->current_gray))
+        if(!ConvertRoiToDownscaledGray(*input, roi, stabilizer->current_gray))
         {
             return 0;
         }
@@ -384,7 +405,9 @@ int32_t gs_vision_stabilizer_estimate_frame(
             constexpr float kConfidenceErrorScale = 0.08f;
             for(size_t i = 0; i < status.size(); ++i)
             {
-                const cv::Point2f old_full = previous_points[i] + roi_offset;
+                // LK runs on the 2x downscaled ROI, but diagnostics and affine fitting
+                // remain in full-frame pixels so downstream stabilization math is unchanged.
+                const cv::Point2f old_full = TrackingPointToFullFrame(previous_points[i], roi_offset);
                 visualization_old_points.push_back(old_full);
                 if(status[i] == 0)
                 {
@@ -393,7 +416,7 @@ int32_t gs_vision_stabilizer_estimate_frame(
                     visualization_status.push_back(0);
                     continue;
                 }
-                const cv::Point2f new_full = current_points[i] + roi_offset;
+                const cv::Point2f new_full = TrackingPointToFullFrame(current_points[i], roi_offset);
                 previous_full_points.push_back(old_full);
                 current_full_points.push_back(new_full);
                 visualization_new_points.push_back(new_full);
@@ -679,9 +702,9 @@ int32_t gs_vision_stabilizer_estimate_frame(
 
 //===================================================================================
 //===================================================================================
-// Prepares feature tracking input by reusing or rebuilding the ROI grayscale image,
-// then detecting Shi-Tomasi corners and caching them as the previous-point set that
-// the next stabilization estimate consumes.
+// Prepares feature tracking input by reusing or rebuilding the half-resolution ROI
+// grayscale image, then detecting Shi-Tomasi corners and caching them as the
+// previous-point set that the next stabilization estimate consumes.
 int32_t gs_vision_stabilizer_prepare_frame_features(
     GsVisionStabilizer* stabilizer,
     const GsVisionImage* input,
@@ -710,7 +733,7 @@ int32_t gs_vision_stabilizer_prepare_frame_features(
         }
         else
         {
-            if(!ConvertRoiToGray(*input, roi, current_gray_roi))
+            if(!ConvertRoiToDownscaledGray(*input, roi, current_gray_roi))
             {
                 return 0;
             }
@@ -718,13 +741,15 @@ int32_t gs_vision_stabilizer_prepare_frame_features(
 
         const StabilizerClock::time_point feature_start = StabilizerClock::now();
         std::vector<cv::Point2f> points;
-        // Detect strong Shi-Tomasi corners in the ROI; these become LK tracking seeds
-        // and are limited/filtered by configured count, quality threshold, and spacing.
+        // Detect strong Shi-Tomasi corners in the downscaled ROI. Scale the spacing
+        // down so configured distances keep the same meaning in full-frame pixels.
+        const double min_distance =
+            std::max(1.0, static_cast<double>(stabilizer->config.min_distance) / kTrackingPointScale);
         cv::goodFeaturesToTrack(current_gray_roi,
                                 points,
                                 stabilizer->config.max_corners,
                                 stabilizer->config.quality_level,
-                                stabilizer->config.min_distance);
+                                min_distance);
         stabilizer->last_feature_ms = ElapsedMs(feature_start);
         stabilizer->cached_previous_points = std::move(points);
         if(feature_ms != nullptr)
@@ -746,3 +771,4 @@ int32_t gs_vision_stabilizer_prepare_frame_features(
         return 0;
     }
 }
+  
