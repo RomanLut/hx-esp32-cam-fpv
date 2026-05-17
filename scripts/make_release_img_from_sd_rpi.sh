@@ -51,6 +51,38 @@ cleanup()
     fi
 }
 
+#===================================================================================
+#===================================================================================
+# Removes files that are useful while building the image but should not be shipped.
+cleanup_release_files()
+{
+    echo "Disk usage before release cleanup:"
+    df -h /
+
+    rm -f "$GS_DIR"/*.avi
+    rm -rf "$GS_DIR/build"
+
+    rm -rf "$REPO_ROOT/OpenCV/OpenCVWrapper/Build"
+    rm -rf "$REPO_ROOT/.cache"
+    rm -rf "$HOME/.cache/pip"
+    rm -rf "$HOME/.cache/cmake"
+    rm -rf "$HOME/.ccache"
+
+    rm -rf "$HOME/SDL2-2.0.18/build"
+    rm -rf "$REPO_ROOT/OpenCV/OpenCV/doc"
+    rm -rf "$REPO_ROOT/OpenCV/OpenCV/samples"
+    rm -rf "$REPO_ROOT/OpenCV/OpenCV/data"
+
+    sudo apt-get clean
+    sudo rm -rf /var/cache/apt/archives/*.deb
+    sudo rm -rf /var/lib/apt/lists/*
+    sudo journalctl --vacuum-time=1d >/dev/null 2>&1 || true
+    sudo rm -rf /tmp/* /var/tmp/*
+
+    echo "Disk usage after release cleanup:"
+    df -h /
+}
+
 trap cleanup EXIT
 
 if [ ! -d "$GS_DIR" ]; then
@@ -64,7 +96,7 @@ if [ ! -b "$SD_DEVICE" ]; then
 fi
 
 cd "$GS_DIR"
-rm -f ./*.avi
+cleanup_release_files
 
 wget -O pishrink.sh "$PISHRINK_URL"
 sudo chmod +x pishrink.sh
