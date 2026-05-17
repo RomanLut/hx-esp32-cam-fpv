@@ -4,7 +4,7 @@
 #include "fec.h"
 #include "wifi_channels.h"
 
-#define FW_VERSION "0.5"
+#define FW_VERSION "0.6"
 
 #define FEC_K 6
 #define FEC_N 12
@@ -143,7 +143,7 @@ struct DataChannelConfig
 //======================================================
 struct MiscConfig
 {
-    //basically is not config variables, but we use config packe to transfer them
+    //basically is not config variables, but we use config packet to transfer them
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile2_btn = 0; //incremented each time button is pressed on gs
@@ -151,7 +151,7 @@ struct MiscConfig
     uint8_t cameraStopChannel : 5;// = 0;  //0 - none
     uint8_t autostartRecord : 1;// = 1;
     uint8_t mavlink2mspRC : 1;// = 0;
-    uint8_t reserved1 : 1;// = 0;
+    uint8_t apfpv : 1;// = 0;
 
     uint32_t osdFontCRC32;
 };

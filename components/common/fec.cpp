@@ -18,6 +18,9 @@
  * and  Lee & Messerschmitt, p. 453.
  */
 static const char*const Pp="101110001";
+static constexpr unsigned BLOCK_NUMS[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+                                          10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                                          21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
 
 
 /*
@@ -33,6 +36,22 @@ static gf gf_exp[510];  /* index->poly form conversion table    */
 static int gf_log[256]; /* Poly->index form conversion table    */
 static gf inverse[256]; /* inverse of field elem.               */
                                 /* inv[\alpha**i]=\alpha**(GF_SIZE-i-1) */
+
+//===================================================================================
+//===================================================================================
+// Returns pointer to the shared sequential block-number table used by FEC helpers.
+const unsigned*
+fec_block_nums(void) {
+    return BLOCK_NUMS;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns number of entries in the shared sequential block-number table.
+size_t
+fec_block_nums_count(void) {
+    return sizeof(BLOCK_NUMS) / sizeof(BLOCK_NUMS[0]);
+}
 
 /*
  * modnn(x) computes x % GF_SIZE, where GF_SIZE is 2**GF_BITS - 1,
@@ -173,7 +192,7 @@ generate_gf (void) {
 
 #define gf_mul(x,y) (*gf_mul_table)[x][y]
 
-#define USE_GF_MULC register const gf * __gf_mulc_
+#define USE_GF_MULC const gf * __gf_mulc_
 
 #define GF_MULC0(c) __gf_mulc_ = (const gf*)&((*gf_mul_table)[c])
 #define GF_ADDMULC(dst, x) dst ^= __gf_mulc_[x]
@@ -199,11 +218,11 @@ generate_gf (void) {
 
 #define UNROLL 16               /* 1, 4, 8, 16 */
 static void
-_addmul1(register gf*restrict dst, const register gf*restrict src, gf c, size_t sz) {
+_addmul1(gf*restrict dst, const gf*restrict src, gf c, size_t sz) {
     USE_GF_MULC;
     const gf* lim = &dst[sz - UNROLL + 1];
 
-    register uint32_t temp1;
+    uint32_t temp1;
 
     GF_MULC0 (c);
 

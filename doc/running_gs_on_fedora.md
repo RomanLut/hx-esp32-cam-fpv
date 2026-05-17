@@ -2,7 +2,7 @@
 
 This instruction describes steps for running Ground Station on Fedora Workstation (f.e. on old x86_64 notebook).
 
-External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
+Ground Station software still requires a Wi-Fi adapter that supports monitor mode and packet injection (rtl8812ua, ar9271).
 
 Internal wifi card may work or may not. Intel 6300 AGN card does not work for me; even though it works on Ubuntu.
 
@@ -18,11 +18,13 @@ Internal wifi card may work or may not. Intel 6300 AGN card does not work for me
  
   ```cd ~```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
 
   ```cd esp32-cam-fpv```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd gs```
 

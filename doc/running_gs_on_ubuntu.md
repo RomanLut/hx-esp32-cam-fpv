@@ -5,7 +5,7 @@ This instruction describes steps for running Ground Station software on Ubuntu d
 
 ## Notebook 
 
-External Wifi card which supports monitor mode and injection is still required (rtl8812ua, ar9271). 
+Ground Station software still requires a Wi-Fi adapter that supports monitor mode and packet injection (rtl8812ua, ar9271).
 
 Internal wifi card may work or may not. It works for me with **Intel 6300 AGN card**.
 
@@ -38,7 +38,7 @@ Tested with Ubuntu Desktop which can be downloaded here https://github.com/Joshu
 
 # Steps 
 
-* Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms aircrack-ng```
+* Install required packages: ```sudo apt install --no-install-recommends -y git libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms aircrack-ng cmake```
 
 * Install rtl8812au driver:
 
@@ -54,11 +54,13 @@ Tested with Ubuntu Desktop which can be downloaded here https://github.com/Joshu
  
   ```cd ~```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
 
   ```cd ~```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd esp32-cam-fpv```
 

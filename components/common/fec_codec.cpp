@@ -14,10 +14,6 @@
 //todo: use fec codec property instead
 extern bool isHQDVRMode();
 
-static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-                                           10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
-
 const uint8_t Fec_Codec::MAX_CODING_K;
 const uint8_t Fec_Codec::MAX_CODING_N;
 
@@ -502,7 +498,7 @@ void Fec_Codec::static_encoder_task_proc(void* params)
                     (void)start;
 
                     //encode
-                    fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, lastSize);
+                    fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, fec_block_nums() + m_descriptor.coding_k, i, lastSize);
 
                     ENCODER_LOG("Encoded fec: %d\n", (int)(esp_timer_get_time() - start));
 

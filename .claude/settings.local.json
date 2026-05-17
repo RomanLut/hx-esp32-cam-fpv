@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\OpenCV\\\\OpenCVWrapper\" -Recurse -Filter \"*.cpp\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Select-String -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\components_gs\\\\shared\\\\core\\\\osd_menu_controller.cpp\" -Pattern \"<>\" -SimpleMatch)",
+      "PowerShell($content = Get-Content \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\components_gs\\\\shared\\\\core\\\\osd_menu_controller.cpp\" -Raw -Encoding UTF8; $lines = $content -split \"`n\"; for \\($i=0; $i -lt $lines.Length; $i++\\) { if \\($lines[$i] -match [regex]::Escape\\(\"<>\"\\)\\) { Write-Output \"$\\($i+1\\): $\\($lines[$i]\\)\" } })",
+      "PowerShell(& 'C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe' install -r 'd:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\android_gs\\\\app\\\\build\\\\outputs\\\\apk\\\\debug\\\\app-debug.apk')",
+      "PowerShell(cmd /c \"cd /d d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\android_gs && deploy.bat\")",
+      "PowerShell(cmd /c \"cd /d d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\android_gs && .\\\\deploy.bat\")",
+      "PowerShell($ADB = \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $ADB shell am force-stop com.esp32camfpv.androidgs)",
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" shell am force-stop com.esp32camfpv.androidgs)",
+      "PowerShell($buildRoot = \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\OpenCV\\\\OpenCVWrapper\\\\Build\\\\android-arm64-v8a\"; Test-Path \"$buildRoot\\\\opencv\\\\OpenCVConfig.cmake\"; Test-Path \"$buildRoot\\\\wrapper\")",
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" shell am force-stop com.example.android_gs)",
+      "PowerShell(& \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\scripts\\\\sync_changed_gs_radxa.ps1\" -Build)",
+      "PowerShell(& \"C:\\\\Program Files\\\\putty\\\\plink.exe\" -ssh -batch -no-antispoof -pw radxa \"radxa@192.168.3.148\" \"sudo pkill -x gs 2>/dev/null; sleep 1; cd /home/radxa/esp32-cam-fpv/gs && nohup bash launch.sh </dev/null >/tmp/gs.log 2>&1 & echo started pid=$!\")",
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" devices)",
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" tcpip 5555)",
+      "Bash(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\oculus_quest_gs\" -Recurse -Force)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\oculus_quest_gs\\\\app\\\\src\\\\main\" -Recurse -Depth 3 | Where-Object { $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\oculus_quest_gs\\\\app\\\\src\\\\main\\\\cpp\" -Depth 0 -File | Where-Object { $_.Extension -match '\\\\.\\(cpp|h\\)$' } | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(\"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)",
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)"
+    ]
+  }
+}

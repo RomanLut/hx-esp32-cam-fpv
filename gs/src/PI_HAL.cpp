@@ -10,12 +10,25 @@
 
 #include <fstream>
 #include <future>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <mutex>
+#include <optional>
+#include <cfloat>
+#include <utility>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
-#include "Clock.h"
+#include "../../components/common/Clock.h"
+#include "../../components_gs/mcp/gs_mcp_server.h"
+#include "gs_runtime_state.h"
+#include "gs_shared_state.h"
+#include "gs_stats.h"
+#include "gs_lens_correction_shared.h"
+#include "gs_video_shader_renderer.h"
+#include "gs_video_stabilization_shared.h"
 
 #ifdef USE_MANGA_SCREEN2
 #include <tslib.h> //needs libts-dev 
@@ -39,14 +52,279 @@ extern "C"
 }
 #endif
 
-#ifdef TEST_LATENCY
-extern "C"
+namespace
 {
-#include "pigpio.h"
-}
-#endif
 
-extern uint8_t s_font_droid_sans[];
+static GLuint g_VideoTexture;
+static gs::render::VideoShaderRenderer g_VideoShaderRenderer;
+
+//===================================================================================
+//===================================================================================
+// Maps one injected ImGui key used by MCP to the SDL keycode consumed by the backend.
+std::optional<SDL_Keycode> mapInjectedImGuiKeyToSdlKeycode(ImGuiKey key)
+{
+    switch (key)
+    {
+    case ImGuiKey_UpArrow: return SDLK_UP;
+    case ImGuiKey_DownArrow: return SDLK_DOWN;
+    case ImGuiKey_LeftArrow: return SDLK_LEFT;
+    case ImGuiKey_RightArrow: return SDLK_RIGHT;
+    case ImGuiKey_Enter: return SDLK_RETURN;
+    case ImGuiKey_KeypadEnter: return SDLK_KP_ENTER;
+    case ImGuiKey_Escape: return SDLK_ESCAPE;
+    case ImGuiKey_R: return SDLK_r;
+    case ImGuiKey_G: return SDLK_g;
+    case ImGuiKey_S: return SDLK_s;
+    case ImGuiKey_Space: return SDLK_SPACE;
+    default: return std::nullopt;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Pushes one queued MCP key transition into the SDL event queue before polling input.
+void pushInjectedSdlKeyTransition()
+{
+    gs::mcp::InjectedKeyTransition transition = {};
+    if (!gs::mcp::popInjectedKeyTransition(transition))
+    {
+        return;
+    }
+
+    const std::optional<SDL_Keycode> keycode = mapInjectedImGuiKeyToSdlKeycode(transition.key);
+    if (!keycode.has_value())
+    {
+        return;
+    }
+
+    SDL_Event event = {};
+    event.type = transition.down ? SDL_KEYDOWN : SDL_KEYUP;
+    event.key.type = event.type;
+    event.key.state = transition.down ? SDL_PRESSED : SDL_RELEASED;
+    event.key.repeat = 0;
+    event.key.keysym.sym = *keycode;
+    event.key.keysym.scancode = SDL_GetScancodeFromKey(*keycode);
+    SDL_PushEvent(&event);
+}
+
+//===================================================================================
+//===================================================================================
+// Flips final ImGui draw data as one whole-screen image, including video and menus.
+void applyScreenFlipToDrawData(ImDrawData* draw_data, float surface_width, float surface_height)
+{
+    if (draw_data == nullptr)
+    {
+        return;
+    }
+
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        ImDrawList* cmd_list = draw_data->CmdLists[n];
+        for (ImDrawVert& vertex : cmd_list->VtxBuffer)
+        {
+            vertex.pos.x = surface_width - vertex.pos.x;
+            vertex.pos.y = surface_height - vertex.pos.y;
+        }
+
+        for (ImDrawCmd& cmd : cmd_list->CmdBuffer)
+        {
+            const float x1 = cmd.ClipRect.x;
+            const float y1 = cmd.ClipRect.y;
+            const float x2 = cmd.ClipRect.z;
+            const float y2 = cmd.ClipRect.w;
+            cmd.ClipRect.x = surface_width - x2;
+            cmd.ClipRect.y = surface_height - y2;
+            cmd.ClipRect.z = surface_width - x1;
+            cmd.ClipRect.w = surface_height - y1;
+        }
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Renders one canonical left-eye ImGui frame into both VR eye regions.
+void renderDrawDataWithVrReplication(ImDrawData* draw_data,
+                                     float surface_width,
+                                     float surface_height,
+                                     float vr_separation,
+                                     bool screen_flip)
+{
+    if (draw_data == nullptr || surface_width <= 0.0f)
+    {
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+        return;
+    }
+
+    const float half_w = surface_width * 0.5f;
+    const float full_w = surface_width;
+    const float offset = vr_separation * half_w;
+
+    struct SavedList
+    {
+        std::vector<ImVec2> positions;
+        std::vector<ImVec4> clip_rects;
+    };
+
+    std::vector<SavedList> saved(draw_data->CmdListsCount);
+    for (int n = 0; n < draw_data->CmdListsCount; n++)
+    {
+        const ImDrawList* cmd_list = draw_data->CmdLists[n];
+        saved[n].positions.resize(cmd_list->VtxBuffer.Size);
+        for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+        {
+            saved[n].positions[i] = cmd_list->VtxBuffer[i].pos;
+        }
+
+        saved[n].clip_rects.resize(cmd_list->CmdBuffer.Size);
+        for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+        {
+            saved[n].clip_rects[i] = cmd_list->CmdBuffer[i].ClipRect;
+        }
+    }
+
+    const auto apply_eye = [&](float dx, float x_min, float x_max)
+    {
+        for (int n = 0; n < draw_data->CmdListsCount; n++)
+        {
+            ImDrawList* cmd_list = draw_data->CmdLists[n];
+            for (int i = 0; i < cmd_list->VtxBuffer.Size; i++)
+            {
+                cmd_list->VtxBuffer[i].pos.x = saved[n].positions[i].x + dx;
+                cmd_list->VtxBuffer[i].pos.y = saved[n].positions[i].y;
+            }
+
+            for (int i = 0; i < cmd_list->CmdBuffer.Size; i++)
+            {
+                const ImVec4& source_clip = saved[n].clip_rects[i];
+                ImVec4& clip = cmd_list->CmdBuffer[i].ClipRect;
+                clip.y = source_clip.y;
+                clip.w = source_clip.w;
+
+                // Linux authors one canonical left-eye frame and replays it into
+                // both halves. Commands already outside the canonical eye are clipped
+                // so stale full-screen windows cannot leak across.
+                if (source_clip.x >= half_w)
+                {
+                    clip.x = x_min;
+                    clip.z = x_min;
+                }
+                else
+                {
+                    clip.x = std::clamp(source_clip.x + dx, x_min, x_max);
+                    clip.z = std::clamp(source_clip.z + dx, x_min, x_max);
+                }
+            }
+        }
+
+        if (screen_flip)
+        {
+            applyScreenFlipToDrawData(draw_data, surface_width, surface_height);
+        }
+    };
+
+    apply_eye(+offset, 0.0f, half_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    apply_eye(half_w - offset, half_w, full_w);
+    ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+}
+
+//===================================================================================
+//===================================================================================
+// Applies GS screen zoom after the video rectangle has been letterboxed.
+gs::render::RectI applyScreenZoom(const gs::render::RectI& rect, float zoom)
+{
+    if (zoom == 1.0f)
+    {
+        return rect;
+    }
+
+    const float center_x = (static_cast<float>(rect.x1) + static_cast<float>(rect.x2)) * 0.5f;
+    const float center_y = (static_cast<float>(rect.y1) + static_cast<float>(rect.y2)) * 0.5f;
+    const float width = static_cast<float>(rect.x2 - rect.x1) * zoom;
+    const float height = static_cast<float>(rect.y2 - rect.y1) * zoom;
+
+    return {
+        static_cast<int>(std::round(center_x - width * 0.5f)),
+        static_cast<int>(std::round(center_y - height * 0.5f)),
+        static_cast<int>(std::round(center_x + width * 0.5f)),
+        static_cast<int>(std::round(center_y + height * 0.5f))
+    };
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the video texture inside one viewport, clipping zoomed video to that viewport.
+void drawVideoInViewport(int quad_x,
+                         int clip_x,
+                         int y,
+                         int width,
+                         int height,
+                         float video_aspect,
+                         ScreenAspectRatio screen_aspect_ratio,
+                         float screen_zoom,
+                         float surface_width,
+                         float surface_height,
+                         int frame_width,
+                         int frame_height)
+{
+    const gs::render::RectI letterboxed =
+        gs::render::buildLetterboxedRect(quad_x,
+                                         y,
+                                         width,
+                                         height,
+                                         video_aspect,
+                                         screen_aspect_ratio);
+    const gs::render::RectI zoomed = applyScreenZoom(letterboxed, screen_zoom);
+    gs::render::VideoQuad quad;
+    quad.x = static_cast<float>(zoomed.x1);
+    quad.y = static_cast<float>(zoomed.y1);
+    quad.width = static_cast<float>(zoomed.x2 - zoomed.x1);
+    quad.height = static_cast<float>(zoomed.y2 - zoomed.y1);
+    quad.v0 = 0.0f;
+    quad.v1 = 1.0f;
+
+    const gs::render::LensCorrectionParams lens_params =
+        gs::render::buildLensCorrectionParams(s_lensCorrectionState);
+    const gs::stabilization::StabilizationTransform stabilization_transform =
+        s_decoder.getRenderStabilizationTransform();
+    const gs::render::VideoPostprocessingParams postprocessing_params =
+        s_decoder.get_postprocessing_params();
+    g_VideoShaderRenderer.draw(g_VideoTexture,
+                               quad,
+                               static_cast<float>(clip_x),
+                               static_cast<float>(y),
+                               static_cast<float>(width),
+                               static_cast<float>(height),
+                               surface_width,
+                               surface_height,
+                               frame_width,
+                               frame_height,
+                               lens_params,
+                               stabilization_transform,
+                               postprocessing_params);
+}
+
+//===================================================================================
+//===================================================================================
+// Refreshes the cached SDL logical window size used by ImGui layout and pointer math.
+void refreshSdlWindowSize(SDL_Window* window, uint32_t& width, uint32_t& height)
+{
+    if (window == nullptr)
+    {
+        return;
+    }
+
+    int window_width = 0;
+    int window_height = 0;
+    SDL_GetWindowSize(window, &window_width, &window_height);
+    if (window_width > 0 && window_height > 0)
+    {
+        width = static_cast<uint32_t>(window_width);
+        height = static_cast<uint32_t>(window_height);
+    }
+}
+
+} // namespace
 
 /* To install & compile SDL2 with DRM:
 
@@ -108,6 +386,11 @@ struct PI_HAL::Impl
         bool is_pressed = false;
     };
     std::array<Touch, MAX_TOUCHES> touches;
+    bool touch_was_pressed = false;
+    bool pointer_tap_pending = false;
+    float pointer_tap_x = 0.0f;
+    float pointer_tap_y = 0.0f;
+    std::function<void(float, float)> pointer_tap_callback;
 
     bool pigpio_is_isitialized = false;
     float target_backlight = 1.0f;
@@ -123,41 +406,6 @@ struct PI_HAL::Impl
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-#ifdef TEST_LATENCY
-
-bool PI_HAL::init_pigpio()
-{
-    if (m_impl->pigpio_is_isitialized)
-        return true;
-
-    LOGI("Initializing pigpio");
-    if (gpioCfgClock(2, PI_CLOCK_PCM, 0) < 0 ||
-            gpioCfgPermissions(static_cast<uint64_t>(-1)))
-    {
-        LOGE("Cannot configure pigpio");
-        return false;
-    }
-    if (gpioInitialise() < 0)
-    {
-        LOGE("Cannot init pigpio");
-        return false;
-    }
-
-    m_impl->pigpio_is_isitialized = true;
-
-    return true;
-}
-
-// ///////////////////////////////////////////////////////////////////////////////////////////////////
-
-void PI_HAL::shutdown_pigpio()
-{
-    if (m_impl->pigpio_is_isitialized)
-        gpioTerminate();
-
-    m_impl->pigpio_is_isitialized = false;
-}
-#endif
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool PI_HAL::init_display_dispmanx()
@@ -249,6 +497,8 @@ bool PI_HAL::init_display_dispmanx()
 
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.KeyRepeatDelay = 1.0f;
+    io.KeyRepeatRate = 0.1f;
     io.DisplaySize.x = m_impl->width;
     io.DisplaySize.y = m_impl->height;
 
@@ -258,7 +508,6 @@ bool PI_HAL::init_display_dispmanx()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-static GLuint       g_VideoTexture;
 void PI_HAL::set_video_channel(unsigned int id)
 {
     g_VideoTexture = id;   
@@ -320,21 +569,57 @@ bool PI_HAL::init_display_sdl()
             desiredMode.refresh_rate = 0;  // Refresh rate 0 means any refresh rate
             desiredMode.driverdata = 0;  // Driverdata should be 0
 
-            // Closest display mode found
+            // Closest display mode found (fallback when no exact resolution mode exists)
             SDL_DisplayMode closestMode;
 
             printf("Trying mode %d %d...\n", desiredMode.w, desiredMode.h);
 
-            if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode)) 
+            if (SDL_GetClosestDisplayMode(0, &desiredMode, &closestMode))
             {
-                printf("Display mode:");
-                printf("  Width: %d\n", closestMode.w);
-                printf("  Height: %d\n", closestMode.h);
-                printf("  Refresh Rate: %d\n", closestMode.refresh_rate);
-                printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(closestMode.format));            
+                // Prefer the highest refresh mode among exact width/height matches.
+                SDL_DisplayMode selectedMode = closestMode;
+                int best_refresh_rate = closestMode.refresh_rate;
+                int best_pixel_format = static_cast<int>(closestMode.format);
+                const int display_modes_count = SDL_GetNumDisplayModes(0);
+                for (int mode_index = 0; mode_index < display_modes_count; mode_index++)
+                {
+                    SDL_DisplayMode candidate_mode = {};
+                    if (SDL_GetDisplayMode(0, mode_index, &candidate_mode) != 0)
+                    {
+                        continue;
+                    }
 
-                m_impl->width = closestMode.w;
-                m_impl->height = closestMode.h;
+                    if (candidate_mode.w != closestMode.w || candidate_mode.h != closestMode.h)
+                    {
+                        continue;
+                    }
+
+                    const int candidate_refresh_rate = candidate_mode.refresh_rate > 0 ? candidate_mode.refresh_rate : 0;
+                    const int candidate_pixel_format = static_cast<int>(candidate_mode.format);
+                    const bool is_better_refresh = candidate_refresh_rate > best_refresh_rate;
+                    const bool is_refresh_tie_with_preferred_format =
+                        (candidate_refresh_rate == best_refresh_rate) &&
+                        (candidate_pixel_format == static_cast<int>(closestMode.format)) &&
+                        (best_pixel_format != static_cast<int>(closestMode.format));
+                    const bool is_refresh_tie_with_higher_format_id =
+                        (candidate_refresh_rate == best_refresh_rate) &&
+                        (candidate_pixel_format > best_pixel_format);
+                    if (is_better_refresh || is_refresh_tie_with_preferred_format || is_refresh_tie_with_higher_format_id)
+                    {
+                        selectedMode = candidate_mode;
+                        best_refresh_rate = candidate_refresh_rate;
+                        best_pixel_format = candidate_pixel_format;
+                    }
+                }
+
+                printf("Display mode:");
+                printf("  Width: %d\n", selectedMode.w);
+                printf("  Height: %d\n", selectedMode.h);
+                printf("  Refresh Rate: %d\n", selectedMode.refresh_rate);
+                printf("  Pixel Format: %s\n", SDL_GetPixelFormatName(selectedMode.format));
+
+                m_impl->width = selectedMode.w;
+                m_impl->height = selectedMode.h;
 
                 SDL_WindowFlags window_flags = (SDL_WindowFlags)(
                     SDL_WINDOW_FULLSCREEN | 
@@ -343,7 +628,7 @@ bool PI_HAL::init_display_sdl()
                     SDL_WINDOW_BORDERLESS );
                 m_impl->window = SDL_CreateWindow("esp32-cam-fpv", 0, 0, m_impl->width, m_impl->height, window_flags);
 
-                if (SDL_SetWindowDisplayMode(m_impl->window, &closestMode) != 0) 
+                if (SDL_SetWindowDisplayMode(m_impl->window, &selectedMode) != 0)
                 {
                     printf("SDL_SetWindowDisplayMode Error: %s\n", SDL_GetError());
                     SDL_DestroyWindow(m_impl->window);
@@ -406,6 +691,8 @@ bool PI_HAL::init_display_sdl()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.KeyRepeatDelay = 1.0f;
+    io.KeyRepeatRate = 0.1f;
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
@@ -419,6 +706,7 @@ bool PI_HAL::init_display_sdl()
 
     ImVec2 display_size = get_display_size();
     ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowBorderSize = 0.0f;
     style.ScrollbarSize = display_size.x / 80.f;
     //style.TouchExtraPadding = ImVec2(style.ScrollbarSize * 2.f, style.ScrollbarSize * 2.f);
     //style.ItemSpacing = ImVec2(size.x / 200, size.x / 200);
@@ -460,6 +748,7 @@ return true;
 void PI_HAL::shutdown_display_dispmanx()
 {
 #ifndef USE_SDL
+    g_VideoShaderRenderer.release();
     // clear screen
     glClear(GL_COLOR_BUFFER_BIT);
     eglSwapBuffers(m_impl->display, m_impl->surface);
@@ -477,6 +766,7 @@ void PI_HAL::shutdown_display_dispmanx()
 void PI_HAL::shutdown_display_sdl()
 {
 #ifdef USE_SDL
+    g_VideoShaderRenderer.release();
     SDL_GL_DeleteContext(m_impl->context);
     SDL_DestroyWindow(m_impl->window);
     SDL_Quit();
@@ -493,41 +783,69 @@ void PI_HAL::shutdown_display()
 #endif
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
+//===================================================================================
+//===================================================================================
+// Updates SDL input, refreshes the live window layout, and renders one ImGui frame.
 bool PI_HAL::update_display()
 {
+    pushInjectedSdlKeyTransition();
+
     SDL_Event event;
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     while (SDL_PollEvent(&event))
     {
-        ImGui_ImplSDL2_ProcessEvent(&event);
+        // Runtime pointer input is captured as semantic taps instead of being
+        // forwarded to ImGui mouse routing. VR/menu controls are hit-tested in
+        // canonical overlay coordinates so both eyes and platforms behave alike.
         switch(event.type){
+        case SDL_MOUSEBUTTONUP:
+            if (event.button.button == SDL_BUTTON_LEFT || event.button.button == SDL_BUTTON_RIGHT)
+            {
+                queue_pointer_tap(static_cast<float>(event.button.x),
+                                  static_cast<float>(event.button.y));
+            }
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEMOTION:
+        case SDL_MOUSEWHEEL:
+            break;
         case SDL_FINGERMOTION:
         case SDL_FINGERDOWN:
+            break;
         case SDL_FINGERUP:
-        {
-            //SDL_TouchFingerEvent& ev = *(SDL_TouchFingerEvent*)&event;
-            //io.MousePos = ImVec2(ev.x * m_impl->width, ev.y * m_impl->height);
-            //io.MouseDown[0] = event.type == SDL_FINGERUP ? false : true;
-            if(event.type == SDL_FINGERMOTION || event.type == SDL_FINGERDOWN ){
-                io.MouseDown[0] = true;
+            queue_pointer_tap(event.tfinger.x * static_cast<float>(m_impl->width),
+                              event.tfinger.y * static_cast<float>(m_impl->height));
+            break;
+        default:
+            ImGui_ImplSDL2_ProcessEvent(&event);
+            if (event.type == SDL_QUIT)
+            {
+                shutdown_display();
             }
-        }
-        break;
-        case SDL_QUIT:
-            shutdown_display();
             break;
         }
     }
+    dispatch_pending_pointer_tap();
+
+    // WSLg/SDL can clamp or resize the window after creation. VR layout must use
+    // the live logical window size, otherwise the right eye can be placed beyond
+    // ImGui's display rectangle and disappears on the right side of the screen.
+    refreshSdlWindowSize(m_impl->window, m_impl->width, m_impl->height);
 
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
+    io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+    io.AddMouseButtonEvent(0, false);
+    io.AddMouseButtonEvent(1, false);
+    io.AddMouseButtonEvent(2, false);
     ImGui::NewFrame();
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(get_display_size());
+    const ImVec2 display_size = get_display_size();
+    const int display_width = static_cast<int>(display_size.x);
+    const int display_height = static_cast<int>(display_size.y);
+    ImGui::SetNextWindowSize(display_size);
     ImGui::SetNextWindowBgAlpha(0);
     ImGui::Begin("mainWindow", nullptr, ImGuiWindowFlags_NoTitleBar | 
                             ImGuiWindowFlags_NoResize | 
@@ -535,24 +853,97 @@ bool PI_HAL::update_display()
                             ImGuiWindowFlags_NoScrollbar | 
                             ImGuiWindowFlags_NoCollapse | 
                             ImGuiWindowFlags_NoInputs);
-    for(auto &func:render_callbacks){
+
+    const float video_aspect = s_decoder.isAspect16x9() ? (16.0f / 9.0f) : (4.0f / 3.0f);
+    const int viewport_width = s_groundstation_config.vrMode ? (display_width / 2) : display_width;
+    const ImVec2 frame_resolution = s_decoder.get_video_resolution();
+    const int frame_width = static_cast<int>(frame_resolution.x);
+    const int frame_height = static_cast<int>(frame_resolution.y);
+
+    for(auto &func:render_callbacks)
+    {
         func();
     }
 
-    int x1, y1, x2, y2;
-    calculateLetterBoxAndBorder(m_impl->width,m_impl->height, x1, y1, x2, y2);
-
-    ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(g_VideoTexture),ImVec2(x1,y1),ImVec2(x2,y2));
-
     ImGui::End();
-    
+
     // Rendering
     ImGui::Render();
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    if (s_groundstation_config.vrMode)
+    {
+        const float half_w = io.DisplaySize.x * 0.5f;
+        const float offset = s_groundstation_config.screenVrSeparation * half_w;
+        // Zoom is intentionally applied after letterboxing. Per-eye scissor
+        // clipping keeps zoomed VR video from bleeding into the other eye.
+        drawVideoInViewport(static_cast<int>(std::round(offset)),
+                            0,
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
+        drawVideoInViewport(static_cast<int>(std::round(half_w - offset)),
+                            static_cast<int>(std::round(half_w)),
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
+    }
+    else
+    {
+        drawVideoInViewport(0,
+                            0,
+                            0,
+                            viewport_width,
+                            display_height,
+                            video_aspect,
+                            s_groundstation_config.screenAspectRatio,
+                            s_groundstation_config.screenZoom,
+                            io.DisplaySize.x,
+                            io.DisplaySize.y,
+                            frame_width,
+                            frame_height);
+    }
+    ImDrawData* draw_data = ImGui::GetDrawData();
+    if (s_groundstation_config.vrMode)
+    {
+        renderDrawDataWithVrReplication(draw_data,
+                                        io.DisplaySize.x,
+                                        io.DisplaySize.y,
+                                        s_groundstation_config.screenVrSeparation,
+                                        s_groundstation_config.screenFlipV);
+    }
+    else
+    {
+        if (s_groundstation_config.screenFlipV)
+        {
+            applyScreenFlipToDrawData(draw_data, io.DisplaySize.x, io.DisplaySize.y);
+        }
+        ImGui_ImplOpenGL3_RenderDrawData(draw_data);
+    }
+    const Clock::time_point swap_begin = Clock::now();
     SDL_GL_SwapWindow(m_impl->window);
+    const int swap_duration_ms = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
+    {
+        std::lock_guard<std::mutex> lock(s_gs_stats_mutex);
+        s_gs_stats.gpuWaitLastFrameMS = swap_duration_ms;
+        s_gs_stats.gpuWaitMaxMS = std::max(s_gs_stats.gpuWaitMaxMS, swap_duration_ms);
+    }
     
     return true;
 }
@@ -634,15 +1025,13 @@ void PI_HAL::update_ts()
 
     Impl::Touch& touch = m_impl->touches[0];
 
-    // Update buttons
-    ImGuiIO& io = ImGui::GetIO();
-    io.MouseDown[0] = touch.is_pressed;
-
-    // Update mouse position
-    io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
     float mouse_x = touch.y;
-    float mouse_y = s_height - touch.x;
-    io.MousePos = ImVec2(mouse_x, mouse_y);
+    float mouse_y = static_cast<float>(m_impl->height) - static_cast<float>(touch.x);
+    if (m_impl->touch_was_pressed && !touch.is_pressed)
+    {
+        queue_pointer_tap(mouse_x, mouse_y);
+    }
+    m_impl->touch_was_pressed = touch.is_pressed;
 #endif
 }
 
@@ -668,14 +1057,6 @@ bool PI_HAL::init()
     bcm_host_init();
 #endif
 
-#ifdef TEST_LATENCY
-    if (!init_pigpio())
-    {
-        LOGE("Cannot initialize pigpio");
-        return false;
-    }
-#endif
-
     if (!init_display())
     {
         LOGE("Cannot initialize display");
@@ -691,8 +1072,9 @@ bool PI_HAL::init()
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
     io.Fonts->AddFontDefault();
-    //io.Fonts->AddFontFromMemoryTTF(s_font_droid_sans, 16, 16.f);
     io.Fonts->Build();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowBorderSize = 0.0f;
 
     return true;
 }
@@ -702,10 +1084,6 @@ bool PI_HAL::init()
 void PI_HAL::shutdown()
 {
     ImGui_ImplOpenGL3_Shutdown();
-
-#ifdef TEST_LATENCY
-    shutdown_pigpio();
-#endif
 
     shutdown_ts();
     shutdown_display();
@@ -785,6 +1163,47 @@ void PI_HAL::set_vsync( bool b, bool apply )
         SDL_GL_SetSwapInterval(m_impl->vsync ? 1 : 0 ); // Enable vsync
     }
 
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Sets the callback used to translate pointer taps into runtime semantic actions.
+void PI_HAL::set_pointer_tap_callback(std::function<void(float, float)> func)
+{
+    m_impl->pointer_tap_callback = std::move(func);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Stores one pending semantic pointer tap for runtime overlay dispatch.
+void PI_HAL::queue_pointer_tap(float x, float y)
+{
+    m_impl->pointer_tap_pending = true;
+    m_impl->pointer_tap_x = x;
+    m_impl->pointer_tap_y = y;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//===================================================================================
+//===================================================================================
+// Invokes the runtime tap callback once before ImGui starts the next frame.
+void PI_HAL::dispatch_pending_pointer_tap()
+{
+    if (!m_impl->pointer_tap_pending)
+    {
+        return;
+    }
+
+    m_impl->pointer_tap_pending = false;
+    if (m_impl->pointer_tap_callback)
+    {
+        m_impl->pointer_tap_callback(m_impl->pointer_tap_x, m_impl->pointer_tap_y);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

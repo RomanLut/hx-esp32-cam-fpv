@@ -40,9 +40,6 @@ static bool ll_cam_calc_rgb_dma_sizes(cam_obj_t *cam);
 static const char *TAG = "c5 ll_cam";
 
 
-volatile int pk = 0;
-extern volatile int pk2;
-
 // PARLIO partial receive callback - handles JPEG frame detection and buffering
 static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_unit,
                                                             const parlio_rx_event_data_t *edata,
@@ -52,8 +49,6 @@ static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_uni
     const uint8_t *data = edata->data;
     uint32_t received_bytes = edata->recv_bytes;
     BaseType_t HPTaskAwoken = pdFALSE;
-
-    pk++;
 
     //send event to cam_task
     cam_event_t event = { .kind = CAM_PARLIO_DATA, .data = data, .length = (uint16_t)received_bytes, .timestamp = esp_timer_get_time() };

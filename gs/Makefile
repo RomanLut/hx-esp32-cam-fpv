@@ -1,32 +1,81 @@
 # output binary
 BIN := gs
-IMGUI_DIR = src/imgui/
+IMGUI_DIR = ../components_gs/imgui/
 SRCS := src/main.cpp \
-	src/droid_sans_font.cpp \
-	src/osd.cpp \
-	src/utils/lodepng.cpp \
-	src/utils/utils.cpp \
+	../components_gs/shared/core/gs_protocol.cpp \
+	../components_gs/shared/core/gs_session_core.cpp \
+	../components_gs/shared/core/osd_menu_common.cpp \
+	../components_gs/shared/core/osd_menu_controller.cpp \
+	../components_gs/shared/core/jpeg_decoder_core.cpp \
+	../components_gs/shared/core/osd_menu_imgui_shared.cpp \
+	../components_gs/shared/core/stats_panel_shared.cpp \
+	../components_gs/shared/core/transport_manager_base.cpp \
+	../components_gs/shared/core/transport_globals.cpp \
+	../components_gs/shared/core/transport_kind.cpp \
+	../components_gs/shared/core/video_frame_assembler.cpp \
+	../components_gs/shared/flight_osd.cpp \
+	../components_gs/shared/gs_recordings_storage.cpp \
+	../components_gs/shared/gs_playback_manager.cpp \
+	../components_gs/shared/gs_asset_loader.cpp \
+	../components_gs/shared/gs_stub_transport.cpp \
+	../components_gs/shared/gs_test_transport.cpp \
+	../components_gs/shared/gs_wifi_scan_transport.cpp \
+	../components_gs/shared/gs_top_overlay_shared.cpp \
+	../components_gs/shared/gs_camera_calibration_shared.cpp \
+	../components_gs/shared/gs_video_stabilization_shared.cpp \
+	../components_gs/shared/gs_lens_correction_shared.cpp \
+	../components_gs/shared/gs_video_layout_shared.cpp \
+	../components_gs/shared/gs_video_shader_renderer.cpp \
+	../components_gs/shared/gs_jpeg_dct_postprocessing.cpp \
+	src/gs_linux_bootstrap.cpp \
+	src/gs_linux_recordings_storage.cpp \
+	src/gs_linux_playback_manager.cpp \
+	src/gs_linux_render_helpers.cpp \
+	src/gs_linux_runtime_loop.cpp \
+	src/gs_linux_transport_manager.cpp \
+	src/linux_apfpv_transport.cpp \
+	src/linux_wifi_scan_transport.cpp \
+	src/gs_linux_startup.cpp \
+	src/gs_linux_runtime_sink.cpp \
+	src/gs_linux_udp_broadcast.cpp \
+	../components_gs/shared/gs_runtime_config.cpp \
+	../components_gs/shared/gs_runtime_core.cpp \
+	../components_gs/shared/gs_runtime_event_pipeline.cpp \
+	../components_gs/shared/gs_runtime_event_flow.cpp \
+	../components_gs/shared/gs_runtime_globals.cpp \
+	../components_gs/shared/gs_runtime_menu_ui.cpp \
+	../components_gs/shared/gs_runtime_protocol.cpp \
+	../components_gs/shared/gs_runtime_state.cpp \
+	../components_gs/shared/gs_runtime_sync.cpp \
+	../components_gs/shared/gs_runtime_video_flow.cpp \
+	../components_gs/shared/settings_storage.cpp \
+	../components_gs/utils/lodepng.cpp \
+	../components_gs/utils/utils.cpp \
 	../components/common/util.cpp \
-	src/fontwalksnail.cpp \
+	../components_gs/shared/fontwalksnail.cpp \
 	src/PI_HAL.cpp \
-	src/Comms.cpp \
-	src/Video_Decoder.cpp \
-	src/utils/radiotap/radiotap.cpp \
+	src/linux_raw_broadcast_transport.cpp \
+	src/gs_linux_video_decoder.cpp \
+	src/dct_calibration.cpp \
+	../components_gs/utils/radiotap/radiotap.cpp \
 	../components/common/crc.cpp \
 	../components/common/fec.cpp \
+	../components/common/fec_block_decoder.cpp \
 	../components/common/avi.cpp \
 	../components/common/packets.cpp \
 	../components/common/wifi_channels.cpp \
 	../components/common/packet_filter.cpp \
 	../components/common/jpeg_parser.cpp \
 	../components/common/hx_mavlink_parser.cpp \
-	src/fmt/format.cc \
-	src/fmt/os.cc \
-	src/socket.cpp \
-	src/osd_menu.cpp \
+	../components_gs/fmt/format.cc \
+	../components_gs/fmt/os.cc \
+	src/gs_linux_runtime_platform_services.cpp \
+	src/gs_linux_osd_font_storage.cpp \
+	src/linux_serial_telemetry.cpp \
 	src/gpio_buttons.cpp \
 	src/cpu_temp.cpp \
-	src/frame_packets_debug.cpp 
+	../components_gs/shared/frame_packets_debug.cpp \
+	../components_gs/mcp/gs_mcp_server.cpp
 	
 
 SRCS += $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp
@@ -40,9 +89,9 @@ DISTFILES := $(BIN)
 DISTOUTPUT := $(BIN).tar.gz
 
 # intermediate directory for generated object files
-OBJDIR := .o
+OBJDIR := build/.o
 # intermediate directory for generated dependency files
-DEPDIR := .d
+DEPDIR := build/.d
 
 # object files, auto generated from source files
 OBJS := $(patsubst %,$(OBJDIR)/%.o,$(basename $(SRCS)))
@@ -63,7 +112,9 @@ LD := g++
 TAR := tar
 
 INCLUDE  := -Isrc \
-	-Isrc/utils \
+	-I../components_gs \
+	-I../components_gs/shared \
+	-I../components_gs/utils \
 	-I../components/common \
 	-I/usr/include/ \
 	-I/usr/include/freetype2 \
@@ -81,6 +132,9 @@ else
 CXXFLAGS += -O3 -DNDEBUG
 endif
 CXXFLAGS += -DIMGUI_IMPL_OPENGL_ES2
+ifeq ($(DCT_CALIBRATION),1)
+CXXFLAGS += -DGS_ENABLE_DCT_CALIBRATION
+endif
 CFLAGS = $(CXXFLAGS)
 
 #CPPFLAGS := -g -Wall -DRASPBERRY_PI $(INCLUDE)
@@ -89,7 +143,7 @@ CFLAGS = $(CXXFLAGS)
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lbcm_host -lbrcmGLESv2 -lbrcmEGL -lts
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lGLESv2 -lturbojpeg -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lepoxy
 LDFLAGS := -L/usr/lib/aarch64-linux-gnu/ -L/usr/lib/ -L/opt/vc/lib/ 
-LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs
+LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs -ldl
 
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td

@@ -3,3 +3,7 @@
 	path = gs/src/imgui
 	url = https://github.com/ocornut/imgui.git
 
+[submodule "OpenCV/OpenCV"]
+	path = OpenCV/OpenCV
+	url = https://github.com/opencv/opencv.git
+	shallow = true

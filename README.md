@@ -1,7 +1,5 @@
 # hx-esp32-cam-fpv
 
-DeepWiki https://deepwiki.com/RomanLut/hx-esp32-cam-fpv
-
 Open source digital FPV system based on esp32cam.
 - [x] Fully functional video link
 - [x] Mavlink telemetry and RC
@@ -35,6 +33,15 @@ Open source digital FPV system based on esp32cam.
 - [x] ESP32 C5 support
 - [x] ESP32 C5 5GHz wifi support
 - [x] **Release v0.5.3**
+- [x] fisheye correction shader
+- [x] EIS
+- [x] Android GS
+- [x] Meta Quest 2 GS
+- [x] APFPV firmware
+- [x] JPEG deblocking
+- [x] **Release v0.6.3**
+- [ ] dual adapters support for Android and Oculus Quest GS
+- [ ] dedicated GS unit with dual adapters and hardware buttons for Oculus Quest GS
 - [ ] adjust esp32c5 video modes
 - [ ] adjust esp32c5 air unit recording
 - [ ] design esp32c5 air unit PCB
@@ -46,11 +53,8 @@ Open source digital FPV system based on esp32cam.
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
+- [ ] vignetting correction shader
 - [ ] digital pan, zoom
-- [ ] fisheye correction shader, vignetting correction shader
-- [ ] EIS
-- [ ] Android GS
-- [ ] Meta Quest 2 GS
 - [ ] lost frames inpainting using neural network ?
 - [ ] JPEG artefacts removal using neural network?
 
@@ -76,6 +80,8 @@ Open source digital FPV system based on esp32cam.
 - **Radxa Zero 3W/3E** with **rtl8812au** wifi card(s) **(recommended)**
 - **Raspberry Pi Zero 2W** ... **Raspberry Pi 4B** with **rtl8812au** or **AR9271** wifi card(s)* 
 - **Runcam WiFiLink VRX** - 5.8GHz only (experimental)
+- **Android Phone with rtl8812au USB adapter**
+- **Oculus Quest 2/3 rtl8812au USB adapter**
 - GS Software also can be run on x86_64 notebook on Ubuntu or Fedora Linux
 
 # Recommended hardware
@@ -153,10 +159,34 @@ However, compared to other open-source digital FPV solutions like OpenHD, RubyFP
 - Low power usage (under 300mA at 5V)
 - The same ground station hardware used for OpenHD/RubyFPV/OpenIPC can be reused — just swap the SD card.
 
+# Modes of operation: Raw Broadcast / APFPV
+
+The Air Unit can transmit video either in **Raw Broadcast mode** or in **APFPV mode**.
+
+In **Raw Broadcast mode**, packets are transmitted using packet injection over a connectionless link.
+
+In **APFPV mode**, the camera creates a **Wi-Fi access point** and the GS connects to it.
+
+In both modes, only one GS can be connected to the Air Unit at the same time.
+
+**Raw Broadcast** is the primary and recommended mode of operation. **APFPV mode** is not recommended for general use. **APFPV** requires establishing and maintaining a Wi-Fi connection to the access point, which can be unreliable or may fail completely. At long distances or with weak signal strength, this can result in losing the video feed for an extended period of time on Android devices, and especially Oculus Quest.
+
+In general, **APFPV mode** is recommended only for ground vehicles.
+
+Air Unit can be flashed with either **Raw Broadcast** or **APFPV** firmware. In fact, the firmware itself is the same - the only difference is the initial mode setting.
+When switching between firmware types, make sure to fully erase the flash before reflashing. Otherwise, the mode may not change.
+
+The Air Unit mode can be changed either from the GS menu or from the [camera web interface](#camera-web-interface-and-ota-update)
+
+> [!NOTE]
+> If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.
+
 # Building
 
 > [!NOTE]
 > Please use **release** branch (it contains lastest release). **master** branch can be unstable.
+
+Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 ## Air Unit
 
@@ -358,6 +388,45 @@ No tested, but should work. However, this VRX contains single **RTL8812AU** card
 
 Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
 
+## Ground Station Variant 6: Android GS
+
+Android GS application can receive video streams in RAW Broadcast mode using an RTL8812AU adapter, and in APFPV mode using the phone’s built-in Wi-Fi.
+
+Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, the adapter included with the Eachine Sphere Link.
+
+Currently only single adapter is supported.
+
+[VR mode](#vr-mode) allows using the Android GS application with VR headsets.
+
+**USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
+
+
+![android gs](doc/images/android_gs.jpg "android gs")
+
+
+## Ground Station Variant 7: Oculus Quest 2/3 GS
+
+Native OpenXR Oculus Quest 2/3 GS application supports both RAW Broadcast mode with an RTL8812AU adapter, and APFPV mode using the built-in Oculus Quest Wi-Fi.
+
+Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, the adapter included with the Eachine Sphere Link.
+
+Currently only single adapter is supported.
+
+In the future, this setup may become the recommended option, because the lens and screen quality of the Oculus Quest is significantly better than that of most FPV goggles.
+
+The main downside of the Oculus Quest is the need to carry VR controller, since there is currently no other practical way to navigate the Oculus system menus. Hand tracking can be used instead, but its performance is poor under direct sunlight.
+
+To solve this properly, support for dual adapters, hardware navigation buttons, and a dedicated 3D-printed GS unit still need to be developed.
+
+**USB Serial** in **OTG USB port** can be used to transfer Mavlink stream. 
+
+![oculus gs](doc/images/oculus_gs.jpg "oculus gs")
+
+
+## Ground station Variant: Ubuntu
+
+Building and running Ground Station software on a Ubuntu desktop (x86_64 notebook, Raspberry Pi 4 or Radxa Zero 3W): [/doc/running_gs_on_ubuntu.md](/doc/running_gs_on_ubuntu.md)
+
 
 ## Ground station Variant: Fedora Linux Workstation
 
@@ -393,7 +462,7 @@ Although **Mavlink 1** and even **MSP RC** are also compatible, the system is sp
 Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 ![alt text](doc/images/mavlink2_rc.png "mavlink2_rc")
 
-By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** (if present), otherwise **UART3**.
+By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** (if present), otherwise **UART3**. Port can be selected in **GS Settings->Wifi Settings** menu.
 
 
 ## MSP RC translation ( Mavlink2MspRC )
@@ -678,6 +747,38 @@ Tested on inav microplane:
 
 Range is limited by **ESP32** output power (100mW 20dB) and highly depends on antena type and quality.
 
+## VR Mode
+
+VR mode allows using the Android, Radxa or RPI GS with phone-based VR goggles or other headset viewers that expect a side-by-side image. It renders the same FPV video and OSD/menu UI into the left and right halves of the screen.
+
+![alt text](doc/images/vr_mode.jpg  "vr_mode.jpg")
+
+VR mode is configured from the OSD menu:
+
+- ```Menu -> GS Screen -> VR Mode -> VR Mode``` enables or disables side-by-side rendering. 
+- ```Menu -> GS Screen -> VR Mode -> Stereo Separation``` adjust horisontal images positions.
+
+
+## Wifi channels scanning
+
+Wi-Fi Channel Scan is a ground-station diagnostic mode for finding busy or quiet Wi-Fi channels.
+
+When enabled, the GS puts rtl8812au adapter into monitor mode and continuously hops through the channels allowed by the selected Wi-Fi band:
+
+- 2.4 GHz: channels 1-13
+- 5.8 GHz: channels 44-165
+
+The result is shown as an OSD bar graph: taller bars mean more Wi-Fi airtime was observed on that channel, so that channel is busier and may be worse for video/control. Shorter or empty bars usually indicate a cleaner channel.
+
+This mode does not connect to the air unit and does not automatically change the configured air/GS link channel. It is only a measurement view to help the user manually choose a better Wi-Fi channel. 
+
+![alt text](doc/images/wifi_schannels_scan.jpg  "wifi_schannels_scan.jpg")
+
+## Test mode
+
+Test mode continuously decodes a static JPEG stream to simulate a live connection. It is used to analyze GS performance.
+
+![alt text](doc/images/test_mode.jpg "test_mode.jpg")
 
 # Drivers 
 

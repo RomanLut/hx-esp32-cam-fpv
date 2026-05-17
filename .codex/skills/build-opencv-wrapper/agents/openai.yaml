@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build OpenCV Wrapper"
+  short_description: "Build the repo OpenCV wrapper prebuilts."
+  default_prompt: "Build the OpenCV wrapper for the requested platform using the repo scripts."

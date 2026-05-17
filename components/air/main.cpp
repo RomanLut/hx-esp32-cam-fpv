@@ -412,9 +412,8 @@ void checkButton()
   }
 }
 
-//////////////////////////////////////////////////////////////////////////////
-static bool s_recv_ground2air_packet = false;
-
+//=============================================================================================
+//=============================================================================================
 SemaphoreHandle_t s_serial_mux = xSemaphoreCreateBinary();
 
 auto _init_result2 = []() -> bool
@@ -1359,83 +1358,10 @@ IRAM_ATTR static void add_to_sd_fast_buffer(const void* data, size_t size, bool 
 
 //=============================================================================================
 //=============================================================================================
-IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
+// Filters one received transport packet and feeds it into the FEC decoder.
+IRAM_ATTR void transport_packet_received_cb(const uint8_t* data, size_t size, int8_t rssi_dbm, int8_t noise_floor_dbm)
 {
-    if (type == WIFI_PKT_DATA)
-    {
-        //LOG("data packet\n");
-    }
-    else if (type == WIFI_PKT_MGMT)
-    {
-        //LOG("management packet\n");
-        s_stats.inRejectedPacketCounter++;
-        return;
-    }
-    else if (type == WIFI_PKT_MISC)
-    {
-        //LOG("misc packet\n");
-        s_stats.inRejectedPacketCounter++;
-        return;
-    }
-    else if (type == WIFI_PKT_CTRL)
-    {
-        //LOG("misc packet\n");
-        s_stats.inRejectedPacketCounter++;
-        return;
-    }
-
-    wifi_promiscuous_pkt_t *pkt = reinterpret_cast<wifi_promiscuous_pkt_t*>(buf);
-
-    int channel = getValidWifiChannel(s_ground2air_config_packet.dataChannel.wifi_channel);
-    if (pkt->rx_ctrl.channel != channel )
-    {
-        //LOG("Packet received on wrong channel: %d, expected: %d\n", pkt->rx_ctrl.channel, channel);
-        s_stats.inRejectedPacketCounter++;
-        return;
-    }    
-
-    uint16_t len = pkt->rx_ctrl.sig_len;
-    //s_stats.wlan_data_received += len;
-    //s_stats.wlan_data_sent += 1;
-
-    if (len <= WLAN_IEEE_HEADER_SIZE)
-    {
-        LOG("WLAN receive header error");
-        s_stats.wlan_error_count++;
-        return;
-    }
-
-    //LOG("Recv %d bytes\n", len);
-    //LOG("Channel: %d\n", (int)pkt->rx_ctrl.channel);
-
-    //uint8_t broadcast_mac[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-    //LOG("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    uint8_t *data = pkt->payload;
-    if (memcmp(data + 10, WLAN_IEEE_HEADER_GROUND2AIR + 10, 6) != 0)
-    {
-        //here we filter also AIR2GROUND packets from other air devices on the same channel
-        s_stats.inRejectedPacketCounter++;
-        return;
-    }
-
-    data += WLAN_IEEE_HEADER_SIZE;
-    len -= WLAN_IEEE_HEADER_SIZE; //skip the 802.11 header
-
-    if (len >= 4) 
-    {
-        len -= 4;
-    } 
-    else 
-    {
-        // Packet is too small after removing header and potential FCS
-        //LOG("WLAN payload error - packet too small after header removal (%d bytes)\n", len);
-        s_stats.wlan_error_count++;
-        return;
-    }
-
-    size_t size = std::min<size_t>(len, WLAN_MAX_PAYLOAD_SIZE);
-
-    auto res = s_fec_decoder.packetFilter.filter_packet( data, size, GROUND2AIR_MAX_MTU );
+    auto res = s_fec_decoder.packetFilter.filter_packet(data, size, GROUND2AIR_MAX_MTU);
     if ( res != PacketFilter::PacketFilterResult::Pass)
     {
         s_stats.inRejectedPacketCounter++;
@@ -1443,8 +1369,8 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     }
 
     s_stats.inPacketCounter++;
-    s_stats.rssiDbm = -pkt->rx_ctrl.rssi;
-    s_stats.noiseFloorDbm = -pkt->rx_ctrl.noise_floor;
+    s_stats.rssiDbm = rssi_dbm;
+    s_stats.noiseFloorDbm = noise_floor_dbm;
 
     s_fec_decoder.lock();
     if (!s_fec_decoder.decode_data(data, size, false))
@@ -1453,7 +1379,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     }
     s_fec_decoder.unlock();
 
-    s_stats.wlan_data_received += len;
+    s_stats.wlan_data_received += size;
 }
 
 //=============================================================================================
@@ -1473,18 +1399,30 @@ IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue,
     return false;
 }
 
+static void unpairGS();
+
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
 static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
-    s_recv_ground2air_packet = true;
     s_accept_connection_timeout_ms = 0;
 
     int64_t t = esp_timer_get_time();
     s_last_seen_config_packet = t;
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
+
+    bool transport_changed = processSetting( "apfpv",  dst.misc.apfpv, src.misc.apfpv, "apfpv" );
+    if (transport_changed)
+    {
+        // Transport mode changes are applied after reboot so the full radio stack
+        // comes up cleanly in the new mode instead of trying to hot-switch in place.
+        if (s_restart_time == 0)
+        {
+            s_restart_time = esp_timer_get_time() + 1000; //1 ms
+        }
+    }
 
     if ( processSetting( "Wifi rate", (int)dst.dataChannel.wifi_rate, (int)src.dataChannel.wifi_rate, "rate") )
     {
@@ -1505,9 +1443,28 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     {
         int channel = getValidWifiChannel(src.dataChannel.wifi_channel);
         LOG("Validated Wifi channel: %d\n", channel );
-        ESP_ERROR_CHECK(esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE));
+
+        // APFPV mode must rebuild the AP on the new channel so GS can reassociate to the moved SSID.
+        if (src.misc.apfpv != 0)
+        {
+            LOG("APFPV applying channel change: requested=%d validated=%d rate=%d power=%d\n",
+                src.dataChannel.wifi_channel,
+                channel,
+                (int)src.dataChannel.wifi_rate,
+                (int)src.dataChannel.wifi_power);
+            ESP_ERROR_CHECK(switch_wifi_transport(true,
+                                                 src.dataChannel.wifi_rate,
+                                                 channel,
+                                                 src.dataChannel.wifi_power));
+        }
+        else
+        {
+            ESP_ERROR_CHECK(set_wifi_channel(channel));
+        }
     }
 
+    s_video_target_frame_dt = 0;
+/*
     if ( processSetting( "Target FPS", dst.camera.fps_limit, src.camera.fps_limit, NULL) )
     {
         if (src.camera.fps_limit == 0)
@@ -1515,7 +1472,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
         else
             s_video_target_frame_dt = 1000000 / src.camera.fps_limit;
     }
-
+*/
     processSetting( "AutostartRecord", dst.misc.autostartRecord, src.misc.autostartRecord, "autostartRecord" );
 
     processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );
@@ -3181,6 +3138,12 @@ void readConfig()
 
     s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
 
+#ifdef APFPV_FIRMWARE
+    s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 1 );
+#else
+    s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 0 );
+#endif
+
     s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osdFontCRC32", 0 );
 
     s_ground2air_config_packet2 = s_ground2air_config_packet;
@@ -3267,9 +3230,6 @@ bool isUSBDiskMounted()
 
 
 
-extern volatile int pk;
-extern volatile int pk2;
-
 //=============================================================================================
 //=============================================================================================
 extern "C" void app_main()
@@ -3354,7 +3314,12 @@ extern "C" void app_main()
 
     //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
     int channel = getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel );
-    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate, channel, s_ground2air_config_packet.dataChannel.wifi_power, packet_received_cb);
+    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate,
+               channel,
+               s_ground2air_config_packet.dataChannel.wifi_power,
+               s_air_device_id,
+               s_ground2air_config_packet.misc.apfpv != 0,
+               transport_packet_received_cb);
     s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
 
     bool runFileServer = false;
@@ -3411,6 +3376,7 @@ extern "C" void app_main()
         //============================================================================
         LOG("Starting file server...");
 
+        stop_wifi_transport();
         vTaskSuspend(s_wifi_rx_task);
         vTaskSuspend(s_wifi_tx_task);
 
@@ -3425,7 +3391,7 @@ extern "C" void app_main()
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
         heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
-        setup_wifi_file_server();
+        setup_wifi_file_server(channel);
 
 #if defined(USB_DISK_SUPPORT)
         if (s_sd_initialized)
@@ -3576,10 +3542,9 @@ extern "C" void app_main()
             {
                 //LOG is busy wait for ~11ms
                 //ESP_LOGI is task yeld for ~13ms
-                //LOG("WLAN S: %d, R: %d, E: %d, F: %d, D: %d, %%: %d...%d || FPS: %d(%d), D: %d || SD D: %d, E: %d || TLM IN: %d OUT: %d\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %d ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
-                ESP_LOGI( "Main", "WLAN S: %d, R: %d, E: %u, F: %u, D: %u, %%: %d...%d || FPS: %d(%d), D: %u || SD D: %u, E: %u || TLM IN: %u OUT: %u\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %u ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
-                    (int)pk, /*s_stats.wlan_data_sent,*/ (int)pk2, /*s_stats.wlan_data_received,*/ s_stats.wlan_error_count, s_stats.fec_spin_count,
-                    s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
+                ESP_LOGI( "Main", "WLAN S: %u, R: %u, E: %u, F: %u, D: %u, %%: %d...%d || FPS: %d(%d), D: %u || SD D: %u, E: %u || TLM IN: %u OUT: %u\nSK1: %d SK2: %d, SK3: %d, Q: %d s: %u ovf:%d || sbg: %d || AIR: 0x%04x || GS: 0x%04x\n ",
+                    (unsigned int)s_stats.wlan_data_sent, (unsigned int)s_stats.wlan_data_received, (unsigned int)s_stats.wlan_error_count, (unsigned int)s_stats.fec_spin_count,
+                    (unsigned int)s_stats.wlan_received_packets_dropped, s_min_wlan_outgoing_queue_usage_seen, s_max_wlan_outgoing_queue_usage, 
                     s_actual_capture_fps, s_actual_capture_fps_expected, (unsigned int)s_stats.video_data, (unsigned int)s_stats.sd_data, (unsigned int)s_stats.sd_drops,
                     (unsigned int)s_stats.in_telemetry_data, (unsigned int)s_stats.out_telemetry_data,
                     (int)(s_quality_framesize_K1*100),  (int)(s_quality_framesize_K2*100), (int)(s_quality_framesize_K3*100),
@@ -3701,7 +3666,7 @@ extern "C" void app_main()
 #ifdef UART_MSP_OSD
         //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
-        //with UART RX buffer of 512 we are save with periods 10...40ms
+        //with UART RX buffer of 512 we are safe with periods 10...40ms
         g_msp.loop();
 #endif
 

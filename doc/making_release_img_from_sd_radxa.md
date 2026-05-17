@@ -22,7 +22,7 @@
 
   ```sudo timedatectl set-ntp true```
 
-- check that credentialsare not used:
+- check that credentials are not used:
 
     ```cd ~/esp32-cam-fpv/```
 

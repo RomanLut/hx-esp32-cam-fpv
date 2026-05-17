@@ -48,17 +48,19 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   ```sudo apt-get update```
 
-  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng```
+  ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
 * Download **esp32-cam-fpv** repository:
  
   ```cd /home/radxa```
  
-  ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
+  ```git clone -b release --recursive --shallow-submodules  https://github.com/RomanLut/esp32-cam-fpv```
 
 * Build ground station software:
 
   ```cd esp32-cam-fpv```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
 
   ```cd gs```
 
@@ -91,6 +93,8 @@ To update groundstation software, pull updates from '''release''' branch:
   ```cd esp32-cam-fpv```
  
   ```git pull```
+
+  ```BUILD_JOBS=4 bash OpenCV/OpenCVWrapper/scripts/build_linux.sh```
   
   ```cd gs```
   

@@ -682,6 +682,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
         cJSON_AddStringToObject(root,"channel",channel_str);
         cJSON_AddBoolToObject(root, "wifi_5ghz_supported", getValidWifiChannel(DEFAULT_WIFI_CHANNEL_5_8_GHZ) == DEFAULT_WIFI_CHANNEL_5_8_GHZ);
+        cJSON_AddStringToObject(root, "apfpv", s_ground2air_config_packet.misc.apfpv ? "true" : "false");
         cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.misc.autostartRecord ? "true" : "false");
         cJSON_AddStringToObject(root, "fw_version", FW_VERSION);
         snprintf(packet_version_str, sizeof(packet_version_str), "%d", PACKET_VERSION);
@@ -707,6 +708,13 @@ static esp_err_t configs_handler(httpd_req_t *req)
         {
             nvs_args_set("channel",channel);
             s_ground2air_config_packet.dataChannel.wifi_channel = channel;
+        }
+
+        cJSON *apfpv = cJSON_GetObjectItem(root, "apfpv");
+        if (apfpv != NULL && cJSON_IsString(apfpv))
+        {
+            s_ground2air_config_packet.misc.apfpv = strcmp(apfpv->valuestring, "true") == 0;
+            nvs_args_set("apfpv", s_ground2air_config_packet.misc.apfpv ? 1 : 0);
         }
         
         cJSON *default_dvr = cJSON_GetObjectItem(root, "default_dvr");

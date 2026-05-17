@@ -109,3 +109,5 @@ extern void finalizeAviIndex(uint16_t frameCnt);
 extern size_t writeAviIndex(uint8_t* clientBuf, size_t buffSize);
 extern void buildAviHdr(uint8_t FPS, int frameWidth, int frameHeight, uint16_t frameCnt);
 extern void buildAviIdx(size_t dataSize);
+uint16_t readAviLe16(const uint8_t* data);
+uint32_t readAviLe32(const uint8_t* data);

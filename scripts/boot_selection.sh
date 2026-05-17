@@ -9,7 +9,7 @@ COMPATIBLE_FILE="/proc/device-tree/compatible"
 # Check if the compatible file exists
 if [ -f "$COMPATIBLE_FILE" ]; then
     # Read the content of the file
-    COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
+    COMPATIBLE_CONTENT=$(tr -d '\000' < "$COMPATIBLE_FILE")
 
     # Check if the content contains "radxa,zero3"
     if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3"; then
@@ -41,6 +41,8 @@ else
     sudo raspi-gpio set 23 ip pd
 fi
 
+BOOT_SELECTION_FILE="$HOME_DIRECTORY/bootSelection.txt"
+
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
 echo "QABUTTON1=$QABUTTON1"
@@ -48,7 +50,7 @@ echo "QABUTTON2=$QABUTTON2"
 echo "QABUTTON3=$QABUTTON3"
 
 
-#Launch Ruby on first boot to install drivers
+# Launch Ruby on first boot to install drivers
 # Define the path to the file
 FILE="$HOME_DIRECTORY/ruby/config/boot_count.cfg"
 
@@ -72,28 +74,36 @@ sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON3/direction"
 
 # Check GPIO values and write to bootSelection.txt
 if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON1/value) -eq 1 ]; then
-    echo "esp32camfpv" | sudo tee bootSelection.txt > /dev/null
+    echo "esp32camfpv" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
 fi
 
 if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON2/value) -eq 1 ]; then
-    echo "ruby" | sudo tee bootSelection.txt > /dev/null
+    echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
 fi
 
 if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON3/value) -eq 1 ]; then
-    echo "ruby" | sudo tee bootSelection.txt > /dev/null
+    echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
 fi
 
-# Restore GPIOs 
+# Restore GPIOs
 sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
 sudo sh -c "echo $QABUTTON2 > /sys/class/gpio/unexport"
 sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/unexport"
 
 # Check bootSelection.txt and execute appropriate script
-if [ -f "bootSelection.txt" ] && grep -q "ruby" bootSelection.txt; then
+if [ -f "$BOOT_SELECTION_FILE" ] && grep -q "ruby" "$BOOT_SELECTION_FILE"; then
     echo "Launching Ruby..."
     cd ${HOME_DIRECTORY}/ruby
     ./ruby_start
 else
+    # launch.sh can restart getty@tty1 after GS (non-tty1 start); the new autologin re-runs
+    # this script from /root/.profile. Consume the one-shot flag so that login stays in shell.
+    GS_SKIP_NEXT_FPV_AUTOSTART_FLAG=/run/esp32camfpv-skip-fpv-autostart-once
+    if [ -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG" ]; then
+        echo "Skipping esp32-cam-fpv autostart once (after GS released the console)."
+        rm -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG"
+        exit 0
+    fi
     echo "Launching esp32-cam-fpv..."
     cd ${HOME_DIRECTORY}/esp32-cam-fpv/gs
     ./launch.sh

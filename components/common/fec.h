@@ -45,6 +45,8 @@ struct fec_t {
 #define restrict __restrict
 
 void init_fec (void);
+const unsigned* fec_block_nums(void);
+size_t fec_block_nums_count(void);
   
 /**
  * param k the number of blocks required to reconstruct

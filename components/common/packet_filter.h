@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include "fec.h"
 
@@ -29,14 +30,18 @@ public:
     IRAM_ATTR void apply_packet_header_data( Packet_Header* packet );
     void set_packet_filtering( uint16_t filter_from_device_id, uint16_t filter_to_device_id );
     IRAM_ATTR PacketFilterResult filter_packet( const void* data, size_t size, size_t mtu ); 
+    uint16_t get_packet_header_from_device_id() const;
+    uint16_t get_packet_header_to_device_id() const;
+    uint16_t get_filter_from_device_id() const;
+    uint16_t get_filter_to_device_id() const;
 
 private:
 
     //values are set on outgoing packets
-    uint16_t m_from_device_id = 0;
-    uint16_t m_to_device_id = 0;
+    std::atomic<uint16_t> m_from_device_id {0};
+    std::atomic<uint16_t> m_to_device_id {0};
 
     //values are used to filter incoming packets. 0 - no filtering
-    uint16_t m_filter_from_device_id = 0;
-    uint16_t m_filter_to_device_id = 0;
+    std::atomic<uint16_t> m_filter_from_device_id {0};
+    std::atomic<uint16_t> m_filter_to_device_id {0};
 };

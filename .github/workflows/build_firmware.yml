@@ -12,7 +12,31 @@ jobs:
 
     strategy:
       matrix:
-        project: [air_firmware_esp32c5, air_firmware_esp32cam, air_firmware_esp32s3sense, air_firmware_esp32s3sense_ov5640]
+        include:
+          - project: air_firmware_esp32c5
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32c5
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32cam
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32cam
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32s3sense
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32s3sense
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
+          - project: air_firmware_esp32s3sense_ov5640
+            artifact_suffix: ""
+            build_flags: ""
+          - project: air_firmware_esp32s3sense_ov5640
+            artifact_suffix: "-apfpv"
+            build_flags: "-DAPFPV_FIRMWARE"
 
     steps:
     - name: Checkout repository
@@ -38,13 +62,15 @@ jobs:
         python -m platformio --version
 
     - name: Build firmware
+      env:
+        PLATFORMIO_BUILD_FLAGS: ${{ matrix.build_flags }}
       run: |
         python -m platformio run -d ${{ matrix.project }}
 
     - name: Upload firmware binaries
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.project }}
+        name: ${{ matrix.project }}${{ matrix.artifact_suffix }}
         path: |
           ${{ matrix.project }}/.pio/build/**/bootloader.bin
           ${{ matrix.project }}/.pio/build/**/firmware.bin

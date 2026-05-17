@@ -66,6 +66,26 @@ uint8_t aviHeader[AVI_HEADER_LEN] = { // AVI header template
 //then should be: list size
 //then should be: list type
 
+//===================================================================================
+//===================================================================================
+// Reads a little-endian 16-bit value from an AVI byte buffer.
+uint16_t readAviLe16(const uint8_t* data)
+{
+  return static_cast<uint16_t>(data[0]) |
+         (static_cast<uint16_t>(data[1]) << 8);
+}
+
+//===================================================================================
+//===================================================================================
+// Reads a little-endian 32-bit value from an AVI byte buffer.
+uint32_t readAviLe32(const uint8_t* data)
+{
+  return static_cast<uint32_t>(data[0]) |
+         (static_cast<uint32_t>(data[1]) << 8) |
+         (static_cast<uint32_t>(data[2]) << 16) |
+         (static_cast<uint32_t>(data[3]) << 24);
+}
+
 struct frameSizeStruct 
 {
   uint8_t frameWidth[2];

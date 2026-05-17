@@ -156,12 +156,15 @@ static BOOL debug = DEBUG;
 static BOOL quit = FALSE;
 
 static int uinput_fd = -1;
+static BOOL gpio_buttons_enabled = FALSE;
 
 static struct pollfd fdset[MAX_PINS];
 static struct pollfd fdset_base[MAX_PINS];
 static std::thread polling_thread;
 static int npins = 0;
 static int pins[MAX_PINS];
+
+void emit_event(int uinput_fd, int type, int code, int val);
 
 /*======================================================================
   dbglog
@@ -195,19 +198,20 @@ void quit_signal(int dummy)
     this function calls exit() on any failure. This isn't normally a
     very elegant thing to do, but it's OK here.
 ======================================================================*/
-static void write_to_file(const char *file, const char *text)
+static bool write_to_file(const char *file, const char *text)
 {
   FILE *f = fopen(file, "w");
   if (f)
   {
-    fprintf(f, text);
+    fprintf(f, "%s", text);
     fclose(f);
+    return true;
   }
   else
   {
     fprintf(stderr, "Can't write to %s: %s\n", file,
             strerror(errno));
-    exit(-1);
+    return false;
   }
 }
 
@@ -231,7 +235,7 @@ static void unexport_pins(int *pins, int npins)
   Prepare GPIO pins as inputs and generate interrupts on both transitions.
   Debounce and press/release interpretation are handled in the polling loop.
 ======================================================================*/
-static void export_pins(int *pins, int npins)
+static bool export_pins(int *pins, int npins)
 {
   int i;
   for (i = 0; i < npins; i++)
@@ -239,12 +243,16 @@ static void export_pins(int *pins, int npins)
     int pin = pins[i];
     char s[50];
     snprintf(s, sizeof(s), "%d", pin);
-    write_to_file("/sys/class/gpio/export", s);
+    if (!write_to_file("/sys/class/gpio/export", s))
+      return false;
     snprintf(s, sizeof(s), "/sys/class/gpio/gpio%d/direction", pin);
-    write_to_file(s, "in");
+    if (!write_to_file(s, "in"))
+      return false;
     snprintf(s, sizeof(s), "/sys/class/gpio/gpio%d/edge", pin);
-    write_to_file(s, "both");
+    if (!write_to_file(s, "both"))
+      return false;
   }
+  return true;
 }
 
 /*======================================================================
@@ -324,17 +332,50 @@ static int open_uinput(void)
   else
   {
     fprintf(stderr, "Can't open /dev/uinput: %s\n", strerror(errno));
-    exit(-1);
     return -1;
   }
 }
 
-/*======================================================================
-  close_uinput
-======================================================================*/
+//===================================================================================
+//===================================================================================
+// Releases every key used by the current GPIO mapping before the uinput device stops.
+static void release_mapped_keys(int uinput_fd)
+{
+  if (uinput_fd < 0)
+  {
+    return;
+  }
+
+  auto release_sequence = [uinput_fd](unsigned int *keystrokes)
+  {
+    if (keystrokes == NULL)
+    {
+      return;
+    }
+
+    while (*keystrokes)
+    {
+      const unsigned int key_code = *keystrokes & 0xFF;
+      emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+      keystrokes++;
+    }
+  };
+
+  for (int p = 0; mappings[p].pin != 0; p++)
+  {
+    release_sequence(mappings[p].keys_single);
+    release_sequence(mappings[p].keys_double);
+  }
+  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+}
+
+//===================================================================================
+//===================================================================================
+// Destroys the uinput device after releasing any mapped keys still held by the kernel.
 static void close_uinput(int fd)
 {
-  // Easy -- nothing else to do in this current implementation
+  release_mapped_keys(fd);
+  ioctl(fd, UI_DEV_DESTROY);
   close(fd);
 }
 
@@ -375,7 +416,8 @@ void emit_event(int uinput_fd, int type, int code, int val)
   //   keystroke timestamp.
   ie.time.tv_sec = 0;
   ie.time.tv_usec = 0;
-  write(uinput_fd, &ie, sizeof(ie));
+  const ssize_t bytes_written = write(uinput_fd, &ie, sizeof(ie));
+  (void)bytes_written;
 }
 
 /*======================================================================
@@ -408,21 +450,19 @@ static void emit_sequence(int uinput_fd, unsigned int *keys)
   }
 }
 
-/*======================================================================
-  button_pressed
-  Emit the key sequence for this pin.
-  long_press=false emits keys_single, long_press=true emits keys_double.
-======================================================================*/
+//===================================================================================
+//===================================================================================
+// Emits the mapped short-press or long-press key sequence for a GPIO pin.
 static void button_pressed(int uinput_fd, int pin, bool long_press)
 {
   const Mapping *m = get_mapping(pin);
   if (m)
   {
-    unsigned int *keys = long_press ? m->keys_double : m->keys_single;
-    if (keys != NULL)
-    {
-      emit_sequence(uinput_fd, keys);
-    }
+      unsigned int *keys = long_press ? m->keys_double : m->keys_single;
+      if (keys != NULL)
+      {
+        emit_sequence(uinput_fd, keys);
+      }
   }
   else
   {
@@ -442,6 +482,7 @@ void polling_thread_func()
   int ticks[MAX_PINS] = {0};
   int press_start_msec[MAX_PINS] = {0};
   bool pressed[MAX_PINS] = {false};
+  bool key_down_sent[MAX_PINS] = {false};
 
   dbglog("Starting GPIO poll in thread\n");
   while (!quit)
@@ -464,11 +505,34 @@ void polling_thread_func()
 
     for (int i = 0; i < npins; i++)
     {
+      const Mapping *m = get_mapping(pins[i]);
+      if (m == NULL)
+      {
+        continue;
+      }
+
+      // Edge-triggered sysfs GPIO can occasionally miss transitions under noise.
+      // Reconcile held key state against live pin level every loop so a stuck key
+      // is always released even when a release edge is lost.
+      if (m->keys_double == NULL && key_down_sent[i])
+      {
+        const int live_state = get_pin_state(pins[i]);
+        if (live_state == released_state)
+        {
+          const unsigned int key_code = m->keys_single[0] & 0xFF;
+          emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+          emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+          key_down_sent[i] = false;
+        }
+      }
+
       if (fdset[i].revents & POLLPRI)
       {
         int pin = pins[i];
         char buff[50];
-        read(fdset[i].fd, buff, sizeof(buff));
+        lseek(fdset[i].fd, 0, SEEK_SET);
+        const ssize_t bytes_read = read(fdset[i].fd, buff, sizeof(buff));
+        (void)bytes_read;
 
         // Debounce each GPIO transition and ignore startup noise.
         if (now_msec - ticks[i] > bounce_time && now_msec > 1000)
@@ -478,7 +542,6 @@ void polling_thread_func()
           if (state == 0 || state == 1)
           {
             dbglog("GPIO state change: pin %d, state %d\n", pin, state);
-            const Mapping *m = get_mapping(pin);
             if (m != NULL && m->keys_double != NULL)
             {
               // Mappings with a secondary action emit on release:
@@ -502,10 +565,27 @@ void polling_thread_func()
             }
             else
             {
-              // Mappings without a secondary action emit on press.
+              // Mappings without a secondary action emulate a real held key:
+              // send keydown once on press and keyup once on release.
               if (state == pressed_state)
               {
-                button_pressed(uinput_fd, pin, false);
+                if (!key_down_sent[i])
+                {
+                  const unsigned int key_code = m->keys_single[0] & 0xFF;
+                  emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 1);
+                  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+                  key_down_sent[i] = true;
+                }
+              }
+              else if (state == released_state)
+              {
+                if (key_down_sent[i])
+                {
+                  const unsigned int key_code = m->keys_single[0] & 0xFF;
+                  emit_event(uinput_fd, EV_KEY, static_cast<int>(key_code), 0);
+                  emit_event(uinput_fd, EV_SYN, SYN_REPORT, 0);
+                  key_down_sent[i] = false;
+                }
               }
             }
           }
@@ -521,9 +601,11 @@ void polling_thread_func()
 void gpio_buttons_start()
 {
   int pin = 0;
+  struct stat st;
 
   quit = FALSE;
   npins = 0;
+  gpio_buttons_enabled = FALSE;
 
   if ( isRadxaZero3() )
   {
@@ -546,7 +628,24 @@ void gpio_buttons_start()
     m = &mappings[pin];
   }
 
-  export_pins(pins, npins);
+  if (stat("/sys/class/gpio/export", &st) != 0)
+  {
+    std::cerr << "GPIO buttons disabled: /sys/class/gpio/export is unavailable" << std::endl;
+    return;
+  }
+
+  if (stat("/dev/uinput", &st) != 0)
+  {
+    std::cerr << "GPIO buttons disabled: /dev/uinput is unavailable" << std::endl;
+    return;
+  }
+
+  if (!export_pins(pins, npins))
+  {
+    unexport_pins(pins, npins);
+    std::cerr << "GPIO buttons disabled: failed to export GPIO pins" << std::endl;
+    return;
+  }
 
   std::signal(SIGQUIT, quit_signal);
   std::signal(SIGTERM, quit_signal);
@@ -554,6 +653,12 @@ void gpio_buttons_start()
   std::signal(SIGINT, quit_signal);
 
   uinput_fd = open_uinput();
+  if (uinput_fd < 0)
+  {
+    unexport_pins(pins, npins);
+    std::cerr << "GPIO buttons disabled: failed to initialize uinput" << std::endl;
+    return;
+  }
 
   for (int i = 0; i < npins; i++)
   {
@@ -563,13 +668,30 @@ void gpio_buttons_start()
     if (gpio_fd < 0)
     {
       std::cerr << "Can't open GPIO device " << s << std::endl;
-      exit(-1);
+      for (int j = 0; j < i; j++)
+      {
+        if (fdset_base[j].fd >= 0)
+        {
+          close(fdset_base[j].fd);
+          fdset_base[j].fd = -1;
+        }
+      }
+      close_uinput(uinput_fd);
+      uinput_fd = -1;
+      unexport_pins(pins, npins);
+      std::cerr << "GPIO buttons disabled: failed to open GPIO value device" << std::endl;
+      return;
     }
     fdset_base[i].fd = gpio_fd;
     fdset_base[i].events = POLLPRI;
+    lseek(fdset_base[i].fd, 0, SEEK_SET);
+    char initial_state[8];
+    const ssize_t initial_read = read(fdset_base[i].fd, initial_state, sizeof(initial_state));
+    (void)initial_read;
   }
 
   dbglog("Creating GPIO polling thread\n");
+  gpio_buttons_enabled = TRUE;
   polling_thread = std::thread(polling_thread_func);
 }
 
@@ -577,6 +699,9 @@ void gpio_buttons_start()
 //======================================================================
 void gpio_buttons_stop()
 {
+  if (!gpio_buttons_enabled)
+    return;
+
   quit = TRUE;
   if (polling_thread.joinable())
   {
@@ -597,4 +722,5 @@ void gpio_buttons_stop()
     close_uinput(uinput_fd);
     uinput_fd = -1;
   }
+  gpio_buttons_enabled = FALSE;
 }

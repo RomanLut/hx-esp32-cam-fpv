@@ -13,4 +13,5 @@ std::string readTextFileFirstLine(const std::string& path);
 std::string trimHexPrefix(const std::string& value);
 std::string readSymlinkBasename(const std::string& path);
 std::string getInterfaceSummary(const std::string& iface);
+std::string toLowerCopy(const std::string& value);
 #endif
