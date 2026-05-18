@@ -50,6 +50,18 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
+  OpenCVWrapper requires CMake 3.16 or newer. If this image is based on Raspbian/Debian Buster and
+  ```apt-get update``` fails with ```raspbian.raspberrypi.org ... buster Release 404 Not Found```,
+  switch the Buster source to the legacy Raspbian archive before installing packages:
+
+  ```sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak-cmake-install```
+
+  ```sudo sed -i 's|http://raspbian.raspberrypi.org/raspbian/|http://legacy.raspbian.org/raspbian/|g' /etc/apt/sources.list```
+
+  ```sudo apt-get update```
+
+  ```sudo apt-get install -y cmake```
+  
 * Download **esp32-cam-fpv** repository:
  
   ```cd /home/radxa```

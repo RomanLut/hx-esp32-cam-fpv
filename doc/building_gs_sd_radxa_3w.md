@@ -30,6 +30,22 @@ UPDATE: Armiban Ubuntu minimum 22.04 image is not available at Armbian site anym
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
+  OpenCVWrapper requires CMake 3.16 or newer. Check the installed version before building:
+
+  ```cmake --version```
+
+  If the image is based on Raspbian/Debian Buster and ```apt-get update``` fails with
+  ```raspbian.raspberrypi.org ... buster Release 404 Not Found```, switch the Buster source to the
+  legacy Raspbian archive and install CMake again:
+
+  ```sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak-cmake-install```
+
+  ```sudo sed -i 's|http://raspbian.raspberrypi.org/raspbian/|http://legacy.raspbian.org/raspbian/|g' /etc/apt/sources.list```
+
+  ```sudo apt-get update```
+
+  ```sudo apt-get install -y cmake```
+  
 * Install rtl8812au driver:
 
   ```cd ~```
