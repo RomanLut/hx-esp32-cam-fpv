@@ -22,6 +22,9 @@
         product-id="010E"
         vendor-id="2357" />
     <usb-device
+        product-id="0120"
+        vendor-id="2357" />
+    <usb-device
         product-id="17D2"
         vendor-id="0B05" />
     <usb-device
