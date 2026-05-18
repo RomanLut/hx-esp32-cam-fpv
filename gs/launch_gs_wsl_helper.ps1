@@ -13,6 +13,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+#===================================================================================
+#===================================================================================
+# Runs a root bash command in the selected WSL distro and returns combined output.
 function Invoke-WslCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -22,10 +25,14 @@ function Invoke-WslCommand {
         [string]$CommandText
     )
 
+    # PowerShell here-strings keep the script file's CRLF endings. bash treats the
+    # carriage return as part of the token, which breaks loops as "do\r".
+    $normalizedCommandText = $CommandText.Replace("`r`n", "`n").Replace("`r", "`n")
+
     # Keep WSL calls inside a normal PowerShell process. Direct wsl.exe calls from
     # the batch launcher were tripping "Input redirection is not supported" in this
     # automation host even when the same command worked interactively.
-    $escaped = $CommandText.Replace('"', '\"')
+    $escaped = $normalizedCommandText.Replace('"', '\"')
     $standardOutput = & wsl.exe -d $DistroName -u root -- bash -lc "exec 0</dev/null; $escaped" 2>&1
     $combinedOutput = @($standardOutput) -join [Environment]::NewLine
 
