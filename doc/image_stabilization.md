@@ -8,6 +8,8 @@ The GS implementation tracks visual features inside a central region of interest
 Measured frame-to-frame translation and rotation are accumulated into a trajectory that is smoothed by exponential decay. 
 The resulting offset is applied as an affine transform when the frame is rendered.
 
+The stabilizaion is far from ideal in current implementaion and requires more tuning.
+
 ## Parameters
 
 | Parameter | Default | Meaning |
