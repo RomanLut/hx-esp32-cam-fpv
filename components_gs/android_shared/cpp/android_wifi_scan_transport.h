@@ -6,9 +6,9 @@
 #include <thread>
 
 #include "gs_wifi_scan_transport.h"
-#include "third_party/devourer/src/Rtl8812aDevice.h"
-#include "third_party/devourer/src/WiFiDriver.h"
-#include "third_party/devourer/src/logger.h"
+#include "devourer/src/Rtl8812aDevice.h"
+#include "devourer/src/WiFiDriver.h"
+#include "devourer/src/logger.h"
 
 struct libusb_context;
 struct libusb_device_handle;

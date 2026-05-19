@@ -74,6 +74,10 @@ android {
                 file("src/main/java"),
                 file("../../components_gs/android_shared/java")
             )
+            res.srcDirs(
+                file("src/main/res"),
+                file("../../components_gs/android_shared/res")
+            )
         }
     }
 

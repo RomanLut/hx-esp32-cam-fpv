@@ -13,9 +13,9 @@
 #include "Log.h"
 #include "gs_shared_state.h"
 #include "structures.h"
-#include "third_party/devourer/src/FrameParser.h"
-#include "third_party/devourer/src/SelectedChannel.h"
-#include "third_party/devourer/src/ieee80211_radiotap.h"
+#include "devourer/src/FrameParser.h"
+#include "devourer/src/SelectedChannel.h"
+#include "devourer/src/ieee80211_radiotap.h"
 
 namespace
 {

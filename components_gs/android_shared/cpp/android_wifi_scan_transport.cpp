@@ -9,7 +9,7 @@
 
 #include "Log.h"
 #include "gs_shared_state.h"
-#include "third_party/devourer/src/SelectedChannel.h"
+#include "devourer/src/SelectedChannel.h"
 
 namespace
 {

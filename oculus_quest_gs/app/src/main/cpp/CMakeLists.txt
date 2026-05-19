@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(android_gs_core)
 
+set(ANDROID_SHARED_DEVOURER_DIR ../../../../../components_gs/android_shared/devourer)
+
 add_library(android_gs_core SHARED
     openxr_quest_runtime.cpp
     openxr_video_bridge.cpp
@@ -74,18 +76,20 @@ add_library(android_gs_core SHARED
     ../../../../../components/common/util.cpp
     ../../../../../components/common/wifi_channels.cpp
     ../../../../../components/common/hx_mavlink_parser.cpp
-    third_party/devourer/hal/Hal8812PwrSeq.c
-    third_party/devourer/hal/hal8812a_fw.c
-    third_party/devourer/src/Radiotap.c
-    third_party/devourer/src/EepromManager.cpp
-    third_party/devourer/src/FirmwareManager.cpp
-    third_party/devourer/src/FrameParser.cpp
-    third_party/devourer/src/HalModule.cpp
-    third_party/devourer/src/ParsedRadioPacket.cpp
-    third_party/devourer/src/RadioManagementModule.cpp
-    third_party/devourer/src/Rtl8812aDevice.cpp
-    third_party/devourer/src/RtlUsbAdapter.cpp
-    third_party/devourer/src/WiFiDriver.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/Hal8812PwrSeq.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/Hal8821APwrSeq.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8812a_fw.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8821a_fw.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/Radiotap.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/EepromManager.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/FirmwareManager.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/FrameParser.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/HalModule.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/ParsedRadioPacket.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/RadioManagementModule.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/Rtl8812aDevice.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/RtlUsbAdapter.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/WiFiDriver.cpp
 )
 
 set_source_files_properties(
@@ -93,15 +97,21 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math;-funroll-loops"
 )
 
+set_source_files_properties(
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8821a_fw.c
+    PROPERTIES COMPILE_DEFINITIONS "CONFIG_RTL8821A;LOAD_FW_HEADER_FROM_DRIVER;ODM_WIN=1;DM_ODM_SUPPORT_TYPE=ODM_WIN"
+)
+
 target_include_directories(android_gs_core PRIVATE
     .
     third_party/openxr/include
     third_party/include
-    third_party/devourer/src
-    third_party/devourer/hal
     ../../../../../components_gs
     ../../../../../components_gs/shared
+    ../../../../../components_gs/android_shared
     ../../../../../components_gs/android_shared/cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal
     ../../../../../components_gs/utils
     ../../../../../components_gs/imgui
     ../../../../../components_gs/imgui/backends
@@ -118,7 +128,10 @@ set_target_properties(opencv_wrapper_prebuilt PROPERTIES
     IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../OpenCV/OpenCVWrapper/Prebuilt/android/${ANDROID_ABI}/libOpenCVWrapper.so
 )
 
-target_compile_definitions(android_gs_core PRIVATE IMGUI_IMPL_OPENGL_ES2 OCULUS_QUEST_GS=1)
+target_compile_definitions(android_gs_core PRIVATE
+    IMGUI_IMPL_OPENGL_ES2
+    OCULUS_QUEST_GS=1
+)
 
 find_library(log-lib log)
 find_library(android-lib android)

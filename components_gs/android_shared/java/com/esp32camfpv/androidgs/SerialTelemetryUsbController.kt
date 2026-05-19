@@ -227,7 +227,7 @@ class SerialTelemetryUsbController(
             .findAllDrivers(usbManager)
             .map { it.device }
             // Exclude RTL adapters owned by the WiFi raw-broadcast transport.
-            .filter { it.vendorId != RTL_VENDOR_ID }
+            .filterNot { RtlUsbDeviceAllowlist.isSupported(it) }
     }
 
     private fun findSupportedDevice(selection: String): UsbDevice? {
@@ -272,8 +272,5 @@ class SerialTelemetryUsbController(
         const val LOG_TAG = "SerialTelemetryUsb"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.USB_PERMISSION"
         const val WRITE_TIMEOUT_MS = 100
-        // RTL adapters are owned by the WiFi raw-broadcast transport and must
-        // not be opened as a serial port.
-        const val RTL_VENDOR_ID = 0x0BDA
     }
 }

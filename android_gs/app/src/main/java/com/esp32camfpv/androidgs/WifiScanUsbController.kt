@@ -167,7 +167,7 @@ class WifiScanUsbController(
 
     private fun findSupportedAdapter(): UsbDevice? {
         return usbManager.deviceList.values.firstOrNull { device ->
-            device.vendorId == RTL_VENDOR_ID
+            RtlUsbDeviceAllowlist.isSupported(device)
         }
     }
 
@@ -205,6 +205,5 @@ class WifiScanUsbController(
     private companion object {
         const val LOG_TAG = "WifiScanUsb"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.WIFI_SCAN_USB_PERMISSION"
-        const val RTL_VENDOR_ID = 0x0BDA
     }
 }
