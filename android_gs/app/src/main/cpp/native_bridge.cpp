@@ -281,7 +281,8 @@ int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
                            bool restored_by_fec,
-                           int input_dbm);
+                           int input_dbm,
+                           size_t interface_index = 0);
 
 //===================================================================================
 //===================================================================================
@@ -591,7 +592,7 @@ void ensureRxDecoderConfigLocked(NativeHandle& handle)
     decoder_descriptor.restart_backjump_blocks = 64;
     decoder_descriptor.max_block_queue_size = 3;
     decoder_descriptor.duplicate_window = 100;
-    decoder_descriptor.interface_count = 1;
+    decoder_descriptor.interface_count = 2;
 
     s_runtimeCore.rx_decoder_k = effective_k;
     s_runtimeCore.rx_decoder_n = effective_n;
@@ -876,7 +877,8 @@ int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
                            bool /* restored_by_fec */,
-                           int input_dbm)
+                           int input_dbm,
+                           size_t interface_index)
 {
     static uint32_t s_transport_process_log_count = 0;
 
@@ -893,8 +895,9 @@ int processTransportPacket(NativeHandle& handle,
     {
         const auto* header = reinterpret_cast<const Packet_Header*>(data);
         s_runtimeCore.transport_packets_seen++;
-        s_runtimeCore.gs_stats.inPacketCounterAll[0]++;
-        s_runtimeCore.gs_stats.inPacketCounter[0]++;
+        const size_t stats_index = std::min(interface_index, static_cast<size_t>(1));
+        s_runtimeCore.gs_stats.inPacketCounterAll[stats_index]++;
+        s_runtimeCore.gs_stats.inPacketCounter[stats_index]++;
         s_runtimeCore.last_transport_block = header->block_index;
         s_runtimeCore.last_transport_packet_index = header->packet_index;
         s_runtimeCore.last_transport_payload_size = header->size;
@@ -903,7 +906,7 @@ int processTransportPacket(NativeHandle& handle,
     }
 
     s_runtimeCore.transport_packets_passed_filter++;
-    s_runtimeCore.rx_decoder.pushPacket(data, size, 0, Clock::now());
+    s_runtimeCore.rx_decoder.pushPacket(data, size, interface_index, Clock::now());
     // Android APFPV uses a dedicated UDP RX thread. Drain the decoder and dispatch the
     // resulting session/video events here so completed frames reach the renderer queue
     // immediately instead of waiting for the next render/UI sync tick.
@@ -1118,7 +1121,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
 {
     auto* handle = new NativeHandle(static_cast<uint16_t>(gsDeviceId));
     handle->transport_manager.rawBroadcastTransport().setTransportPacketCallback(
-        [handle](const uint8_t* data, size_t size, int input_dbm)
+        [handle](const uint8_t* data, size_t size, int input_dbm, size_t interface_index)
         {
             if (handle == nullptr || data == nullptr || size == 0)
             {
@@ -1126,7 +1129,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
             }
 
             std::lock_guard<std::mutex> lock(handle->mutex);
-            processTransportPacket(*handle, data, size, false, input_dbm);
+            processTransportPacket(*handle, data, size, false, input_dbm, interface_index);
         });
     handle->background_runtime_thread = std::make_unique<std::thread>(
         [handle]()
@@ -1831,7 +1834,9 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
                 apfpv_transport.receivedCompletedFrames(),
                 apfpv_transport.restoredCompletedFrames());
         }
-        sync_params.is_dual = false;
+        sync_params.is_dual =
+            native_handle->transport_manager.activeKind() == gs::core::TransportKind::RawBroadcast &&
+            native_handle->transport_manager.rawBroadcastTransport().activeUsbAdapterCount() > 1;
         sync_params.osd_font_error = s_flightOSD.isFontError();
         sync_state = collectRuntimeSyncState(s_runtimeCore, sync_params, overlay_input);
         processPendingSelectedTransportReconnect();

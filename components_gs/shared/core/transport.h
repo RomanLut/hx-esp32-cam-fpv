@@ -69,6 +69,7 @@ public:
     virtual bool supportsTxPowerControl() const { return true; }
     virtual bool supportsApfpvInterfaceSelection() const { return true; }
     virtual bool supportsNetworkInterfaceStatus() const { return true; }
+    virtual std::vector<std::string> copyInterfaceStatusLines() const { return {}; }
 
     virtual void setChannel(int ch) = 0;
     virtual void setTxPower(int txPower) = 0;

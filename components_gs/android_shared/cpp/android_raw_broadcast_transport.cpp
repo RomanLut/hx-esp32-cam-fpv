@@ -22,6 +22,15 @@ namespace
 
 constexpr size_t kTxRateHz = 26000000;
 constexpr uint32_t kRxRestartBackjumpBlocks = 64;
+constexpr size_t kAndroidRawAdapterCount = 2;
+
+//===================================================================================
+//===================================================================================
+// Returns the stable menu label for one Android RTL USB adapter slot.
+std::string rawUsbAdapterLabel(size_t index)
+{
+    return "RTL USB Adapter " + std::to_string(index + 1);
+}
 
 //===================================================================================
 //===================================================================================
@@ -116,6 +125,11 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
                                         const gs::core::TXDescriptor& tx_descriptor)
 {
     storeDescriptors(rx_descriptor, tx_descriptor);
+    m_rx_descriptor.interfaces.clear();
+    for (size_t index = 0; index < kAndroidRawAdapterCount; index++)
+    {
+        m_rx_descriptor.interfaces.push_back(rawUsbAdapterLabel(index));
+    }
     if (m_tx_descriptor.coding_k == 0 ||
         m_tx_descriptor.coding_n < m_tx_descriptor.coding_k)
     {
@@ -156,7 +170,7 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     decoder_descriptor.restart_backjump_blocks = kRxRestartBackjumpBlocks;
     decoder_descriptor.max_block_queue_size = 3;
     decoder_descriptor.duplicate_window = 100;
-    decoder_descriptor.interface_count = 1;
+    decoder_descriptor.interface_count = 2;
     if (!m_rx_decoder.init(decoder_descriptor))
     {
         LOGE("RX decoder init failed k={} n={} mtu={}",
@@ -181,6 +195,31 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
 
 //===================================================================================
 //===================================================================================
+// Returns Android raw USB adapter status lines for the GS Wi-Fi settings menu.
+std::vector<std::string> AndroidRawBroadcastTransport::copyInterfaceStatusLines() const
+{
+    std::vector<std::string> lines;
+    std::lock_guard<std::mutex> lock(m_mutex);
+    lines.reserve(m_usb_adapters.size());
+    const std::string selected_tx_interface =
+        m_tx_descriptor.interface.empty() ? s_groundstation_config.txInterface
+                                          : m_tx_descriptor.interface;
+
+    for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
+    {
+        const std::string label = rawUsbAdapterLabel(adapter->index);
+        const bool is_selected_tx =
+            (selected_tx_interface == "auto" && adapter->index == 0) ||
+            selected_tx_interface == label ||
+            (selected_tx_interface.empty() && adapter->index == 0);
+        lines.push_back(label + ": available" + (is_selected_tx ? " (TX)" : ""));
+    }
+
+    return lines;
+}
+
+//===================================================================================
+//===================================================================================
 // Activates Android raw-broadcast mode and updates the shared link-state banner.
 void AndroidRawBroadcastTransport::activate()
 {
@@ -190,7 +229,7 @@ void AndroidRawBroadcastTransport::activate()
 
 //===================================================================================
 //===================================================================================
-// Deactivates Android raw-broadcast mode and signals the USB adapter to stop.
+// Deactivates Android raw-broadcast mode and signals every USB adapter to stop.
 // Does NOT join the rx thread — deactivate() is called from the OSD menu render path
 // which holds handle->mutex, and the rx thread callback also acquires handle->mutex.
 // Joining here would deadlock. The actual thread join and libusb teardown are deferred
@@ -201,9 +240,12 @@ void AndroidRawBroadcastTransport::deactivate()
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_transport_packet_callback = nullptr;
-        if (m_device)
+        for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
-            m_device->should_stop = true;
+            if (adapter->device)
+            {
+                adapter->device->should_stop = true;
+            }
         }
     }
 }
@@ -294,7 +336,7 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
     std::vector<std::vector<uint8_t>> packets_to_send;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        device = m_device;
+        device = txDeviceLocked();
         if (!device || data == nullptr || size == 0)
         {
             return;
@@ -388,96 +430,96 @@ bool AndroidRawBroadcastTransport::receive(void* data, size_t& size, bool& resto
 
 //===================================================================================
 //===================================================================================
-// Retunes the active RTL adapter to the requested monitor-mode channel when running.
+// Retunes every active RTL adapter to the requested monitor-mode channel when running.
 void AndroidRawBroadcastTransport::setChannel(int ch)
 {
-    std::shared_ptr<Rtl8812aDevice> device;
+    std::vector<std::shared_ptr<UsbAdapter>> adapters;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        device = m_device;
+        adapters = m_usb_adapters;
     }
 
-    if (!device)
+    if (adapters.empty())
     {
         LOGI("Ignoring channel change to {} because no adapter is running", ch);
         return;
     }
 
     std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-    try
+    for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
     {
-        if (device->should_stop)
-        {
-            return;
-        }
-
-        LOGI("Setting monitor channel to {}", ch);
-        device->SetMonitorChannel(makeSelectedChannel(ch));
-    }
-    catch (const std::exception& e)
-    {
-        LOGW("SetMonitorChannel failed after USB detach: {}", e.what());
-        device->should_stop = true;
-    }
-    catch (...)
-    {
-        LOGW("SetMonitorChannel failed after USB detach with unknown exception");
-        device->should_stop = true;
-    }
-}
-
-//===================================================================================
-//===================================================================================
-// Returns and resets the count of all raw frames seen (including non-matching MACs).
-uint32_t AndroidRawBroadcastTransport::consumeAllFrameCount()
-{
-    return m_all_frame_count.exchange(0);
-}
-
-//===================================================================================
-//===================================================================================
-// Returns and resets the count of frames that passed the MAC + packet filter.
-uint32_t AndroidRawBroadcastTransport::consumeFilteredFrameCount()
-{
-    return m_filtered_frame_count.exchange(0);
-}
-
-//===================================================================================
-//===================================================================================
-// Sets the TX power level on the active RTL adapter (0 = driver default, 1..63 = dBm scale).
-void AndroidRawBroadcastTransport::setTxPower(int txPower)
-{
-    std::shared_ptr<Rtl8812aDevice> device;
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
-        device = m_device;
-    }
-
-    if (device)
-    {
-        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
         try
         {
-            if (device->should_stop)
+            if (!adapter->device || adapter->device->should_stop)
             {
-                return;
+                continue;
             }
 
-            LOGI("Setting TX power to {}", m_tx_power);
-            device->SetTxPower(m_tx_power);
+            LOGI("Setting monitor channel to {} on adapter {}", ch, adapter->index);
+            adapter->device->SetMonitorChannel(makeSelectedChannel(ch));
         }
         catch (const std::exception& e)
         {
-            LOGW("SetTxPower failed after USB detach: {}", e.what());
-            device->should_stop = true;
+            LOGW("SetMonitorChannel failed after USB detach on adapter {}: {}", adapter->index, e.what());
+            adapter->device->should_stop = true;
         }
         catch (...)
         {
-            LOGW("SetTxPower failed after USB detach with unknown exception");
-            device->should_stop = true;
+            LOGW("SetMonitorChannel failed after USB detach on adapter {} with unknown exception", adapter->index);
+            adapter->device->should_stop = true;
         }
     }
+}
+
+//===================================================================================
+//===================================================================================
+// Sets the TX power level on active RTL adapters (0 = driver default, 1..63 = dBm scale).
+void AndroidRawBroadcastTransport::setTxPower(int txPower)
+{
+    std::vector<std::shared_ptr<UsbAdapter>> adapters;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
+        adapters = m_usb_adapters;
+    }
+
+    if (!adapters.empty())
+    {
+        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+        for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
+        {
+            try
+            {
+                if (!adapter->device || adapter->device->should_stop)
+                {
+                    continue;
+                }
+
+                LOGI("Setting TX power to {} on adapter {}", m_tx_power, adapter->index);
+                adapter->device->SetTxPower(m_tx_power);
+            }
+            catch (const std::exception& e)
+            {
+                LOGW("SetTxPower failed after USB detach on adapter {}: {}", adapter->index, e.what());
+                adapter->device->should_stop = true;
+            }
+            catch (...)
+            {
+                LOGW("SetTxPower failed after USB detach on adapter {} with unknown exception", adapter->index);
+                adapter->device->should_stop = true;
+            }
+        }
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Selects which available Android RTL USB adapter should transmit ground packets.
+void AndroidRawBroadcastTransport::setTxInterface(const std::string& interface)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_tx_descriptor.interface = interface;
+    LOGI("Selected raw TX adapter {}", interface);
 }
 
 //===================================================================================
@@ -501,19 +543,27 @@ int AndroidRawBroadcastTransport::get_input_dBm() const
 // Contributes raw-broadcast RSSI and packet counters into the shared GS stats window.
 void AndroidRawBroadcastTransport::contributeGroundStats(GSStats& stats)
 {
-    const int input_dbm = get_input_dBm();
-    if (input_dbm != 0)
-    {
-        stats.rssiDbm[0] = static_cast<int8_t>(std::clamp(input_dbm, -127, 0));
-    }
-    stats.rssiDbm[1] = 0;
     stats.noiseFloorDbm = 0;
-    const uint32_t all_frames = consumeAllFrameCount();
-    const uint32_t filtered_frames = consumeFilteredFrameCount();
-    // Filtered frames are already counted per-packet by processTransportPacket via the callback.
-    // Only add the frames that did NOT pass the filter (unmatched MAC / packet filter rejects)
-    // so that inPacketCounterAll reflects total frames seen by the radio without double-counting.
-    stats.inPacketCounterAll[0] += static_cast<uint16_t>(all_frames - filtered_frames);
+    std::vector<std::shared_ptr<UsbAdapter>> adapters;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        adapters = m_usb_adapters;
+    }
+    for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
+    {
+        const size_t stats_index = std::min(adapter->index, static_cast<size_t>(1));
+        const uint32_t all_frames = adapter->all_frame_count.exchange(0);
+        const uint32_t filtered_frames = adapter->filtered_frame_count.exchange(0);
+        const int adapter_dbm =
+            adapter->best_input_dbm.exchange(std::numeric_limits<int>::lowest());
+        if (adapter_dbm != std::numeric_limits<int>::lowest())
+        {
+            stats.rssiDbm[stats_index] = static_cast<int8_t>(std::clamp(adapter_dbm, -127, 0));
+        }
+        // Filtered frames are already counted per-packet by processTransportPacket via
+        // the callback. Only add unmatched frames so all-packet stats stay accurate.
+        stats.inPacketCounterAll[stats_index] += static_cast<uint16_t>(all_frames - filtered_frames);
+    }
 }
 
 //===================================================================================
@@ -534,7 +584,7 @@ std::string AndroidRawBroadcastTransport::getTransportMessage() const
 
 //===================================================================================
 //===================================================================================
-// Starts the Android RTL8812AU adapter from one already-open USB file descriptor.
+// Starts one Android RTL adapter from an already-open USB file descriptor.
 bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 {
     std::lock_guard<std::mutex> stop_lock(m_stop_mutex);
@@ -544,153 +594,128 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    std::shared_ptr<Rtl8812aDevice> old_device;
+    std::shared_ptr<UsbAdapter> adapter = std::make_shared<UsbAdapter>();
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        old_device = m_device;
-        if (old_device)
+        for (const std::shared_ptr<UsbAdapter>& active_adapter : m_usb_adapters)
         {
-            old_device->should_stop = true;
+            if (active_adapter->fd == fd)
+            {
+                LOGI("RTL adapter fd={} is already running", fd);
+                return true;
+            }
         }
-    }
-
-    if (m_rx_thread && m_rx_thread->joinable())
-    {
-        m_rx_thread->join();
-    }
-    if (m_usb_event_thread && m_usb_event_thread->joinable())
-    {
-        m_usb_event_thread->join();
-    }
-    m_rx_thread.reset();
-    m_usb_event_thread.reset();
-
-    {
-        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_device.reset();
-        m_active_usb_fd = -1;
-        resetTxAssemblerLocked();
-        m_tx_block_packets.clear();
-    }
-
-    if (m_usb_handle != nullptr)
-    {
-        libusb_release_interface(m_usb_handle, 0);
-        m_usb_handle = nullptr;
-    }
-    if (m_libusb_context != nullptr)
-    {
-        libusb_exit(m_libusb_context);
-        m_libusb_context = nullptr;
+        if (m_usb_adapters.size() >= 2)
+        {
+            LOGW("Ignoring extra RTL adapter fd={} because Android raw transport supports two", fd);
+            return false;
+        }
+        adapter->fd = fd;
+        adapter->index = m_usb_adapters.size();
     }
 
     libusb_set_option(nullptr, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
-    if (libusb_init(&m_libusb_context) < 0)
+    if (libusb_init(&adapter->libusb_context) < 0)
     {
         LOGE("libusb_init failed");
-        m_libusb_context = nullptr;
+        adapter->libusb_context = nullptr;
         return false;
     }
 
-    if (libusb_wrap_sys_device(m_libusb_context, static_cast<intptr_t>(fd), &m_usb_handle) < 0)
+    if (libusb_wrap_sys_device(adapter->libusb_context,
+                               static_cast<intptr_t>(fd),
+                               &adapter->usb_handle) < 0)
     {
         LOGE("libusb_wrap_sys_device failed fd={}", fd);
-        libusb_exit(m_libusb_context);
-        m_libusb_context = nullptr;
-        m_usb_handle = nullptr;
+        libusb_exit(adapter->libusb_context);
+        adapter->libusb_context = nullptr;
+        adapter->usb_handle = nullptr;
         return false;
     }
 
-    if (libusb_kernel_driver_active(m_usb_handle, 0) == 1)
+    if (libusb_kernel_driver_active(adapter->usb_handle, 0) == 1)
     {
-        libusb_detach_kernel_driver(m_usb_handle, 0);
+        libusb_detach_kernel_driver(adapter->usb_handle, 0);
     }
 
-    if (libusb_claim_interface(m_usb_handle, 0) < 0)
+    if (libusb_claim_interface(adapter->usb_handle, 0) < 0)
     {
         LOGE("libusb_claim_interface failed on interface 0");
-        libusb_exit(m_libusb_context);
-        m_libusb_context = nullptr;
-        m_usb_handle = nullptr;
+        libusb_exit(adapter->libusb_context);
+        adapter->libusb_context = nullptr;
+        adapter->usb_handle = nullptr;
         return false;
     }
 
-    std::unique_ptr<Rtl8812aDevice> created_device = m_wifi_driver->CreateRtlDevice(m_usb_handle);
+    std::unique_ptr<Rtl8812aDevice> created_device = m_wifi_driver->CreateRtlDevice(adapter->usb_handle);
     if (!created_device)
     {
         LOGE("CreateRtlDevice failed");
-        libusb_release_interface(m_usb_handle, 0);
-        libusb_exit(m_libusb_context);
-        m_libusb_context = nullptr;
-        m_usb_handle = nullptr;
+        libusb_release_interface(adapter->usb_handle, 0);
+        libusb_exit(adapter->libusb_context);
+        adapter->libusb_context = nullptr;
+        adapter->usb_handle = nullptr;
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_device = std::shared_ptr<Rtl8812aDevice>(created_device.release());
-        m_active_usb_fd = fd;
-        resetTxAssemblerLocked();
-        m_tx_block_packets.clear();
-        m_rx_decoder.reset(Clock::now());
-        m_last_rx_decoded_bytes_total = 0;
-        m_next_block_index = 1;
+        adapter->device = std::shared_ptr<Rtl8812aDevice>(created_device.release());
+        if (m_usb_adapters.empty())
+        {
+            resetTxAssemblerLocked();
+            m_tx_block_packets.clear();
+            m_rx_decoder.reset(Clock::now());
+            m_last_rx_decoded_bytes_total = 0;
+            m_next_block_index = 1;
+        }
         if (m_tx_power > 0)
         {
             std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-            m_device->SetTxPower(m_tx_power);
+            adapter->device->SetTxPower(m_tx_power);
         }
+        m_usb_adapters.push_back(adapter);
     }
 
-    LOGI("Started RTL adapter fd={} channel={}", fd, s_groundstation_config.wifi_channel);
+    LOGI("Started RTL adapter {} fd={} channel={}",
+         adapter->index,
+         fd,
+         s_groundstation_config.wifi_channel);
 
-    m_usb_event_thread = std::make_unique<std::thread>([this]()
+    adapter->usb_event_thread = std::make_unique<std::thread>([adapter]()
     {
         while (true)
         {
-            std::shared_ptr<Rtl8812aDevice> device;
-            {
-                std::lock_guard<std::mutex> lock(m_mutex);
-                device = m_device;
-            }
-
-            if (!device || device->should_stop)
+            if (!adapter->device || adapter->device->should_stop)
             {
                 break;
             }
 
             timeval timeout = {};
             timeout.tv_usec = 500000;
-            const int rc = libusb_handle_events_timeout(m_libusb_context, &timeout);
+            const int rc = libusb_handle_events_timeout(adapter->libusb_context, &timeout);
             if (rc < 0)
             {
-                LOGW("libusb_handle_events_timeout rc={}", rc);
+                LOGW("libusb_handle_events_timeout adapter={} rc={}", adapter->index, rc);
             }
         }
     });
 
-    m_rx_thread = std::make_unique<std::thread>([this]()
+    adapter->rx_thread = std::make_unique<std::thread>([this, adapter]()
     {
-        std::shared_ptr<Rtl8812aDevice> device;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            device = m_device;
-        }
-
-        if (!device)
+        if (!adapter->device)
         {
             return;
         }
 
-        device->Init(
-            [this](const Packet& packet)
+        adapter->device->Init(
+            [this, adapter](const Packet& packet)
             {
                 // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110
                 const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
                 const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
                 const int input_dbm = std::max(dbm0, dbm1);
-                queueReceivedPacket(packet.Data.data(), packet.Data.size(), input_dbm);
+                queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
             },
             makeSelectedChannel(s_groundstation_config.wifi_channel));
     });
@@ -700,83 +725,134 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 
 //===================================================================================
 //===================================================================================
-// Stops the active Android RTL8812AU adapter and releases its USB/libusb resources.
+// Stops active Android RTL adapters and releases their USB/libusb resources.
 void AndroidRawBroadcastTransport::stopUsbAdapter()
 {
     std::lock_guard<std::mutex> stop_lock(m_stop_mutex);
-    std::shared_ptr<Rtl8812aDevice> device;
+    std::vector<std::shared_ptr<UsbAdapter>> adapters;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        device = m_device;
-        if (device)
-        {
-            device->should_stop = true;
-        }
+        adapters = std::move(m_usb_adapters);
+        m_usb_adapters.clear();
     }
 
-    if (m_rx_thread && m_rx_thread->joinable())
+    for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
     {
-        m_rx_thread->join();
+        stopUsbAdapterLocked(adapter);
     }
-    if (m_usb_event_thread && m_usb_event_thread->joinable())
-    {
-        m_usb_event_thread->join();
-    }
-    m_rx_thread.reset();
-    m_usb_event_thread.reset();
 
     // Hot-unplug can leave queued TX work still trying to touch libusb while Java is stopping
-    // the transport. Hold the device I/O gate while clearing the shared device pointer and
-    // releasing libusb so no send/control path can race teardown with a stale device handle.
+    // the transport. Hold the device I/O gate while clearing TX assembly so no send path
+    // can retain work for an adapter that is no longer active.
     std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_device.reset();
-        m_active_usb_fd = -1;
         resetTxAssemblerLocked();
         m_tx_block_packets.clear();
     }
 
-    if (m_usb_handle != nullptr)
-    {
-        libusb_release_interface(m_usb_handle, 0);
-        m_usb_handle = nullptr;
-    }
-    if (m_libusb_context != nullptr)
-    {
-        libusb_exit(m_libusb_context);
-        m_libusb_context = nullptr;
-    }
-
-    LOGI("Stopped RTL adapter");
+    LOGI("Stopped {} RTL adapter(s)", adapters.size());
 }
 
 //===================================================================================
 //===================================================================================
-// Reports whether Android currently owns one running RTL8812AU adapter instance.
+// Stops one Android RTL adapter after it has been removed from the active adapter list.
+void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter)
+{
+    if (adapter->device)
+    {
+        adapter->device->should_stop = true;
+    }
+    if (adapter->rx_thread && adapter->rx_thread->joinable())
+    {
+        adapter->rx_thread->join();
+    }
+    if (adapter->usb_event_thread && adapter->usb_event_thread->joinable())
+    {
+        adapter->usb_event_thread->join();
+    }
+    adapter->rx_thread.reset();
+    adapter->usb_event_thread.reset();
+
+    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    adapter->device.reset();
+    if (adapter->usb_handle != nullptr)
+    {
+        libusb_release_interface(adapter->usb_handle, 0);
+        adapter->usb_handle = nullptr;
+    }
+    if (adapter->libusb_context != nullptr)
+    {
+        libusb_exit(adapter->libusb_context);
+        adapter->libusb_context = nullptr;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Android currently owns any running RTL adapter instance.
 bool AndroidRawBroadcastTransport::isUsbAdapterRunning() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_device != nullptr;
+    return !m_usb_adapters.empty();
 }
 
 //===================================================================================
 //===================================================================================
-// Returns the current active Android USB file descriptor or -1 when no adapter runs.
+// Returns how many Android RTL USB adapters are currently open for raw transport.
+size_t AndroidRawBroadcastTransport::activeUsbAdapterCount() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_usb_adapters.size();
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the primary Android USB file descriptor or -1 when no adapter runs.
 int AndroidRawBroadcastTransport::activeUsbFd() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_active_usb_fd;
+    return m_usb_adapters.empty() ? -1 : m_usb_adapters.front()->fd;
 }
 
 //===================================================================================
 //===================================================================================
 // Installs one callback that receives every filtered raw transport packet immediately.
-void AndroidRawBroadcastTransport::setTransportPacketCallback(std::function<void(const uint8_t* data, size_t size, int input_dbm)> callback)
+void AndroidRawBroadcastTransport::setTransportPacketCallback(
+    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_transport_packet_callback = std::move(callback);
     LOGI("Transport packet callback installed={}", m_transport_packet_callback ? 1 : 0);
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the first active adapter device used for ground-to-air TX.
+std::shared_ptr<Rtl8812aDevice> AndroidRawBroadcastTransport::txDeviceLocked() const
+{
+    if (m_usb_adapters.empty())
+    {
+        return nullptr;
+    }
+
+    const std::string selected_tx_interface =
+        m_tx_descriptor.interface.empty() ? s_groundstation_config.txInterface
+                                          : m_tx_descriptor.interface;
+    if (!selected_tx_interface.empty() && selected_tx_interface != "auto")
+    {
+        for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
+        {
+            if (selected_tx_interface == rawUsbAdapterLabel(adapter->index))
+            {
+                return adapter->device;
+            }
+        }
+    }
+
+    // A selected adapter can be unplugged. Keep the control link alive by using
+    // the first remaining device until the user changes the menu selection.
+    return m_usb_adapters.front()->device;
 }
 
 //===================================================================================
@@ -867,7 +943,8 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<Rtl8812aD
 //===================================================================================
 //===================================================================================
 // Filters one received raw-broadcast transport packet and pushes it into the shared FEC decoder.
-void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
+void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
+                                                       const uint8_t* data,
                                                        size_t size,
                                                        int input_dbm)
 {
@@ -879,7 +956,7 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
         return;
     }
 
-    m_all_frame_count.fetch_add(1);
+    adapter->all_frame_count.fetch_add(1);
     const uint32_t seen_count = s_rx_seen_count.fetch_add(1) + 1;
     if ((seen_count % 500) == 1)
     {
@@ -926,20 +1003,21 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const uint8_t* data,
         return;
     }
 
-    std::function<void(const uint8_t* data, size_t size, int input_dbm)> callback;
+    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         callback = m_transport_packet_callback;
     }
     if (callback)
     {
-        callback(transport_packet, transport_size, input_dbm);
+        callback(transport_packet, transport_size, input_dbm, adapter->index);
     }
     else
     {
-        m_rx_decoder.pushPacket(transport_packet, transport_size, 0, Clock::now());
+        m_rx_decoder.pushPacket(transport_packet, transport_size, adapter->index, Clock::now());
     }
-    m_filtered_frame_count.fetch_add(1);
+    adapter->filtered_frame_count.fetch_add(1);
+    adapter->best_input_dbm.store(std::max(adapter->best_input_dbm.load(), input_dbm));
     m_best_input_dbm.store(std::max(m_best_input_dbm.load(), input_dbm));
     m_last_rx_packet_tp.store(Clock::now().time_since_epoch().count());
     const uint32_t rx_count = s_rx_pass_count.fetch_add(1) + 1;
