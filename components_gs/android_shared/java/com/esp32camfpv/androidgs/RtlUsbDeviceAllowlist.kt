@@ -44,11 +44,15 @@ object RtlUsbDeviceAllowlist {
         0x2604 to 0x0012
     )
 
-    val RTL8821A_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
+    val RTL8811A_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
         0x0BDA to 0x0811,
+        0x0BDA to 0xA811,
+        0x0BDA to 0xB811
+    )
+
+    val RTL8821A_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
         0x0BDA to 0x0821,
         0x0BDA to 0x8822,
-        0x0BDA to 0xA811,
         0x0BDA to 0x0820,
         0x0BDA to 0x0823,
         0x7392 to 0xA811,
@@ -68,11 +72,13 @@ object RtlUsbDeviceAllowlist {
         0x3823 to 0x6249,
         0x2357 to 0x011E,
         0x2357 to 0x0122,
-        0x2357 to 0x0120
+        0x2357 to 0x0120,
+        0x20F4 to 0x804B,
+        0x7392 to 0xB611
     )
 
     val RTL_WIFI_DEVICE_IDS: Set<Pair<Int, Int>> =
-        RTL8812A_DEVICE_IDS + RTL8821A_DEVICE_IDS
+        RTL8812A_DEVICE_IDS + RTL8811A_DEVICE_IDS + RTL8821A_DEVICE_IDS
 
     fun isSupported(device: UsbDevice): Boolean =
         (device.vendorId to device.productId) in RTL_WIFI_DEVICE_IDS

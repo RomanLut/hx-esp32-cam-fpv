@@ -356,8 +356,15 @@ void GSWifiScanTransport::buildScanOsd(uint8_t* out_buf, uint16_t& enc_size) con
         for (int i = 0; i < bar_cols; ++i)
         {
             const int col   = start_col + i * col_stride + col_offset;
-            const float ratio = std::min(1.f, m_packetCounts[i] / kBarFullAirtimeUs);
-            const int height  = static_cast<int>(std::pow(ratio, 0.5f) * kBarRows);
+            const float sample = m_packetCounts[i];
+            const float ratio = std::min(1.f, sample / kBarFullAirtimeUs);
+            int height  = static_cast<int>(std::pow(ratio, 0.5f) * kBarRows);
+            // Sparse beacon/control traffic may be real but below one row after
+            // airtime scaling; keep nonzero samples visible in scan mode.
+            if (sample > 0.f && height == 0)
+            {
+                height = 1;
+            }
             for (int h = 0; h < height; ++h)
             {
                 osdPutChar(grid, kBarBottom - h, col, '^');

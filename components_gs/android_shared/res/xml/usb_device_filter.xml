@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- RTL8812A / RTL8821A IDs from svpcom/rtl8812au v5.2.20-rssi-fix-but-sometimes-crash. -->
+    <!-- RTL8812A / RTL8811AU / RTL8821A IDs from svpcom/rtl8812au v5.2.20-rssi-fix-but-sometimes-crash. -->
     <usb-device product-id="8812" vendor-id="0BDA" />
     <usb-device product-id="881A" vendor-id="0BDA" />
     <usb-device product-id="881B" vendor-id="0BDA" />
@@ -37,6 +37,7 @@
     <usb-device product-id="9097" vendor-id="148F" />
     <usb-device product-id="0012" vendor-id="2604" />
     <usb-device product-id="0811" vendor-id="0BDA" />
+    <usb-device product-id="B811" vendor-id="0BDA" />
     <usb-device product-id="0821" vendor-id="0BDA" />
     <usb-device product-id="8822" vendor-id="0BDA" />
     <usb-device product-id="A811" vendor-id="0BDA" />
@@ -59,4 +60,6 @@
     <usb-device product-id="6249" vendor-id="3823" />
     <usb-device product-id="011E" vendor-id="2357" />
     <usb-device product-id="0120" vendor-id="2357" />
+    <usb-device product-id="804B" vendor-id="20F4" />
+    <usb-device product-id="B611" vendor-id="7392" />
 </resources>

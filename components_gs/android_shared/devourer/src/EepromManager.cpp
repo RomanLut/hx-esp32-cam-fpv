@@ -38,16 +38,28 @@ EepromManager::EepromManager(RtlUsbAdapter device, Logger_t logger)
   hal_ReadUsbType_8812AU();
 }
 
-void EepromManager::read_chip_version_8812a(RtlUsbAdapter device) {
+//===================================================================================
+//===================================================================================
+// Reads the chip family and RF path count from SYS_CFG.
+void EepromManager::read_chip_version_8812a(RtlUsbAdapter device)
+{
   uint32_t value32 = device.rtw_read32(REG_SYS_CFG);
   _logger->info("read_chip_version_8812a SYS_CFG(0x{:X})=0x{:08X}", REG_SYS_CFG,
                 value32);
+
+  // RTL8811AU stays on the 8812/Jaguar HAL but advertises 1T1R through
+  // RF_TYPE_ID. RTL8821AU is selected earlier by USB family detection and uses
+  // the separate 8821A HAL path.
+  const auto rfType = device.IsRtl8821A()
+                          ? RF_TYPE_1T1R
+                          : ((value32 & RF_TYPE_ID) ? RF_TYPE_1T1R
+                                                     : RF_TYPE_2T2R);
 
   version_id = {
       .ICType = device.IsRtl8821A() ? CHIP_8821 : CHIP_8812,
       .ChipType = (value32 & RTL_ID) ? TEST_CHIP : NORMAL_CHIP,
       .VendorType = CHIP_VENDOR_TSMC,
-      .RFType = device.IsRtl8821A() ? RF_TYPE_1T1R : RF_TYPE_2T2R,
+      .RFType = rfType,
   };
 
   if (device.IsRtl8821A()) {
@@ -68,8 +80,10 @@ void EepromManager::read_chip_version_8812a(RtlUsbAdapter device) {
         (value32 & VENDOR_ID) ? CHIP_VENDOR_UMC : CHIP_VENDOR_TSMC;
   }
 
-  if (!device.IsRtl8821A() && registry_priv::special_rf_path == 1) {
-    version_id.RFType = RF_TYPE_1T1R; /* RF_1T1R; */
+  if (!device.IsRtl8821A() && registry_priv::special_rf_path == 1)
+  {
+    // Manual override for 8812-family boards with incorrect RF_TYPE_ID straps.
+    version_id.RFType = RF_TYPE_1T1R;
   }
 
   version_id.CUTVersion = (HAL_CUT_VERSION_E)(((value32 & CHIP_VER_RTL_MASK) >>

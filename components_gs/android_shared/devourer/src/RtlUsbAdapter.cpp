@@ -249,7 +249,11 @@ const char *RtlUsbAdapter::strUsbSpeed() {
   }
 }
 
-void RtlUsbAdapter::InitDvObj() {
+//===================================================================================
+//===================================================================================
+// Initializes USB descriptors and selects the supported Realtek HAL family.
+void RtlUsbAdapter::InitDvObj()
+{
   libusb_device *dev = libusb_get_device(_dev_handle);
   usbSpeed = (enum libusb_speed)libusb_get_device_speed(dev);
   _logger->info("Running USB bus at {}", strUsbSpeed());
@@ -263,13 +267,12 @@ void RtlUsbAdapter::InitDvObj() {
   UsbVendorId = desc.idVendor;
   UsbProductId = desc.idProduct;
 
-  // The Realtek 8821AU upstream table marks 2357:0120 and the IDs below as
-  // RTL8821/RTL8811 devices; they require the 8821A firmware and HAL tables.
+  // Keep true RTL8811AU IDs such as 0BDA:0811 and 0BDA:A811 on the 8812/Jaguar
+  // path; they are handled by RF_TYPE_ID as 1T1R. The IDs below are known
+  // RTL8821AU-family devices that require the separate 8821A firmware/HAL.
   switch ((uint32_t(UsbVendorId) << 16) | UsbProductId) {
-  case 0x0BDA0811:
   case 0x0BDA0821:
   case 0x0BDA8822:
-  case 0x0BDAA811:
   case 0x0BDA0820:
   case 0x0BDA0823:
   case 0x04110242:
@@ -283,6 +286,7 @@ void RtlUsbAdapter::InitDvObj() {
   case 0x20013314:
   case 0x20013318:
   case 0x2019AB32:
+  case 0x20F4804B:
   case 0x2357011E:
   case 0x23570120:
   case 0x23570122:
@@ -290,6 +294,7 @@ void RtlUsbAdapter::InitDvObj() {
   case 0x7392A811:
   case 0x7392A812:
   case 0x7392A813:
+  case 0x7392B611:
     chipType = RtlChipType::RTL8821;
     break;
   default:
@@ -298,7 +303,7 @@ void RtlUsbAdapter::InitDvObj() {
   }
 
   _logger->info("USB device {:04X}:{:04X} maps to {} HAL", UsbVendorId,
-                UsbProductId, IsRtl8821A() ? "RTL8821A/RTL8811AU" : "RTL8812A");
+                UsbProductId, IsRtl8821A() ? "RTL8821A" : "RTL8812A/RTL8811AU");
 
   for (uint8_t k = 0; k < desc.bNumConfigurations; k++) {
     libusb_config_descriptor *config;
