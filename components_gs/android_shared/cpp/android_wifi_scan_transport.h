@@ -62,6 +62,7 @@ private:
     libusb_device_handle*       m_usb_handle      = nullptr;
     int                         m_active_usb_fd   = -1;
     std::atomic<int>            m_nextChannel     = {0};
+    std::atomic<bool>           m_monitor_started = {false};
     std::atomic<bool>           m_chSwitchStop    = {false};
     std::thread                 m_chSwitchThread;
 };

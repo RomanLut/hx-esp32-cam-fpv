@@ -145,6 +145,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     }
 
     LOGI("Started RTL adapter fd={}", fd);
+    m_monitor_started.store(false, std::memory_order_relaxed);
 
     // USB event pump thread.
     // Android can report a USB detach while libusb is still servicing callbacks,
@@ -185,47 +186,81 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
             return;
         }
 
-        const int initial_channel = s_groundstation_config.wifi_channel;
-        dev->Init(
-            [this](const Packet& packet)
+        try
+        {
+            const int initial_channel = s_groundstation_config.wifi_channel;
+            dev->Init(
+                [this](const Packet& packet)
+                {
+                    const uint32_t frame_bytes = static_cast<uint32_t>(packet.RxAtrib.pkt_len);
+                    if (frame_bytes == 0 || frame_bytes > 4096)
+                    {
+                        return;
+                    }
+
+                    // Decode hardware descriptor rate to 500 kb/s units.
+                    // CCK  DESC_RATE1M(0x00)..DESC_RATE11M(0x03)
+                    // OFDM DESC_RATE6M(0x04)..DESC_RATE54M(0x0b)
+                    // HT   DESC_RATEMCS0(0x0c)..DESC_RATEMCS7(0x13)
+                    static constexpr uint8_t kLegacy_500kbps[12] = {
+                        2, 4, 11, 22,               // CCK:  1/2/5.5/11 Mbps
+                        12, 18, 24, 36, 48, 72, 96, 108  // OFDM: 6/9/12/18/24/36/48/54 Mbps
+                    };
+                    static constexpr uint16_t kHT20LGI_500kbps[8] = { 13, 26, 39,  52,  78,  104, 117, 130 };
+                    static constexpr uint16_t kHT40LGI_500kbps[8] = { 27, 54, 81, 108, 162,  216, 243, 270 };
+
+                    const uint8_t dr = packet.RxAtrib.data_rate;
+                    uint32_t rate_500kbps;
+                    if (dr < 0x0c)
+                    {
+                        rate_500kbps = kLegacy_500kbps[dr];
+                    }
+                    else if (dr <= 0x13)
+                    {
+                        const uint8_t mcs = dr - 0x0c;
+                        rate_500kbps = (packet.RxAtrib.bw != 0)
+                                       ? kHT40LGI_500kbps[mcs]
+                                       : kHT20LGI_500kbps[mcs];
+                        if (packet.RxAtrib.sgi)
+                            rate_500kbps = rate_500kbps * 10 / 9;
+                    }
+                    else
+                    {
+                        rate_500kbps = 0; // unknown; accumulateAirtime falls back to 6 Mbps
+                    }
+
+                    accumulateAirtime(frame_bytes, rate_500kbps);
+                },
+                makeSelectedChannel(initial_channel),
+                [this]()
+                {
+                    m_monitor_started.store(true, std::memory_order_release);
+                });
+        }
+        catch (const std::exception& ex)
+        {
+            LOGE("wifi-scan RX thread stopped: {}", ex.what());
+            m_chSwitchStop.store(true);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_device)
             {
-                const uint32_t frame_bytes = static_cast<uint32_t>(packet.RxAtrib.pkt_len);
-                if (frame_bytes == 0 || frame_bytes > 4096) { return; }
-
-                // Decode hardware descriptor rate → 500 kb/s units.
-                // CCK  DESC_RATE1M(0x00)..DESC_RATE11M(0x03)
-                // OFDM DESC_RATE6M(0x04)..DESC_RATE54M(0x0b)
-                // HT   DESC_RATEMCS0(0x0c)..DESC_RATEMCS7(0x13)
-                static constexpr uint8_t kLegacy_500kbps[12] = {
-                    2, 4, 11, 22,               // CCK:  1/2/5.5/11 Mbps
-                    12, 18, 24, 36, 48, 72, 96, 108  // OFDM: 6/9/12/18/24/36/48/54 Mbps
-                };
-                static constexpr uint16_t kHT20LGI_500kbps[8] = { 13, 26, 39,  52,  78,  104, 117, 130 };
-                static constexpr uint16_t kHT40LGI_500kbps[8] = { 27, 54, 81, 108, 162,  216, 243, 270 };
-
-                const uint8_t dr = packet.RxAtrib.data_rate;
-                uint32_t rate_500kbps;
-                if (dr < 0x0c)
-                {
-                    rate_500kbps = kLegacy_500kbps[dr];
-                }
-                else if (dr <= 0x13)
-                {
-                    const uint8_t mcs = dr - 0x0c;
-                    rate_500kbps = (packet.RxAtrib.bw != 0)
-                                   ? kHT40LGI_500kbps[mcs]
-                                   : kHT20LGI_500kbps[mcs];
-                    if (packet.RxAtrib.sgi)
-                        rate_500kbps = rate_500kbps * 10 / 9;
-                }
-                else
-                {
-                    rate_500kbps = 0; // unknown — accumulateAirtime falls back to 6 Mbps
-                }
-
-                accumulateAirtime(frame_bytes, rate_500kbps);
-            },
-            makeSelectedChannel(initial_channel));
+                m_device->should_stop = true;
+            }
+            m_device = nullptr;
+            m_active_usb_fd = -1;
+        }
+        catch (...)
+        {
+            LOGE("wifi-scan RX thread stopped with unknown exception");
+            m_chSwitchStop.store(true);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_device)
+            {
+                m_device->should_stop = true;
+            }
+            m_device = nullptr;
+            m_active_usb_fd = -1;
+        }
     });
 
     // Channel-switch thread: applies m_nextChannel requests asynchronously so
@@ -246,6 +281,12 @@ void AndroidWifiScanTransport::channelSwitchLoop()
     while (!m_chSwitchStop.load(std::memory_order_relaxed))
     {
         const int wanted = m_nextChannel.load(std::memory_order_relaxed);
+        if (!m_monitor_started.load(std::memory_order_acquire))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
         if (wanted != 0 && wanted != appliedChannel)
         {
             std::shared_ptr<Rtl8812aDevice> dev;
