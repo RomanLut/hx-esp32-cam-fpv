@@ -193,15 +193,21 @@ bool HalModule::rtl8812au_hal_init() {
   return true;
 }
 
-bool HalModule::InitPowerOn() {
-  if (_macPwrCtrlOn) {
+//===================================================================================
+//===================================================================================
+// Runs the MAC power-on sequence for the selected Realtek chip family.
+bool HalModule::InitPowerOn()
+{
+  if (_macPwrCtrlOn)
+  {
     return true;
   }
 
   WLAN_PWR_CFG *powerOnFlow =
       IsRtl8821A() ? Rtl8821A_NIC_ENABLE_FLOW : Rtl8812_NIC_ENABLE_FLOW;
 
-  if (!HalPwrSeqCmdParsing(powerOnFlow)) {
+  if (!HalPwrSeqCmdParsing(powerOnFlow))
+  {
     _logger->error("InitPowerOn: run power on flow fail");
     return false;
   }
@@ -288,20 +294,42 @@ void HalModule::_InitHardwareDropIncorrectBulkOut_8812A() {
   _device.rtw_write32(REG_TXDMA_OFFSET_CHK, value32);
 }
 
-bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd) {
+//===================================================================================
+//===================================================================================
+// Executes one Realtek register power sequence until the END command is reached.
+bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
+{
   bool bHWICSupport = false;
   uint32_t AryIdx = 0;
   // UInt16 offset = 0;
-  uint32_t pollingCount = 0; /* polling autoload done. */
+  const uint8_t interfaceMask = PWR_INTF_USB_MSK;
+  const uint8_t fabMask = PWR_FAB_ALL_MSK;
+  const uint8_t cutMask =
+      IsRtl8821A()
+          ? (_eepromManager->version_id.ChipType == TEST_CHIP
+                 ? PWR_CUT_TESTCHIP_MSK
+                 : PWR_CUT_A_MSK)
+          : PWR_CUT_ALL_MSK;
 
-  do {
+  do
+  {
     auto PwrCfgCmd = PwrSeqCmd[AryIdx];
 
-    /* 2 Only Handle the command whose FAB, CUT, and Interface are matched */
-    // if ((GET_PWR_CFG_FAB_MASK(PwrCfgCmd) & FabVersion) &&
-    //     (GET_PWR_CFG_CUT_MASK(PwrCfgCmd) & CutVersion) &&
-    //     (GET_PWR_CFG_INTF_MASK(PwrCfgCmd) & InterfaceType))
-    switch (PwrCfgCmd.cmd) {
+    // Realtek power tables include USB, PCIe, and SDIO commands in the same
+    // flow. Android USB must skip SDIO-only polls such as 0x86[1], otherwise
+    // RTL8821AU never reaches the actual MAC enable sequence.
+    // The working rtl8812au USB driver passes PWR_CUT_A_MSK for normal
+    // RTL8821AU MP chips even when the chip version reports a later cut.
+    if ((GET_PWR_CFG_FAB_MASK(PwrCfgCmd) & fabMask) == 0 ||
+        (GET_PWR_CFG_CUT_MASK(PwrCfgCmd) & cutMask) == 0 ||
+        (GET_PWR_CFG_INTF_MASK(PwrCfgCmd) & interfaceMask) == 0)
+    {
+      AryIdx++;
+      continue;
+    }
+
+    switch (PwrCfgCmd.cmd)
+    {
     case PWR_CMD_READ:
       break;
 
@@ -326,27 +354,31 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd) {
       auto offset = (PwrCfgCmd.offset);
       uint32_t maxPollingCnt = 5000;
       bool flag = false;
+      uint32_t pollingCount = 0;
 
       maxPollingCnt = 5000;
 
-      do {
+      do
+      {
         auto value = _device.rtw_read8(offset);
 
         value = (uint8_t)(value & PwrCfgCmd.msk);
-        if (value == ((PwrCfgCmd.value) & PwrCfgCmd.msk)) {
+        if (value == ((PwrCfgCmd.value) & PwrCfgCmd.msk))
+        {
           bPollingBit = true;
-        } else {
+        }
+        else
+        {
           using namespace std::chrono_literals;
           std::this_thread::sleep_for(10ms);
         }
 
-        if (pollingCount++ > maxPollingCnt) {
-          // TODO: RTW_ERR("HalPwrSeqCmdParsing: Fail to polling
-          // Offset[%#x]=%02x\n", offset, value);
-
+        if (pollingCount++ > maxPollingCnt)
+        {
           /* For PCIE + USB package poll power bit timeout issue only modify
            * 8821AE and 8723BE */
-          if (bHWICSupport && offset == 0x06 && flag == false) {
+          if (bHWICSupport && offset == 0x06 && flag == false)
+          {
 
             // TODO: RTW_ERR("[WARNING] PCIE polling(0x%X) timeout(%d), Toggle
             // 0x04[3] and try again.\n", offset, maxPollingCnt);
@@ -358,7 +390,9 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd) {
             /* Retry Polling Process one more time */
             pollingCount = 0;
             flag = true;
-          } else {
+          }
+          else
+          {
             return false;
           }
         }
@@ -368,10 +402,13 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd) {
     break;
 
     case PWR_CMD_DELAY: {
-      if (PwrCfgCmd.value == (uint8_t)PWRSEQ_DELAY_US) {
+      if (PwrCfgCmd.value == (uint8_t)PWRSEQ_DELAY_US)
+      {
         std::this_thread::sleep_for(
             std::chrono::microseconds(PwrCfgCmd.offset));
-      } else {
+      }
+      else
+      {
         std::this_thread::sleep_for(
             std::chrono::milliseconds(PwrCfgCmd.offset));
       }

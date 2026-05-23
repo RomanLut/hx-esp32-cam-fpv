@@ -5,6 +5,7 @@
 
 #include <libusb.h>
 #include <thread>
+#include <vector>
 
 #include "FrameParser.h"
 #include "drv_types.h"
@@ -35,12 +36,18 @@ enum class RtlChipType {
   RTL8821,
 };
 
-class RtlUsbAdapter {
+//===================================================================================
+//===================================================================================
+// Wraps a claimed Realtek USB WiFi adapter and exposes register/RX/TX helpers.
+class RtlUsbAdapter
+{
   libusb_device_handle *_dev_handle;
   Logger_t _logger;
 
   enum libusb_speed usbSpeed;
   uint8_t numOutPipes = 0;
+  uint8_t _bulk_in_ep = 0x81;
+  std::vector<uint8_t> _bulk_out_eps;
   RtlChipType chipType = RtlChipType::RTL8812;
 
 public:

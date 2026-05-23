@@ -219,17 +219,29 @@ bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
   return resp;
 }
 
+//===================================================================================
+//===================================================================================
+// Starts monitor mode and runs the packet read loop until should_stop is set.
 void Rtl8812aDevice::Init(Action_ParsedRadioPacket packetProcessor,
-                          SelectedChannel channel) {
+                          SelectedChannel channel,
+                          std::function<void()> monitorStarted)
+{
   _packetProcessor = packetProcessor;
 
   StartWithMonitorMode(channel);
   SetMonitorChannel(channel);
 
   _logger->info("Listening air...");
-  while (!should_stop) {
+  if (monitorStarted)
+  {
+    monitorStarted();
+  }
+
+  while (!should_stop)
+  {
     auto packets = _device.infinite_read();
-    for (auto &p : packets) {
+    for (auto &p : packets)
+    {
       _packetProcessor(p);
     }
   }

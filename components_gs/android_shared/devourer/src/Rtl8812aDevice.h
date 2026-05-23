@@ -19,7 +19,11 @@ extern "C"
 
 using Action_ParsedRadioPacket = std::function<void(const Packet&)>;
 
-class Rtl8812aDevice {
+//===================================================================================
+//===================================================================================
+// Owns the RTL8812/RTL8821 HAL stack and monitor-mode packet read loop.
+class Rtl8812aDevice
+{
   std::shared_ptr<EepromManager> _eepromManager;
   std::shared_ptr<RadioManagementModule> _radioManagement;
   SelectedChannel _channel;
@@ -31,7 +35,8 @@ class Rtl8812aDevice {
 
 public:
   Rtl8812aDevice(RtlUsbAdapter device, Logger_t logger);
-  void Init(Action_ParsedRadioPacket packetProcessor, SelectedChannel channel);
+  void Init(Action_ParsedRadioPacket packetProcessor, SelectedChannel channel,
+            std::function<void()> monitorStarted = nullptr);
   void SetMonitorChannel(SelectedChannel channel);
   void InitWrite(SelectedChannel channel);
   void SetTxPower(uint8_t power);
