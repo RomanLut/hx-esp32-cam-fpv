@@ -82,7 +82,7 @@ std::string AndroidWifiScanTransport::getTransportMessage() const
         }
         else
         {
-            return "RTL8812AU USB ADAPTER NOT FOUND!";
+            return "RTL88XXAU USB ADAPTER NOT FOUND!";
         }
     }
     return {};
