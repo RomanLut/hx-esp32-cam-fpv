@@ -56,6 +56,7 @@ private:
     std::shared_ptr<Rtl8812aDevice> m_device;
     std::unique_ptr<WiFiDriver> m_wifi_driver;
     Logger_t                    m_devourer_logger;
+    Clock::time_point           m_last_adapter_transition_time = Clock::time_point::min();
     std::unique_ptr<std::thread> m_usb_event_thread;
     std::unique_ptr<std::thread> m_rx_thread;
     libusb_context*             m_libusb_context  = nullptr;

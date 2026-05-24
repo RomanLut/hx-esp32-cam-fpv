@@ -84,9 +84,10 @@ std::vector<Packet> RtlUsbAdapter::infinite_read()
   rc = libusb_bulk_transfer(_dev_handle, _bulk_in_ep, buffer, sizeof(buffer),
                             &actual_length, USB_TIMEOUT * 10);
 
-  if (rc < 0)
+  if (rc < 0 || actual_length <= 0)
   {
     std::this_thread::sleep_for(50ms);
+    return {};
   }
 
   std::vector<Packet> packets;

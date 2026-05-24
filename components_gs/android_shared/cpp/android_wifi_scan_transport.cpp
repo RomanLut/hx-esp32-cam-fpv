@@ -71,7 +71,16 @@ std::string AndroidWifiScanTransport::getTransportMessage() const
     if (m_active && !isUsbAdapterRunning())
     {
         using namespace std::chrono_literals;
-        if (Clock::now() - m_activate_time >= 3s)
+        const Clock::time_point now = Clock::now();
+        const Clock::time_point graceStart =
+            (m_last_adapter_transition_time > m_activate_time)
+                ? m_last_adapter_transition_time
+                : m_activate_time;
+        if (now - graceStart < 8s)
+        {
+            return "Initializing USB Wifi adapter...";
+        }
+        else
         {
             return "RTL8812AU USB ADAPTER NOT FOUND!";
         }
@@ -242,6 +251,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
             LOGE("wifi-scan RX thread stopped: {}", ex.what());
             m_chSwitchStop.store(true);
             std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
             if (m_device)
             {
                 m_device->should_stop = true;
@@ -254,6 +264,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
             LOGE("wifi-scan RX thread stopped with unknown exception");
             m_chSwitchStop.store(true);
             std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
             if (m_device)
             {
                 m_device->should_stop = true;
@@ -349,6 +360,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         dev = m_device;
         if (dev)
         {
+            m_last_adapter_transition_time = Clock::now();
             dev->should_stop = true;
         }
     }

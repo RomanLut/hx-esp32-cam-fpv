@@ -9,6 +9,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -41,15 +42,39 @@ class WifiScanUsbController(
     private var activeDeviceName: String? = null
     private var activeConnection: UsbDeviceConnection? = null
     private var lastState: ControllerState? = null
+    private var usbTopologyChanged = false
+    private var lastUsbTopologyRestartAtMs = 0L
+    private var permissionRequestPending = false
+    private var permissionDeniedDeviceName: String? = null
     private val syncMutex = Mutex()
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_USB_PERMISSION,
+                ACTION_USB_PERMISSION -> {
+                    activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            permissionRequestPending = false
+                            permissionDeniedDeviceName =
+                                if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                                    null
+                                } else {
+                                    intent.getUsbDevice()?.deviceName ?: findSupportedAdapter()?.deviceName
+                                }
+                            usbTopologyChanged = true
+                        }
+                        syncNow()
+                    }
+                }
+
                 UsbManager.ACTION_USB_DEVICE_DETACHED,
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            permissionRequestPending = false
+                            permissionDeniedDeviceName = null
+                            usbTopologyChanged = true
+                        }
                         syncNow()
                     }
                 }
@@ -99,6 +124,15 @@ class WifiScanUsbController(
         }
     }
 
+    fun handleUsbTopologyChanged() {
+        activity.lifecycleScope.launch(Dispatchers.Main) {
+            syncMutex.withLock {
+                usbTopologyChanged = true
+            }
+            syncNow()
+        }
+    }
+
     private suspend fun syncNow() {
         syncMutex.withLock {
             val handle = currentNativeHandle()
@@ -120,6 +154,8 @@ class WifiScanUsbController(
             val targetDevice = findSupportedAdapter()
             if (targetDevice == null) {
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
+                permissionRequestPending = false
+                permissionDeniedDeviceName = null
                 stopCurrentAdapterSync(handle)
                 return
             }
@@ -129,19 +165,45 @@ class WifiScanUsbController(
                     ControllerState.WAITING_PERMISSION,
                     "Waiting for USB permission for ${targetDevice.deviceName}"
                 )
-                requestPermission(targetDevice)
+                if (!permissionRequestPending &&
+                    permissionDeniedDeviceName != targetDevice.deviceName
+                ) {
+                    permissionRequestPending = true
+                    requestPermission(targetDevice)
+                }
                 return
             }
+            permissionRequestPending = false
+            permissionDeniedDeviceName = null
 
             if (activeDeviceName == targetDevice.deviceName) {
-                updateState(ControllerState.RUNNING, "Adapter already running on ${targetDevice.deviceName}")
-                return
-            }
+                val nativeRunning = withContext(Dispatchers.Default) {
+                    NativeCore.isWifiScanUsbRunning(handle)
+                }
+                val nowMs = SystemClock.elapsedRealtime()
+                val duplicateTopologyEvent =
+                    usbTopologyChanged && nativeRunning &&
+                        nowMs - lastUsbTopologyRestartAtMs < USB_TOPOLOGY_RESTART_DEBOUNCE_MS
+                if (nativeRunning && (!usbTopologyChanged || duplicateTopologyEvent)) {
+                    usbTopologyChanged = false
+                    updateState(ControllerState.RUNNING, "Adapter already running on ${targetDevice.deviceName}")
+                    return
+                }
 
-            // USB attach/detach broadcasts and the periodic poll can arrive back-to-back.
-            // Stop and start must stay in one serialized critical section or a stale stop can
-            // tear down the adapter that a newer sync just started.
-            stopCurrentAdapterSync(handle)
+                if (usbTopologyChanged) {
+                    lastUsbTopologyRestartAtMs = nowMs
+                }
+                stopCurrentAdapterSync(handle)
+            } else {
+                // USB attach/detach broadcasts and the periodic poll can arrive back-to-back.
+                // Stop and start must stay in one serialized critical section or a stale stop can
+                // tear down the adapter that a newer sync just started.
+                if (usbTopologyChanged) {
+                    lastUsbTopologyRestartAtMs = SystemClock.elapsedRealtime()
+                }
+                stopCurrentAdapterSync(handle)
+            }
+            usbTopologyChanged = false
 
             val connection = usbManager.openDevice(targetDevice)
             if (connection == null) {
@@ -161,7 +223,6 @@ class WifiScanUsbController(
             activeConnection = connection
             activeDeviceName = targetDevice.deviceName
             updateState(ControllerState.RUNNING, "Started wifi-scan adapter ${targetDevice.deviceName}")
-            Log.i(LOG_TAG, "Started wifi-scan USB adapter ${targetDevice.deviceName}")
         }
     }
 
@@ -179,6 +240,15 @@ class WifiScanUsbController(
             PendingIntent.FLAG_IMMUTABLE
         )
         usbManager.requestPermission(device, pendingIntent)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun Intent.getUsbDevice(): UsbDevice? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        }
     }
 
     private suspend fun stopCurrentAdapterSync(handle: Long = currentNativeHandle()) {
@@ -205,5 +275,6 @@ class WifiScanUsbController(
     private companion object {
         const val LOG_TAG = "WifiScanUsb"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.WIFI_SCAN_USB_PERMISSION"
+        const val USB_TOPOLOGY_RESTART_DEBOUNCE_MS = 5_000L
     }
 }

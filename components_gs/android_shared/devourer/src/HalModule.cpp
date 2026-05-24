@@ -59,10 +59,16 @@ bool HalModule::rtl8812au_hal_init() {
     _logger->info("MAC has not been powered on yet");
   }
 
-  _device.rtw_write8(REG_RF_CTRL, 5);
-  _device.rtw_write8(REG_RF_CTRL, 7);
-  _device.rtw_write8(REG_RF_B_CTRL_8812, 5);
-  _device.rtw_write8(REG_RF_B_CTRL_8812, 7);
+  // RTL8821AU must not receive the RTL8812 RF-A/B reset writes here. The
+  // working USB driver skips them because they can disturb later RF register
+  // access during U2/U3 init.
+  if (!IsRtl8821A())
+  {
+    _device.rtw_write8(REG_RF_CTRL, 5);
+    _device.rtw_write8(REG_RF_CTRL, 7);
+    _device.rtw_write8(REG_RF_B_CTRL_8812, 5);
+    _device.rtw_write8(REG_RF_B_CTRL_8812, 7);
+  }
 
   // If HW didn't go through a complete de-initial procedure,
   // it probably occurs some problem for double initial procedure.
@@ -82,9 +88,7 @@ bool HalModule::rtl8812au_hal_init() {
     return false;
   }
 
-  if (!IsRtl8821A()) {
-    _InitHardwareDropIncorrectBulkOut_8812A();
-  }
+  _InitHardwareDropIncorrectBulkOut_8812A();
 
   auto fwManager = std::make_unique<FirmwareManager>(_device, _logger);
   fwManager->FirmwareDownload8812();
@@ -97,7 +101,10 @@ bool HalModule::rtl8812au_hal_init() {
   _InitQueuePriority_8812AUsb();
   _InitPageBoundary_8812AUsb();
 
-  _InitTransferPageSize_8812AUsb();
+  if (!IsRtl8821A())
+  {
+    _InitTransferPageSize_8812AUsb();
+  }
 
   // Get Rx PHY status in order to report RSSI and others.
   _InitDriverInfoSize_8812A(DRVINFO_SZ);
@@ -221,6 +228,17 @@ bool HalModule::InitPowerOn()
   u2btmp |= (ushort)(HCI_TXDMA_EN | HCI_RXDMA_EN | TXDMA_EN | RXDMA_EN |
                      PROTOCOL_EN | SCHEDULE_EN | ENSEC | CALTMR_EN);
   _device.rtw_write16(REG_CR, u2btmp);
+
+  // The Linux RTL8821AU path applies this LDO-mode fix immediately after CR is
+  // enabled, before firmware download and MAC/RF init continue.
+  if (IsRtl8821A())
+  {
+    uint8_t sysCfg3 = _device.rtw_read8(REG_SYS_CFG + 3);
+    if ((sysCfg3 & BIT0) != 0)
+    {
+      _device.rtw_write8(0x7c, (uint8_t)(_device.rtw_read8(0x7c) | BIT6));
+    }
+  }
 
   _macPwrCtrlOn = true;
   return true;
@@ -688,7 +706,6 @@ void HalModule::_InitQueueReservedPage_8812AUsb() {
   uint32_t numHQ = 0;
   uint32_t numLQ = 0;
   uint32_t numNQ = 0;
-  uint32_t numEQ = 0;
   uint32_t value32;
   uint8_t value8;
   bool bWiFiConfig = registry_priv::wifi_spec;
@@ -708,9 +725,6 @@ void HalModule::_InitQueueReservedPage_8812AUsb() {
       numNQ = IsRtl8821A() ? NORMAL_PAGE_NUM_NPQ_8821 : NORMAL_PAGE_NUM_NPQ_8812;
     }
 
-    if (IsRtl8821A() && (_device.OutEpQueueSel & TxSele::TX_SELE_EQ)) {
-      numEQ = NORMAL_PAGE_NUM_EPQ_8821;
-    }
   } else {
     /* WMM		 */
     if (_device.OutEpQueueSel & TxSele::TX_SELE_HQ) {
@@ -730,21 +744,14 @@ void HalModule::_InitQueueReservedPage_8812AUsb() {
                            : WMM_NORMAL_PAGE_NUM_NPQ_8812;
     }
 
-    if (IsRtl8821A() && (_device.OutEpQueueSel & TxSele::TX_SELE_EQ)) {
-      numEQ = WMM_NORMAL_PAGE_NUM_EPQ_8821;
-    }
   }
 
   uint32_t totalPageNumber =
       IsRtl8821A() ? TX_TOTAL_PAGE_NUMBER_8821 : TX_TOTAL_PAGE_NUMBER_8812;
-  uint32_t numPubQ = totalPageNumber - numHQ - numLQ - numNQ - numEQ;
+  uint32_t numPubQ = totalPageNumber - numHQ - numLQ - numNQ;
 
-  if (IsRtl8821A()) {
-    _device.rtw_write32(REG_RQPN_NPQ, _NPQ(numNQ) | _EPQ(numEQ));
-  } else {
-    value8 = (uint8_t)_NPQ(numNQ);
-    _device.rtw_write8(REG_RQPN_NPQ, value8);
-  }
+  value8 = (uint8_t)_NPQ(numNQ);
+  _device.rtw_write8(REG_RQPN_NPQ, value8);
 
   /* TX DMA */
   value32 = _HPQ(numHQ) | _LPQ(numLQ) | _PUBQ(numPubQ) | LD_RQPN;
@@ -1104,14 +1111,18 @@ void HalModule::_InitBurstPktLen() {
   _device.rtw_write8(0x289, 0xf5); /* for rxdma control */
 
   /* 0x456 = 0x70, sugguested by Zhilin */
-  _device.rtw_write8(REG_AMPDU_MAX_TIME_8812, 0x70);
+  _device.rtw_write8(REG_AMPDU_MAX_TIME_8812, IsRtl8821A() ? 0x5e : 0x70);
 
   _device.rtw_write32(REG_AMPDU_MAX_LENGTH_8812, 0xffffffff);
   _device.rtw_write8(REG_USTIME_TSF, 0x50);
   _device.rtw_write8(REG_USTIME_EDCA, 0x50);
 
-  speedvalue =
-      _device.rtw_read8(0xff); /* check device operation speed: SS 0xff bit7 */
+  // The working RTL8821AU driver forces the USB2 burst path instead of using
+  // 0xff speed detection here. Keep RTL8812 on the original detection path.
+  speedvalue = IsRtl8821A()
+                   ? BIT7
+                   : _device.rtw_read8(
+                         0xff); /* check device operation speed: SS 0xff bit7 */
 
   if ((speedvalue & BIT7) != 0) {
     /* USB2/1.1 Mode */
@@ -1150,9 +1161,19 @@ void HalModule::_InitBurstPktLen() {
 
   _device.rtw_write8(REG_PIFS, 0x00);
 
-  _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
-  _device.rtw_write8(REG_FWHW_TXQ_CTRL,
-                     (uint8_t)(_device.rtw_read8(REG_FWHW_TXQ_CTRL) & (~BIT7)));
+  if (IsRtl8821A() && !registry_priv::wifi_spec)
+  {
+    _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
+    _device.rtw_write8(REG_FWHW_TXQ_CTRL, 0x80);
+    _device.rtw_write32(REG_FAST_EDCA_CTRL, 0x03087777);
+  }
+  else
+  {
+    _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
+    _device.rtw_write8(
+        REG_FWHW_TXQ_CTRL,
+        (uint8_t)(_device.rtw_read8(REG_FWHW_TXQ_CTRL) & (~BIT7)));
+  }
 
   // AMPDUBurstMode is always false
   // if (pHalData.AMPDUBurstMode)

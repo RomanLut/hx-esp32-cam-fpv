@@ -1,62 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- RTL8812A / RTL8821A IDs from svpcom/rtl8812au v5.2.20-rssi-fix-but-sometimes-crash. -->
-    <usb-device product-id="8812" vendor-id="0BDA" />
-    <usb-device product-id="881A" vendor-id="0BDA" />
-    <usb-device product-id="881B" vendor-id="0BDA" />
-    <usb-device product-id="881C" vendor-id="0BDA" />
-    <usb-device product-id="1106" vendor-id="050D" />
-    <usb-device product-id="A822" vendor-id="7392" />
-    <usb-device product-id="0074" vendor-id="0DF6" />
-    <usb-device product-id="0952" vendor-id="04BB" />
-    <usb-device product-id="016E" vendor-id="0789" />
-    <usb-device product-id="0408" vendor-id="0409" />
-    <usb-device product-id="17D2" vendor-id="0B05" />
-    <usb-device product-id="0022" vendor-id="0E66" />
-    <usb-device product-id="3426" vendor-id="0586" />
-    <usb-device product-id="3313" vendor-id="2001" />
-    <usb-device product-id="0632" vendor-id="1058" />
-    <usb-device product-id="0100" vendor-id="1740" />
-    <usb-device product-id="AB30" vendor-id="2019" />
-    <usb-device product-id="8812" vendor-id="07B8" />
-    <usb-device product-id="9051" vendor-id="0846" />
-    <usb-device product-id="330E" vendor-id="2001" />
-    <usb-device product-id="3315" vendor-id="2001" />
-    <usb-device product-id="3316" vendor-id="2001" />
-    <usb-device product-id="003F" vendor-id="13B1" />
-    <usb-device product-id="0101" vendor-id="2357" />
-    <usb-device product-id="0103" vendor-id="2357" />
-    <usb-device product-id="010D" vendor-id="2357" />
-    <usb-device product-id="0115" vendor-id="2357" />
-    <usb-device product-id="010E" vendor-id="2357" />
-    <usb-device product-id="010F" vendor-id="2357" />
-    <usb-device product-id="0122" vendor-id="2357" />
-    <usb-device product-id="805B" vendor-id="20F4" />
-    <usb-device product-id="025D" vendor-id="0411" />
-    <usb-device product-id="1109" vendor-id="050D" />
-    <usb-device product-id="9097" vendor-id="148F" />
-    <usb-device product-id="0012" vendor-id="2604" />
-    <usb-device product-id="0811" vendor-id="0BDA" />
-    <usb-device product-id="0821" vendor-id="0BDA" />
-    <usb-device product-id="8822" vendor-id="0BDA" />
-    <usb-device product-id="A811" vendor-id="0BDA" />
-    <usb-device product-id="0820" vendor-id="0BDA" />
-    <usb-device product-id="0823" vendor-id="0BDA" />
-    <usb-device product-id="A811" vendor-id="7392" />
-    <usb-device product-id="A812" vendor-id="7392" />
-    <usb-device product-id="A813" vendor-id="7392" />
-    <usb-device product-id="0953" vendor-id="04BB" />
-    <usb-device product-id="3314" vendor-id="2001" />
-    <usb-device product-id="3318" vendor-id="2001" />
-    <usb-device product-id="0023" vendor-id="0E66" />
-    <usb-device product-id="400E" vendor-id="056E" />
-    <usb-device product-id="400F" vendor-id="056E" />
-    <usb-device product-id="0242" vendor-id="0411" />
-    <usb-device product-id="AB32" vendor-id="2019" />
-    <usb-device product-id="9052" vendor-id="0846" />
-    <usb-device product-id="029B" vendor-id="0411" />
-    <usb-device product-id="4007" vendor-id="056E" />
-    <usb-device product-id="6249" vendor-id="3823" />
-    <usb-device product-id="011E" vendor-id="2357" />
-    <usb-device product-id="0120" vendor-id="2357" />
+    <!-- Android USB device filters use decimal integers. Comments keep the original hex VID:PID values. -->
+    <usb-device vendor-id="3034" product-id="34834" /> <!-- 0x0BDA:0x8812 -->
+    <usb-device vendor-id="3034" product-id="34842" /> <!-- 0x0BDA:0x881A -->
+    <usb-device vendor-id="3034" product-id="34843" /> <!-- 0x0BDA:0x881B -->
+    <usb-device vendor-id="3034" product-id="34844" /> <!-- 0x0BDA:0x881C -->
+    <usb-device vendor-id="1293" product-id="4358" /> <!-- 0x050D:0x1106 -->
+    <usb-device vendor-id="29586" product-id="43042" /> <!-- 0x7392:0xA822 -->
+    <usb-device vendor-id="3574" product-id="116" /> <!-- 0x0DF6:0x0074 -->
+    <usb-device vendor-id="1211" product-id="2386" /> <!-- 0x04BB:0x0952 -->
+    <usb-device vendor-id="1929" product-id="366" /> <!-- 0x0789:0x016E -->
+    <usb-device vendor-id="1033" product-id="1032" /> <!-- 0x0409:0x0408 -->
+    <usb-device vendor-id="2821" product-id="6098" /> <!-- 0x0B05:0x17D2 -->
+    <usb-device vendor-id="3686" product-id="34" /> <!-- 0x0E66:0x0022 -->
+    <usb-device vendor-id="1414" product-id="13350" /> <!-- 0x0586:0x3426 -->
+    <usb-device vendor-id="8193" product-id="13075" /> <!-- 0x2001:0x3313 -->
+    <usb-device vendor-id="4184" product-id="1586" /> <!-- 0x1058:0x0632 -->
+    <usb-device vendor-id="5952" product-id="256" /> <!-- 0x1740:0x0100 -->
+    <usb-device vendor-id="8217" product-id="43824" /> <!-- 0x2019:0xAB30 -->
+    <usb-device vendor-id="1976" product-id="34834" /> <!-- 0x07B8:0x8812 -->
+    <usb-device vendor-id="2118" product-id="36945" /> <!-- 0x0846:0x9051 -->
+    <usb-device vendor-id="8193" product-id="13070" /> <!-- 0x2001:0x330E -->
+    <usb-device vendor-id="8193" product-id="13077" /> <!-- 0x2001:0x3315 -->
+    <usb-device vendor-id="8193" product-id="13078" /> <!-- 0x2001:0x3316 -->
+    <usb-device vendor-id="5041" product-id="63" /> <!-- 0x13B1:0x003F -->
+    <usb-device vendor-id="9047" product-id="257" /> <!-- 0x2357:0x0101 -->
+    <usb-device vendor-id="9047" product-id="259" /> <!-- 0x2357:0x0103 -->
+    <usb-device vendor-id="9047" product-id="269" /> <!-- 0x2357:0x010D -->
+    <usb-device vendor-id="9047" product-id="277" /> <!-- 0x2357:0x0115 -->
+    <usb-device vendor-id="9047" product-id="270" /> <!-- 0x2357:0x010E -->
+    <usb-device vendor-id="9047" product-id="271" /> <!-- 0x2357:0x010F -->
+    <usb-device vendor-id="9047" product-id="290" /> <!-- 0x2357:0x0122 -->
+    <usb-device vendor-id="8436" product-id="32859" /> <!-- 0x20F4:0x805B -->
+    <usb-device vendor-id="1041" product-id="605" /> <!-- 0x0411:0x025D -->
+    <usb-device vendor-id="1293" product-id="4361" /> <!-- 0x050D:0x1109 -->
+    <usb-device vendor-id="5263" product-id="37015" /> <!-- 0x148F:0x9097 -->
+    <usb-device vendor-id="9732" product-id="18" /> <!-- 0x2604:0x0012 -->
+    <usb-device vendor-id="3034" product-id="2065" /> <!-- 0x0BDA:0x0811 -->
+    <usb-device vendor-id="3034" product-id="2081" /> <!-- 0x0BDA:0x0821 -->
+    <usb-device vendor-id="3034" product-id="34850" /> <!-- 0x0BDA:0x8822 -->
+    <usb-device vendor-id="3034" product-id="43025" /> <!-- 0x0BDA:0xA811 -->
+    <usb-device vendor-id="3034" product-id="2080" /> <!-- 0x0BDA:0x0820 -->
+    <usb-device vendor-id="3034" product-id="2083" /> <!-- 0x0BDA:0x0823 -->
+    <usb-device vendor-id="29586" product-id="43025" /> <!-- 0x7392:0xA811 -->
+    <usb-device vendor-id="29586" product-id="43026" /> <!-- 0x7392:0xA812 -->
+    <usb-device vendor-id="29586" product-id="43027" /> <!-- 0x7392:0xA813 -->
+    <usb-device vendor-id="1211" product-id="2387" /> <!-- 0x04BB:0x0953 -->
+    <usb-device vendor-id="8193" product-id="13076" /> <!-- 0x2001:0x3314 -->
+    <usb-device vendor-id="8193" product-id="13080" /> <!-- 0x2001:0x3318 -->
+    <usb-device vendor-id="3686" product-id="35" /> <!-- 0x0E66:0x0023 -->
+    <usb-device vendor-id="1390" product-id="16398" /> <!-- 0x056E:0x400E -->
+    <usb-device vendor-id="1390" product-id="16399" /> <!-- 0x056E:0x400F -->
+    <usb-device vendor-id="1041" product-id="578" /> <!-- 0x0411:0x0242 -->
+    <usb-device vendor-id="8217" product-id="43826" /> <!-- 0x2019:0xAB32 -->
+    <usb-device vendor-id="2118" product-id="36946" /> <!-- 0x0846:0x9052 -->
+    <usb-device vendor-id="1041" product-id="667" /> <!-- 0x0411:0x029B -->
+    <usb-device vendor-id="1390" product-id="16391" /> <!-- 0x056E:0x4007 -->
+    <usb-device vendor-id="14371" product-id="25161" /> <!-- 0x3823:0x6249 -->
+    <usb-device vendor-id="9047" product-id="286" /> <!-- 0x2357:0x011E -->
+    <usb-device vendor-id="9047" product-id="288" /> <!-- 0x2357:0x0120 -->
 </resources>
