@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
             wifiScanUsbController.start()
             serialTelemetryUsbController.start()
         }
+        handleUsbAttachIntent(intent)
     }
 
     override fun onResume() {
@@ -138,6 +139,7 @@ class MainActivity : ComponentActivity() {
             wifiScanUsbController.start()
             serialTelemetryUsbController.start()
         }
+        handleUsbAttachIntent(intent)
     }
 
     override fun onPause() {
@@ -148,6 +150,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyImmersiveFullscreen()
+        handleUsbAttachIntent(intent)
+    }
+
+    private fun handleUsbAttachIntent(intent: Intent?) {
+        if (intent?.action == android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED) {
+            rawBroadcastUsbController.handleUsbTopologyChanged()
+            wifiScanUsbController.handleUsbTopologyChanged()
+        }
     }
 
     override fun onDestroy() {

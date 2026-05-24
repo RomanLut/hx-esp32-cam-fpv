@@ -332,7 +332,7 @@ void AndroidRawBroadcastTransport::reset_rx_state()
 // Sends one GS session payload as a single raw-broadcast transport packet.
 void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* flush */)
 {
-    std::shared_ptr<Rtl8812aDevice> device;
+    std::shared_ptr<RtlJaguarDevice> device;
     std::vector<std::vector<uint8_t>> packets_to_send;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -574,7 +574,16 @@ std::string AndroidRawBroadcastTransport::getTransportMessage() const
     if (m_active && !isUsbAdapterRunning())
     {
         using namespace std::chrono_literals;
-        if (Clock::now() - m_activate_time >= 3s)
+        const Clock::time_point now = Clock::now();
+        const Clock::time_point graceStart =
+            (m_last_adapter_transition_time > m_activate_time)
+                ? m_last_adapter_transition_time
+                : m_activate_time;
+        if (now - graceStart < 8s)
+        {
+            return "Initializing USB Wifi adapter...";
+        }
+        else
         {
             return "RTL8812AU USB ADAPTER NOT FOUND!";
         }
@@ -647,7 +656,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    std::unique_ptr<Rtl8812aDevice> created_device = m_wifi_driver->CreateRtlDevice(adapter->usb_handle);
+    std::unique_ptr<RtlJaguarDevice> created_device = m_wifi_driver->CreateRtlDevice(adapter->usb_handle);
     if (!created_device)
     {
         LOGE("CreateRtlDevice failed");
@@ -660,7 +669,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        adapter->device = std::shared_ptr<Rtl8812aDevice>(created_device.release());
+        adapter->device = std::shared_ptr<RtlJaguarDevice>(created_device.release());
         if (m_usb_adapters.empty())
         {
             resetTxAssemblerLocked();
@@ -703,21 +712,44 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 
     adapter->rx_thread = std::make_unique<std::thread>([this, adapter]()
     {
-        if (!adapter->device)
+        try
         {
-            return;
-        }
-
-        adapter->device->Init(
-            [this, adapter](const Packet& packet)
+            if (!adapter->device)
             {
-                // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110
-                const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
-                const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
-                const int input_dbm = std::max(dbm0, dbm1);
-                queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
-            },
-            makeSelectedChannel(s_groundstation_config.wifi_channel));
+                return;
+            }
+
+            adapter->device->Init(
+                [this, adapter](const Packet& packet)
+                {
+                    // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110
+                    const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
+                    const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
+                    const int input_dbm = std::max(dbm0, dbm1);
+                    queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
+                },
+                makeSelectedChannel(s_groundstation_config.wifi_channel));
+        }
+        catch (const std::exception& ex)
+        {
+            LOGE("raw-broadcast RX thread stopped on adapter {}: {}", adapter->index, ex.what());
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
+            if (adapter->device)
+            {
+                adapter->device->should_stop = true;
+            }
+        }
+        catch (...)
+        {
+            LOGE("raw-broadcast RX thread stopped on adapter {} with unknown exception", adapter->index);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
+            if (adapter->device)
+            {
+                adapter->device->should_stop = true;
+            }
+        }
     });
 
     return true;
@@ -734,6 +766,10 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
         std::lock_guard<std::mutex> lock(m_mutex);
         adapters = std::move(m_usb_adapters);
         m_usb_adapters.clear();
+        if (!adapters.empty())
+        {
+            m_last_adapter_transition_time = Clock::now();
+        }
     }
 
     for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
@@ -803,7 +839,13 @@ bool AndroidRawBroadcastTransport::isUsbAdapterRunning() const
 size_t AndroidRawBroadcastTransport::activeUsbAdapterCount() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_usb_adapters.size();
+    return static_cast<size_t>(std::count_if(
+        m_usb_adapters.begin(),
+        m_usb_adapters.end(),
+        [](const std::shared_ptr<UsbAdapter>& adapter)
+        {
+            return adapter && adapter->device && !adapter->device->should_stop;
+        }));
 }
 
 //===================================================================================
@@ -829,7 +871,7 @@ void AndroidRawBroadcastTransport::setTransportPacketCallback(
 //===================================================================================
 //===================================================================================
 // Returns the first active adapter device used for ground-to-air TX.
-std::shared_ptr<Rtl8812aDevice> AndroidRawBroadcastTransport::txDeviceLocked() const
+std::shared_ptr<RtlJaguarDevice> AndroidRawBroadcastTransport::txDeviceLocked() const
 {
     if (m_usb_adapters.empty())
     {
@@ -902,7 +944,7 @@ void AndroidRawBroadcastTransport::buildRadiotapHeaderLocked()
 //===================================================================================
 //===================================================================================
 // Sends one fully prepared raw packet through the active RTL8812AU device.
-bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<Rtl8812aDevice>& device,
+bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<RtlJaguarDevice>& device,
                                                  const std::vector<uint8_t>& packet)
 {
     if (!device || packet.empty())

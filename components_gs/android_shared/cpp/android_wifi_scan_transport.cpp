@@ -135,7 +135,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    std::unique_ptr<Rtl8812aDevice> created_device =
+    std::unique_ptr<RtlJaguarDevice> created_device =
         m_wifi_driver->CreateRtlDevice(m_usb_handle);
     if (!created_device)
     {
@@ -149,7 +149,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_device        = std::shared_ptr<Rtl8812aDevice>(created_device.release());
+        m_device        = std::shared_ptr<RtlJaguarDevice>(created_device.release());
         m_active_usb_fd = fd;
     }
 
@@ -163,7 +163,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     {
         while (true)
         {
-            std::shared_ptr<Rtl8812aDevice> dev;
+            std::shared_ptr<RtlJaguarDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
@@ -185,7 +185,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     // Receive thread: accumulate airtime from every received frame.
     m_rx_thread = std::make_unique<std::thread>([this]()
     {
-        std::shared_ptr<Rtl8812aDevice> dev;
+        std::shared_ptr<RtlJaguarDevice> dev;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             dev = m_device;
@@ -300,7 +300,7 @@ void AndroidWifiScanTransport::channelSwitchLoop()
 
         if (wanted != 0 && wanted != appliedChannel)
         {
-            std::shared_ptr<Rtl8812aDevice> dev;
+            std::shared_ptr<RtlJaguarDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
@@ -354,7 +354,7 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
     }
 
-    std::shared_ptr<Rtl8812aDevice> dev;
+    std::shared_ptr<RtlJaguarDevice> dev;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         dev = m_device;

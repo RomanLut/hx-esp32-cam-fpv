@@ -303,6 +303,9 @@ int OSDMenuController::getTransportModeMenuIndex(gs::core::TransportKind kind)
 
     case gs::core::TransportKind::WifiChannelScan:
         return 3;
+
+    case gs::core::TransportKind::Count:
+        break;
     }
 
     return 0;

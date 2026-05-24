@@ -1,6 +1,7 @@
 #ifndef EEPROMMANAGER_H
 #define EEPROMMANAGER_H
 
+#include "PhyTableLoader.h"
 #include "RtlUsbAdapter.h"
 #include "logger.h"
 
@@ -32,6 +33,17 @@ public:
   uint8_t GetBoardType();
   void efuse_ShadowRead1Byte(uint16_t Offset, uint8_t *Value);
 
+  /* 8814AU only: read EFUSE and populate rfe_type, PA/LNA types, crystal cap,
+   * etc. Must be called AFTER firmware download (pre-fwdl EFUSE access
+   * leaves the chip in a state where it never acks RSVD-page bulk OUTs and
+   * fwdl times out). Safe to call once fw is running. */
+  void LateInitFor8814A();
+
+  /* Build the minimal phydm-context shim PhyTableLoader needs to evaluate
+   * card-cut conditionals on the 8814AU BB/AGC/MAC tables. The fields are
+   * populated from EFUSE values already read into this manager. */
+  JaguarPhyContext GetPhyContext() const;
+
   HAL_VERSION version_id;
   odm_cut_version_e cut_version;
   uint8_t crystal_cap;
@@ -40,6 +52,7 @@ public:
   uint16_t TypeGLNA;
   uint16_t TypeALNA;
   uint8_t numTotalRfPath;
+  uint8_t maxSpatialStreams = 2;
   bool ExternalLNA_2G;
   bool ExternalPA_2G;
   HAL_RF_TYPE_E rf_type;

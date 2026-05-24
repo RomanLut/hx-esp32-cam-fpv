@@ -11,7 +11,7 @@
 
 #include "fec_block_decoder.h"
 #include "core/transport_base.h"
-#include "devourer/src/Rtl8812aDevice.h"
+#include "devourer/src/RtlJaguarDevice.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
 
@@ -63,7 +63,7 @@ private:
     // Owns the driver, libusb handles, and receive counters for one Android RTL adapter.
     struct UsbAdapter
     {
-        std::shared_ptr<Rtl8812aDevice> device;
+        std::shared_ptr<RtlJaguarDevice> device;
         std::unique_ptr<std::thread> usb_event_thread;
         std::unique_ptr<std::thread> rx_thread;
         libusb_context* libusb_context = nullptr;
@@ -77,13 +77,13 @@ private:
 
     void buildRadiotapHeaderLocked();
     void resetTxAssemblerLocked();
-    bool sendRawPacket(const std::shared_ptr<Rtl8812aDevice>& device, const std::vector<uint8_t>& packet);
+    bool sendRawPacket(const std::shared_ptr<RtlJaguarDevice>& device, const std::vector<uint8_t>& packet);
     void queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
                              const uint8_t* data,
                              size_t size,
                              int input_dbm);
     void stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter);
-    std::shared_ptr<Rtl8812aDevice> txDeviceLocked() const;
+    std::shared_ptr<RtlJaguarDevice> txDeviceLocked() const;
 
     mutable std::mutex m_mutex;
     mutable std::mutex m_stop_mutex;
@@ -96,6 +96,7 @@ private:
     std::unique_ptr<WiFiDriver> m_wifi_driver;
     Logger_t m_devourer_logger;
     std::vector<std::shared_ptr<UsbAdapter>> m_usb_adapters;
+    Clock::time_point m_last_adapter_transition_time = Clock::time_point::min();
     fec_t* m_tx_fec = nullptr;
     FecBlockDecoder m_rx_decoder;
     uint8_t m_tx_power = 0;

@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "Rtl8812aDevice.h"
+#include "RtlJaguarDevice.h"
 #include "logger.h"
 
 class WiFiDriver {
@@ -12,7 +12,7 @@ class WiFiDriver {
 public:
   explicit WiFiDriver(Logger_t logger);
 
-  std::unique_ptr<Rtl8812aDevice>
+  std::unique_ptr<RtlJaguarDevice>
   CreateRtlDevice(libusb_device_handle *dev_handle);
 };
 

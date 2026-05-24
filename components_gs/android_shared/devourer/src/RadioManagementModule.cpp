@@ -2,6 +2,10 @@
 #include "Hal8812PhyReg.h"
 #include "registry_priv.h"
 
+extern "C" {
+#include "ieee80211_radiotap.h"
+}
+
 #include <chrono>
 #include <map>
 #include <thread>
@@ -237,7 +241,19 @@ void RadioManagementModule::phy_SwChnlAndSetBwMode8812() {
     phy_PostSetBwMode8812();
     _setChannelBw = false;
   }
-  PHY_SetTxPowerLevel8812(_currentChannel);
+  /* 8814A uses a packed single-DWord write to BB 0x1998 per (path,rate)
+   * instead of the 8812's per-rate per-byte register fanout (see the
+   * CHIP_8814A branch at the top of PHY_SetTxPowerIndex_8812A). The
+   * earlier "skip TX power on 8814" workaround was a symptom of the
+   * 8812 register layout being wrong for 8814 — every write hit the
+   * wrong bits and the chip's BB stalled on each one. Setting
+   * DEVOURER_SKIP_TXPWR=1 keeps the old skip behaviour as an escape
+   * hatch (e.g. for RX-only experiments). */
+  if (std::getenv("DEVOURER_SKIP_TXPWR")) {
+    _logger->info("DEVOURER_SKIP_TXPWR=1 — skipping TX power setup");
+  } else {
+    PHY_SetTxPowerLevel8812(_currentChannel);
+  }
 
   _needIQK = false;
 }
@@ -276,6 +292,16 @@ struct BbRegisterDefinition {
   uint16_t RfLSSIReadBackPi;
 };
 
+/* RTL8814AU path C / D BB register offsets — from hal/Hal8814PhyReg.h.
+ * Inlined here to avoid pulling the full 8814 PHY register header (which has
+ * extensive #define overlap with Hal8812PhyReg.h on shared Jaguar symbols). */
+constexpr uint32_t rC_LSSIWrite_8814A = 0x1890;
+constexpr uint32_t rD_LSSIWrite_8814A = 0x1A90;
+constexpr uint16_t rC_SIRead_8814A = 0xd88;
+constexpr uint16_t rD_SIRead_8814A = 0xdC8;
+constexpr uint16_t rC_PIRead_8814A = 0xd84;
+constexpr uint16_t rD_PIRead_8814A = 0xdC4;
+
 std::map<RfPath, BbRegisterDefinition> PhyRegDef = {
     {RfPath::RF_PATH_A,
      {
@@ -290,6 +316,20 @@ std::map<RfPath, BbRegisterDefinition> PhyRegDef = {
          .RfHSSIPara2 = rHSSIRead_Jaguar,
          .RfLSSIReadBack = rB_SIRead_Jaguar,
          .RfLSSIReadBackPi = rB_PIRead_Jaguar,
+     }},
+    {RfPath::RF_PATH_C,
+     {
+         .Rf3WireOffset = rC_LSSIWrite_8814A,
+         .RfHSSIPara2 = rHSSIRead_Jaguar,
+         .RfLSSIReadBack = rC_SIRead_8814A,
+         .RfLSSIReadBackPi = rC_PIRead_8814A,
+     }},
+    {RfPath::RF_PATH_D,
+     {
+         .Rf3WireOffset = rD_LSSIWrite_8814A,
+         .RfHSSIPara2 = rHSSIRead_Jaguar,
+         .RfLSSIReadBack = rD_SIRead_8814A,
+         .RfLSSIReadBackPi = rD_PIRead_8814A,
      }}};
 
 uint32_t RadioManagementModule::phy_query_bb_reg(uint16_t regAddr,
@@ -311,6 +351,16 @@ uint32_t RadioManagementModule::PHY_QueryBBReg8812(uint16_t regAddr,
   /* RTW_INFO("BBR MASK=0x%x Addr[0x%x]=0x%x\n", BitMask, RegAddr,
    * OriginalValue); */
   return ReturnValue;
+}
+
+uint32_t RadioManagementModule::phy_query_rf_reg(RfPath eRFPath,
+                                                 uint32_t RegAddr,
+                                                 uint32_t BitMask) {
+  uint32_t val = phy_RFSerialRead(eRFPath, RegAddr);
+  if (BitMask != 0 && BitMask != 0xFFFFFFFFu) {
+    val = (val & BitMask) >> PHY_CalculateBitShift(BitMask);
+  }
+  return val;
 }
 
 uint32_t RadioManagementModule::phy_RFSerialRead(RfPath eRFPath,
@@ -384,6 +434,8 @@ void RadioManagementModule::phy_RFSerialWrite(RfPath eRFPath, uint32_t Offset,
 void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
   ChannelWidth_t current_bw = _currentChannelBw;
   bool eLNA_2g = _eepromManager->ExternalLNA_2G;
+  const bool is_8821 =
+      _eepromManager->version_id.ICType == CHIP_8821;
 
   _logger->info("[{}] {}", __func__, Band == BandType::BAND_ON_2_4G ? "2.4G" : "5G");
 
@@ -395,7 +447,7 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
     _device.phy_set_bb_reg(rOFDMCCKEN_Jaguar, bOFDMEN_Jaguar | bCCKEN_Jaguar,
                            0x03);
 
-    if (_device.IsRtl8821A()) {
+    if (is_8821) {
       phy_SetRFEReg8821(Band);
     } else {
       /* <20131128, VincentL> Remove 0x830[3:1] setting when switching 2G/5G,
@@ -408,7 +460,6 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
                              0x17); /* 0x830[17:13]=5'b10111 */
 
       /* set PWED_TH for BB Yn user guide R29 */
-
       if (current_bw == ChannelWidth_t::CHANNEL_WIDTH_20 &&
           _eepromManager->version_id.RFType == RF_TYPE_1T1R &&
           eLNA_2g == false) {
@@ -420,14 +471,15 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
       }
     }
 
-    /* AGC table select */
-    if (_device.IsRtl8821A() && IS_NORMAL_CHIP(_eepromManager->version_id)) {
-      _device.phy_set_bb_reg(rA_TxScale_Jaguar, 0xF00, 0); /* 0xC1C[11:8] = 0 */
+    /* AGC table select. 8821AU uses the path-A TX scale knob at 0xC1C[11:8];
+     * 8812/8814 use the AGC table select bit at 0x82C[1:0]. */
+    if (is_8821 && IS_NORMAL_CHIP(_eepromManager->version_id)) {
+      _device.phy_set_bb_reg(rA_TxScale_Jaguar, 0xF00, 0);
     } else {
-      _device.phy_set_bb_reg(rAGC_table_Jaguar, 0x3, 0); /* 0x82C[1:0] = 2b'00 */
+      _device.phy_set_bb_reg(rAGC_table_Jaguar, 0x3, 0);
     }
 
-    if (!_device.IsRtl8821A()) {
+    if (!is_8821) {
       phy_SetRFEReg8812(Band);
     }
 
@@ -450,17 +502,13 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
 
     uint16_t count = 0;
     uint16_t reg41A = _device.rtw_read16(REG_TXPKT_EMPTY);
-    /* RTW_INFO("Reg41A value %d", reg41A); */
     reg41A &= 0x30;
     while ((reg41A != 0x30) && (count < 50)) {
       using namespace std::chrono_literals;
       std::this_thread::sleep_for(50ms);
-      /* RTW_INFO("Delay 50us\n"); */
-
       reg41A = _device.rtw_read16(REG_TXPKT_EMPTY);
       reg41A &= 0x30;
       count++;
-      /* RTW_INFO("Reg41A value %d", reg41A); */
     }
 
     if (count != 0) {
@@ -474,7 +522,7 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
     _device.phy_set_bb_reg(rOFDMCCKEN_Jaguar, bOFDMEN_Jaguar | bCCKEN_Jaguar,
                            0x03);
 
-    if (_device.IsRtl8821A()) {
+    if (is_8821) {
       phy_SetRFEReg8821(Band);
     } else {
       /* <20131128, VincentL> Remove 0x830[3:1] setting when switching 2G/5G,
@@ -491,14 +539,14 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
       _device.phy_set_bb_reg(rPwed_TH_Jaguar, BIT1 | BIT2 | BIT3, 0x04);
     }
 
-    /* AGC table select */
-    if (_device.IsRtl8821A() && IS_NORMAL_CHIP(_eepromManager->version_id)) {
-      _device.phy_set_bb_reg(rA_TxScale_Jaguar, 0xF00, 1); /* 0xC1C[11:8] = 1 */
+    /* AGC table select (same family-split as 2.4G branch). */
+    if (is_8821 && IS_NORMAL_CHIP(_eepromManager->version_id)) {
+      _device.phy_set_bb_reg(rA_TxScale_Jaguar, 0xF00, 1);
     } else {
-      _device.phy_set_bb_reg(rAGC_table_Jaguar, 0x3, 1); /* 0x82C[1:0] = 2'b00 */
+      _device.phy_set_bb_reg(rAGC_table_Jaguar, 0x3, 1);
     }
 
-    if (!_device.IsRtl8821A()) {
+    if (!is_8821) {
       phy_SetRFEReg8812(Band);
     }
 
@@ -511,6 +559,11 @@ void RadioManagementModule::PHY_SwitchWirelessBand8812(BandType Band) {
   phy_SetBBSwingByBand_8812A(Band);
 }
 
+/* 8821AU has a single RFE pinmux register set (path A only). The 2.4G/5G
+ * paths split on EFUSE ExternalLNA_2G — when an external LNA is present the
+ * pinmux is configured for the EXT_LNA cell of the RFE control plane (mux
+ * values 0x2 with INV[20]=1). Ported from svpcom/rtl8812au v5.2.20 via
+ * PR#22. */
 void RadioManagementModule::phy_SetRFEReg8821(BandType Band) {
   if (Band == BandType::BAND_ON_2_4G) {
     _device.phy_set_bb_reg(rA_RFE_Pinmux_Jaguar, 0xF000, 0x7);
@@ -929,9 +982,9 @@ void RadioManagementModule::phy_PostSetBwMode8812() {
     _device.phy_set_bb_reg(rADC_Buf_Clk_Jaguar, BIT30,
                            0); /* 0x8c4[30] = 1'b0 */
 
-    if (_eepromManager->rf_type == RF_TYPE_2T2R) {
+    if (_eepromManager->numTotalRfPath >= 2) {
       _device.phy_set_bb_reg(rL1PeakTH_Jaguar, 0x03C00000,
-                             7); /* 2R 0x848[25:22] = 0x7 */
+                             7); /* multi-path 0x848[25:22] = 0x7 */
     } else {
       _device.phy_set_bb_reg(rL1PeakTH_Jaguar, 0x03C00000,
                              8); /* 1R 0x848[25:22] = 0x8 */
@@ -951,7 +1004,7 @@ void RadioManagementModule::phy_PostSetBwMode8812() {
     if ((reg_837 & BIT2) != 0)
       L1pkVal = 6;
     else {
-      if (_eepromManager->rf_type == RF_TYPE_2T2R) {
+      if (_eepromManager->numTotalRfPath >= 2) {
         L1pkVal = 7;
       } else {
         L1pkVal = 8;
@@ -979,7 +1032,7 @@ void RadioManagementModule::phy_PostSetBwMode8812() {
     if ((reg_837 & BIT2) != 0)
       L1pkVal = 5;
     else {
-      if (_eepromManager->rf_type == RF_TYPE_2T2R) {
+      if (_eepromManager->numTotalRfPath >= 2) {
         L1pkVal = 6;
       } else {
         L1pkVal = 7;
@@ -1044,29 +1097,29 @@ void RadioManagementModule::phy_SetRegBW_8812(ChannelWidth_t CurrentBW) {
 void RadioManagementModule::PHY_RF6052SetBandwidth8812(
     ChannelWidth_t Bandwidth) /* 20M or 40M */
 {
+  /* RF_CHNLBW_Jaguar[11:10] encodes the per-path channel bandwidth:
+   *   0b11 = 20 MHz, 0b01 = 40 MHz, 0b00 = 80 MHz.
+   * Apply to every populated RF path (4 paths on 8814AU, 2 on 8812AU). */
+  uint32_t bw_bits;
   switch (Bandwidth) {
   case CHANNEL_WIDTH_20:
-    /* RTW_INFO("PHY_RF6052SetBandwidth8812(), set 20MHz\n"); */
-    phy_set_rf_reg(RfPath::RF_PATH_A, RF_CHNLBW_Jaguar, BIT11 | BIT10, 3);
-    phy_set_rf_reg(RfPath::RF_PATH_B, RF_CHNLBW_Jaguar, BIT11 | BIT10, 3);
+    bw_bits = 3;
     break;
-
   case CHANNEL_WIDTH_40:
-    /* RTW_INFO("PHY_RF6052SetBandwidth8812(), set 40MHz\n"); */
-    phy_set_rf_reg(RfPath::RF_PATH_A, RF_CHNLBW_Jaguar, BIT11 | BIT10, 1);
-    phy_set_rf_reg(RfPath::RF_PATH_B, RF_CHNLBW_Jaguar, BIT11 | BIT10, 1);
+    bw_bits = 1;
     break;
-
   case CHANNEL_WIDTH_80:
-    /* RTW_INFO("PHY_RF6052SetBandwidth8812(), set 80MHz\n"); */
-    phy_set_rf_reg(RfPath::RF_PATH_A, RF_CHNLBW_Jaguar, BIT11 | BIT10, 0);
-    phy_set_rf_reg(RfPath::RF_PATH_B, RF_CHNLBW_Jaguar, BIT11 | BIT10, 0);
+    bw_bits = 0;
     break;
-
   default:
     _logger->error("PHY_RF6052SetBandwidth8812(): unknown Bandwidth: {}",
                    (int)Bandwidth);
-    break;
+    return;
+  }
+
+  for (uint8_t p = 0; p < _eepromManager->numTotalRfPath; ++p) {
+    phy_set_rf_reg(static_cast<RfPath>(p), RF_CHNLBW_Jaguar, BIT11 | BIT10,
+                   bw_bits);
   }
 }
 
@@ -1149,6 +1202,15 @@ void RadioManagementModule::phy_set_tx_power_level_by_path(uint8_t channel,
     phy_set_tx_power_index_by_rate_section(path, channel,
                                            RATE_SECTION::VHT_2SSMCS0_2SSMCS9);
   }
+  /* 8814A 3-stream rate sections — must be programmed so the chip's TXAGC
+   * table is fully populated even though the USB-2 link can't sustain 3-SS
+   * data rates. Upstream PHY_SetTxPowerLevel8814 iterates all sections. */
+  if (_eepromManager->version_id.ICType == CHIP_8814A) {
+    phy_set_tx_power_index_by_rate_section(path, channel,
+                                           RATE_SECTION::HT_MCS16_MCS23);
+    phy_set_tx_power_index_by_rate_section(path, channel,
+                                           RATE_SECTION::VHT_3SSMCS0_3SSMCS9);
+  }
 }
 
 const static std::vector<MGN_RATE> mgn_rates_cck = {
@@ -1215,7 +1277,6 @@ const static std::vector<MGN_RATE> rates_by_sections[] = {
 void RadioManagementModule::SetTxPower(uint8_t p) {
   power = p;
   _logger->info("iwconfig wlan0 txpower {}", (int)p);
-  PHY_SetTxPowerLevel8812(_currentChannel);
 }
 
 static uint8_t phy_get_tx_power_index() { return 16; }
@@ -1234,6 +1295,41 @@ void RadioManagementModule::PHY_SetTxPowerIndex_8812A(uint32_t powerIndex,
                                                       MGN_RATE rate) {
 
   _logger->debug("PHY_SetTxPowerIndex {} {} {}", powerIndex, (int)rfPath, rate);
+
+  /* 8814A: per-rate per-path power index is programmed via a single packed
+   * BB-register write at 0x1998. Port of PHY_SetTxPowerIndex_8814A from
+   * upstream hal/rtl8814a/rtl8814a_phycfg.c:743.
+   *
+   *   txagc_table_wd[31:24] = PowerIndex
+   *   txagc_table_wd[15:8]  = RFPath
+   *   txagc_table_wd[7:0]   = MRateToHwRate(Rate)
+   *   txagc_table_wd        |= 0x00801000  (TXAGC table-write enable + addr)
+   *
+   * The 8812 per-rate fanout below uses register addresses (rTxAGC_A_CCK_*
+   * etc.) that don't exist on 8814 — using it on 8814 scribbles random bits
+   * and stalls the BB; that's what the earlier "skip TX power for monitor
+   * mode" workaround was masking. */
+  if (_eepromManager->version_id.ICType == CHIP_8814A) {
+    uint32_t txagc_table_wd =
+        0x00801000u |
+        (static_cast<uint32_t>(rfPath) << 8) |
+        static_cast<uint32_t>(MRateToHwRate(static_cast<uint8_t>(rate))) |
+        (powerIndex << 24);
+    _device.phy_set_bb_reg(0x1998, bMaskDWord, txagc_table_wd);
+    if (rate == MGN_1M) {
+      /* Upstream comment: "first time to turn on the txagc table". */
+      _device.phy_set_bb_reg(0x1998, bMaskDWord, txagc_table_wd);
+    }
+    return;
+  }
+
+  /* The per-rate register table below only encodes paths A/B (8812-family).
+   * 8814AU paths C/D use a different per-path register layout (the rTxAGC_C_
+   * and rTxAGC_D_ symbol family in Hal8814PhyReg.h) — that's handled by the
+   * CHIP_8814A branch above. */
+  if (static_cast<uint8_t>(rfPath) >= RF_PATH_C) {
+    return;
+  }
   if (powerIndex % 2 == 1)
     powerIndex -= 1;
   if (rfPath == RF_PATH_A) {

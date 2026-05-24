@@ -1,8 +1,8 @@
-#include "Rtl8812aDevice.h"
+#include "RtlJaguarDevice.h"
 #include "EepromManager.h"
 #include "RadioManagementModule.h"
 
-Rtl8812aDevice::Rtl8812aDevice(RtlUsbAdapter device, Logger_t logger)
+RtlJaguarDevice::RtlJaguarDevice(RtlUsbAdapter device, Logger_t logger)
     : _device{device},
       _eepromManager{std::make_shared<EepromManager>(device, logger)},
       _radioManagement{std::make_shared<RadioManagementModule>(
@@ -10,13 +10,13 @@ Rtl8812aDevice::Rtl8812aDevice(RtlUsbAdapter device, Logger_t logger)
       _halModule{device, _eepromManager, _radioManagement, logger},
       _logger{logger} {}
 
-void Rtl8812aDevice::InitWrite(SelectedChannel channel) {
+void RtlJaguarDevice::InitWrite(SelectedChannel channel) {
   StartWithMonitorMode(channel);
   SetMonitorChannel(channel);
   _logger->info("In Monitor Mode");
 }
 
-bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
+bool RtlJaguarDevice::send_packet(const uint8_t *packet, size_t length) {
   struct tx_desc *ptxdesc;
   bool resp;
   uint8_t *usb_frame;
@@ -28,7 +28,13 @@ bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
   u8 fixed_rate = MGN_1M, sgi = 0, bwidth = 0, ldpc = 0, stbc = 0;
   u16 txflags = 0;
   int rate_id = 0;
-  radiotap_length = int(packet[2]);
+  if (length < sizeof(struct ieee80211_radiotap_header)) {
+    return false;
+  }
+  radiotap_length = get_unaligned_le16(packet + 2);
+  if (radiotap_length == 0 || (size_t)radiotap_length >= length) {
+    return false;
+  }
   real_packet_length = length - radiotap_length;
 
   if (radiotap_length != 0x0d)
@@ -137,7 +143,8 @@ bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
 
   SET_TX_DESC_DATA_BW_8812(usb_frame, BWSettingOfDesc);
 
-  SET_TX_DESC_FIRST_SEG_8812(usb_frame, 1);
+  /* Single-fragment frame: LAST_SEG=1 (no FIRST_SEG); OWN=1 so chip
+   * processes the descriptor. */
   SET_TX_DESC_LAST_SEG_8812(usb_frame, 1);
   SET_TX_DESC_OWN_8812(usb_frame, 1);
 
@@ -147,34 +154,32 @@ bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
   SET_TX_DESC_OFFSET_8812(usb_frame,
                           static_cast<uint8_t>(TXDESC_SIZE + OFFSET_SZ));
 
+  /* Match kernel-driver TX descriptor field-for-field. Verified by
+   * usbmon capture of working kernel-driver TX in monitor mode +
+   * byte-for-byte diff. Previous values were based on speculative
+   * comments; the chip silently dropped frames whose descriptor didn't
+   * match the kernel's. */
   SET_TX_DESC_MACID_8812(usb_frame, static_cast<uint8_t>(0x01));
 
   if (!vht) {
-    rate_id = 7;
+    rate_id = 8;
   } else {
     rate_id = 9;
   }
 
   SET_TX_DESC_BMC_8812(usb_frame, 1);
-  SET_TX_DESC_RATE_ID_8812(
-      usb_frame,
-      static_cast<uint8_t>(rate_id));
+  SET_TX_DESC_RATE_ID_8812(usb_frame, static_cast<uint8_t>(rate_id));
 
   SET_TX_DESC_QUEUE_SEL_8812(usb_frame, 0x12);
-  SET_TX_DESC_HWSEQ_EN_8812(
-      usb_frame, static_cast<uint8_t>(0));
-  SET_TX_DESC_SEQ_8812(
-      usb_frame,
-      GetSequence(packet +
-                  radiotap_length));
-  SET_TX_DESC_RETRY_LIMIT_ENABLE_8812(usb_frame, static_cast<uint8_t>(1));
-
-  SET_TX_DESC_DATA_RETRY_LIMIT_8812(usb_frame, static_cast<uint8_t>(0));
+  SET_TX_DESC_HWSEQ_EN_8812(usb_frame, static_cast<uint8_t>(1));
+  SET_TX_DESC_GID_8812(usb_frame, static_cast<uint8_t>(0x3F));
+  SET_TX_DESC_SW_DEFINE_8812(usb_frame, static_cast<uint16_t>(0x001));
+  SET_TX_DESC_RETRY_LIMIT_ENABLE_8812(usb_frame, 1);
+  SET_TX_DESC_DATA_RETRY_LIMIT_8812(usb_frame, 12);
   if (sgi) {
     _logger->info("short gi enabled,set sgi");
     SET_TX_DESC_DATA_SHORT_8812(usb_frame, 1);
   }
-  SET_TX_DESC_DISABLE_FB_8812(usb_frame, 1);
   SET_TX_DESC_USE_RATE_8812(usb_frame, 1);
   SET_TX_DESC_TX_RATE_8812(usb_frame,
                            static_cast<uint8_t>(MRateToHwRate(
@@ -221,27 +226,23 @@ bool Rtl8812aDevice::send_packet(const uint8_t *packet, size_t length) {
 
 //===================================================================================
 //===================================================================================
-// Starts monitor mode and runs the packet read loop until should_stop is set.
-void Rtl8812aDevice::Init(Action_ParsedRadioPacket packetProcessor,
-                          SelectedChannel channel,
-                          std::function<void()> monitorStarted)
-{
+// Starts monitor mode and dispatches parsed packets until should_stop is set.
+void RtlJaguarDevice::Init(Action_ParsedRadioPacket packetProcessor,
+                           SelectedChannel channel,
+                           std::function<void()> started) {
   _packetProcessor = packetProcessor;
 
   StartWithMonitorMode(channel);
   SetMonitorChannel(channel);
-
-  _logger->info("Listening air...");
-  if (monitorStarted)
+  if (started)
   {
-    monitorStarted();
+    started();
   }
 
-  while (!should_stop)
-  {
+  _logger->info("Listening air...");
+  while (!should_stop) {
     auto packets = _device.infinite_read();
-    for (auto &p : packets)
-    {
+    for (auto &p : packets) {
       _packetProcessor(p);
     }
   }
@@ -252,12 +253,12 @@ void Rtl8812aDevice::Init(Action_ParsedRadioPacket packetProcessor,
 #endif
 }
 
-void Rtl8812aDevice::SetMonitorChannel(SelectedChannel channel) {
+void RtlJaguarDevice::SetMonitorChannel(SelectedChannel channel) {
   _radioManagement->set_channel_bwmode(channel.Channel, channel.ChannelOffset,
                                        channel.ChannelWidth);
 }
 
-void Rtl8812aDevice::StartWithMonitorMode(SelectedChannel selectedChannel) {
+void RtlJaguarDevice::StartWithMonitorMode(SelectedChannel selectedChannel) {
   if (NetDevOpen(selectedChannel) == false) {
     throw std::ios_base::failure("StartWithMonitorMode failed NetDevOpen");
   }
@@ -265,11 +266,11 @@ void Rtl8812aDevice::StartWithMonitorMode(SelectedChannel selectedChannel) {
   _radioManagement->SetMonitorMode();
 }
 
-void Rtl8812aDevice::SetTxPower(uint8_t power) {
+void RtlJaguarDevice::SetTxPower(uint8_t power) {
   _radioManagement->SetTxPower(power);
 }
 
-bool Rtl8812aDevice::NetDevOpen(SelectedChannel selectedChannel) {
+bool RtlJaguarDevice::NetDevOpen(SelectedChannel selectedChannel) {
   auto status = _halModule.rtw_hal_init(selectedChannel);
   if (status == false) {
     return false;

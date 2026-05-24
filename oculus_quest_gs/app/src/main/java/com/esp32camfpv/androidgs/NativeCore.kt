@@ -154,6 +154,7 @@ object NativeCore {
     external fun startRawBroadcastUsb(handle: Long, fd: Int): Boolean
     external fun stopRawBroadcastUsb(handle: Long)
     external fun isRawBroadcastUsbRunning(handle: Long): Boolean
+    external fun getRawBroadcastUsbAdapterCount(handle: Long): Int
     external fun startWifiScanUsb(handle: Long, fd: Int): Boolean
     external fun stopWifiScanUsb(handle: Long)
     external fun isWifiScanUsbRunning(handle: Long): Boolean

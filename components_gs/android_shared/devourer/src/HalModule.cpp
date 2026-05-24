@@ -2,11 +2,54 @@
 
 #include "FirmwareManager.h"
 #include "Hal8812PhyReg.h"
+#include "Hal8814_PhyTables.h"
+#include "Hal8814_PostFwdlReplay.h"
 #include "Hal8821PhyReg.h"
+#include "PhyTableLoader.h"
 #include "phydm_pre_define.h"
 #include "registry_priv.h"
 #include "rtl8812a_hal.h"
 #include "rtl8812a_spec.h"
+
+#include <cstdlib>
+
+/* 8814AU register + page constants extracted from upstream
+ * hal/rtl8814a_spec.h and hal/rtl8814a_hal.h. Inlined here because the
+ * upstream headers pull in kernel-only deps (drv_conf.h, hal_data.h). */
+namespace rtl8814a {
+constexpr uint16_t REG_FIFOPAGE_INFO_1_8814A   = 0x0230;
+constexpr uint16_t REG_FIFOPAGE_INFO_2_8814A   = 0x0234;
+constexpr uint16_t REG_FIFOPAGE_INFO_3_8814A   = 0x0238;
+constexpr uint16_t REG_FIFOPAGE_INFO_4_8814A   = 0x023C;
+constexpr uint16_t REG_FIFOPAGE_INFO_5_8814A   = 0x0240;
+constexpr uint16_t REG_RQPN_CTRL_2_8814A       = 0x022C;
+constexpr uint16_t REG_FIFOPAGE_CTRL_2_8814A   = 0x0204;
+constexpr uint16_t REG_TXPKTBUF_BCNQ_BDNY_8814A  = 0x0424;
+constexpr uint16_t REG_TXPKTBUF_BCNQ1_BDNY_8814A = 0x0456; /* per rtl8814a_spec.h:262 */
+constexpr uint16_t REG_MGQ_PGBNDY_8814A        = 0x047A;
+constexpr uint16_t REG_RXFF_PTR_8814A          = 0x011C;
+
+constexpr uint32_t HPQ_PGNUM_8814A = 0x20; /* 32 pages per queue (USB) */
+constexpr uint32_t LPQ_PGNUM_8814A = 0x20;
+constexpr uint32_t NPQ_PGNUM_8814A = 0x20;
+constexpr uint32_t EPQ_PGNUM_8814A = 0x20;
+/* BCNQ_PAGE_NUM_8814 is documented as 0x08 in upstream's rtl8814a_hal.h, but
+ * the aircrack-ng OOT driver running in our oracle VM shows boundary regs at
+ * 0x07F6 (= 2038), implying BCNQ reserves 10 pages, not 8. Use 0x0A to match
+ * the OOT post-init state. */
+constexpr uint32_t BCNQ_PAGE_NUM_8814 = 0x0A;
+constexpr uint32_t WOWLAN_PAGE_NUM_8814 = 0x00;
+constexpr uint32_t TXPKT_PGNUM_8814A =
+    2048 - BCNQ_PAGE_NUM_8814 - WOWLAN_PAGE_NUM_8814;
+constexpr uint32_t PUB_PGNUM_8814A = TXPKT_PGNUM_8814A - HPQ_PGNUM_8814A -
+                                     NPQ_PGNUM_8814A - LPQ_PGNUM_8814A -
+                                     EPQ_PGNUM_8814A;
+constexpr uint16_t TX_PAGE_BOUNDARY_8814A = TXPKT_PGNUM_8814A;
+constexpr uint16_t WMM_NORMAL_TX_PAGE_BOUNDARY_8814A = TXPKT_PGNUM_8814A + 1;
+
+constexpr uint32_t MAX_RX_DMA_BUFFER_SIZE_8814A = 0x5C00;
+constexpr uint16_t RX_DMA_BOUNDARY_8814A = MAX_RX_DMA_BUFFER_SIZE_8814A - 1;
+} // namespace rtl8814a
 
 #include <chrono>
 #include <memory>
@@ -36,10 +79,6 @@ bool HalModule::rtw_hal_init(SelectedChannel selectedChannel) {
   return status;
 }
 
-bool HalModule::IsRtl8821A() const {
-  return _device.IsRtl8821A();
-}
-
 bool HalModule::rtl8812au_hal_init() {
   // Check if MAC has already power on. by tynli. 2011.05.27.
   auto value8 = _device.rtw_read8(REG_SYS_CLKR + 1);
@@ -59,51 +98,133 @@ bool HalModule::rtl8812au_hal_init() {
     _logger->info("MAC has not been powered on yet");
   }
 
-  // RTL8821AU must not receive the RTL8812 RF-A/B reset writes here. The
-  // working USB driver skips them because they can disturb later RF register
-  // access during U2/U3 init.
-  if (!IsRtl8821A())
-  {
-    _device.rtw_write8(REG_RF_CTRL, 5);
-    _device.rtw_write8(REG_RF_CTRL, 7);
-    _device.rtw_write8(REG_RF_B_CTRL_8812, 5);
-    _device.rtw_write8(REG_RF_B_CTRL_8812, 7);
+  /* 8814AU divergence on PRE-fwdl init only: skip 8812-era RF_CTRL pokes,
+   * hw_reset (no-op on cold boot anyway), and our aircrack-ng-ported
+   * card_enable_flow power-seq — all of which write to registers
+   * rtw88_8814au never touches pre-fwdl (e.g. REG_RF_CTRL=0x05/0x07,
+   * REG_OPT_CTRL+2=0x05/0x07). The 8814 pre-fwdl state is set up by the
+   * 242-op rtw88-mimic inside FirmwareDownload_8814A instead.
+   *
+   * 8821AU keeps the local power-on flow, but skips the 8812 RF path reset
+   * pokes here. The Linux RTL8821A path powers it through the normal flow and
+   * later loads only the single RF-A table.
+   *
+   * POST-fwdl init flow (Queue/Page/WMAC/MSR/Aggregation/BB/RF) is run for
+   * both chips — these write to chip-version-agnostic registers and the
+   * functions that do diverge dispatch internally on ICType. */
+  const bool is_8814a = _eepromManager->version_id.ICType == CHIP_8814A;
+  const bool is_8821 = _eepromManager->version_id.ICType == CHIP_8821;
+  if (!is_8814a) {
+    if (!is_8821)
+    {
+      _device.rtw_write8(REG_RF_CTRL, 5);
+      _device.rtw_write8(REG_RF_CTRL, 7);
+      _device.rtw_write8(REG_RF_B_CTRL_8812, 5);
+      _device.rtw_write8(REG_RF_B_CTRL_8812, 7);
+    }
+
+    // If HW didn't go through a complete de-initial procedure,
+    // it probably occurs some problem for double initial procedure.
+    // Like "CONFIG_DEINIT_BEFORE_INIT" in 92du chip
+    _device.rtl8812au_hw_reset();
+
+    auto initPowerOnStatus = InitPowerOn();
+    if (initPowerOnStatus == false) {
+      return false;
+    }
   }
 
-  // If HW didn't go through a complete de-initial procedure,
-  // it probably occurs some problem for double initial procedure.
-  // Like "CONFIG_DEINIT_BEFORE_INIT" in 92du chip
-  _device.rtl8812au_hw_reset();
-
-  auto initPowerOnStatus = InitPowerOn();
-  if (initPowerOnStatus == false) {
-    return false;
-  }
-
-  // ATTENTION!! BOUNDARY size depends on wifi_spec aka WMM or not WMM
-  auto initLltTable8812AStatus =
-      InitLLTTable8812A(IsRtl8821A() ? TX_PAGE_BOUNDARY_8821
-                                     : TX_PAGE_BOUNDARY_8812);
-  if (initLltTable8812AStatus == false) {
-    return false;
+  /* LLT table init: 8812 needs it pre-fw download; 8814AU does NOT — rtw88
+   * runs LLT init AFTER fw boot, and doing it pre-fw on 8814 breaks the
+   * beacon-queue fwdl path (the chip silently rejects bulk OUT writes). */
+  if (_eepromManager->version_id.ICType != CHIP_8814A) {
+    const uint8_t txpktbuf_bndy = is_8821
+                                      ? TX_PAGE_BOUNDARY_8821
+                                      : TX_PAGE_BOUNDARY_8812;
+    if (!InitLLTTable8812A(txpktbuf_bndy)) {
+      _logger->error("InitLLTTable8812A failed");
+      return false;
+    }
   }
 
   _InitHardwareDropIncorrectBulkOut_8812A();
 
   auto fwManager = std::make_unique<FirmwareManager>(_device, _logger);
-  fwManager->FirmwareDownload8812();
+  fwManager->FirmwareDownload(_eepromManager->version_id.ICType);
+
+  /* 8814AU: now that fw is running, the chip will accept EFUSE reads
+   * without breaking RSVD-page fwdl (which is past). Read the board's
+   * actual rfe_type, PA/LNA types, crystal cap, etc., so that
+   * GetPhyContext() returns real values to PhyTableLoader instead of
+   * the fallback rfe_type=1 used pre-EFUSE-read. */
+  _eepromManager->LateInitFor8814A();
 
   PHY_MACConfig8812();
 
-  _InitQueueReservedPage_8812AUsb();
-  _InitTxBufferBoundary_8812AUsb();
+  if (is_8814a) {
+    /* 8814AU has its own TX FIFO page allocation: 2048 total pages vs 8812's
+     * 256, set via 32-bit FIFOPAGE_INFO_{1..5} regs + 16-bit BCNQ/MGQ page
+     * boundaries. The 8812 path uses 8-bit REG_RQPN / REG_BCNQ_BDNY etc.
+     * which silently no-op on 8814 — that leaves HPQ with 0 pages, so MGT
+     * frames submitted via bulk OUT have nowhere to land and the chip never
+     * drains the EP (USB bulk OUT times out). */
+    _InitQueueReservedPage_8814AUsb();
+    /* TX buffer boundary is set inside _InitQueueReservedPage_8814AUsb. Skip
+     * _InitTxBufferBoundary_8812AUsb. */
+    _InitQueuePriority_8812AUsb(); /* dispatches on CHIP_8814A internally */
+    _InitPageBoundary_8814AUsb();
+    /* _InitTransferPageSize_8814AUsb is a no-op upstream. */
 
-  _InitQueuePriority_8812AUsb();
-  _InitPageBoundary_8812AUsb();
-
-  if (!IsRtl8821A())
-  {
-    _InitTransferPageSize_8812AUsb();
+    /* 8814AU auto-LLT trigger via 32-bit BIT16 of REG_AUTO_LLT_8814A (0x0208,
+     * aliased as REG_TDECTRL). The generic Realtek bit definition is
+     * BIT_AUTO_INIT_LLT = BIT(16) (see hal_com_reg.h). The upstream OOT
+     * code at rtl8814a_hal_init.c::InitLLTTable8814A writes BIT0 of an 8-bit
+     * read at 0x208 — that's a different bit entirely; empirically the
+     * trigger never fires (auto-LLT "completes in 0 polls" because BIT0
+     * was never set). Use the correct BIT(16) trigger as a 32-bit RMW.
+     * Without auto-LLT, the chip's TX FIFO page-count regs we just set are
+     * advertised but no free-page list is linked, so the chip's TX queues
+     * have nowhere to store inbound bulk-OUT frames and vendor-control
+     * transfers to OUT EPs time out forever. */
+    constexpr uint16_t REG_AUTO_LLT_8814A = 0x0208;
+    constexpr uint32_t AUTO_INIT_LLT_BIT   = 1u << 16; /* renamed: hal_com_reg.h's BIT_AUTO_INIT_LLT macro collides */
+    uint32_t llt = _device.rtw_read32(REG_AUTO_LLT_8814A);
+    _logger->info("8814A auto-LLT pre  REG_AUTO_LLT=0x{:08x}", llt);
+    _device.rtw_write32(REG_AUTO_LLT_8814A, llt | AUTO_INIT_LLT_BIT);
+    int polls = 0;
+    do {
+      llt = _device.rtw_read32(REG_AUTO_LLT_8814A);
+      if (!(llt & AUTO_INIT_LLT_BIT))
+        break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      ++polls;
+    } while (polls < 200);
+    if (llt & AUTO_INIT_LLT_BIT) {
+      _logger->error("8814A auto-LLT did not complete (REG_AUTO_LLT=0x{:08x} "
+                     "after {} polls)",
+                     llt, polls);
+    } else {
+      _logger->info(
+          "8814A auto-LLT completed in {} polls (REG_AUTO_LLT=0x{:08x})", polls,
+          llt);
+    }
+  } else {
+    if (is_8821)
+    {
+      _InitQueueReservedPage_8821AUsb();
+      _InitTxBufferBoundary_8821AUsb();
+    }
+    else
+    {
+      _InitQueueReservedPage_8812AUsb();
+      _InitTxBufferBoundary_8812AUsb();
+    }
+    _InitQueuePriority_8812AUsb();
+    _InitPageBoundary_8812AUsb();
+    if (!is_8821)
+    {
+      _InitTransferPageSize_8812AUsb();
+    }
   }
 
   // Get Rx PHY status in order to report RSSI and others.
@@ -129,8 +250,49 @@ bool HalModule::rtl8812au_hal_init() {
   value8 = _device.rtw_read8(REG_CR);
   _device.rtw_write8(REG_CR, (uint8_t)(value8 | MACTXEN | MACRXEN));
 
+  if (is_8821)
+  {
+    uint8_t sysCfg3 = _device.rtw_read8(REG_SYS_CFG + 3);
+    if ((sysCfg3 & BIT0) != 0)
+    {
+      _device.rtw_write8(0x7c, (uint8_t)(_device.rtw_read8(0x7c) | BIT6));
+    }
+  }
+
   _device.rtw_write16(REG_PKT_VO_VI_LIFE_TIME, 0x0400); /* unit: 256us. 256ms */
   _device.rtw_write16(REG_PKT_BE_BK_LIFE_TIME, 0x0400); /* unit: 256us. 256ms */
+
+  /* 8814AU BB/RF domain power-on. Without these writes, the chip's BB
+   * register space (0x800-0xFFF) silently rejects writes via vendor
+   * control transfer — PhyTableLoader runs 1837 writes but read-back
+   * shows none of them stuck. Verified by pyusb experiment: writing
+   * 0xCAFEBABE to MAC reg 0x0114 succeeds, but writing same to BB reg
+   * 0x0824 returns success at USB level yet chip leaves the reg
+   * unchanged.
+   *
+   * Mirrors rtw88_8814au rtw8814a.c:289-303:
+   *   1. enable USB→BB path: REG_SYS_FUNC_EN |= BIT_FEN_USBA (BIT2)
+   *   2. release BB reset:   REG_SYS_CFG3_8814A+2 |= BB_RSTB|BB_GLB_RST
+   *   3. power on RF paths A..D: REG_RF_CTRL[0/1/2/3] = RF_EN|RF_RSTB|
+   *      RF_SDM_RSTB (= 0x07) — 4 separate registers for the 4 RF
+   *      chains of the 4T4R chip. */
+  if (_eepromManager->version_id.ICType == CHIP_8814A) {
+    constexpr uint16_t REG_SYS_CFG3_8814A_HI = 0x1000 + 2;
+    constexpr uint16_t REG_RF_CTRL_A = 0x001F;
+    constexpr uint16_t REG_RF_CTRL_B = 0x0020;
+    constexpr uint16_t REG_RF_CTRL_C = 0x0021;
+    constexpr uint16_t REG_RF_CTRL_D = 0x0076;
+    constexpr uint8_t RF_PWR_ON = 0x07; /* RF_EN | RF_RSTB | RF_SDM_RSTB */
+    const uint8_t syf = _device.rtw_read8(REG_SYS_FUNC_EN);
+    _device.rtw_write8(REG_SYS_FUNC_EN, (uint8_t)(syf | BIT(2)));
+    const uint8_t bb_cfg = _device.rtw_read8(REG_SYS_CFG3_8814A_HI);
+    _device.rtw_write8(REG_SYS_CFG3_8814A_HI, (uint8_t)(bb_cfg | 0x03));
+    _device.rtw_write8(REG_RF_CTRL_A, RF_PWR_ON);
+    _device.rtw_write8(REG_RF_CTRL_B, RF_PWR_ON);
+    _device.rtw_write8(REG_RF_CTRL_C, RF_PWR_ON);
+    _device.rtw_write8(REG_RF_CTRL_D, RF_PWR_ON);
+    _logger->info("8814A BB/RF domain powered on (FEN_USBA, BB_RSTB, RF A..D)");
+  }
 
   auto bbConfig8812Status = PHY_BBConfig8812();
   if (bbConfig8812Status == false) {
@@ -159,7 +321,19 @@ bool HalModule::rtl8812au_hal_init() {
 
   // HW SEQ CTRL
   // set 0x0 to 0xFF by tynli. Default enable HW SEQ NUM.
-  _device.rtw_write8(REG_HWSEQ_CTRL, 0xFF);
+  // On 8814 the chip rejects 8-bit access at offset 0x423 (byte 3 of
+  // FWHW_TXQ_CTRL@0x420) — the rtw_write8 at this address silently no-ops
+  // and rtw_read8 returns 0 regardless of the actual byte. Verified by the
+  // diag dump: rtw_read32(0x420) shows byte3=0x03 but rtw_read8(0x423)=0x00.
+  // Use a 32-bit aligned RMW so the chip's USB controller handles it as a
+  // word-sized access.
+  if (is_8814a) {
+    uint32_t txqctl = _device.rtw_read32(REG_FWHW_TXQ_CTRL);
+    txqctl = (txqctl & 0x00FFFFFFu) | (0xFFu << 24);
+    _device.rtw_write32(REG_FWHW_TXQ_CTRL, txqctl);
+  } else {
+    _device.rtw_write8(REG_HWSEQ_CTRL, 0xFF);
+  }
 
   // Disable BAR, suggested by Scott
   // 2010.04.09 add by hpfan
@@ -180,68 +354,200 @@ bool HalModule::rtl8812au_hal_init() {
   /* enable Tx report. */
   _device.rtw_write8(REG_FWHW_TXQ_CTRL + 1, 0x0F);
 
-  /* Suggested by SD1 pisa. Added by tynli. 2011.10.21. */
-  _device.rtw_write8(REG_EARLY_MODE_CONTROL_8812 + 3,
-                     0x01); /* Pretx_en, for WEP/TKIP SEC */
+  if (is_8814a) {
+    /* Port of upstream _InitRetryFunction_8814A: set EN_AMPDU_RTY_NEW (bit 7
+     * of REG_FWHW_TXQ_CTRL byte 0) and REG_ACKTO = 0x80. Also clear BIT6 of
+     * byte 2 (EN_BCN_FUNCTION-within-TXQ_CTRL, not the BIT3 of REG_BCN_CTRL
+     * which is a separate per-port flag). OOT post-init shows
+     * REG_FWHW_TXQ_CTRL = 0x03310F80; we were at 0x03711F00 without these. */
+    uint8_t txqctl_b0 = _device.rtw_read8(REG_FWHW_TXQ_CTRL);
+    _device.rtw_write8(REG_FWHW_TXQ_CTRL, (uint8_t)(txqctl_b0 | 0x80 /* EN_AMPDU_RTY_NEW */));
+    uint8_t txqctl_b2 = _device.rtw_read8(REG_FWHW_TXQ_CTRL + 2);
+    _device.rtw_write8(REG_FWHW_TXQ_CTRL + 2, (uint8_t)(txqctl_b2 & ~0x40));
+    _device.rtw_write8(REG_ACKTO, 0x80);
+  }
 
-  /* tynli_test_tx_report. */
-  _device.rtw_write16(REG_TX_RPT_TIME, 0x3DF0);
+  /* Suggested by SD1 pisa. Added by tynli. 2011.10.21.
+   * Upstream rtl8814au's usb_halinit.c explicitly comments BOTH of these
+   * out for 8814 — the REG_EARLY_MODE_CONTROL_8812+3 = 0x01 write
+   * (Pretx_en for WEP/TKIP SEC) plus unconfigured security state may
+   * be holding TX frames in a "wait for encryption key" state on 8814.
+   * Gate to 8812-only. */
+  if (!is_8814a) {
+    _device.rtw_write8(REG_EARLY_MODE_CONTROL_8812 + 3,
+                       0x01); /* Pretx_en, for WEP/TKIP SEC */
+
+    /* tynli_test_tx_report. */
+    _device.rtw_write16(REG_TX_RPT_TIME, 0x3DF0);
+  }
 
   /* Reset USB mode switch setting */
   _device.rtw_write8(REG_SDIO_CTRL_8812, 0x0);
   _device.rtw_write8(REG_ACLK_MON, 0x0);
 
+  /* USB Host Read PWM. All chip families: write 0. Earlier hypothesis
+   * (8821 needing 0x84 "leave LPS" wake) was wrong — usbmon trace of
+   * aircrack-ng/88XXau on the same T2U Plus shows kernel writes 0x00
+   * here, not 0x84. The LPS-leave flow in Hal8821APwrSeq.h is only
+   * traversed when actually leaving LPS, not during init. */
   _device.rtw_write8(REG_USB_HRPWM, 0);
 
   // TODO:
   ///* ack for xmit mgmt frames. */
-  _device.rtw_write32(REG_FWHW_TXQ_CTRL,
-                      _device.rtw_read32(REG_FWHW_TXQ_CTRL) | BIT12);
+  if (!is_8814a) {
+    /* OOT-driver register readback shows the 8814 doesn't set BIT12 (ack
+     * for xmit mgmt frames). Skip for 8814. */
+    _device.rtw_write32(REG_FWHW_TXQ_CTRL,
+                        _device.rtw_read32(REG_FWHW_TXQ_CTRL) | BIT12);
+  }
+
+  /* Final safety re-write of MAC/RX enable bits. Some of the post-fwdl
+   * init helpers can overwrite REG_CR back to only MACTXEN|MACRXEN
+   * (clearing DMA + protocol + scheduler) — verified via post-init pyusb
+   * probe showing REG_CR=0xc0. And REG_RXFLTMAP2 read back as 0 instead
+   * of the 0xFFFF we want for monitor-mode data-frame acceptance. Force
+   * the final state here so RX bulk IN actually moves frames.
+   *
+   * 8814 hypothesis: firmware programs REG_CR after it boots and may set
+   * bits beyond our 0x00FF mask (ENSEC=BIT9, CALTMR_EN=BIT10 — both in
+   * the upstream _InitPowerOn_8814AU OR-mask, neither in our cr_final).
+   * Forcing 0x00FF on 8814 could clobber fw-set high bits that gate TX.
+   * Read current REG_CR first, then OR in our minimum-required bits
+   * instead of clobbering the whole word. */
+  uint16_t cr_observed = _device.rtw_read16(REG_CR);
+  uint16_t cr_min = (uint16_t)(HCI_TXDMA_EN | HCI_RXDMA_EN | TXDMA_EN |
+                               RXDMA_EN | PROTOCOL_EN | SCHEDULE_EN |
+                               MACTXEN | MACRXEN);
+  if (is_8814a) {
+    /* OOT driver register dump shows REG_CR=0x06FF on a working 8814 init —
+     * ENSEC (BIT9) + CALTMR_EN (BIT10) are set in addition to the low byte.
+     * The upstream _InitPowerOn_8814AU OR-mask also includes both. Our
+     * earlier init skips InitPowerOn for 8814 (since fwdl does it via the
+     * RSVD-page path), so these high bits never get set. Add them here. */
+    cr_min |= ENSEC | CALTMR_EN;
+    /* OOT-driver readback shows REG_TXDMA_OFFSET_CHK = 0x0FFD0200 — bit 9
+     * (DROP_DATA_EN) is set. Our existing _InitHardwareDropIncorrectBulkOut
+     * runs pre-fwdl and gets cleared by the chip reset during fwdl. Re-apply
+     * here post-fwdl. */
+    uint32_t dma_chk = _device.rtw_read32(REG_TXDMA_OFFSET_CHK);
+    _device.rtw_write32(REG_TXDMA_OFFSET_CHK, dma_chk | DROP_DATA_EN);
+  }
+  uint16_t cr_final = static_cast<uint16_t>(cr_observed | cr_min);
+  _device.rtw_write16(REG_CR, cr_final);
+  _device.rtw_write16(REG_RXFLTMAP2, 0xFFFF);
+
+  if (is_8814a && std::getenv("DEVOURER_OOT_REPLAY")) {
+    /* DEVOURER_OOT_REPLAY=1 enables verbatim replay of the kernel
+     * driver's post-fwdl vendor-write sequence on 8814AU. This is the
+     * minimum that unwedges TX today.
+     *
+     * Without this, devourer's post-fwdl chip state diverges from the
+     * working kernel-driver's in many small ways that combine to leave
+     * the chip's USB controller wedged — bulk OUT EP 0x02 NAKs every
+     * TX URB. With the replay, devourer's chip state matches the
+     * kernel driver byte-for-byte (verified via live pyusb register
+     * dump) and TX URBs drain (status=0 across 781 of 781 URBs in
+     * verification runs).
+     *
+     * Trade-off: the replay sequence also includes BB writes that
+     * degrade RX throughput on the same chip (e.g. RX-packet rate
+     * drops ~10x in a 60-second window). Because of this, the replay
+     * is opt-in via env var; default behaviour preserves RX. Users
+     * who need 8814 TX set DEVOURER_OOT_REPLAY=1.
+     *
+     * Source of the replay table (hal/Hal8814_PostFwdlReplay.h):
+     * usbmon capture of a cold-init kernel-driver session
+     *   modprobe 8814au; ip link up; iw set monitor; iw set channel 6
+     * with all vendor control writes between the last fwdl bulk chunk
+     * and the first TX bulk OUT captured (4464 entries).
+     *
+     * Long-term: port the equivalent upstream functions individually
+     * (rtl8814a_hal_init.c + usb_halinit.c) so TX works without the
+     * RX trade-off and without 130 KB of opaque trace data in the
+     * binary. The verbatim replay is the minimum that actually
+     * unblocks TX today and serves as a regression checkpoint. */
+    _logger->info("8814A: replaying {} kernel-driver post-fwdl writes",
+                  kKernelPostFwdlWritesCount);
+    for (size_t i = 0; i < kKernelPostFwdlWritesCount; ++i) {
+      const auto &w = kKernelPostFwdlWrites[i];
+      if (w.len == 1)      _device.rtw_write8(w.addr, (uint8_t)w.value);
+      else if (w.len == 2) _device.rtw_write16(w.addr, (uint16_t)w.value);
+      else if (w.len == 4) _device.rtw_write32(w.addr, w.value);
+    }
+    _logger->info("8814A: replay complete");
+  }
+
   return true;
 }
 
-//===================================================================================
-//===================================================================================
-// Runs the MAC power-on sequence for the selected Realtek chip family.
-bool HalModule::InitPowerOn()
-{
-  if (_macPwrCtrlOn)
-  {
+bool HalModule::InitPowerOn() {
+  if (_macPwrCtrlOn) {
     return true;
   }
 
-  WLAN_PWR_CFG *powerOnFlow =
-      IsRtl8821A() ? Rtl8821A_NIC_ENABLE_FLOW : Rtl8812_NIC_ENABLE_FLOW;
-
-  if (!HalPwrSeqCmdParsing(powerOnFlow))
-  {
+  /* Three-way dispatch on chip family. The CARDEMU→ACT power sequence is
+   * silicon-specific — applying the wrong one leaves the chip stuck in
+   * CARDEMU (REG_SYS_CLKR=0x30, REG_CR=0xEA) and HalPwrSeqCmdParsing returns
+   * false. */
+  WLAN_PWR_CFG *enable_flow;
+  switch (_eepromManager->version_id.ICType) {
+  case CHIP_8814A:
+    enable_flow = rtl8814A_card_enable_flow;
+    break;
+  case CHIP_8821:
+    enable_flow = Rtl8821A_NIC_ENABLE_FLOW;
+    break;
+  default:
+    enable_flow = Rtl8812_NIC_ENABLE_FLOW;
+    break;
+  }
+  if (!HalPwrSeqCmdParsing(enable_flow)) {
     _logger->error("InitPowerOn: run power on flow fail");
     return false;
   }
 
-  /* Enable MAC DMA/WMAC/SCHEDULE/SEC block */
-  /* Set CR bit10 to enable 32k calibration. Suggested by SD1 Gimmy. Added by
-   * tynli. 2011.08.31. */
-  _device.rtw_write16(REG_CR,
-                      0x00); /* suggseted by zhouzhou, by page, 20111230 */
-  uint16_t u2btmp = _device.rtw_read16(REG_CR);
-  u2btmp |= (ushort)(HCI_TXDMA_EN | HCI_RXDMA_EN | TXDMA_EN | RXDMA_EN |
-                     PROTOCOL_EN | SCHEDULE_EN | ENSEC | CALTMR_EN);
-  _device.rtw_write16(REG_CR, u2btmp);
-
-  // The Linux RTL8821AU path applies this LDO-mode fix immediately after CR is
-  // enabled, before firmware download and MAC/RF init continue.
-  if (IsRtl8821A())
-  {
-    uint8_t sysCfg3 = _device.rtw_read8(REG_SYS_CFG + 3);
-    if ((sysCfg3 & BIT0) != 0)
-    {
-      _device.rtw_write8(0x7c, (uint8_t)(_device.rtw_read8(0x7c) | BIT6));
-    }
+  /* Enable MAC DMA/WMAC/SCHEDULE/SEC block — 8812 only.
+   *
+   * On 8814AU, rtw88's usbmon trace shows that REG_CR is left untouched at
+   * power-on and the chip is held in a minimal state until firmware boots.
+   * The firmware itself programs REG_CR after it's running. If we set
+   * HCI_TXDMA/RXDMA/PROTOCOL_EN/SCHEDULE_EN/ENSEC before fwdl, the chip's
+   * MAC starts processing TX queues normally, so beacon-queue submissions
+   * (used as the firmware-RSVD-page transport) aren't held for IDDMA and
+   * BIT15 of REG_FIFOPAGE_CTRL_2 never gets set. */
+  if (_eepromManager->version_id.ICType != CHIP_8814A) {
+    /* Set CR bit10 to enable 32k calibration. Suggested by SD1 Gimmy.
+     * Added by tynli. 2011.08.31. */
+    _device.rtw_write16(REG_CR,
+                        0x00); /* suggseted by zhouzhou, by page, 20111230 */
+    uint16_t u2btmp = _device.rtw_read16(REG_CR);
+    u2btmp |= (ushort)(HCI_TXDMA_EN | HCI_RXDMA_EN | TXDMA_EN | RXDMA_EN |
+                       PROTOCOL_EN | SCHEDULE_EN | ENSEC | CALTMR_EN);
+    _device.rtw_write16(REG_CR, u2btmp);
   }
 
   _macPwrCtrlOn = true;
   return true;
+}
+
+/* 8814AU's LLT (linked-list table) for TX FIFO pages is initialized by chip
+ * hardware: set BIT0 of REG_AUTO_LLT (0x0208), then poll for the bit to
+ * clear, meaning init is done. Mirrors upstream InitLLTTable8814A in
+ * hal/rtl8814a/rtl8814a_hal_init.c. */
+bool HalModule::InitLLTTable8814A() {
+  constexpr uint16_t REG_AUTO_LLT_8814A = 0x0208;
+  uint8_t v = _device.rtw_read8(REG_AUTO_LLT_8814A);
+  _device.rtw_write8(REG_AUTO_LLT_8814A, (uint8_t)(v | BIT0));
+  for (int i = 0; i < 100; ++i) {
+    v = _device.rtw_read8(REG_AUTO_LLT_8814A);
+    if (!(v & BIT0)) {
+      _logger->info("InitLLTTable8814A: auto-init OK after {} iters", i);
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  _logger->error("InitLLTTable8814A: timeout waiting for BIT0 to clear");
+  return false;
 }
 
 bool HalModule::InitLLTTable8812A(uint8_t txpktbuf_bndy) {
@@ -312,42 +618,48 @@ void HalModule::_InitHardwareDropIncorrectBulkOut_8812A() {
   _device.rtw_write32(REG_TXDMA_OFFSET_CHK, value32);
 }
 
-//===================================================================================
-//===================================================================================
-// Executes one Realtek register power sequence until the END command is reached.
-bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
-{
+bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd) {
   bool bHWICSupport = false;
   uint32_t AryIdx = 0;
   // UInt16 offset = 0;
-  const uint8_t interfaceMask = PWR_INTF_USB_MSK;
-  const uint8_t fabMask = PWR_FAB_ALL_MSK;
-  const uint8_t cutMask =
-      IsRtl8821A()
-          ? (_eepromManager->version_id.ChipType == TEST_CHIP
-                 ? PWR_CUT_TESTCHIP_MSK
-                 : PWR_CUT_A_MSK)
-          : PWR_CUT_ALL_MSK;
+  uint32_t pollingCount = 0; /* polling autoload done. */
 
-  do
-  {
+  do {
     auto PwrCfgCmd = PwrSeqCmd[AryIdx];
 
-    // Realtek power tables include USB, PCIe, and SDIO commands in the same
-    // flow. Android USB must skip SDIO-only polls such as 0x86[1], otherwise
-    // RTL8821AU never reaches the actual MAC enable sequence.
-    // The working rtl8812au USB driver passes PWR_CUT_A_MSK for normal
-    // RTL8821AU MP chips even when the chip version reports a later cut.
-    if ((GET_PWR_CFG_FAB_MASK(PwrCfgCmd) & fabMask) == 0 ||
-        (GET_PWR_CFG_CUT_MASK(PwrCfgCmd) & cutMask) == 0 ||
-        (GET_PWR_CFG_INTF_MASK(PwrCfgCmd) & interfaceMask) == 0)
+    /* Filter by interface type — entries marked PCI- or SDIO-only must NOT
+     * run on USB. Upstream rtl8814au's power-seq has several PCI-only entries
+     * (e.g. writes to 0x0301, 0x0071, 0x0042) that, when leaked into the USB
+     * path, leave the chip in a state where it never acknowledges beacon-
+     * queue bulk OUTs (BIT15 of REG_FIFOPAGE_CTRL_2 stays clear) — which
+     * blocks the IDDMA copy that loads firmware into the 8051's DMEM/IMEM.
+     *
+     * RTL8821AU normal silicon must use the A-cut path. Running the test-chip
+     * entries too can leave a replugged adapter in a different power state
+     * than the working Linux driver path. */
+    const uint8_t kIntfBit = PWR_INTF_USB_MSK;
+    if (!(GET_PWR_CFG_INTF_MASK(PwrCfgCmd) & kIntfBit)) {
+      AryIdx++;
+      continue;
+    }
+    uint8_t cutMask = PWR_CUT_ALL_MSK;
+    if (_eepromManager->version_id.ICType == CHIP_8821)
+    {
+      cutMask = _eepromManager->version_id.ChipType == NORMAL_CHIP
+                    ? PWR_CUT_A_MSK
+                    : PWR_CUT_TESTCHIP_MSK;
+    }
+    if (!(GET_PWR_CFG_CUT_MASK(PwrCfgCmd) & cutMask))
     {
       AryIdx++;
       continue;
     }
-
-    switch (PwrCfgCmd.cmd)
+    if (!(GET_PWR_CFG_FAB_MASK(PwrCfgCmd) & PWR_FAB_ALL_MSK))
     {
+      AryIdx++;
+      continue;
+    }
+    switch (PwrCfgCmd.cmd) {
     case PWR_CMD_READ:
       break;
 
@@ -372,31 +684,27 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
       auto offset = (PwrCfgCmd.offset);
       uint32_t maxPollingCnt = 5000;
       bool flag = false;
-      uint32_t pollingCount = 0;
 
       maxPollingCnt = 5000;
 
-      do
-      {
+      do {
         auto value = _device.rtw_read8(offset);
 
         value = (uint8_t)(value & PwrCfgCmd.msk);
-        if (value == ((PwrCfgCmd.value) & PwrCfgCmd.msk))
-        {
+        if (value == ((PwrCfgCmd.value) & PwrCfgCmd.msk)) {
           bPollingBit = true;
-        }
-        else
-        {
+        } else {
           using namespace std::chrono_literals;
           std::this_thread::sleep_for(10ms);
         }
 
-        if (pollingCount++ > maxPollingCnt)
-        {
+        if (pollingCount++ > maxPollingCnt) {
+          // TODO: RTW_ERR("HalPwrSeqCmdParsing: Fail to polling
+          // Offset[%#x]=%02x\n", offset, value);
+
           /* For PCIE + USB package poll power bit timeout issue only modify
            * 8821AE and 8723BE */
-          if (bHWICSupport && offset == 0x06 && flag == false)
-          {
+          if (bHWICSupport && offset == 0x06 && flag == false) {
 
             // TODO: RTW_ERR("[WARNING] PCIE polling(0x%X) timeout(%d), Toggle
             // 0x04[3] and try again.\n", offset, maxPollingCnt);
@@ -408,9 +716,7 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
             /* Retry Polling Process one more time */
             pollingCount = 0;
             flag = true;
-          }
-          else
-          {
+          } else {
             return false;
           }
         }
@@ -420,13 +726,10 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
     break;
 
     case PWR_CMD_DELAY: {
-      if (PwrCfgCmd.value == (uint8_t)PWRSEQ_DELAY_US)
-      {
+      if (PwrCfgCmd.value == (uint8_t)PWRSEQ_DELAY_US) {
         std::this_thread::sleep_for(
             std::chrono::microseconds(PwrCfgCmd.offset));
-      }
-      else
-      {
+      } else {
         std::this_thread::sleep_for(
             std::chrono::milliseconds(PwrCfgCmd.offset));
       }
@@ -448,11 +751,338 @@ bool HalModule::HalPwrSeqCmdParsing(WLAN_PWR_CFG *PwrSeqCmd)
 }
 
 void HalModule::PHY_MACConfig8812() {
-  if (IsRtl8821A()) {
+  switch (_eepromManager->version_id.ICType) {
+  case CHIP_8814A:
+    odm_read_and_config_mp_8814a_mac_reg();
+    break;
+  case CHIP_8821:
     odm_read_and_config_mp_8821a_mac_reg();
-  } else {
+    break;
+  default:
     odm_read_and_config_mp_8812a_mac_reg();
+    break;
   }
+}
+
+void HalModule::odm_read_and_config_mp_8814a_mac_reg() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(array_mp_8814a_mac_reg, array_mp_8814a_mac_reg_len, ctx,
+                       [this](uint32_t addr, uint32_t value) {
+                         _device.rtw_write8(static_cast<uint16_t>(addr),
+                                            static_cast<uint8_t>(value));
+                       });
+}
+
+void HalModule::odm_read_and_config_mp_8814a_phy_reg() {
+  auto ctx = _eepromManager->GetPhyContext();
+  /* odm_config_bb_phy_8812a is chip-agnostic for the phydm special addresses
+   * 0xfe/fd/fc/fb/fa/f9 (sleep/delay opcodes shared across Realtek chips) and
+   * defers to odm_set_bb_reg for normal writes. Reusing it avoids forking the
+   * helper. */
+  PhyTableLoader::Load(array_mp_8814a_phy_reg, array_mp_8814a_phy_reg_len, ctx,
+                       [this](uint32_t addr, uint32_t value) {
+                         odm_config_bb_phy_8812a(addr, 0xFFFFFFFFu, value);
+                       });
+}
+
+void HalModule::odm_read_and_config_mp_8814a_agc_tab() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(array_mp_8814a_agc_tab, array_mp_8814a_agc_tab_len, ctx,
+                       [this](uint32_t addr, uint32_t value) {
+                         odm_config_bb_agc_8812a(addr, 0xFFFFFFFFu, value);
+                       });
+}
+
+bool HalModule::phy_BB8814_Config_ParaFile() {
+  odm_read_and_config_mp_8814a_phy_reg();
+  odm_read_and_config_mp_8814a_agc_tab();
+  return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Replays the local RTL8821A MAC table with the legacy conditional parser.
+void HalModule::odm_read_and_config_mp_8821a_mac_reg()
+{
+  u32 i = 0;
+  u8 c_cond;
+  bool is_matched = true, is_skipped = false;
+  u32 array_len = ARRAY_LENGTH(array_mp_8821a_mac_reg);
+  u32 *array = array_mp_8821a_mac_reg;
+
+  u32 v1 = 0, v2 = 0, pre_v1 = 0, pre_v2 = 0;
+
+  while ((i + 1) < array_len)
+  {
+    v1 = array[i];
+    v2 = array[i + 1];
+
+    if (v1 & (BIT(31) | BIT(30)))
+    {
+      if (v1 & BIT(31))
+      {
+        c_cond = (u8)((v1 & (BIT(29) | BIT(28))) >> 28);
+        if (c_cond == 3)
+        {
+          is_matched = true;
+          is_skipped = false;
+        }
+        else if (c_cond == 2)
+        {
+          is_matched = is_skipped ? false : true;
+        }
+        else
+        {
+          pre_v1 = v1;
+          pre_v2 = v2;
+        }
+      }
+      else if (v1 & BIT(30))
+      {
+        if (is_skipped == false)
+        {
+          if (check_positive(pre_v1, pre_v2, v2))
+          {
+            is_matched = true;
+            is_skipped = true;
+          }
+          else
+          {
+            is_matched = false;
+            is_skipped = false;
+          }
+        }
+        else
+        {
+          is_matched = false;
+        }
+      }
+    }
+    else if (is_matched)
+    {
+      odm_write_1byte((uint16_t)v1, (uint8_t)v2);
+    }
+    i = i + 2;
+  }
+}
+
+//===================================================================================
+//===================================================================================
+// Replays the local RTL8821A BB table with the legacy conditional parser.
+void HalModule::odm_read_and_config_mp_8821a_phy_reg()
+{
+  uint32_t i = 0;
+  uint8_t c_cond;
+  bool is_matched = true, is_skipped = false;
+  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_phy_reg);
+
+  uint32_t pre_v1 = 0, pre_v2 = 0;
+
+  while ((i + 1) < array_len)
+  {
+    auto v1 = array_mp_8821a_phy_reg[i];
+    auto v2 = array_mp_8821a_phy_reg[i + 1];
+
+    if ((v1 & (BIT31 | BIT30)) != 0)
+    {
+      if ((v1 & BIT31) != 0)
+      {
+        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
+        if (c_cond == 3)
+        {
+          is_matched = true;
+          is_skipped = false;
+        }
+        else if (c_cond == 2)
+        {
+          is_matched = is_skipped ? false : true;
+        }
+        else
+        {
+          pre_v1 = v1;
+          pre_v2 = v2;
+        }
+      }
+      else if ((v1 & BIT30) != 0)
+      {
+        if (is_skipped == false)
+        {
+          if (check_positive(pre_v1, pre_v2, v2))
+          {
+            is_matched = true;
+            is_skipped = true;
+          }
+          else
+          {
+            is_matched = false;
+            is_skipped = false;
+          }
+        }
+        else
+        {
+          is_matched = false;
+        }
+      }
+    }
+    else if (is_matched)
+    {
+      odm_config_bb_phy_8812a(v1, 0xffffffff, v2);
+    }
+
+    i = i + 2;
+  }
+}
+
+//===================================================================================
+//===================================================================================
+// Replays the local RTL8821A AGC table with the legacy conditional parser.
+void HalModule::odm_read_and_config_mp_8821a_agc_tab()
+{
+  uint32_t i = 0;
+  uint8_t c_cond;
+  bool is_matched = true, is_skipped = false;
+  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_agc_tab);
+
+  uint32_t pre_v1 = 0, pre_v2 = 0;
+
+  while ((i + 1) < array_len)
+  {
+    auto v1 = array_mp_8821a_agc_tab[i];
+    auto v2 = array_mp_8821a_agc_tab[i + 1];
+
+    if ((v1 & (BIT31 | BIT30)) != 0)
+    {
+      if ((v1 & BIT31) != 0)
+      {
+        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
+        if (c_cond == 3)
+        {
+          is_matched = true;
+          is_skipped = false;
+        }
+        else if (c_cond == 2)
+        {
+          is_matched = is_skipped ? false : true;
+        }
+        else
+        {
+          pre_v1 = v1;
+          pre_v2 = v2;
+        }
+      }
+      else if ((v1 & BIT30) != 0)
+      {
+        if (is_skipped == false)
+        {
+          if (check_positive(pre_v1, pre_v2, v2))
+          {
+            is_matched = true;
+            is_skipped = true;
+          }
+          else
+          {
+            is_matched = false;
+            is_skipped = false;
+          }
+        }
+        else
+        {
+          is_matched = false;
+        }
+      }
+    }
+    else if (is_matched)
+    {
+      odm_config_bb_agc_8812a(v1, 0xffffffff, v2);
+    }
+
+    i = i + 2;
+  }
+}
+
+//===================================================================================
+//===================================================================================
+// Replays the local RTL8821A RF-A table with the legacy conditional parser.
+void HalModule::odm_read_and_config_mp_8821a_radioa()
+{
+  uint32_t i = 0;
+  uint8_t c_cond;
+  bool is_matched = true, is_skipped = false;
+  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_radioa);
+
+  uint32_t pre_v1 = 0, pre_v2 = 0;
+
+  while ((i + 1) < array_len)
+  {
+    auto v1 = array_mp_8821a_radioa[i];
+    auto v2 = array_mp_8821a_radioa[i + 1];
+
+    if ((v1 & (BIT31 | BIT30)) != 0)
+    {
+      if ((v1 & BIT31) != 0)
+      {
+        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
+        if (c_cond == 3)
+        {
+          is_matched = true;
+          is_skipped = false;
+        }
+        else if (c_cond == 2)
+        {
+          is_matched = is_skipped ? false : true;
+        }
+        else
+        {
+          pre_v1 = v1;
+          pre_v2 = v2;
+        }
+      }
+      else if ((v1 & BIT30) != 0)
+      {
+        if (is_skipped == false)
+        {
+          if (check_positive(pre_v1, pre_v2, v2))
+          {
+            is_matched = true;
+            is_skipped = true;
+          }
+          else
+          {
+            is_matched = false;
+            is_skipped = false;
+          }
+        }
+        else
+        {
+          is_matched = false;
+        }
+      }
+    }
+    else if (is_matched)
+    {
+      odm_config_rf_radio_a_8812a(v1, v2);
+    }
+
+    i = i + 2;
+  }
+}
+
+//===================================================================================
+//===================================================================================
+// Loads the local RTL8821A BB and AGC tables.
+bool HalModule::phy_BB8821_Config_ParaFile()
+{
+  odm_read_and_config_mp_8821a_phy_reg();
+  odm_read_and_config_mp_8821a_agc_tab();
+  return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Loads the single-chain RTL8821A RF-A table.
+void HalModule::phy_RF6052_Config_ParaFile_8821()
+{
+  odm_read_and_config_mp_8821a_radioa();
 }
 
 /******************************************************************************
@@ -553,51 +1183,6 @@ void HalModule::odm_read_and_config_mp_8812a_mac_reg() {
         uint8_t data = (uint8_t)v2;
         odm_write_1byte(addr, data);
       }
-    }
-    i = i + 2;
-  }
-}
-
-void HalModule::odm_read_and_config_mp_8821a_mac_reg() {
-  u32 i = 0;
-  u8 c_cond;
-  bool is_matched = true, is_skipped = false;
-  u32 array_len = ARRAY_LENGTH(array_mp_8821a_mac_reg);
-  u32 *array = array_mp_8821a_mac_reg;
-
-  u32 v1 = 0, v2 = 0, pre_v1 = 0, pre_v2 = 0;
-
-  while ((i + 1) < array_len) {
-    v1 = array[i];
-    v2 = array[i + 1];
-
-    if (v1 & (BIT(31) | BIT(30))) {
-      if (v1 & BIT(31)) {
-        c_cond = (u8)((v1 & (BIT(29) | BIT(28))) >> 28);
-        if (c_cond == COND_ENDIF) {
-          is_matched = true;
-          is_skipped = false;
-        } else if (c_cond == COND_ELSE) {
-          is_matched = is_skipped ? false : true;
-        } else {
-          pre_v1 = v1;
-          pre_v2 = v2;
-        }
-      } else if (v1 & BIT(30)) {
-        if (is_skipped == false) {
-          if (check_positive(pre_v1, pre_v2, v2)) {
-            is_matched = true;
-            is_skipped = true;
-          } else {
-            is_matched = false;
-            is_skipped = false;
-          }
-        } else {
-          is_matched = false;
-        }
-      }
-    } else if (is_matched) {
-      odm_write_1byte((uint16_t)v1, (uint8_t)v2);
     }
     i = i + 2;
   }
@@ -712,43 +1297,36 @@ void HalModule::_InitQueueReservedPage_8812AUsb() {
 
   if (!bWiFiConfig) {
     if (_device.OutEpQueueSel & TxSele::TX_SELE_HQ) {
-      numHQ = IsRtl8821A() ? NORMAL_PAGE_NUM_HPQ_8821 : NORMAL_PAGE_NUM_HPQ_8812;
+      numHQ = NORMAL_PAGE_NUM_HPQ_8812;
     }
 
     if (_device.OutEpQueueSel & TxSele::TX_SELE_LQ) {
-      numLQ = IsRtl8821A() ? NORMAL_PAGE_NUM_LPQ_8821 : NORMAL_PAGE_NUM_LPQ_8812;
+      numLQ = NORMAL_PAGE_NUM_LPQ_8812;
     }
 
     /* NOTE: This step shall be proceed before writting REG_RQPN.
      */
     if (_device.OutEpQueueSel & TxSele::TX_SELE_NQ) {
-      numNQ = IsRtl8821A() ? NORMAL_PAGE_NUM_NPQ_8821 : NORMAL_PAGE_NUM_NPQ_8812;
+      numNQ = NORMAL_PAGE_NUM_NPQ_8812;
     }
-
   } else {
     /* WMM		 */
     if (_device.OutEpQueueSel & TxSele::TX_SELE_HQ) {
-      numHQ = IsRtl8821A() ? WMM_NORMAL_PAGE_NUM_HPQ_8821
-                           : WMM_NORMAL_PAGE_NUM_HPQ_8812;
+      numHQ = WMM_NORMAL_PAGE_NUM_HPQ_8812;
     }
 
     if (_device.OutEpQueueSel & TxSele::TX_SELE_LQ) {
-      numLQ = IsRtl8821A() ? WMM_NORMAL_PAGE_NUM_LPQ_8821
-                           : WMM_NORMAL_PAGE_NUM_LPQ_8812;
+      numLQ = WMM_NORMAL_PAGE_NUM_LPQ_8812;
     }
 
     /* NOTE: This step shall be proceed before writting REG_RQPN.
      */
     if (_device.OutEpQueueSel & TxSele::TX_SELE_NQ) {
-      numNQ = IsRtl8821A() ? WMM_NORMAL_PAGE_NUM_NPQ_8821
-                           : WMM_NORMAL_PAGE_NUM_NPQ_8812;
+      numNQ = WMM_NORMAL_PAGE_NUM_NPQ_8812;
     }
-
   }
 
-  uint32_t totalPageNumber =
-      IsRtl8821A() ? TX_TOTAL_PAGE_NUMBER_8821 : TX_TOTAL_PAGE_NUMBER_8812;
-  uint32_t numPubQ = totalPageNumber - numHQ - numLQ - numNQ;
+  uint32_t numPubQ = TX_TOTAL_PAGE_NUMBER_8812 - numHQ - numLQ - numNQ;
 
   value8 = (uint8_t)_NPQ(numNQ);
   _device.rtw_write8(REG_RQPN_NPQ, value8);
@@ -758,15 +1336,57 @@ void HalModule::_InitQueueReservedPage_8812AUsb() {
   _device.rtw_write32(REG_RQPN, value32);
 }
 
-void HalModule::_InitTxBufferBoundary_8812AUsb() {
-  uint8_t txPageBoundary8812 = 0;
-  if (registry_priv::wifi_spec) {
-    txPageBoundary8812 = IsRtl8821A() ? WMM_NORMAL_TX_PAGE_BOUNDARY_8821
-                                      : WMM_NORMAL_TX_PAGE_BOUNDARY_8812;
-  } else {
-    txPageBoundary8812 =
-        IsRtl8821A() ? TX_PAGE_BOUNDARY_8821 : TX_PAGE_BOUNDARY_8812;
+//===================================================================================
+//===================================================================================
+// Programs 8821AU TX queue page reservations using the working Linux layout.
+void HalModule::_InitQueueReservedPage_8821AUsb()
+{
+  uint32_t numHQ = 0;
+  uint32_t numLQ = 0;
+  uint32_t numNQ = 0;
+
+  if (registry_priv::wifi_spec)
+  {
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_HQ)
+    {
+      numHQ = WMM_NORMAL_PAGE_NUM_HPQ_8821;
+    }
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_LQ)
+    {
+      numLQ = WMM_NORMAL_PAGE_NUM_LPQ_8821;
+    }
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_NQ)
+    {
+      numNQ = WMM_NORMAL_PAGE_NUM_NPQ_8821;
+    }
   }
+  else
+  {
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_HQ)
+    {
+      numHQ = NORMAL_PAGE_NUM_HPQ_8821;
+    }
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_LQ)
+    {
+      numLQ = NORMAL_PAGE_NUM_LPQ_8821;
+    }
+    if (_device.OutEpQueueSel & TxSele::TX_SELE_NQ)
+    {
+      numNQ = NORMAL_PAGE_NUM_NPQ_8821;
+    }
+  }
+
+  const uint32_t numPubQ = TX_TOTAL_PAGE_NUMBER_8821 - numHQ - numLQ - numNQ;
+  const uint8_t value8 = (uint8_t)_NPQ(numNQ);
+  _device.rtw_write8(REG_RQPN_NPQ, value8);
+
+  const uint32_t value32 =
+      _HPQ(numHQ) | _LPQ(numLQ) | _PUBQ(numPubQ) | LD_RQPN;
+  _device.rtw_write32(REG_RQPN, value32);
+}
+
+void HalModule::_InitTxBufferBoundary_8812AUsb() {
+  uint8_t txPageBoundary8812 = TX_PAGE_BOUNDARY_8812;
 
   _device.rtw_write8(REG_BCNQ_BDNY, txPageBoundary8812);
   _device.rtw_write8(REG_MGQ_BDNY, txPageBoundary8812);
@@ -775,7 +1395,43 @@ void HalModule::_InitTxBufferBoundary_8812AUsb() {
   _device.rtw_write8(REG_TDECTRL + 1, txPageBoundary8812);
 }
 
+//===================================================================================
+//===================================================================================
+// Programs 8821AU TX buffer boundaries using the working Linux layout.
+void HalModule::_InitTxBufferBoundary_8821AUsb()
+{
+  const uint8_t txpktbuf_bndy = registry_priv::wifi_spec
+                                    ? WMM_NORMAL_TX_PAGE_BOUNDARY_8821
+                                    : TX_PAGE_BOUNDARY_8821;
+
+  _device.rtw_write8(REG_BCNQ_BDNY, txpktbuf_bndy);
+  _device.rtw_write8(REG_MGQ_BDNY, txpktbuf_bndy);
+  _device.rtw_write8(REG_WMAC_LBK_BF_HD, txpktbuf_bndy);
+  _device.rtw_write8(REG_TRXFF_BNDY, txpktbuf_bndy);
+  _device.rtw_write8(REG_TDECTRL + 1, txpktbuf_bndy);
+}
+
 void HalModule::_InitQueuePriority_8812AUsb() {
+  /* 8814AU upstream collapses 3-out and 4-out into the same Three-EP priority
+   * init. 8812 has a distinct Four-EP variant. */
+  if (_eepromManager->version_id.ICType == CHIP_8814A) {
+    switch (_device.OutEpNumber) {
+    case 2:
+      _InitNormalChipTwoOutEpPriority_8814AUsb();
+      break;
+    case 3:
+    case 4:
+      _InitNormalChipThreeOutEpPriority_8814AUsb();
+      break;
+    default:
+      _logger->error(
+          "_InitQueuePriority_8814AUsb(): unexpected OutEpNumber={}",
+          (int)_device.OutEpNumber);
+      break;
+    }
+    return;
+  }
+
   switch (_device.OutEpNumber) {
   case 2:
     _InitNormalChipTwoOutEpPriority_8812AUsb();
@@ -790,6 +1446,87 @@ void HalModule::_InitQueuePriority_8812AUsb() {
     _logger->error("_InitQueuePriority_8812AUsb(): Shall not reach here!");
     break;
   }
+}
+
+void HalModule::_InitNormalChipTwoOutEpPriority_8814AUsb() {
+  /* Mirrors _InitNormalChipTwoOutEpPriority_8812AUsb. Same logic — the only
+   * 8814 delta is the BIT2 set in _InitNormalChipRegPriority_8814AUsb. */
+  uint16_t valueHi;
+  uint16_t valueLow;
+
+  switch (_device.OutEpQueueSel) {
+  case (TxSele::TX_SELE_HQ | TxSele::TX_SELE_LQ):
+    valueHi = QUEUE_HIGH;
+    valueLow = QUEUE_LOW;
+    break;
+  case (TxSele::TX_SELE_NQ | TxSele::TX_SELE_LQ):
+    valueHi = QUEUE_NORMAL;
+    valueLow = QUEUE_LOW;
+    break;
+  case (TxSele::TX_SELE_HQ | TxSele::TX_SELE_NQ):
+    valueHi = QUEUE_HIGH;
+    valueLow = QUEUE_NORMAL;
+    break;
+  default:
+    valueHi = QUEUE_HIGH;
+    valueLow = QUEUE_NORMAL;
+    break;
+  }
+
+  uint16_t beQ, bkQ, viQ, voQ, mgtQ, hiQ;
+  if (!registry_priv::wifi_spec) {
+    beQ = valueLow;
+    bkQ = valueLow;
+    viQ = valueHi;
+    voQ = valueHi;
+    mgtQ = valueHi;
+    hiQ = valueHi;
+  } else { /* WMM */
+    beQ = valueLow;
+    bkQ = valueHi;
+    viQ = valueHi;
+    voQ = valueLow;
+    mgtQ = valueHi;
+    hiQ = valueHi;
+  }
+  _InitNormalChipRegPriority_8814AUsb(beQ, bkQ, viQ, voQ, mgtQ, hiQ);
+}
+
+void HalModule::_InitNormalChipThreeOutEpPriority_8814AUsb() {
+  /* Mirrors upstream. 8814 picks queues by wifi_spec only — does not consult
+   * OutEpQueueSel like the 8812 Three-EP variant does. */
+  uint16_t beQ, bkQ, viQ, voQ, mgtQ, hiQ;
+  if (!registry_priv::wifi_spec) {
+    beQ = QUEUE_LOW;
+    bkQ = QUEUE_LOW;
+    viQ = QUEUE_NORMAL;
+    voQ = QUEUE_HIGH;
+    mgtQ = QUEUE_HIGH;
+    hiQ = QUEUE_HIGH;
+  } else { /* WMM */
+    beQ = QUEUE_LOW;
+    bkQ = QUEUE_NORMAL;
+    viQ = QUEUE_NORMAL;
+    voQ = QUEUE_HIGH;
+    mgtQ = QUEUE_HIGH;
+    hiQ = QUEUE_HIGH;
+  }
+  _InitNormalChipRegPriority_8814AUsb(beQ, bkQ, viQ, voQ, mgtQ, hiQ);
+}
+
+void HalModule::_InitNormalChipRegPriority_8814AUsb(uint16_t beQ, uint16_t bkQ,
+                                                    uint16_t viQ, uint16_t voQ,
+                                                    uint16_t mgtQ,
+                                                    uint16_t hiQ) {
+  /* REG_TRXDMA_CTRL_8814A == REG_TRXDMA_CTRL (both 0x010C). The 8814 delta vs
+   * 8812 is the extra BIT2 set in the value word. */
+  uint16_t value16 =
+      static_cast<uint16_t>(_device.rtw_read16(REG_TRXDMA_CTRL) & 0x7);
+  value16 = static_cast<uint16_t>(
+      value16 | _TXDMA_BEQ_MAP(beQ) | _TXDMA_BKQ_MAP(bkQ) |
+      _TXDMA_VIQ_MAP(viQ) | _TXDMA_VOQ_MAP(voQ) | _TXDMA_MGQ_MAP(mgtQ) |
+      _TXDMA_HIQ_MAP(hiQ) | BIT2);
+  _device.rtw_write16(REG_TRXDMA_CTRL, value16);
 }
 
 void HalModule::_InitNormalChipTwoOutEpPriority_8812AUsb() {
@@ -906,9 +1643,57 @@ void HalModule::init_hi_queue_config_8812a_usb() {
 }
 
 void HalModule::_InitPageBoundary_8812AUsb() {
-  _device.rtw_write16((REG_TRXFF_BNDY + 2),
-                      IsRtl8821A() ? RX_DMA_BOUNDARY_8821
-                                   : RX_DMA_BOUNDARY_8812);
+  _device.rtw_write16((REG_TRXFF_BNDY + 2), RX_DMA_BOUNDARY_8812);
+}
+
+void HalModule::_InitQueueReservedPage_8814AUsb() {
+  using namespace rtl8814a;
+  /* Port of upstream _InitQueueReservedPage_8814AUsb (hal/rtl8814a/usb/
+   * usb_halinit.c). 8814 uses 32-bit FIFOPAGE_INFO regs to set per-queue
+   * page counts and 16-bit boundary registers. The 8812 8-bit REG_RQPN /
+   * REG_BCNQ_BDNY equivalents don't exist on 8814, so reusing the 8812
+   * path leaves HPQ/NPQ/LPQ with zero pages and TX bulk OUT stalls. */
+  /* 8814 has dual MAC ports — these 32-bit FIFOPAGE_INFO regs carry the
+   * per-queue page count for port 0 in the low 16 bits and port 1 in the
+   * high 16 bits. Upstream rtl8814a_hal_init.c writes the raw page count
+   * (low half only), and the OOT-driver readback shows the chip mirrors it
+   * into the high half automatically — but on our path the high half stays
+   * at 0, so MAC port 1 has zero pages allocated. Write BOTH halves
+   * explicitly to match the OOT-driver post-init state (FIFOPAGE_INFO_1 =
+   * 0x00200020, FIFOPAGE_INFO_5 = 0x07760776). */
+  auto dup16 = [](uint32_t v) -> uint32_t {
+    return (v & 0xFFFF) | ((v & 0xFFFF) << 16);
+  };
+  _device.rtw_write32(REG_FIFOPAGE_INFO_1_8814A, dup16(HPQ_PGNUM_8814A));
+  _device.rtw_write32(REG_FIFOPAGE_INFO_2_8814A, dup16(LPQ_PGNUM_8814A));
+  _device.rtw_write32(REG_FIFOPAGE_INFO_3_8814A, dup16(NPQ_PGNUM_8814A));
+  _device.rtw_write32(REG_FIFOPAGE_INFO_4_8814A, dup16(EPQ_PGNUM_8814A));
+  _device.rtw_write32(REG_FIFOPAGE_INFO_5_8814A, dup16(PUB_PGNUM_8814A));
+
+  _device.rtw_write32(REG_RQPN_CTRL_2_8814A, 0x80000000);
+
+  uint16_t txpktbuf_bndy = registry_priv::wifi_spec
+                               ? WMM_NORMAL_TX_PAGE_BOUNDARY_8814A
+                               : TX_PAGE_BOUNDARY_8814A;
+
+  _device.rtw_write16(REG_TXPKTBUF_BCNQ_BDNY_8814A, txpktbuf_bndy);
+  _device.rtw_write16(REG_TXPKTBUF_BCNQ1_BDNY_8814A, txpktbuf_bndy);
+  _device.rtw_write16(REG_MGQ_PGBNDY_8814A, txpktbuf_bndy);
+
+  /* Head page of BCNQ + BCNQ1 packets. */
+  _device.rtw_write16(REG_FIFOPAGE_CTRL_2_8814A, txpktbuf_bndy);
+  _device.rtw_write16(REG_FIFOPAGE_CTRL_2_8814A + 2, txpktbuf_bndy);
+
+  _logger->info(
+      "8814A queue reserved pages: HPQ/LPQ/NPQ/EPQ={:#x} PUB={:#x} bndy={:#x}",
+      HPQ_PGNUM_8814A, PUB_PGNUM_8814A, txpktbuf_bndy);
+}
+
+void HalModule::_InitPageBoundary_8814AUsb() {
+  using namespace rtl8814a;
+  /* Port of upstream _InitPageBoundary_8814AUsb. Single 16-bit write to
+   * REG_RXFF_PTR_8814A. The 8812 path writes REG_TRXFF_BNDY+2 instead. */
+  _device.rtw_write16(REG_RXFF_PTR_8814A, RX_DMA_BOUNDARY_8814A);
 }
 
 void HalModule::_InitTransferPageSize_8812AUsb() {
@@ -1103,6 +1888,7 @@ void HalModule::_InitBeaconMaxError_8812A() {
 
 void HalModule::_InitBurstPktLen() {
   uint8_t speedvalue, provalue, temp;
+  const bool is_8821 = _eepromManager->version_id.ICType == CHIP_8821;
 
   _device.rtw_write8(0xf050, 0x01); /* usb3 rx interval */
   _device.rtw_write16(
@@ -1111,18 +1897,20 @@ void HalModule::_InitBurstPktLen() {
   _device.rtw_write8(0x289, 0xf5); /* for rxdma control */
 
   /* 0x456 = 0x70, sugguested by Zhilin */
-  _device.rtw_write8(REG_AMPDU_MAX_TIME_8812, IsRtl8821A() ? 0x5e : 0x70);
+  _device.rtw_write8(REG_AMPDU_MAX_TIME_8812, is_8821 ? 0x5e : 0x70);
 
   _device.rtw_write32(REG_AMPDU_MAX_LENGTH_8812, 0xffffffff);
   _device.rtw_write8(REG_USTIME_TSF, 0x50);
   _device.rtw_write8(REG_USTIME_EDCA, 0x50);
 
-  // The working RTL8821AU driver forces the USB2 burst path instead of using
-  // 0xff speed detection here. Keep RTL8812 on the original detection path.
-  speedvalue = IsRtl8821A()
-                   ? BIT7
-                   : _device.rtw_read8(
-                         0xff); /* check device operation speed: SS 0xff bit7 */
+  speedvalue =
+      _device.rtw_read8(0xff); /* check device operation speed: SS 0xff bit7 */
+  if (is_8821)
+  {
+    // The working rtl8812au 8821AU path takes the USB2 branch here even when
+    // the host register does not report BIT7.
+    speedvalue = BIT7;
+  }
 
   if ((speedvalue & BIT7) != 0) {
     /* USB2/1.1 Mode */
@@ -1161,18 +1949,13 @@ void HalModule::_InitBurstPktLen() {
 
   _device.rtw_write8(REG_PIFS, 0x00);
 
-  if (IsRtl8821A() && !registry_priv::wifi_spec)
+  _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
+  _device.rtw_write8(REG_FWHW_TXQ_CTRL,
+                     (uint8_t)(_device.rtw_read8(REG_FWHW_TXQ_CTRL) & (~BIT7)));
+  if (is_8821 && !registry_priv::wifi_spec)
   {
-    _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
     _device.rtw_write8(REG_FWHW_TXQ_CTRL, 0x80);
     _device.rtw_write32(REG_FAST_EDCA_CTRL, 0x03087777);
-  }
-  else
-  {
-    _device.rtw_write16(REG_MAX_AGGR_NUM, 0x1f1f);
-    _device.rtw_write8(
-        REG_FWHW_TXQ_CTRL,
-        (uint8_t)(_device.rtw_read8(REG_FWHW_TXQ_CTRL) & (~BIT7)));
   }
 
   // AMPDUBurstMode is always false
@@ -1225,7 +2008,18 @@ bool HalModule::PHY_BBConfig8812() {
   /*  */
   /* Config BB and AGC */
   /*  */
-  auto rtStatus = phy_BB8812_Config_ParaFile();
+  bool rtStatus;
+  switch (_eepromManager->version_id.ICType) {
+  case CHIP_8814A:
+    rtStatus = phy_BB8814_Config_ParaFile();
+    break;
+  case CHIP_8821:
+    rtStatus = phy_BB8821_Config_ParaFile();
+    break;
+  default:
+    rtStatus = phy_BB8812_Config_ParaFile();
+    break;
+  }
 
   hal_set_crystal_cap(_eepromManager->crystal_cap);
 
@@ -1259,17 +2053,11 @@ bool HalModule::odm_config_bb_with_header_file(odm_bb_config_type config_type) {
   /* @1 AP doesn't use PHYDM initialization in these ICs */
 
   if (config_type == CONFIG_BB_PHY_REG) {
-    if (IsRtl8821A()) {
-      odm_read_and_config_mp_8821a_phy_reg();
-    } else {
-      odm_read_and_config_mp_8812a_phy_reg();
-    }
+    // READ_AND_CONFIG_MP(8812a, _phy_reg);
+    odm_read_and_config_mp_8812a_phy_reg();
   } else if (config_type == CONFIG_BB_AGC_TAB) {
-    if (IsRtl8821A()) {
-      odm_read_and_config_mp_8821a_agc_tab();
-    } else {
-      odm_read_and_config_mp_8812a_agc_tab();
-    }
+    // READ_AND_CONFIG_MP(8812a, _agc_tab);
+    odm_read_and_config_mp_8812a_agc_tab();
   } else if (config_type == CONFIG_BB_PHY_REG_PG) {
     throw std::logic_error(
         "odm_bb_config_type.CONFIG_BB_PHY_REG_PG not yet implemented");
@@ -1559,51 +2347,6 @@ void HalModule::odm_read_and_config_mp_8812a_phy_reg() {
   }
 }
 
-void HalModule::odm_read_and_config_mp_8821a_phy_reg() {
-  uint32_t i = 0;
-  uint8_t c_cond;
-  bool is_matched = true, is_skipped = false;
-  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_phy_reg);
-
-  uint32_t pre_v1 = 0, pre_v2 = 0;
-
-  while ((i + 1) < array_len) {
-    auto v1 = array_mp_8821a_phy_reg[i];
-    auto v2 = array_mp_8821a_phy_reg[i + 1];
-
-    if ((v1 & (BIT31 | BIT30)) != 0) {
-      if ((v1 & BIT31) != 0) {
-        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
-        if (c_cond == COND_ENDIF) {
-          is_matched = true;
-          is_skipped = false;
-        } else if (c_cond == COND_ELSE) {
-          is_matched = is_skipped ? false : true;
-        } else {
-          pre_v1 = v1;
-          pre_v2 = v2;
-        }
-      } else if ((v1 & BIT30) != 0) {
-        if (is_skipped == false) {
-          if (check_positive(pre_v1, pre_v2, v2)) {
-            is_matched = true;
-            is_skipped = true;
-          } else {
-            is_matched = false;
-            is_skipped = false;
-          }
-        } else {
-          is_matched = false;
-        }
-      }
-    } else if (is_matched) {
-      odm_config_bb_phy_8812a(v1, MASKDWORD, v2);
-    }
-
-    i = i + 2;
-  }
-}
-
 static uint32_t array_mp_8812a_agc_tab[] = {
     0x80000001, 0x00000000, 0x40000000, 0x00000000, 0x81C,      0xFC000001,
     0x81C,      0xFB020001, 0x81C,      0xFA040001, 0x81C,      0xF9060001,
@@ -1776,51 +2519,6 @@ void HalModule::odm_read_and_config_mp_8812a_agc_tab() {
   }
 }
 
-void HalModule::odm_read_and_config_mp_8821a_agc_tab() {
-  uint32_t i = 0;
-  uint8_t c_cond;
-  bool is_matched = true, is_skipped = false;
-  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_agc_tab);
-
-  uint32_t pre_v1 = 0, pre_v2 = 0;
-
-  while ((i + 1) < array_len) {
-    auto v1 = array_mp_8821a_agc_tab[i];
-    auto v2 = array_mp_8821a_agc_tab[i + 1];
-
-    if ((v1 & (BIT31 | BIT30)) != 0) {
-      if ((v1 & BIT31) != 0) {
-        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
-        if (c_cond == COND_ENDIF) {
-          is_matched = true;
-          is_skipped = false;
-        } else if (c_cond == COND_ELSE) {
-          is_matched = is_skipped ? false : true;
-        } else {
-          pre_v1 = v1;
-          pre_v2 = v2;
-        }
-      } else if ((v1 & BIT30) != 0) {
-        if (is_skipped == false) {
-          if (check_positive(pre_v1, pre_v2, v2)) {
-            is_matched = true;
-            is_skipped = true;
-          } else {
-            is_matched = false;
-            is_skipped = false;
-          }
-        } else {
-          is_matched = false;
-        }
-      }
-    } else if (is_matched) {
-      odm_config_bb_agc_8812a(v1, MASKDWORD, v2);
-    }
-
-    i = i + 2;
-  }
-}
-
 void HalModule::odm_config_bb_agc_8812a(uint32_t addr, uint32_t bitmask,
                                         uint32_t data) {
   odm_set_bb_reg(addr, bitmask, data);
@@ -1832,7 +2530,95 @@ void HalModule::PHY_RF6052_Config_8812() {
   /*  */
   /* Config BB and RF */
   /*  */
-  phy_RF6052_Config_ParaFile_8812();
+  switch (_eepromManager->version_id.ICType) {
+  case CHIP_8814A:
+    phy_RF6052_Config_ParaFile_8814();
+    break;
+  case CHIP_8821:
+    phy_RF6052_Config_ParaFile_8821();
+    break;
+  default:
+    phy_RF6052_Config_ParaFile_8812();
+    break;
+  }
+}
+
+void HalModule::phy_RF6052_Config_ParaFile_8814() {
+  /* 8814AU has 4 RF paths (3 spatial streams max). Walk each path's radio
+   * init table. */
+  for (uint8_t path = 0; path < _eepromManager->numTotalRfPath; ++path) {
+    switch (path) {
+    case RfPath::RF_PATH_A:
+      odm_read_and_config_mp_8814a_radioa();
+      break;
+    case RfPath::RF_PATH_B:
+      odm_read_and_config_mp_8814a_radiob();
+      break;
+    case RfPath::RF_PATH_C:
+      odm_read_and_config_mp_8814a_radioc();
+      break;
+    case RfPath::RF_PATH_D:
+      odm_read_and_config_mp_8814a_radiod();
+      break;
+    default:
+      break;
+    }
+  }
+  /* Verify path A/B RF reads return sensible values. NOTE: paths C/D do
+   * not support RF read-back via the standard 3-wire SI/PI mechanism on
+   * 8814 — rtw88's rtw88xxa_phy_read_rf only indexes paths A/B (rf_phy_num
+   * == 4 for 4T4R but read_addr[mode][2] is sized 2). Path C/D RF writes
+   * via phy_RFSerialWrite (LSSIW reg 0x1890/0x1A90) DO take effect once
+   * BB is powered on (verified by direct pyusb write + readback), so the
+   * radio init tables for C/D are applied. We just can't query them. */
+  if (_eepromManager->version_id.ICType == CHIP_8814A) {
+    for (uint8_t p = 0; p < 2 && p < _eepromManager->numTotalRfPath; ++p) {
+      uint32_t rf0 =
+          _radioManagementModule->phy_query_rf_reg((RfPath)p, 0x00, 0xfffff);
+      _logger->info("8814A RF path {} reg 0x00 = 0x{:05x}",
+                    static_cast<int>(p), rf0);
+    }
+  }
+}
+
+void HalModule::odm_read_and_config_mp_8814a_radioa() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(
+      array_mp_8814a_radioa, array_mp_8814a_radioa_len, ctx,
+      [this](uint32_t addr, uint32_t value) {
+        odm_config_rf_reg_8812a(addr, value, RfPath::RF_PATH_A,
+                                static_cast<uint16_t>(addr));
+      });
+}
+
+void HalModule::odm_read_and_config_mp_8814a_radiob() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(
+      array_mp_8814a_radiob, array_mp_8814a_radiob_len, ctx,
+      [this](uint32_t addr, uint32_t value) {
+        odm_config_rf_reg_8812a(addr, value, RfPath::RF_PATH_B,
+                                static_cast<uint16_t>(addr));
+      });
+}
+
+void HalModule::odm_read_and_config_mp_8814a_radioc() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(
+      array_mp_8814a_radioc, array_mp_8814a_radioc_len, ctx,
+      [this](uint32_t addr, uint32_t value) {
+        odm_config_rf_reg_8812a(addr, value, RfPath::RF_PATH_C,
+                                static_cast<uint16_t>(addr));
+      });
+}
+
+void HalModule::odm_read_and_config_mp_8814a_radiod() {
+  auto ctx = _eepromManager->GetPhyContext();
+  PhyTableLoader::Load(
+      array_mp_8814a_radiod, array_mp_8814a_radiod_len, ctx,
+      [this](uint32_t addr, uint32_t value) {
+        odm_config_rf_reg_8812a(addr, value, RfPath::RF_PATH_D,
+                                static_cast<uint16_t>(addr));
+      });
 }
 
 void HalModule::phy_RF6052_Config_ParaFile_8812() {
@@ -1860,15 +2646,11 @@ void HalModule::odm_config_rf_with_header_file(odm_rf_config_type config_type,
                                                RfPath e_rf_path) {
   if (config_type == odm_rf_config_type::CONFIG_RF_RADIO) {
     if (e_rf_path == RfPath::RF_PATH_A) {
-      if (IsRtl8821A()) {
-        odm_read_and_config_mp_8821a_radioa();
-      } else {
-        odm_read_and_config_mp_8812a_radioa();
-      }
+      // READ_AND_CONFIG_MP(8812a, _radioa);
+      odm_read_and_config_mp_8812a_radioa();
     } else if (e_rf_path == RfPath::RF_PATH_B) {
-      if (!IsRtl8821A()) {
-        odm_read_and_config_mp_8812a_radiob();
-      }
+      // READ_AND_CONFIG_MP(8812a, _radiob);
+      odm_read_and_config_mp_8812a_radiob();
     }
   }
 }
@@ -2072,51 +2854,6 @@ void HalModule::odm_read_and_config_mp_8812a_radioa() {
       if (is_matched) {
         odm_config_rf_radio_a_8812a(v1, v2);
       }
-    }
-
-    i = i + 2;
-  }
-}
-
-void HalModule::odm_read_and_config_mp_8821a_radioa() {
-  uint32_t i = 0;
-  uint8_t c_cond;
-  bool is_matched = true, is_skipped = false;
-  uint32_t array_len = ARRAY_LENGTH(array_mp_8821a_radioa);
-
-  uint32_t pre_v1 = 0, pre_v2 = 0;
-
-  while ((i + 1) < array_len) {
-    auto v1 = array_mp_8821a_radioa[i];
-    auto v2 = array_mp_8821a_radioa[i + 1];
-
-    if ((v1 & (BIT31 | BIT30)) != 0) {
-      if ((v1 & BIT31) != 0) {
-        c_cond = (uint8_t)((v1 & (BIT29 | BIT28)) >> 28);
-        if (c_cond == COND_ENDIF) {
-          is_matched = true;
-          is_skipped = false;
-        } else if (c_cond == COND_ELSE) {
-          is_matched = is_skipped ? false : true;
-        } else {
-          pre_v1 = v1;
-          pre_v2 = v2;
-        }
-      } else if ((v1 & BIT30) != 0) {
-        if (is_skipped == false) {
-          if (check_positive(pre_v1, pre_v2, v2)) {
-            is_matched = true;
-            is_skipped = true;
-          } else {
-            is_matched = false;
-            is_skipped = false;
-          }
-        } else {
-          is_matched = false;
-        }
-      }
-    } else if (is_matched) {
-      odm_config_rf_radio_a_8812a(v1, v2);
     }
 
     i = i + 2;

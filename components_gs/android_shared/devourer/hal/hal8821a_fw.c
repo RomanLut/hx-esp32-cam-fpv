@@ -13,6 +13,23 @@
  *
  *****************************************************************************/
 
+/* devourer adaptation: upstream gates this file on CONFIG_RTL8821A /
+ * LOAD_FW_HEADER_FROM_DRIVER / DM_ODM_SUPPORT_TYPE which the upstream Linux
+ * driver supplies via Kconfig. Mirror the inline defines pattern used in
+ * hal8812a_fw.c / hal8814a_fw.c so this TU is self-contained. */
+#ifndef CONFIG_RTL8821A
+#define CONFIG_RTL8821A
+#endif
+#ifndef LOAD_FW_HEADER_FROM_DRIVER
+#define LOAD_FW_HEADER_FROM_DRIVER
+#endif
+#ifndef ODM_WIN
+#define ODM_WIN 1
+#endif
+#ifndef DM_ODM_SUPPORT_TYPE
+#define DM_ODM_SUPPORT_TYPE ODM_WIN
+#endif
+
 #ifdef CONFIG_RTL8821A
 
 #include "drv_types.h"

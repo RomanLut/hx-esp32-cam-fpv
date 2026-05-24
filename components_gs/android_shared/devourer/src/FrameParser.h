@@ -34,9 +34,13 @@ typedef unsigned int u32;
 #define WriteLE2Byte(_ptr, _val) ((*((u16*)(_ptr))) = cpu_to_le16(_val))
 #define WriteLE1Byte(_ptr, _val) ((*((u8*)(_ptr))) = ((u8)(_val)))
 
+#ifndef BIT_LEN_MASK_32
 #define BIT_LEN_MASK_32(__BitLen) ((u32)(0xFFFFFFFF >> (32 - (__BitLen))))
+#endif
 
+#ifndef LE_P4BYTE_TO_HOST_4BYTE
 #define LE_P4BYTE_TO_HOST_4BYTE(__pStart) (le32_to_cpu(*((u32*)(__pStart))))
+#endif
 
 #define BIT_OFFSET_LEN_MASK_32(__BitOffset, __BitLen) ((u32)(BIT_LEN_MASK_32(__BitLen) << (__BitOffset)))
 
@@ -290,8 +294,11 @@ struct rx_pkt_attrib
     uint8_t stbc;
     uint8_t ldpc;
     uint8_t sgi;
-    uint8_t rssi[2];
-    int8_t snr[2];
+    /* RSSI / SNR per RF path: A, B (Jaguar 8812/8811) plus C, D (8814AU). On
+     * non-8814 chips the [2..3] slots are zero — the upstream RX phy-status
+     * report reserves those bytes when only 2 paths are active. */
+    uint8_t rssi[4];
+    int8_t snr[4];
     RX_PACKET_TYPE pkt_rpt_type;
 };
 

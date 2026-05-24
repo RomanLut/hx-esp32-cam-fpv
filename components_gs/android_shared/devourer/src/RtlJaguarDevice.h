@@ -1,5 +1,5 @@
-#ifndef RTL8812ADEVICE_H
-#define RTL8812ADEVICE_H
+#ifndef RTL_JAGUAR_DEVICE_H
+#define RTL_JAGUAR_DEVICE_H
 
 #include <functional>
 #include <iostream>
@@ -21,8 +21,8 @@ using Action_ParsedRadioPacket = std::function<void(const Packet&)>;
 
 //===================================================================================
 //===================================================================================
-// Owns the RTL8812/RTL8821 HAL stack and monitor-mode packet read loop.
-class Rtl8812aDevice
+// Drives bring-up, RX, and TX for Realtek Jaguar USB WiFi adapters.
+class RtlJaguarDevice
 {
   std::shared_ptr<EepromManager> _eepromManager;
   std::shared_ptr<RadioManagementModule> _radioManagement;
@@ -34,9 +34,9 @@ class Rtl8812aDevice
   Action_ParsedRadioPacket _packetProcessor = nullptr;
 
 public:
-  Rtl8812aDevice(RtlUsbAdapter device, Logger_t logger);
+  RtlJaguarDevice(RtlUsbAdapter device, Logger_t logger);
   void Init(Action_ParsedRadioPacket packetProcessor, SelectedChannel channel,
-            std::function<void()> monitorStarted = nullptr);
+            std::function<void()> started = nullptr);
   void SetMonitorChannel(SelectedChannel channel);
   void InitWrite(SelectedChannel channel);
   void SetTxPower(uint8_t power);
@@ -49,4 +49,9 @@ private:
   bool NetDevOpen(SelectedChannel selectedChannel);
 };
 
-#endif /* RTL8812ADEVICE_H */
+/* Backwards-compatibility alias. External callers using the old name still
+ * compile but get a deprecation warning. Remove after one release cycle. */
+using Rtl8812aDevice [[deprecated("renamed to RtlJaguarDevice")]] =
+    RtlJaguarDevice;
+
+#endif /* RTL_JAGUAR_DEVICE_H */

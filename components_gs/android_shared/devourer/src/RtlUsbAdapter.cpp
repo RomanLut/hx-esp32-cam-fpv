@@ -1,6 +1,7 @@
 #include "RtlUsbAdapter.h"
 
 #include <chrono>
+#include <cstdlib>
 #if defined(__ANDROID__) || defined(_MSC_VER) || defined(__APPLE__)
 #include <libusb.h>
 #else
@@ -9,7 +10,6 @@
 #include "FrameParser.h"
 #include "Hal8812PhyReg.h"
 #include "logger.h"
-#include <iomanip>
 #include <iostream>
 #include <thread>
 
@@ -21,21 +21,29 @@ using namespace std::chrono_literals;
 RtlUsbAdapter::RtlUsbAdapter(libusb_device_handle *dev_handle, Logger_t logger)
     : _dev_handle{dev_handle}, _logger{logger}
 {
+  libusb_device_descriptor desc{};
+  if (libusb_get_device_descriptor(libusb_get_device(_dev_handle), &desc) ==
+      LIBUSB_SUCCESS) {
+    _idVendor = desc.idVendor;
+    _idProduct = desc.idProduct;
+    _logger->info("USB device {:04x}:{:04x}", _idVendor, _idProduct);
+  }
+
   InitDvObj();
 
   if (usbSpeed > LIBUSB_SPEED_HIGH) // USB 3.0
   {
-      // Match the working rtl8812au USB RX aggregation settings. Smaller
-      // thresholds can leave RTL8821AU monitor traffic stuck in the RXDMA path.
-      rxagg_usb_size = 0x7;
-      rxagg_usb_timeout = 0x1a;
+    // Match the working rtl8812au USB RX aggregation settings. Smaller
+    // thresholds can leave RTL8821AU monitor traffic stuck in the RXDMA path.
+    rxagg_usb_size = 0x7;
+    rxagg_usb_timeout = 0x1a;
   }
   else
   {
-      // Working rtl8812au uses this USB2.0 setting when preallocated RX buffers
-      // are not enabled.
-      rxagg_usb_size = 0x5;
-      rxagg_usb_timeout = 0x20;
+    // Working rtl8812au uses this USB2.0 setting when preallocated RX buffers
+    // are not enabled.
+    rxagg_usb_size = 0x5;
+    rxagg_usb_timeout = 0x20;
   }
 
   GetChipOutEP8812();
@@ -51,7 +59,7 @@ RtlUsbAdapter::RtlUsbAdapter(libusb_device_handle *dev_handle, Logger_t logger)
 
 //===================================================================================
 //===================================================================================
-// Returns true when this USB ID needs the RTL8821A HAL and firmware path.
+// Returns true when this USB ID needs the local RTL8821A HAL and firmware path.
 bool RtlUsbAdapter::IsRtl8821A() const
 {
   return chipType == RtlChipType::RTL8821;
@@ -269,7 +277,7 @@ const char *RtlUsbAdapter::strUsbSpeed() {
 
 //===================================================================================
 //===================================================================================
-// Reads USB descriptors, selects the chip family, and records bulk endpoints.
+// Reads USB descriptors and records the bulk endpoints exposed by this adapter.
 void RtlUsbAdapter::InitDvObj()
 {
   libusb_device *dev = libusb_get_device(_dev_handle);
@@ -278,16 +286,17 @@ void RtlUsbAdapter::InitDvObj()
 
   libusb_device_descriptor desc;
   int ret = libusb_get_device_descriptor(dev, &desc);
-  if (ret < 0)
-  {
+  if (ret < 0) {
     return;
   }
-
+  _idVendor = desc.idVendor;
+  _idProduct = desc.idProduct;
   UsbVendorId = desc.idVendor;
   UsbProductId = desc.idProduct;
 
-  // Keep the RTL8821A USB ID split aligned with svpcom/rtl8812au
-  // v5.2.20-rssi-fix-but-sometimes-crash. 
+  // Keep the RTL8821A USB ID split aligned with the local svpcom-derived
+  // implementation. Do not route these devices through OpenIPC's partial
+  // 8821 path; it is not stable after Android replug.
   switch ((uint32_t(UsbVendorId) << 16) | UsbProductId)
   {
   case 0x0BDA0811:
@@ -321,55 +330,51 @@ void RtlUsbAdapter::InitDvObj()
     break;
   }
 
-  for (uint8_t k = 0; k < desc.bNumConfigurations; k++)
-  {
+  for (uint8_t k = 0; k < desc.bNumConfigurations; k++) {
     libusb_config_descriptor *config;
     ret = libusb_get_config_descriptor(dev, k, &config);
-    if (LIBUSB_SUCCESS != ret)
-    {
+    if (LIBUSB_SUCCESS != ret) {
       continue;
     }
 
-    if (!config->bNumInterfaces)
-    {
+    if (!config->bNumInterfaces) {
       libusb_free_config_descriptor(config);
       continue;
     }
     const libusb_interface *interface = &config->interface[0];
 
-    if (!interface->altsetting)
-    {
+    if (!interface->altsetting) {
       libusb_free_config_descriptor(config);
       continue;
     }
     const libusb_interface_descriptor *interface_desc =
         &interface->altsetting[0];
 
-    bool foundBulkIn = false;
-    for (uint8_t j = 0; j < interface_desc->bNumEndpoints; j++)
-    {
+    bool found_bulk_in = false;
+    for (uint8_t j = 0; j < interface_desc->bNumEndpoints; j++) {
       const libusb_endpoint_descriptor *endpoint = &interface_desc->endpoint[j];
       uint8_t endPointAddr = endpoint->bEndpointAddress;
-      bool isBulk = (endpoint->bmAttributes & 0b11) ==
-                    LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK;
-
-      if (isBulk && !(endPointAddr & LIBUSB_ENDPOINT_IN))
-      {
+      const bool is_bulk = (endpoint->bmAttributes & 0b11) ==
+                           LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK;
+      if (is_bulk && !(endPointAddr & LIBUSB_ENDPOINT_IN)) {
         numOutPipes++;
         _bulk_out_eps.push_back(endPointAddr);
       }
-
-      if (isBulk && (endPointAddr & LIBUSB_ENDPOINT_IN) && !foundBulkIn)
-      {
+      /* First bulk IN endpoint wins. 8812AU/8814AU expose 0x81; 8821AU's
+       * descriptor offers a different IN endpoint, so libusb's
+       * submit_bulk_transfer to 0x81 would return "endpoint not found on any
+       * open interface". Capture whatever IN endpoint the chip actually
+       * exposes and use it in infinite_read(). */
+      if (is_bulk && (endPointAddr & LIBUSB_ENDPOINT_IN) && !found_bulk_in) {
         _bulk_in_ep = endPointAddr;
-        foundBulkIn = true;
+        found_bulk_in = true;
       }
     }
-
-    if (foundBulkIn)
-    {
-      // 8821AU exposes bulk IN 0x84 on known 2357:0120 hardware. Clear any
-      // stale HALT on the discovered endpoint before the RX loop starts.
+    /* Clear any HALT state on the bulk IN endpoint. The fwdl sequence and
+     * USB reset can leave the IN EP in a stalled state from the chip side;
+     * without clear_halt the chip's USB engine would never push RX bytes
+     * even though the host's libusb_bulk_transfer succeeds at submission. */
+    if (found_bulk_in) {
       libusb_clear_halt(_dev_handle, _bulk_in_ep);
     }
 
@@ -428,25 +433,44 @@ void transfer_callback(struct libusb_transfer *transfer) {
 bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length)
 {
   libusb_transfer *transfer = libusb_alloc_transfer(0);
-  if (!transfer)
-  {
+  if (!transfer) {
     _logger->error("Failed to allocate transfer");
     return false;
   }
 
-  uint8_t txEp = !_bulk_out_eps.empty() ? _bulk_out_eps[0] : 0x02;
-  static bool firstPktSetup = true;
-  if (firstPktSetup)
+  /* TX bulk OUT endpoint selection: DEVOURER_TX_EP env override > first
+   * discovered OUT endpoint > historic 8812AU default (0x02). Computed
+   * once on first send_packet call; captures `this` to access the
+   * descriptor-walked endpoint list from InitDvObj. */
+  static const uint8_t tx_ep = [this]() -> uint8_t {
+    if (const char *ep_env = std::getenv("DEVOURER_TX_EP")) {
+      return static_cast<uint8_t>(std::strtoul(ep_env, nullptr, 0));
+    }
+    if (!_bulk_out_eps.empty()) {
+      return _bulk_out_eps[0];
+    }
+    return 0x02;
+  }();
+
+  static bool first_pkt_setup = true;
+  if (first_pkt_setup)
   {
-    firstPktSetup = false;
-    libusb_clear_halt(_dev_handle, txEp);
+    first_pkt_setup = false;
+    libusb_clear_halt(_dev_handle, tx_ep);
   }
 
-  libusb_fill_bulk_transfer(transfer, _dev_handle, txEp, packet, length,
+  libusb_fill_bulk_transfer(transfer, _dev_handle, tx_ep, packet, length,
                             transfer_callback, (void *)(_logger.get()),
                             USB_TIMEOUT);
+  /* Upstream OOT (rtl8814a/usb/rtl8814au_xmit.c) sets URB_ZERO_PACKET on
+   * every TX URB. libusb equivalent: LIBUSB_TRANSFER_ADD_ZERO_PACKET.
+   * Without it the chip's SuperSpeed bulk OUT controller can wait
+   * indefinitely for transfer-end signaling and NAK every URB until libusb
+   * cancels — matches the usbmon trace we captured: 6977 submitted URBs,
+   * every completion with status=-2 (ENOENT/cancelled), data_len=0. */
+  transfer->flags |= LIBUSB_TRANSFER_ADD_ZERO_PACKET;
   auto start = std::chrono::high_resolution_clock::now();
-  int rc = rc = libusb_submit_transfer(transfer);
+  int rc = libusb_submit_transfer(transfer);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
   if (rc == LIBUSB_SUCCESS) {
@@ -458,6 +482,28 @@ bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length)
     libusb_free_transfer(transfer);
     return false;
   }
+}
+
+int RtlUsbAdapter::bulk_send_sync(uint8_t *packet, size_t length,
+                                  int timeout_ms) {
+  return bulk_send_sync_ep(0x02, packet, length, timeout_ms);
+}
+
+int RtlUsbAdapter::bulk_send_sync_ep(uint8_t ep, uint8_t *packet, size_t length,
+                                     int timeout_ms) {
+  /* No libusb_clear_halt here. rtw88_8814au's usbmon shows the first bulk
+   * OUT is preceded by 0 CLEAR_FEATUREs; later CLEAR_FEATUREs happen during
+   * normal TX-queue operation, not the per-send hot path. Resetting the
+   * data toggle bit corrupts the chip's state machine. */
+  int actual = 0;
+  int rc = libusb_bulk_transfer(_dev_handle, ep, packet,
+                                static_cast<int>(length), &actual, timeout_ms);
+  if (rc != LIBUSB_SUCCESS) {
+    _logger->error("bulk_send EP {} FAIL rc={} got {}/{}", (int)ep, rc,
+                   actual, (int)length);
+    return rc;
+  }
+  return actual;
 }
 
 void RtlUsbAdapter::phy_set_bb_reg(uint16_t regAddr, uint32_t bitMask,

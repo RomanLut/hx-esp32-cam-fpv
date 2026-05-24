@@ -1591,6 +1591,21 @@ Java_com_esp32camfpv_androidgs_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* en
     return native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? JNI_TRUE : JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_androidgs_NativeCore_getRawBroadcastUsbAdapterCount(JNIEnv* /* env */,
+                                                                         jobject /* thiz */,
+                                                                         jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return 0;
+    }
+
+    return static_cast<jint>(
+        native_handle->transport_manager.rawBroadcastTransport().activeUsbAdapterCount());
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_esp32camfpv_androidgs_NativeCore_startWifiScanUsb(JNIEnv* /* env */,
                                                            jobject /* thiz */,
