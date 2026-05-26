@@ -22,6 +22,7 @@ namespace
 {
 
 Clock::time_point s_pending_channel_change_tp = Clock::now() + std::chrono::hours(10000);
+Clock::time_point s_raw_broadcast_control_burst_until_tp = Clock::time_point::min();
 
 //===================================================================================
 //===================================================================================
@@ -210,7 +211,11 @@ void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Co
 
     if (currentTransportKind() == gs::core::TransportKind::RawBroadcast)
     {
-        s_pending_channel_change_tp = Clock::now() + std::chrono::milliseconds(3000);
+        const Clock::time_point now = Clock::now();
+        s_pending_channel_change_tp = now + std::chrono::milliseconds(3000);
+        // Keep sending config/control packets faster until RX silence confirms
+        // the air unit changed channel and the GS adapter retune is applied.
+        s_raw_broadcast_control_burst_until_tp = Clock::time_point::max();
     }
 }
 
@@ -249,4 +254,14 @@ void processPendingRawBroadcastChannelChange(gs::core::ITransport& transport)
          s_groundstation_config.wifi_channel,
          static_cast<long long>(silence_ms));
     transport.setChannel(s_groundstation_config.wifi_channel);
+    s_raw_broadcast_control_burst_until_tp = Clock::time_point::min();
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether raw-broadcast should send control/config packets faster until
+// the deferred silence-gated channel change is applied locally.
+bool rawBroadcastControlBurstActive(Clock::time_point now)
+{
+    return now <= s_raw_broadcast_control_burst_until_tp;
 }

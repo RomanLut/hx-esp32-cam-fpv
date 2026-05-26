@@ -34,13 +34,9 @@ typedef unsigned int u32;
 #define WriteLE2Byte(_ptr, _val) ((*((u16*)(_ptr))) = cpu_to_le16(_val))
 #define WriteLE1Byte(_ptr, _val) ((*((u8*)(_ptr))) = ((u8)(_val)))
 
-#ifndef BIT_LEN_MASK_32
 #define BIT_LEN_MASK_32(__BitLen) ((u32)(0xFFFFFFFF >> (32 - (__BitLen))))
-#endif
 
-#ifndef LE_P4BYTE_TO_HOST_4BYTE
 #define LE_P4BYTE_TO_HOST_4BYTE(__pStart) (le32_to_cpu(*((u32*)(__pStart))))
-#endif
 
 #define BIT_OFFSET_LEN_MASK_32(__BitOffset, __BitLen) ((u32)(BIT_LEN_MASK_32(__BitLen) << (__BitOffset)))
 

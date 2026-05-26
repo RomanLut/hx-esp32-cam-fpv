@@ -10,17 +10,14 @@
 #include "FrameParser.h"
 #include "Hal8812PhyReg.h"
 #include "logger.h"
+#include <iomanip>
 #include <iostream>
 #include <thread>
 
 using namespace std::chrono_literals;
 
-//===================================================================================
-//===================================================================================
-// Initializes the Realtek USB adapter state from the claimed libusb device.
 RtlUsbAdapter::RtlUsbAdapter(libusb_device_handle *dev_handle, Logger_t logger)
-    : _dev_handle{dev_handle}, _logger{logger}
-{
+    : _dev_handle{dev_handle}, _logger{logger} {
   libusb_device_descriptor desc{};
   if (libusb_get_device_descriptor(libusb_get_device(_dev_handle), &desc) ==
       LIBUSB_SUCCESS) {
@@ -33,17 +30,13 @@ RtlUsbAdapter::RtlUsbAdapter(libusb_device_handle *dev_handle, Logger_t logger)
 
   if (usbSpeed > LIBUSB_SPEED_HIGH) // USB 3.0
   {
-    // Match the working rtl8812au USB RX aggregation settings. Smaller
-    // thresholds can leave RTL8821AU monitor traffic stuck in the RXDMA path.
-    rxagg_usb_size = 0x7;
-    rxagg_usb_timeout = 0x1a;
-  }
-  else
-  {
-    // Working rtl8812au uses this USB2.0 setting when preallocated RX buffers
-    // are not enabled.
-    rxagg_usb_size = 0x5;
-    rxagg_usb_timeout = 0x20;
+      rxagg_usb_size = 0x3; // 16KB
+      rxagg_usb_timeout = 0x01;
+  } else {
+      /* the setting to reduce RX FIFO overflow on USB2.0 and increase rx
+     * throughput */
+      rxagg_usb_size = 0x1; // 8KB
+      rxagg_usb_timeout = 0x01;
   }
 
   GetChipOutEP8812();
@@ -55,14 +48,6 @@ RtlUsbAdapter::RtlUsbAdapter(libusb_device_handle *dev_handle, Logger_t logger)
   _logger->info("Boot from {}, Autoload {} !",
                 EepromOrEfuse ? "EEPROM" : "EFUSE",
                 (AutoloadFailFlag ? "Fail" : "OK"));
-}
-
-//===================================================================================
-//===================================================================================
-// Returns true when this USB ID needs the local RTL8821A HAL and firmware path.
-bool RtlUsbAdapter::IsRtl8821A() const
-{
-  return chipType == RtlChipType::RTL8821;
 }
 
 /*
@@ -79,12 +64,8 @@ $ lsusb -v -d 0bda:8812
         bInterval               0
 */
 
-//===================================================================================
-//===================================================================================
-// Reads pending packets from the adapter bulk IN endpoint and parses RX frames.
-std::vector<Packet> RtlUsbAdapter::infinite_read()
-{
-  static constexpr int BUF_SIZE = 32 * 1024;
+std::vector<Packet> RtlUsbAdapter::infinite_read() {
+  static constexpr int BUF_SIZE = 16 * 1024;
   uint8_t buffer[BUF_SIZE] = {};
   int actual_length = 0;
   int rc;
@@ -92,10 +73,18 @@ std::vector<Packet> RtlUsbAdapter::infinite_read()
   rc = libusb_bulk_transfer(_dev_handle, _bulk_in_ep, buffer, sizeof(buffer),
                             &actual_length, USB_TIMEOUT * 10);
 
-  if (rc < 0 || actual_length <= 0)
-  {
-    std::this_thread::sleep_for(50ms);
-    return {};
+  if (rc < 0) {
+    /* Rate-limit the error log: a fast-failing rc (e.g. LIBUSB_ERROR_NO_DEVICE
+     * after the chip dropped off USB) used to spin the outer Init() loop at
+     * full CPU, producing multi-GB log spam in a few seconds. Log every
+     * Nth failure + sleep enough to keep the loop sane until the caller's
+     * should_stop fires. */
+    static uint64_t err_count = 0;
+    if ((err_count++ % 100) == 0) {
+      _logger->error("libusb_bulk_transfer failed with error: {} (count={})",
+                     rc, err_count);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
   std::vector<Packet> packets;
@@ -275,11 +264,7 @@ const char *RtlUsbAdapter::strUsbSpeed() {
   }
 }
 
-//===================================================================================
-//===================================================================================
-// Reads USB descriptors and records the bulk endpoints exposed by this adapter.
-void RtlUsbAdapter::InitDvObj()
-{
+void RtlUsbAdapter::InitDvObj() {
   libusb_device *dev = libusb_get_device(_dev_handle);
   usbSpeed = (enum libusb_speed)libusb_get_device_speed(dev);
   _logger->info("Running USB bus at {}", strUsbSpeed());
@@ -288,46 +273,6 @@ void RtlUsbAdapter::InitDvObj()
   int ret = libusb_get_device_descriptor(dev, &desc);
   if (ret < 0) {
     return;
-  }
-  _idVendor = desc.idVendor;
-  _idProduct = desc.idProduct;
-  UsbVendorId = desc.idVendor;
-  UsbProductId = desc.idProduct;
-
-  // Keep the RTL8821A USB ID split aligned with the local svpcom-derived
-  // implementation. Do not route these devices through OpenIPC's partial
-  // 8821 path; it is not stable after Android replug.
-  switch ((uint32_t(UsbVendorId) << 16) | UsbProductId)
-  {
-  case 0x0BDA0811:
-  case 0x0BDA0821:
-  case 0x0BDA8822:
-  case 0x0BDAA811:
-  case 0x0BDA0820:
-  case 0x0BDA0823:
-  case 0x04110242:
-  case 0x0411029B:
-  case 0x04BB0953:
-  case 0x056E4007:
-  case 0x056E400E:
-  case 0x056E400F:
-  case 0x08469052:
-  case 0x0E660023:
-  case 0x20013314:
-  case 0x20013318:
-  case 0x2019AB32:
-  case 0x2357011E:
-  case 0x23570120:
-  case 0x23570122:
-  case 0x38236249:
-  case 0x7392A811:
-  case 0x7392A812:
-  case 0x7392A813:
-    chipType = RtlChipType::RTL8821;
-    break;
-  default:
-    chipType = RtlChipType::RTL8812;
-    break;
   }
 
   for (uint8_t k = 0; k < desc.bNumConfigurations; k++) {
@@ -338,13 +283,11 @@ void RtlUsbAdapter::InitDvObj()
     }
 
     if (!config->bNumInterfaces) {
-      libusb_free_config_descriptor(config);
       continue;
     }
     const libusb_interface *interface = &config->interface[0];
 
     if (!interface->altsetting) {
-      libusb_free_config_descriptor(config);
       continue;
     }
     const libusb_interface_descriptor *interface_desc =
@@ -356,6 +299,11 @@ void RtlUsbAdapter::InitDvObj()
       uint8_t endPointAddr = endpoint->bEndpointAddress;
       const bool is_bulk = (endpoint->bmAttributes & 0b11) ==
                            LIBUSB_ENDPOINT_TRANSFER_TYPE_BULK;
+      _logger->info("endpoint[{}]: addr=0x{:X} attrs=0x{:X} bulk={} in={}",
+                    (int)j, (int)endPointAddr, (int)endpoint->bmAttributes,
+                    is_bulk ? 1 : 0,
+                    (endPointAddr & LIBUSB_ENDPOINT_IN) ? 1 : 0);
+
       if (is_bulk && !(endPointAddr & LIBUSB_ENDPOINT_IN)) {
         numOutPipes++;
         _bulk_out_eps.push_back(endPointAddr);
@@ -368,14 +316,26 @@ void RtlUsbAdapter::InitDvObj()
       if (is_bulk && (endPointAddr & LIBUSB_ENDPOINT_IN) && !found_bulk_in) {
         _bulk_in_ep = endPointAddr;
         found_bulk_in = true;
+        _logger->info("selected bulk IN endpoint: 0x{:X}", (int)_bulk_in_ep);
       }
+    }
+    if (!_bulk_out_eps.empty()) {
+      std::string ep_list;
+      for (auto ep : _bulk_out_eps) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "0x%02X ", ep);
+        ep_list += buf;
+      }
+      _logger->info("bulk OUT endpoints: {}", ep_list);
     }
     /* Clear any HALT state on the bulk IN endpoint. The fwdl sequence and
      * USB reset can leave the IN EP in a stalled state from the chip side;
      * without clear_halt the chip's USB engine would never push RX bytes
      * even though the host's libusb_bulk_transfer succeeds at submission. */
     if (found_bulk_in) {
-      libusb_clear_halt(_dev_handle, _bulk_in_ep);
+      int hr = libusb_clear_halt(_dev_handle, _bulk_in_ep);
+      _logger->info("libusb_clear_halt(bulk IN 0x{:X}) rc={}", (int)_bulk_in_ep,
+                    hr);
     }
 
     libusb_free_config_descriptor(config);
@@ -427,11 +387,8 @@ void transfer_callback(struct libusb_transfer *transfer) {
   libusb_free_transfer(transfer);
 }
 
-//===================================================================================
-//===================================================================================
-// Submits one packet to the selected bulk OUT endpoint.
-bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length)
-{
+bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length) {
+
   libusb_transfer *transfer = libusb_alloc_transfer(0);
   if (!transfer) {
     _logger->error("Failed to allocate transfer");
@@ -452,11 +409,42 @@ bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length)
     return 0x02;
   }();
 
-  static bool first_pkt_setup = true;
-  if (first_pkt_setup)
-  {
-    first_pkt_setup = false;
-    libusb_clear_halt(_dev_handle, tx_ep);
+  /* On the FIRST send only, dump the bulk-OUT bytes to compare against
+   * the OOT-driver wire trace. */
+  static bool first_pkt_dump = true;
+  if (first_pkt_dump) {
+    first_pkt_dump = false;
+    /* Clear any HALT state on the TX EP. The fwdl process can leave the
+     * TX EP in a stalled state from the chip side; without clear_halt the
+     * USB controller would NAK every subsequent bulk OUT URB. */
+    int chr = libusb_clear_halt(_dev_handle, tx_ep);
+    _logger->info("libusb_clear_halt(EP 0x{:02X}) rc={}", (int)tx_ep, chr);
+    size_t dump_len = std::min<size_t>(length, 64);
+    char hex[64 * 2 + 1] = {0};
+    for (size_t k = 0; k < dump_len; ++k) {
+      static const char hd[] = "0123456789abcdef";
+      hex[2*k]   = hd[packet[k] >> 4];
+      hex[2*k+1] = hd[packet[k] & 0xF];
+    }
+    _logger->info("first TX bulk-OUT len={} bytes: {}", length, hex);
+  }
+
+  /* On the FIRST send only, dump chip state via vendor reads. Surfaces any
+   * register clobber between init-end and first TX (e.g. SetMonitorChannel
+   * could be resetting REG_CR or related). */
+  static bool first_dump = true;
+  if (first_dump) {
+    first_dump = false;
+    uint16_t cr = rtw_read16(0x0100);
+    uint8_t txpause = rtw_read8(0x0522);
+    uint32_t txdma_off_chk = rtw_read32(0x020C);
+    uint32_t fwhw_txq = rtw_read32(0x0420);
+    uint32_t mcufwdl = rtw_read32(0x0080);
+    uint32_t hci_susp = rtw_read32(0xFE10);  /* USB_HCPWM / USB suspend ctrl */
+    _logger->info("pre-1st-TX: CR=0x{:04x} TXPAUSE=0x{:02x} TXDMA_OFFC=0x{:08x}",
+                  cr, txpause, txdma_off_chk);
+    _logger->info("pre-1st-TX: FWHW_TXQ=0x{:08x} MCUFWDL=0x{:08x} HCIPWR=0x{:08x}",
+                  fwhw_txq, mcufwdl, hci_susp);
   }
 
   libusb_fill_bulk_transfer(transfer, _dev_handle, tx_ep, packet, length,
@@ -470,7 +458,7 @@ bool RtlUsbAdapter::send_packet(uint8_t *packet, size_t length)
    * every completion with status=-2 (ENOENT/cancelled), data_len=0. */
   transfer->flags |= LIBUSB_TRANSFER_ADD_ZERO_PACKET;
   auto start = std::chrono::high_resolution_clock::now();
-  int rc = libusb_submit_transfer(transfer);
+  int rc = rc = libusb_submit_transfer(transfer);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> elapsed = end - start;
   if (rc == LIBUSB_SUCCESS) {
@@ -503,6 +491,7 @@ int RtlUsbAdapter::bulk_send_sync_ep(uint8_t ep, uint8_t *packet, size_t length,
                    actual, (int)length);
     return rc;
   }
+  _logger->info("bulk_send EP {} OK {} bytes", (int)ep, actual);
   return actual;
 }
 

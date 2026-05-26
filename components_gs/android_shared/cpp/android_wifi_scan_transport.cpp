@@ -154,7 +154,6 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     }
 
     LOGI("Started RTL adapter fd={}", fd);
-    m_monitor_started.store(false, std::memory_order_relaxed);
 
     // USB event pump thread.
     // Android can report a USB detach while libusb is still servicing callbacks,
@@ -240,11 +239,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 
                     accumulateAirtime(frame_bytes, rate_500kbps);
                 },
-                makeSelectedChannel(initial_channel),
-                [this]()
-                {
-                    m_monitor_started.store(true, std::memory_order_release);
-                });
+                makeSelectedChannel(initial_channel));
         }
         catch (const std::exception& ex)
         {
@@ -274,6 +269,11 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         }
     });
 
+    // Devourer Init() is blocking and has no queryable "monitor mode ready"
+    // state. Delay external retunes long enough for its initial channel setup
+    // to finish, otherwise SetMonitorChannel() can race driver bring-up.
+    m_channel_switch_ready_time = Clock::now() + std::chrono::seconds(1);
+
     // Channel-switch thread: applies m_nextChannel requests asynchronously so
     // that setMonitorChannel() never blocks the GS processing / render thread.
     m_chSwitchStop.store(false);
@@ -291,8 +291,9 @@ void AndroidWifiScanTransport::channelSwitchLoop()
 
     while (!m_chSwitchStop.load(std::memory_order_relaxed))
     {
+        const Clock::time_point now = Clock::now();
         const int wanted = m_nextChannel.load(std::memory_order_relaxed);
-        if (!m_monitor_started.load(std::memory_order_acquire))
+        if (now < m_channel_switch_ready_time)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;

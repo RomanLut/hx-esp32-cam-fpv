@@ -70,6 +70,7 @@ private:
         libusb_device_handle* usb_handle = nullptr;
         int fd = -1;
         size_t index = 0;
+        Clock::time_point channel_change_ready_time = Clock::time_point::min();
         std::atomic<uint32_t> all_frame_count = {0};
         std::atomic<uint32_t> filtered_frame_count = {0};
         std::atomic<int> best_input_dbm = {std::numeric_limits<int>::lowest()};

@@ -221,9 +221,7 @@ int ieee80211_radiotap_iterator_init(
   iterator->_bitmap_shifter = get_unaligned_le32(&radiotap_header->it_present);
   iterator->_arg = (uint8_t *)radiotap_header + sizeof(*radiotap_header);
   iterator->_reset_on_ext = 0;
-  iterator->_next_bitmap =
-      (__le32 *)((uint8_t *)radiotap_header +
-                 offsetof(struct ieee80211_radiotap_header, it_present));
+  iterator->_next_bitmap = &radiotap_header->it_present; // NOLINT(clang-diagnostic-address-of-packed-member)
   iterator->_next_bitmap++;
   iterator->_vns = vns;
   iterator->current_namespace = &radiotap_ns;

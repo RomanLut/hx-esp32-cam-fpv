@@ -31,16 +31,7 @@ enum TxSele {
   TX_SELE_EQ = 1 << (3), /* Extern Queue */
 };
 
-enum class RtlChipType {
-  RTL8812,
-  RTL8821,
-};
-
-//===================================================================================
-//===================================================================================
-// Wraps a claimed Realtek USB WiFi adapter and exposes register/RX/TX helpers.
-class RtlUsbAdapter
-{
+class RtlUsbAdapter {
   libusb_device_handle *_dev_handle;
   Logger_t _logger;
 
@@ -57,7 +48,6 @@ class RtlUsbAdapter
    * 0x09. send_packet picks index 0 (HQ-equivalent) by default; DEVOURER_TX_EP
    * env override still wins for diagnostic bisection. */
   std::vector<uint8_t> _bulk_out_eps;
-  RtlChipType chipType = RtlChipType::RTL8812;
 
   uint16_t _idVendor = 0;
   uint16_t _idProduct = 0;
@@ -68,15 +58,12 @@ public:
   uint16_t idVendor() const { return _idVendor; }
   uint16_t idProduct() const { return _idProduct; }
 
-  uint16_t UsbVendorId = 0;
-  uint16_t UsbProductId = 0;
   bool AutoloadFailFlag = false;
   bool EepromOrEfuse = false;
   uint8_t OutEpQueueSel;
   uint8_t OutEpNumber;
   uint8_t rxagg_usb_size;
   uint8_t rxagg_usb_timeout;
-  bool IsRtl8821A() const;
   bool send_packet(uint8_t* packet, size_t length);
   /* Synchronous bulk-OUT transfer that blocks until completion or timeout.
    * Returns the number of bytes actually transferred, or negative on error. */

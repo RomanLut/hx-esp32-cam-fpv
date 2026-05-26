@@ -761,7 +761,11 @@ void pumpSharedControlPacketLocked(NativeHandle& handle, Clock::time_point now)
         return;
     }
 
-    if (now - handle.last_control_packet_tp < std::chrono::milliseconds(500))
+    const Clock::duration control_packet_period =
+        rawBroadcastControlBurstActive(now)
+            ? std::chrono::milliseconds(100)
+            : std::chrono::milliseconds(500);
+    if (now - handle.last_control_packet_tp < control_packet_period)
     {
         return;
     }

@@ -24,22 +24,12 @@
 #define le16_to_cpu(x) ((__u16)(x))
 
 
-#ifndef LE_BITS_TO_4BYTE
 #define LE_BITS_TO_4BYTE(__pStart, __BitOffset, __BitLen)                      \
   ((LE_P4BYTE_TO_HOST_4BYTE(__pStart) >> (__BitOffset)) &                      \
    BIT_LEN_MASK_32(__BitLen))
-#endif
-
-#ifndef LE_P4BYTE_TO_HOST_4BYTE
 #define LE_P4BYTE_TO_HOST_4BYTE(__pStart) (le32_to_cpu(*((u32 *)(__pStart))))
-#endif
-
-#ifndef BIT_LEN_MASK_32
 #define BIT_LEN_MASK_32(__BitLen) ((u32)(0xFFFFFFFF >> (32 - (__BitLen))))
-#endif
 
-#ifndef ReadLE2Byte
 #define ReadLE2Byte(_ptr) le16_to_cpu(*((u16 *)(_ptr)))
-#endif
 
 #endif /* BASIC_TYPES_H */

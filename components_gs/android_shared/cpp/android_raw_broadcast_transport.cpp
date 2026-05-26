@@ -445,11 +445,26 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
         return;
     }
 
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
     {
         try
         {
+            if (!adapter->device || adapter->device->should_stop)
+            {
+                continue;
+            }
+
+            const Clock::time_point now = Clock::now();
+            if (now < adapter->channel_change_ready_time)
+            {
+                // Devourer Init() applies the initial channel internally before
+                // entering its blocking RX loop. A menu retune during that bring-up
+                // window can race the driver and leave the adapter on the old
+                // channel, so delay only this immediate manual retune.
+                std::this_thread::sleep_until(adapter->channel_change_ready_time);
+            }
+
+            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
             if (!adapter->device || adapter->device->should_stop)
             {
                 continue;
@@ -751,6 +766,11 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
             }
         }
     });
+
+    // Devourer Init() runs on the RX thread and has no externally visible
+    // readiness state. Hold off immediate menu-triggered retunes briefly so
+    // they don't race the initial monitor/channel setup.
+    adapter->channel_change_ready_time = Clock::now() + std::chrono::seconds(1);
 
     return true;
 }
