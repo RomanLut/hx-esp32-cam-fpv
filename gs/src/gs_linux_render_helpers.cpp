@@ -18,6 +18,9 @@
 #include "core/osd_menu_controller.h"
 #include "Log.h"
 
+//===================================================================================
+//===================================================================================
+// Handles Linux-only render hotkeys and delegates shared hotkeys to common helpers.
 void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
 {
     if (gs::calibration::handleCalibrationKeysFromImGui())
@@ -46,49 +49,9 @@ void handleRenderHotkeys(Ground2Air_Config_Packet& config, bool ignore_keys)
         }
     }
 
-    bool reset_resolution = false;
-    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_LeftArrow))
+    if (!ignore_keys && gs::runtime::handleResolutionCycleKeysFromImGui(config))
     {
-        bool found = false;
-        for (int i = 0; i < gs::menu::getResolutionCycleSize(); i++)
-        {
-            if (config.camera.resolution == gs::menu::getResolutionCycleValue(i))
-            {
-                if (i != 0)
-                {
-                    config.camera.resolution = gs::menu::getResolutionCycleValue(i - 1);
-                    commitGround2AirConfig(config);
-                }
-                found = true;
-                break;
-            }
-        }
-        reset_resolution |= !found;
-    }
-
-    if (!ignore_keys && ImGui::IsKeyPressed(ImGuiKey_RightArrow))
-    {
-        bool found = false;
-        for (int i = 0; i < gs::menu::getResolutionCycleSize(); i++)
-        {
-            if (config.camera.resolution == gs::menu::getResolutionCycleValue(i))
-            {
-                if (i != gs::menu::getResolutionCycleSize() - 1)
-                {
-                    config.camera.resolution = gs::menu::getResolutionCycleValue(i + 1);
-                    commitGround2AirConfig(config);
-                }
-                found = true;
-                break;
-            }
-        }
-        reset_resolution |= !found;
-    }
-
-    if (reset_resolution)
-    {
-        config.camera.resolution = gs::menu::getDefaultCyclingResolution();
-        commitGround2AirConfig(config);
+        return;
     }
 
     if (ImGui::IsKeyPressed(ImGuiKey_1, false))
