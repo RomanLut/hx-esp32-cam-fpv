@@ -201,17 +201,17 @@ std::vector<std::string> AndroidRawBroadcastTransport::copyInterfaceStatusLines(
     std::vector<std::string> lines;
     std::lock_guard<std::mutex> lock(m_mutex);
     lines.reserve(m_usb_adapters.size());
-    const std::string selected_tx_interface =
-        m_tx_descriptor.interface.empty() ? s_groundstation_config.txInterface
-                                          : m_tx_descriptor.interface;
+    const RtlJaguarDevice* tx_device = txDeviceLocked().get();
 
     for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
     {
+        if (!adapter->device || adapter->device->should_stop)
+        {
+            continue;
+        }
+
         const std::string label = rawUsbAdapterLabel(adapter->index);
-        const bool is_selected_tx =
-            (selected_tx_interface == "auto" && adapter->index == 0) ||
-            selected_tx_interface == label ||
-            (selected_tx_interface.empty() && adapter->index == 0);
+        const bool is_selected_tx = adapter->device.get() == tx_device;
         lines.push_back(label + ": available" + (is_selected_tx ? " (TX)" : ""));
     }
 
@@ -332,12 +332,10 @@ void AndroidRawBroadcastTransport::reset_rx_state()
 // Sends one GS session payload as a single raw-broadcast transport packet.
 void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* flush */)
 {
-    std::shared_ptr<RtlJaguarDevice> device;
     std::vector<std::vector<uint8_t>> packets_to_send;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        device = txDeviceLocked();
-        if (!device || data == nullptr || size == 0)
+        if (!txDeviceLocked() || data == nullptr || size == 0)
         {
             return;
         }
@@ -416,7 +414,7 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
 
     for (const std::vector<uint8_t>& packet : packets_to_send)
     {
-        sendRawPacket(device, packet);
+        sendRawPacketWithFailover(packet);
     }
 }
 
@@ -850,7 +848,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<Us
 bool AndroidRawBroadcastTransport::isUsbAdapterRunning() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return !m_usb_adapters.empty();
+    return txDeviceLocked() != nullptr;
 }
 
 //===================================================================================
@@ -874,7 +872,15 @@ size_t AndroidRawBroadcastTransport::activeUsbAdapterCount() const
 int AndroidRawBroadcastTransport::activeUsbFd() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_usb_adapters.empty() ? -1 : m_usb_adapters.front()->fd;
+    for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
+    {
+        if (adapter && adapter->device && !adapter->device->should_stop)
+        {
+            return adapter->fd;
+        }
+    }
+
+    return -1;
 }
 
 //===================================================================================
@@ -890,14 +896,10 @@ void AndroidRawBroadcastTransport::setTransportPacketCallback(
 
 //===================================================================================
 //===================================================================================
-// Returns the first active adapter device used for ground-to-air TX.
-std::shared_ptr<RtlJaguarDevice> AndroidRawBroadcastTransport::txDeviceLocked() const
+// Returns the selected active adapter device used for ground-to-air TX.
+std::shared_ptr<RtlJaguarDevice> AndroidRawBroadcastTransport::txDeviceLocked(
+    const RtlJaguarDevice* excluded_device) const
 {
-    if (m_usb_adapters.empty())
-    {
-        return nullptr;
-    }
-
     const std::string selected_tx_interface =
         m_tx_descriptor.interface.empty() ? s_groundstation_config.txInterface
                                           : m_tx_descriptor.interface;
@@ -905,16 +907,30 @@ std::shared_ptr<RtlJaguarDevice> AndroidRawBroadcastTransport::txDeviceLocked() 
     {
         for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
-            if (selected_tx_interface == rawUsbAdapterLabel(adapter->index))
+            if (selected_tx_interface == rawUsbAdapterLabel(adapter->index) &&
+                adapter->device &&
+                !adapter->device->should_stop &&
+                adapter->device.get() != excluded_device)
             {
                 return adapter->device;
             }
         }
     }
 
-    // A selected adapter can be unplugged. Keep the control link alive by using
-    // the first remaining device until the user changes the menu selection.
-    return m_usb_adapters.front()->device;
+    // Hot-unplug can stop the selected adapter before Java restarts the native
+    // adapter set. Keep the control link alive by transmitting on any remaining
+    // active adapter during that window.
+    for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
+    {
+        if (adapter->device &&
+            !adapter->device->should_stop &&
+            adapter->device.get() != excluded_device)
+        {
+            return adapter->device;
+        }
+    }
+
+    return nullptr;
 }
 
 //===================================================================================
@@ -1000,6 +1016,42 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<RtlJaguar
     }
 
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Sends one raw packet and retries on another adapter if the selected device disappears.
+bool AndroidRawBroadcastTransport::sendRawPacketWithFailover(const std::vector<uint8_t>& packet)
+{
+    std::shared_ptr<RtlJaguarDevice> device;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        device = txDeviceLocked();
+    }
+
+    if (!device)
+    {
+        return false;
+    }
+
+    if (sendRawPacket(device, packet))
+    {
+        return true;
+    }
+
+    std::shared_ptr<RtlJaguarDevice> fallback_device;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        fallback_device = txDeviceLocked(device.get());
+    }
+
+    if (!fallback_device)
+    {
+        return false;
+    }
+
+    LOGW("Retrying raw TX packet on fallback adapter after selected adapter stopped");
+    return sendRawPacket(fallback_device, packet);
 }
 
 //===================================================================================

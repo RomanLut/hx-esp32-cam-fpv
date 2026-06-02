@@ -79,12 +79,13 @@ private:
     void buildRadiotapHeaderLocked();
     void resetTxAssemblerLocked();
     bool sendRawPacket(const std::shared_ptr<RtlJaguarDevice>& device, const std::vector<uint8_t>& packet);
+    bool sendRawPacketWithFailover(const std::vector<uint8_t>& packet);
     void queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
                              const uint8_t* data,
                              size_t size,
                              int input_dbm);
     void stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter);
-    std::shared_ptr<RtlJaguarDevice> txDeviceLocked() const;
+    std::shared_ptr<RtlJaguarDevice> txDeviceLocked(const RtlJaguarDevice* excluded_device = nullptr) const;
 
     mutable std::mutex m_mutex;
     mutable std::mutex m_stop_mutex;
