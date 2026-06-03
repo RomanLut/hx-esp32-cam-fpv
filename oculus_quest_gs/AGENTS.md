@@ -5,16 +5,16 @@ deployment rule (Quest):
   3. install with `adb install -r ...`
   4. launch
   5. verify the app is actually running:
-     - check `pidof com.esp32camfpv.androidgs`
-     - check `dumpsys activity activities` shows `com.esp32camfpv.androidgs/.MainActivity` as resumed
+     - check `pidof com.esp32camfpv.questgs`
+     - check `dumpsys activity activities` shows `com.esp32camfpv.questgs/.MainActivity` as resumed
      - do not report "started" unless both checks pass
 - deployment steps 1–5 must be executed sequentially, never in parallel
 - never run `install` and `launch` in parallel
 - the Quest does not have Samsung Dual App profiles, so plain `adb install -r` is fine
 
 package / activity:
-- package: `com.esp32camfpv.androidgs`
-- activity: `com.esp32camfpv.androidgs/.MainActivity`
+- package: `com.esp32camfpv.questgs`
+- activity: `com.esp32camfpv.questgs/.MainActivity`
 
 windows adb path:
 - `C:\Users\roman\AppData\Local\Android\Sdk\platform-tools\adb.exe`

@@ -1,4 +1,4 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.questgs
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -274,7 +274,7 @@ class WifiScanUsbController(
 
     private companion object {
         const val LOG_TAG = "WifiScanUsb"
-        const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.WIFI_SCAN_USB_PERMISSION"
+        const val ACTION_USB_PERMISSION = "com.esp32camfpv.questgs.WIFI_SCAN_USB_PERMISSION"
         const val USB_TOPOLOGY_RESTART_DEBOUNCE_MS = 5_000L
     }
 }

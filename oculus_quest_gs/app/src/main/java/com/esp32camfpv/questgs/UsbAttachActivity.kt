@@ -1,4 +1,4 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.questgs
 
 import android.content.Intent
 import android.os.Bundle

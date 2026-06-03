@@ -1252,13 +1252,13 @@ QuestOpenXrRuntime g_runtime;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_startOpenXr(JNIEnv* env, jobject /*thiz*/, jobject activity)
+Java_com_esp32camfpv_questgs_NativeCore_startOpenXr(JNIEnv* env, jobject /*thiz*/, jobject activity)
 {
     return g_runtime.start(env, activity) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_stopOpenXr(JNIEnv* env, jobject /*thiz*/)
+Java_com_esp32camfpv_questgs_NativeCore_stopOpenXr(JNIEnv* env, jobject /*thiz*/)
 {
     g_runtime.stop(env);
 }
