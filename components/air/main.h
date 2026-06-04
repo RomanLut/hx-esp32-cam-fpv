@@ -25,42 +25,40 @@
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 
-/*
 #define UART_MSP_OSD UART_NUM_2
 #define UART2_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART2_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
-*/
+
 
 #define CAMERA_MODEL_AI_THINKER
 
+//--- SD CARD  in MMC mode ---
 //With MMC mode we have 2x beter speed and free pin for UART2
-//#define DVR_SUPPORT
-//#define SD_CARD_MMC
-//pins are default unless CONFIG_SDMMC_USE_GPIO_MATRIX=y is specified
-//#define SD_CLK_PIN     GPIO_NUM_14
-//#define SD_CMD_PIN     GPIO_NUM_15
-//#define SD_D0_PIN      GPIO_NUM_2
+#define DVR_SUPPORT
+#define SD_CARD_MMC
+//pins are default unless CONFIG_SDMMC_USE_GPIO_MATRIX=y is specified, CLK_PIN = GPIO_NUM_14, CMD = GPIO_NUM_15, D = GPIO_NUM_2
+//-----------------------------
 
+//--- SD Card in SPI mode -----
 //Conflicts with UART2 (pin 13)
 //Conflicts with BOOT pin (pin 2)
 //requires 10k pullups on MOSI, MISO, CS
 //2x slower compared to MMC mode
-#define DVR_SUPPORT
-#define SD_CARD_SPI
-#define SD_CS_PIN      GPIO_NUM_13
-#define SD_CLK_PIN     GPIO_NUM_14
-#define SD_DI_PIN      GPIO_NUM_15
-#define SD_DO_PIN      GPIO_NUM_2
+//#define DVR_SUPPORT
+//#define SD_CARD_SPI
+//#define SD_CS_PIN      GPIO_NUM_13
+//#define SD_CLK_PIN     GPIO_NUM_14
+//#define SD_DI_PIN      GPIO_NUM_15
+//#define SD_DO_PIN      GPIO_NUM_2
+//-----------------------------
 
 #define INIT_UART_0
 #ifdef USBUART_DEBUG_OUTPUT
 #define TXD0_PIN    1
 #define RXD0_PIN    3
 #else
-//#define TXD0_PIN    33
-//#define RXD0_PIN    33
-#define TXD0_PIN    UART_PIN_NO_CHANGE
-#define RXD0_PIN    UART_PIN_NO_CHANGE
+#define TXD0_PIN    33
+#define RXD0_PIN    33
 #endif
 
 #define UART0_BAUDRATE 115200
@@ -76,12 +74,11 @@
 
 #define UART1_BAUDRATE 115200
 
-/*
 #define INIT_UART_2
 #define TXD2_PIN    12   //should be low at boot!!!
 #define RXD2_PIN    13 
 #define UART2_BAUDRATE 115200
-*/
+
 
 #define STATUS_LED_PIN GPIO_NUM_33
 #define STATUS_LED_ON 0
