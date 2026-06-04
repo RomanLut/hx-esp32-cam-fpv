@@ -290,8 +290,11 @@ struct rx_pkt_attrib
     uint8_t stbc;
     uint8_t ldpc;
     uint8_t sgi;
-    uint8_t rssi[2];
-    int8_t snr[2];
+    /* RSSI / SNR per RF path: A, B (Jaguar 8812/8811) plus C, D (8814AU). On
+     * non-8814 chips the [2..3] slots are zero — the upstream RX phy-status
+     * report reserves those bytes when only 2 paths are active. */
+    uint8_t rssi[4];
+    int8_t snr[4];
     RX_PACKET_TYPE pkt_rpt_type;
 };
 

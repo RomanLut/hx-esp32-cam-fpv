@@ -6,7 +6,7 @@
 #include <thread>
 
 #include "gs_wifi_scan_transport.h"
-#include "devourer/src/Rtl8812aDevice.h"
+#include "devourer/src/RtlJaguarDevice.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
 
@@ -53,15 +53,17 @@ private:
     Clock::time_point           m_activate_time   = Clock::time_point::min();
     mutable std::mutex          m_mutex;
     std::mutex                  m_stop_mutex;
-    std::shared_ptr<Rtl8812aDevice> m_device;
+    std::shared_ptr<RtlJaguarDevice> m_device;
     std::unique_ptr<WiFiDriver> m_wifi_driver;
     Logger_t                    m_devourer_logger;
+    Clock::time_point           m_last_adapter_transition_time = Clock::time_point::min();
     std::unique_ptr<std::thread> m_usb_event_thread;
     std::unique_ptr<std::thread> m_rx_thread;
     libusb_context*             m_libusb_context  = nullptr;
     libusb_device_handle*       m_usb_handle      = nullptr;
     int                         m_active_usb_fd   = -1;
     std::atomic<int>            m_nextChannel     = {0};
+    Clock::time_point           m_channel_switch_ready_time = Clock::time_point::max();
     std::atomic<bool>           m_chSwitchStop    = {false};
     std::thread                 m_chSwitchThread;
 };

@@ -66,6 +66,9 @@ const char* TransportManagerBase::transportModeLabel(TransportKind kind)
 
     case TransportKind::WifiChannelScan:
         return "Wifi Channel Scan";
+
+    case TransportKind::Count:
+        break;
     }
 
     return "RAW Broadcast";

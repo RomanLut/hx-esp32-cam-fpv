@@ -45,6 +45,9 @@ int transportKindToInt(TransportKind kind)
 
     case TransportKind::WifiChannelScan:
         return 3;
+
+    case TransportKind::Count:
+        break;
     }
 
     return transportKindToInt(TransportKind::RawBroadcast);

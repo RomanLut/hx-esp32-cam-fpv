@@ -17,6 +17,14 @@ std::mutex g_uart_list_mutex;
 std::vector<std::string> g_uart_list;
 }  // namespace
 
+#if defined(OCULUS_QUEST_GS)
+#define ANDROID_GS_NATIVE_CORE_CLASS "com/esp32camfpv/questgs/NativeCore"
+#define ANDROID_GS_JNI(name) Java_com_esp32camfpv_questgs_NativeCore_##name
+#else
+#define ANDROID_GS_NATIVE_CORE_CLASS "com/esp32camfpv/androidgs/NativeCore"
+#define ANDROID_GS_JNI(name) Java_com_esp32camfpv_androidgs_NativeCore_##name
+#endif
+
 void publishAndroidTelemetryUartList(const std::vector<std::string>& uarts)
 {
     std::lock_guard<std::mutex> lock(g_uart_list_mutex);
@@ -35,7 +43,7 @@ namespace
 // JNI handles for calling NativeCore.serialTelemetryWrite([B) from C++.
 // Resolved once during JNI_OnLoad. Cannot be resolved lazily from an
 // AttachCurrentThread'ed thread: that env uses the system class loader and
-// FindClass("com/esp32camfpv/androidgs/NativeCore") returns null.
+// FindClass(ANDROID_GS_NATIVE_CORE_CLASS) returns null.
 jclass g_native_core_class = nullptr;
 jmethodID g_write_method = nullptr;
 
@@ -47,7 +55,7 @@ void initSerialTelemetryJniRefs(JNIEnv* env)
     {
         return;
     }
-    jclass local = env->FindClass("com/esp32camfpv/androidgs/NativeCore");
+    jclass local = env->FindClass(ANDROID_GS_NATIVE_CORE_CLASS);
     if (local == nullptr)
     {
         if (env->ExceptionCheck())
@@ -208,11 +216,10 @@ void applySelectedTelemetryUart()
 
 //===================================================================================
 //===================================================================================
-// JNI bindings shared by both Android apps (same package/class name).
+// JNI bindings shared by both Android apps; the Quest target uses a different
+// package name and selects its exported symbol names through OCULUS_QUEST_GS.
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_publishTelemetryUarts(JNIEnv* env,
-                                                                jclass /* clazz */,
-                                                                jobjectArray uarts)
+ANDROID_GS_JNI(publishTelemetryUarts)(JNIEnv* env, jclass /* clazz */, jobjectArray uarts)
 {
     std::vector<std::string> out;
     if (uarts != nullptr)
@@ -236,8 +243,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_publishTelemetryUarts(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getTelemetryUartSelection(JNIEnv* env,
-                                                                    jclass /* clazz */)
+ANDROID_GS_JNI(getTelemetryUartSelection)(JNIEnv* env, jclass /* clazz */)
 {
     return env->NewStringUTF(s_groundstation_config.telemetryUart.c_str());
 }

@@ -71,9 +71,18 @@ std::string AndroidWifiScanTransport::getTransportMessage() const
     if (m_active && !isUsbAdapterRunning())
     {
         using namespace std::chrono_literals;
-        if (Clock::now() - m_activate_time >= 3s)
+        const Clock::time_point now = Clock::now();
+        const Clock::time_point graceStart =
+            (m_last_adapter_transition_time > m_activate_time)
+                ? m_last_adapter_transition_time
+                : m_activate_time;
+        if (now - graceStart < 8s)
         {
-            return "RTL8812AU USB ADAPTER NOT FOUND!";
+            return "Initializing USB Wifi adapter...";
+        }
+        else
+        {
+            return "RTL88XXAU USB ADAPTER NOT FOUND!";
         }
     }
     return {};
@@ -126,7 +135,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    std::unique_ptr<Rtl8812aDevice> created_device =
+    std::unique_ptr<RtlJaguarDevice> created_device =
         m_wifi_driver->CreateRtlDevice(m_usb_handle);
     if (!created_device)
     {
@@ -140,7 +149,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_device        = std::shared_ptr<Rtl8812aDevice>(created_device.release());
+        m_device        = std::shared_ptr<RtlJaguarDevice>(created_device.release());
         m_active_usb_fd = fd;
     }
 
@@ -153,7 +162,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     {
         while (true)
         {
-            std::shared_ptr<Rtl8812aDevice> dev;
+            std::shared_ptr<RtlJaguarDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
@@ -175,7 +184,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     // Receive thread: accumulate airtime from every received frame.
     m_rx_thread = std::make_unique<std::thread>([this]()
     {
-        std::shared_ptr<Rtl8812aDevice> dev;
+        std::shared_ptr<RtlJaguarDevice> dev;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             dev = m_device;
@@ -185,48 +194,85 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
             return;
         }
 
-        const int initial_channel = s_groundstation_config.wifi_channel;
-        dev->Init(
-            [this](const Packet& packet)
+        try
+        {
+            const int initial_channel = s_groundstation_config.wifi_channel;
+            dev->Init(
+                [this](const Packet& packet)
+                {
+                    const uint32_t frame_bytes = static_cast<uint32_t>(packet.RxAtrib.pkt_len);
+                    if (frame_bytes == 0 || frame_bytes > 4096)
+                    {
+                        return;
+                    }
+
+                    // Decode hardware descriptor rate to 500 kb/s units.
+                    // CCK  DESC_RATE1M(0x00)..DESC_RATE11M(0x03)
+                    // OFDM DESC_RATE6M(0x04)..DESC_RATE54M(0x0b)
+                    // HT   DESC_RATEMCS0(0x0c)..DESC_RATEMCS7(0x13)
+                    static constexpr uint8_t kLegacy_500kbps[12] = {
+                        2, 4, 11, 22,               // CCK:  1/2/5.5/11 Mbps
+                        12, 18, 24, 36, 48, 72, 96, 108  // OFDM: 6/9/12/18/24/36/48/54 Mbps
+                    };
+                    static constexpr uint16_t kHT20LGI_500kbps[8] = { 13, 26, 39,  52,  78,  104, 117, 130 };
+                    static constexpr uint16_t kHT40LGI_500kbps[8] = { 27, 54, 81, 108, 162,  216, 243, 270 };
+
+                    const uint8_t dr = packet.RxAtrib.data_rate;
+                    uint32_t rate_500kbps;
+                    if (dr < 0x0c)
+                    {
+                        rate_500kbps = kLegacy_500kbps[dr];
+                    }
+                    else if (dr <= 0x13)
+                    {
+                        const uint8_t mcs = dr - 0x0c;
+                        rate_500kbps = (packet.RxAtrib.bw != 0)
+                                       ? kHT40LGI_500kbps[mcs]
+                                       : kHT20LGI_500kbps[mcs];
+                        if (packet.RxAtrib.sgi)
+                            rate_500kbps = rate_500kbps * 10 / 9;
+                    }
+                    else
+                    {
+                        rate_500kbps = 0; // unknown; accumulateAirtime falls back to 6 Mbps
+                    }
+
+                    accumulateAirtime(frame_bytes, rate_500kbps);
+                },
+                makeSelectedChannel(initial_channel));
+        }
+        catch (const std::exception& ex)
+        {
+            LOGE("wifi-scan RX thread stopped: {}", ex.what());
+            m_chSwitchStop.store(true);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
+            if (m_device)
             {
-                const uint32_t frame_bytes = static_cast<uint32_t>(packet.RxAtrib.pkt_len);
-                if (frame_bytes == 0 || frame_bytes > 4096) { return; }
-
-                // Decode hardware descriptor rate → 500 kb/s units.
-                // CCK  DESC_RATE1M(0x00)..DESC_RATE11M(0x03)
-                // OFDM DESC_RATE6M(0x04)..DESC_RATE54M(0x0b)
-                // HT   DESC_RATEMCS0(0x0c)..DESC_RATEMCS7(0x13)
-                static constexpr uint8_t kLegacy_500kbps[12] = {
-                    2, 4, 11, 22,               // CCK:  1/2/5.5/11 Mbps
-                    12, 18, 24, 36, 48, 72, 96, 108  // OFDM: 6/9/12/18/24/36/48/54 Mbps
-                };
-                static constexpr uint16_t kHT20LGI_500kbps[8] = { 13, 26, 39,  52,  78,  104, 117, 130 };
-                static constexpr uint16_t kHT40LGI_500kbps[8] = { 27, 54, 81, 108, 162,  216, 243, 270 };
-
-                const uint8_t dr = packet.RxAtrib.data_rate;
-                uint32_t rate_500kbps;
-                if (dr < 0x0c)
-                {
-                    rate_500kbps = kLegacy_500kbps[dr];
-                }
-                else if (dr <= 0x13)
-                {
-                    const uint8_t mcs = dr - 0x0c;
-                    rate_500kbps = (packet.RxAtrib.bw != 0)
-                                   ? kHT40LGI_500kbps[mcs]
-                                   : kHT20LGI_500kbps[mcs];
-                    if (packet.RxAtrib.sgi)
-                        rate_500kbps = rate_500kbps * 10 / 9;
-                }
-                else
-                {
-                    rate_500kbps = 0; // unknown — accumulateAirtime falls back to 6 Mbps
-                }
-
-                accumulateAirtime(frame_bytes, rate_500kbps);
-            },
-            makeSelectedChannel(initial_channel));
+                m_device->should_stop = true;
+            }
+            m_device = nullptr;
+            m_active_usb_fd = -1;
+        }
+        catch (...)
+        {
+            LOGE("wifi-scan RX thread stopped with unknown exception");
+            m_chSwitchStop.store(true);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_last_adapter_transition_time = Clock::now();
+            if (m_device)
+            {
+                m_device->should_stop = true;
+            }
+            m_device = nullptr;
+            m_active_usb_fd = -1;
+        }
     });
+
+    // Devourer Init() is blocking and has no queryable "monitor mode ready"
+    // state. Delay external retunes long enough for its initial channel setup
+    // to finish, otherwise SetMonitorChannel() can race driver bring-up.
+    m_channel_switch_ready_time = Clock::now() + std::chrono::seconds(1);
 
     // Channel-switch thread: applies m_nextChannel requests asynchronously so
     // that setMonitorChannel() never blocks the GS processing / render thread.
@@ -245,10 +291,17 @@ void AndroidWifiScanTransport::channelSwitchLoop()
 
     while (!m_chSwitchStop.load(std::memory_order_relaxed))
     {
+        const Clock::time_point now = Clock::now();
         const int wanted = m_nextChannel.load(std::memory_order_relaxed);
+        if (now < m_channel_switch_ready_time)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
         if (wanted != 0 && wanted != appliedChannel)
         {
-            std::shared_ptr<Rtl8812aDevice> dev;
+            std::shared_ptr<RtlJaguarDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
@@ -302,12 +355,13 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
     }
 
-    std::shared_ptr<Rtl8812aDevice> dev;
+    std::shared_ptr<RtlJaguarDevice> dev;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         dev = m_device;
         if (dev)
         {
+            m_last_adapter_transition_time = Clock::now();
             dev->should_stop = true;
         }
     }

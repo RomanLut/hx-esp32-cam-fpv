@@ -424,8 +424,11 @@ void MSP::loop()
   this->decode();
   
   delta = now - this->lastRC;
+  int64_t delta2 = now - this->lastRealRC;
 
-  if ( this->gotRCChannels || (this->lastRealRC && (delta > 90000) && ( delta < 300000)))
+  //if there is a new mavlink RC packet, send it immediately via MSP (this->gotRCChannels)
+  //if there is no mavlink RC packet, repeat MSP command every 90 ms, but stop if the last mavlink RC packet was received more than 300 ms ago
+  if ( this->gotRCChannels || (this->lastRealRC && (delta2 < 300000) && (delta > 90000)))
   {
     //int64_t delta2 = now - this->lastRealRC;
     //if ((delta2> 100000) && (delta2 < 500000)) LOG("RC Delta=%d\n", (int)delta2);

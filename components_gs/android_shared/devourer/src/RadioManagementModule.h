@@ -161,6 +161,8 @@ public:
                           ChannelWidth_t bwmode);
   void phy_set_rf_reg(RfPath eRFPath, uint16_t RegAddr, uint32_t BitMask,
                       uint32_t Data);
+  uint32_t phy_query_rf_reg(RfPath eRFPath, uint32_t RegAddr,
+                            uint32_t BitMask);
   void init_hw_mlme_ext(SelectedChannel pmlmeext);
   void rtw_hal_set_chnl_bw(uint8_t channel, ChannelWidth_t Bandwidth,
                            uint8_t Offset40, uint8_t Offset80);
@@ -181,8 +183,8 @@ private:
   void phy_SwChnlAndSetBwMode8812();
   uint32_t phy_RFSerialRead(RfPath eRFPath, uint32_t Offset);
   void phy_RFSerialWrite(RfPath eRFPath, uint32_t Offset, uint32_t Data);
-  void phy_SetRFEReg8821(BandType Band);
   void phy_SetRFEReg8812(BandType Band);
+  void phy_SetRFEReg8821(BandType Band);
   void phy_SetBBSwingByBand_8812A(BandType Band);
   uint32_t phy_get_tx_bb_swing_8812a(BandType Band, RfPath RFPath);
   void Set_HW_VAR_ENABLE_RX_BAR(bool val);

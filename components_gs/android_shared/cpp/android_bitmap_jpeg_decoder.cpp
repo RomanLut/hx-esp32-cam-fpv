@@ -15,6 +15,18 @@
 #include "gs_shared_state.h"
 #include "gs_video_stabilization_shared.h"
 
+#if defined(OCULUS_QUEST_GS)
+#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge"
+#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge$Result"
+#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
+    "([B)Lcom/esp32camfpv/questgs/BitmapDecodeBridge$Result;"
+#else
+#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge"
+#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge$Result"
+#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
+    "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;"
+#endif
+
 namespace
 {
 
@@ -168,7 +180,7 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
         return JNI_ERR;
     }
 
-    jclass bridge_class_local = env->FindClass("com/esp32camfpv/androidgs/BitmapDecodeBridge");
+    jclass bridge_class_local = env->FindClass(ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS);
     if (bridge_class_local == nullptr)
     {
         return JNI_ERR;
@@ -184,7 +196,7 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     g_decode_rgb565_method = env->GetStaticMethodID(
         g_bitmap_decode_bridge_class,
         "decodeRgb565",
-        "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;");
+        ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE);
     if (g_decode_rgb565_method == nullptr)
     {
         return JNI_ERR;
@@ -193,14 +205,13 @@ jint JNI_OnLoad(JavaVM* vm, void* /* reserved */)
     g_decode_rgb8888_method = env->GetStaticMethodID(
         g_bitmap_decode_bridge_class,
         "decodeRgb8888",
-        "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;");
+        ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE);
     if (g_decode_rgb8888_method == nullptr)
     {
         return JNI_ERR;
     }
 
-    jclass result_class_local =
-        env->FindClass("com/esp32camfpv/androidgs/BitmapDecodeBridge$Result");
+    jclass result_class_local = env->FindClass(ANDROID_GS_BITMAP_DECODE_RESULT_CLASS);
     if (result_class_local == nullptr)
     {
         return JNI_ERR;

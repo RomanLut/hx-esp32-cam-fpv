@@ -180,8 +180,18 @@ std::vector<Packet> FrameParser::recvbuf2recvframe(std::span<uint8_t> ptr) {
       memcpy(static_cast<void*>(&driver_data), pbuf.data() + RXDESC_SIZE, sizeof(driver_data));
       ret.back().RxAtrib.rssi[0] = driver_data.gain_trsw[0];
       ret.back().RxAtrib.rssi[1] = driver_data.gain_trsw[1];
+      /* 8814AU path C/D RSSI lives in gain_trsw_cd; on 8812/8811 these bytes
+       * are 0. */
+      ret.back().RxAtrib.rssi[2] = driver_data.gain_trsw_cd[0];
+      ret.back().RxAtrib.rssi[3] = driver_data.gain_trsw_cd[1];
       ret.back().RxAtrib.snr[0] = driver_data.rxsnr[0];
       ret.back().RxAtrib.snr[1] = driver_data.rxsnr[1];
+      /* 8814AU path C/D SNR is in csi_current per upstream's struct comment
+       * (DWORD 5 byte 1-2); on 8812 those bytes hold stream 1/2 CSI which we
+       * don't surface, so the value is meaningful only when the chip is
+       * 8814AU. */
+      ret.back().RxAtrib.snr[2] = static_cast<int8_t>(driver_data.csi_current[0]);
+      ret.back().RxAtrib.snr[3] = static_cast<int8_t>(driver_data.csi_current[1]);
     } else {
       /* pkt_rpt_type == TX_REPORT1-CCX, TX_REPORT2-TX RTP,HIS_REPORT-USB HISR
        * RTP */

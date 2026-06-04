@@ -303,6 +303,9 @@ int OSDMenuController::getTransportModeMenuIndex(gs::core::TransportKind kind)
 
     case gs::core::TransportKind::WifiChannelScan:
         return 3;
+
+    case gs::core::TransportKind::Count:
+        break;
     }
 
     return 0;
@@ -3003,7 +3006,19 @@ void OSDMenuController::drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config)
 
     drawLargeGapIfTallScreen();
 
-    if (!s_transport || s_transport->supportsNetworkInterfaceStatus())
+    const auto transport_status_lines = s_transport != nullptr
+        ? s_transport->copyInterfaceStatusLines()
+        : std::vector<std::string>{};
+    if (!transport_status_lines.empty())
+    {
+        for (size_t i = 0; i < transport_status_lines.size(); i++)
+        {
+            char buf[512];
+            snprintf(buf, sizeof(buf), "%s##if_transport_status_%zu", transport_status_lines[i].c_str(), i);
+            this->drawStatus(buf);
+        }
+    }
+    else if (!s_transport || s_transport->supportsNetworkInterfaceStatus())
     {
         if ( interfaces.empty() )
         {

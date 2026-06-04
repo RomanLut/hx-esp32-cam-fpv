@@ -9,6 +9,7 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -38,18 +39,43 @@ class RawBroadcastUsbController(
 
     private var syncJob: Job? = null
     private var receiverRegistered = false
-    private var activeDeviceName: String? = null
-    private var activeConnection: UsbDeviceConnection? = null
+    private var activeDeviceNames: Set<String> = emptySet()
+    private var activeConnections: List<UsbDeviceConnection> = emptyList()
     private var lastState: ControllerState? = null
+    private var usbTopologyChanged = false
+    private var lastUsbTopologyRestartAtMs = 0L
+    private var permissionRequestPendingDeviceName: String? = null
+    private val permissionDeniedDeviceNames = mutableSetOf<String>()
     private val syncMutex = Mutex()
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_USB_PERMISSION,
+                ACTION_USB_PERMISSION -> {
+                    activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            permissionRequestPendingDeviceName = null
+                            val permissionDevice =
+                                intent.getUsbDevice() ?: findSupportedAdapters().firstOrNull()
+                            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                                permissionDevice?.deviceName?.let { permissionDeniedDeviceNames.remove(it) }
+                            } else {
+                                permissionDevice?.deviceName?.let { permissionDeniedDeviceNames.add(it) }
+                            }
+                            usbTopologyChanged = true
+                        }
+                        syncNow()
+                    }
+                }
+
                 UsbManager.ACTION_USB_DEVICE_DETACHED,
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            permissionRequestPendingDeviceName = null
+                            permissionDeniedDeviceNames.clear()
+                            usbTopologyChanged = true
+                        }
                         syncNow()
                     }
                 }
@@ -99,6 +125,15 @@ class RawBroadcastUsbController(
         }
     }
 
+    fun handleUsbTopologyChanged() {
+        activity.lifecycleScope.launch(Dispatchers.Main) {
+            syncMutex.withLock {
+                usbTopologyChanged = true
+            }
+            syncNow()
+        }
+    }
+
     private suspend fun syncNow() {
         syncMutex.withLock {
             val handle = currentNativeHandle()
@@ -117,58 +152,103 @@ class RawBroadcastUsbController(
                 return
             }
 
-            val targetDevice = findSupportedAdapter()
-            if (targetDevice == null) {
+            val targetDevices = findSupportedAdapters()
+            if (targetDevices.isEmpty()) {
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
+                permissionRequestPendingDeviceName = null
+                permissionDeniedDeviceNames.clear()
                 stopCurrentAdapterSync(handle)
                 return
             }
 
-            if (!usbManager.hasPermission(targetDevice)) {
+            val permissionTarget = targetDevices.firstOrNull { device ->
+                !usbManager.hasPermission(device) &&
+                    device.deviceName !in permissionDeniedDeviceNames
+            }
+            if (permissionTarget != null) {
                 updateState(
                     ControllerState.WAITING_PERMISSION,
-                    "Waiting for USB permission for ${targetDevice.deviceName}"
+                    "Waiting for USB permission for ${permissionTarget.deviceName}"
                 )
-                requestPermission(targetDevice)
+                if (permissionRequestPendingDeviceName == null) {
+                    permissionRequestPendingDeviceName = permissionTarget.deviceName
+                    requestPermission(permissionTarget)
+                }
+                return
+            }
+            if (targetDevices.any { device -> !usbManager.hasPermission(device) }) {
+                updateState(ControllerState.WAITING_PERMISSION, "USB permission denied")
+                return
+            }
+            permissionRequestPendingDeviceName = null
+            permissionDeniedDeviceNames.clear()
+
+            val targetDeviceNames = targetDevices.map { device -> device.deviceName }.toSet()
+            if (activeDeviceNames == targetDeviceNames) {
+                val nativeAdapterCount = withContext(Dispatchers.Default) {
+                    NativeCore.getRawBroadcastUsbAdapterCount(handle)
+                }
+                val nativeRunning = nativeAdapterCount == targetDeviceNames.size
+                val nowMs = SystemClock.elapsedRealtime()
+                val duplicateTopologyEvent =
+                    usbTopologyChanged && nativeRunning &&
+                        nowMs - lastUsbTopologyRestartAtMs < USB_TOPOLOGY_RESTART_DEBOUNCE_MS
+                if (nativeRunning && (!usbTopologyChanged || duplicateTopologyEvent)) {
+                    usbTopologyChanged = false
+                    updateState(ControllerState.RUNNING, "Adapters already running on $targetDeviceNames")
+                    return
+                }
+
+                if (usbTopologyChanged) {
+                    lastUsbTopologyRestartAtMs = nowMs
+                }
+                stopCurrentAdapterSync(handle)
+            } else {
+                // USB attach/detach broadcasts and the periodic poll can arrive back-to-back.
+                // Stop and start must stay in one serialized critical section or a stale stop can
+                // tear down the adapter that a newer sync just started.
+                if (usbTopologyChanged) {
+                    lastUsbTopologyRestartAtMs = SystemClock.elapsedRealtime()
+                }
+                stopCurrentAdapterSync(handle)
+            }
+            usbTopologyChanged = false
+
+            val startedConnections = mutableListOf<UsbDeviceConnection>()
+            val startedDeviceNames = mutableSetOf<String>()
+            for (targetDevice in targetDevices) {
+                val connection = usbManager.openDevice(targetDevice)
+                if (connection == null) {
+                    Log.w(LOG_TAG, "Failed to open USB adapter ${targetDevice.deviceName}")
+                    continue
+                }
+
+                val started = withContext(Dispatchers.Default) {
+                    NativeCore.startRawBroadcastUsb(handle, connection.fileDescriptor)
+                }
+                if (!started) {
+                    connection.close()
+                    Log.w(LOG_TAG, "Native raw-broadcast start failed for ${targetDevice.deviceName}")
+                    continue
+                }
+                startedConnections += connection
+                startedDeviceNames += targetDevice.deviceName
+            }
+
+            if (startedConnections.isEmpty()) {
                 return
             }
 
-            if (activeDeviceName == targetDevice.deviceName) {
-                updateState(ControllerState.RUNNING, "Adapter already running on ${targetDevice.deviceName}")
-                return
-            }
-
-            // USB attach/detach broadcasts and the periodic poll can arrive back-to-back.
-            // Stop and start must stay in one serialized critical section or a stale stop can
-            // tear down the adapter that a newer sync just started.
-            stopCurrentAdapterSync(handle)
-
-            val connection = usbManager.openDevice(targetDevice)
-            if (connection == null) {
-                Log.w(LOG_TAG, "Failed to open USB adapter ${targetDevice.deviceName}")
-                return
-            }
-
-            val started = withContext(Dispatchers.Default) {
-                NativeCore.startRawBroadcastUsb(handle, connection.fileDescriptor)
-            }
-            if (!started) {
-                connection.close()
-                Log.w(LOG_TAG, "Native raw-broadcast start failed for ${targetDevice.deviceName}")
-                return
-            }
-
-            activeConnection = connection
-            activeDeviceName = targetDevice.deviceName
-            updateState(ControllerState.RUNNING, "Started raw-broadcast adapter ${targetDevice.deviceName}")
-            Log.i(LOG_TAG, "Started raw-broadcast USB adapter ${targetDevice.deviceName}")
+            activeConnections = startedConnections
+            activeDeviceNames = startedDeviceNames
+            updateState(ControllerState.RUNNING, "Started raw-broadcast adapters $startedDeviceNames")
         }
     }
 
-    private fun findSupportedAdapter(): UsbDevice? {
-        return usbManager.deviceList.values.firstOrNull { device ->
+    private fun findSupportedAdapters(): List<UsbDevice> {
+        return usbManager.deviceList.values.filter { device ->
             RtlUsbDeviceAllowlist.isSupported(device)
-        }
+        }.sortedBy { device -> device.deviceName }.take(MAX_RAW_BROADCAST_ADAPTERS)
     }
 
     private fun requestPermission(device: UsbDevice) {
@@ -181,16 +261,25 @@ class RawBroadcastUsbController(
         usbManager.requestPermission(device, pendingIntent)
     }
 
+    @Suppress("DEPRECATION")
+    private fun Intent.getUsbDevice(): UsbDevice? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        }
+    }
+
     private suspend fun stopCurrentAdapterSync(handle: Long = currentNativeHandle()) {
-        val oldConnection = activeConnection
-        activeConnection = null
-        activeDeviceName = null
+        val oldConnections = activeConnections
+        activeConnections = emptyList()
+        activeDeviceNames = emptySet()
         if (handle != 0L) {
             withContext(Dispatchers.Default) {
                 NativeCore.stopRawBroadcastUsb(handle)
             }
         }
-        oldConnection?.close()
+        oldConnections.forEach { connection -> connection.close() }
     }
 
     private fun updateState(state: ControllerState, message: String) {
@@ -205,5 +294,7 @@ class RawBroadcastUsbController(
     private companion object {
         const val LOG_TAG = "RawBroadcastUsb"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.androidgs.USB_PERMISSION"
+        const val MAX_RAW_BROADCAST_ADAPTERS = 2
+        const val USB_TOPOLOGY_RESTART_DEBOUNCE_MS = 5_000L
     }
 }

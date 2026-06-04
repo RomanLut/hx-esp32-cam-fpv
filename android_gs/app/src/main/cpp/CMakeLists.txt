@@ -75,17 +75,21 @@ add_library(android_gs_core SHARED
     ../../../../../components/common/wifi_channels.cpp
     ../../../../../components/common/hx_mavlink_parser.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/hal/Hal8812PwrSeq.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/Hal8814PwrSeq.c
     ${ANDROID_SHARED_DEVOURER_DIR}/hal/Hal8821APwrSeq.c
     ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8812a_fw.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8814a_fw.c
     ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8821a_fw.c
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/phydm/rtl8814a/Hal8814_PhyTables.c
     ${ANDROID_SHARED_DEVOURER_DIR}/src/Radiotap.c
     ${ANDROID_SHARED_DEVOURER_DIR}/src/EepromManager.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/FirmwareManager.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/FrameParser.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/HalModule.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/ParsedRadioPacket.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/PhyTableLoader.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/RadioManagementModule.cpp
-    ${ANDROID_SHARED_DEVOURER_DIR}/src/Rtl8812aDevice.cpp
+    ${ANDROID_SHARED_DEVOURER_DIR}/src/RtlJaguarDevice.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/RtlUsbAdapter.cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src/WiFiDriver.cpp
 )
@@ -100,6 +104,11 @@ set_source_files_properties(
     PROPERTIES COMPILE_DEFINITIONS "CONFIG_RTL8821A;LOAD_FW_HEADER_FROM_DRIVER;ODM_WIN=1;DM_ODM_SUPPORT_TYPE=ODM_WIN"
 )
 
+set_source_files_properties(
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/hal8814a_fw.c
+    PROPERTIES COMPILE_DEFINITIONS "CONFIG_RTL8814A;LOAD_FW_HEADER_FROM_DRIVER;ODM_WIN=1;DM_ODM_SUPPORT_TYPE=ODM_WIN"
+)
+
 target_include_directories(android_gs_core PRIVATE
     .
     third_party/include
@@ -109,6 +118,7 @@ target_include_directories(android_gs_core PRIVATE
     ../../../../../components_gs/android_shared/cpp
     ${ANDROID_SHARED_DEVOURER_DIR}/src
     ${ANDROID_SHARED_DEVOURER_DIR}/hal
+    ${ANDROID_SHARED_DEVOURER_DIR}/hal/phydm/rtl8814a
     ../../../../../components_gs/utils
     ../../../../../components_gs/imgui
     ../../../../../components_gs/imgui/backends

@@ -57,3 +57,9 @@ void setAndroidThermalStatus(int thermal_status);
 // Retunes the RTL8812AU adapter once the air unit has had time to switch channels.
 // Must be called each background loop tick when raw-broadcast is active.
 void processPendingRawBroadcastChannelChange(gs::core::ITransport& transport);
+
+//===================================================================================
+//===================================================================================
+// Reports whether raw-broadcast should send control/config packets faster until
+// the deferred silence-gated channel change is applied locally.
+bool rawBroadcastControlBurstActive(Clock::time_point now);

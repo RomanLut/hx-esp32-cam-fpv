@@ -16,11 +16,11 @@ plugins {
 }
 
 android {
-    namespace = "com.esp32camfpv.androidgs"
+    namespace = "com.esp32camfpv.questgs"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.esp32camfpv.androidgs"
+        applicationId = "com.esp32camfpv.questgs"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
@@ -71,8 +71,7 @@ android {
                 file("../../assets_gs")
             )
             java.srcDirs(
-                file("src/main/java"),
-                file("../../components_gs/android_shared/java")
+                file("src/main/java")
             )
             res.srcDirs(
                 file("src/main/res"),

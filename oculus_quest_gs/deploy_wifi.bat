@@ -8,8 +8,8 @@ if "%~1"=="" (
 )
 
 set TARGET=%~1
-set PACKAGE=com.esp32camfpv.androidgs
-set ACTIVITY=com.esp32camfpv.androidgs/.MainActivity
+set PACKAGE=com.esp32camfpv.questgs
+set ACTIVITY=com.esp32camfpv.questgs/.MainActivity
 
 set ADB=D:\Android\android-sdk\platform-tools\adb.exe
 if not exist "%ADB%" set ADB=%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe

@@ -11,7 +11,22 @@ EepromManager::EepromManager(RtlUsbAdapter device, Logger_t logger)
     : _device{device}, _logger{logger} {
   read_chip_version_8812a(device);
 
-  hal_InitPGData_8812A();
+  /* On 8814AU, defer all EFUSE access until AFTER firmware download. rtw88's
+   * usbmon shows zero touches to EFUSE_CTRL (0x0031-0x0033) and EFUSE_ACCESS
+   * (0x00CF) before fwdl — these are post-fw-boot operations. Reading EFUSE
+   * pre-fwdl appears to put the chip in a state where it never sets BIT15 of
+   * REG_FIFOPAGE_CTRL_2 (BCN_VALID) after a beacon-queue bulk OUT, which
+   * blocks the IDDMA copy that loads fw into 8051 DMEM/IMEM. For the
+   * experiment, pretend the EFUSE autoload failed so the parsers fall through
+   * to safe defaults; the parsers still run against in-memory shadow data
+   * (no chip access). */
+  if (version_id.ICType == CHIP_8814A) {
+    std::memset(efuse_eeprom_data, 0xFF, sizeof(efuse_eeprom_data));
+    _device.AutoloadFailFlag = true;
+  } else {
+    hal_InitPGData_8812A();
+  }
+
   Hal_EfuseParseIDCode8812A();
   EEPROMVersion = Hal_ReadPROMVersion8812A(_device, efuse_eeprom_data);
   EEPROMRegulatory = Hal_ReadTxPowerInfo8812A(_device, efuse_eeprom_data);
@@ -35,66 +50,188 @@ EepromManager::EepromManager(RtlUsbAdapter device, Logger_t logger)
 #endif
 
   /* 2013/04/15 MH Add for different board type recognize. */
-  hal_ReadUsbType_8812AU();
+  if (version_id.ICType != CHIP_8814A) {
+    hal_ReadUsbType_8812AU();
+  }
 }
 
-//===================================================================================
-//===================================================================================
-// Reads the chip family and RF path count from SYS_CFG.
-void EepromManager::read_chip_version_8812a(RtlUsbAdapter device)
-{
+void EepromManager::LateInitFor8814A() {
+  /* Re-read EFUSE properly now that firmware is running. The constructor's
+   * 8814 branch sets AutoloadFailFlag=true + 0xFF-fills the shadow map, so
+   * the parsers ran against defaults (rfe_type=0, all PA/LNA=0). With fw up
+   * the chip will accept EFUSE reads without breaking, and we can use the
+   * real RFE/PA/LNA values for the BB/AGC/RF tables which gate on them. */
+  if (version_id.ICType != CHIP_8814A) {
+    return;
+  }
+  _device.AutoloadFailFlag = false;
+  hal_InitPGData_8812A();
+  Hal_EfuseParseIDCode8812A();
+  EEPROMVersion = Hal_ReadPROMVersion8812A(_device, efuse_eeprom_data);
+  EEPROMRegulatory = Hal_ReadTxPowerInfo8812A(_device, efuse_eeprom_data);
+  Hal_EfuseParseBTCoexistInfo8812A();
+  Hal_EfuseParseXtal_8812A();
+  Hal_ReadThermalMeter_8812A();
+  Hal_ReadAmplifierType_8812A();
+  Hal_ReadRFEType_8812A();
+  _logger->info("8814A LateInit: rfe_type={} crystal_cap=0x{:X} "
+                "PA_2G/5G=0x{:X}/0x{:X} LNA_2G/5G=0x{:X}/0x{:X}",
+                rfe_type, crystal_cap, PAType_2G, PAType_5G,
+                LNAType_2G, LNAType_5G);
+}
+
+/* RTL8821AU is Jaguar-family silicon (CHIP_8821 = 7 in Realtek's HalVerDef),
+ * 1T1R AC + BT combo. It responds to REG_SYS_CFG with an 8812-shaped value
+ * (low byte 0x35), so plain SYS_CFG-bit inspection misidentifies it as 8812.
+ * Distinguish by VID:PID at probe time. Genuine 8821AU SKUs we know about:
+ *  - TP-Link Archer T2U Plus / T4U / etc:  2357:0120 / 011E / 0122
+ *  - Realtek reference PIDs:               0bda:0820 / 0821 / 0823 / 8822
+ *  - OEM rebadges (Senao, ASUS, Edimax, D-Link, Hawking, …):
+ *    0411:0242 / 029B   (Senao)
+ *    0846:9052          (ASUS)
+ *    0e66:0023          (Hawking)
+ *    2001:3314 / 3318   (D-Link)
+ *    20f4:804b          (TRENDnet)
+ *    7392:a811/a812/a813/b611 (Edimax)
+ *    3823:6249          (HP/MaxNet)
+ *    2019:ab32          (Planex)
+ *    04bb:0953          (I-O Data)
+ *    056e:4007 / 400e / 400f (ELECOM)
+ *
+ * NOT included on purpose:
+ *  - 0bda:0811 / a811 / b811  — those are 8811AU (1T1R cut of 8812 silicon);
+ *    they ride on CHIP_8812 + RFType=1T1R, NOT through the 8821 HAL.
+ *  - 0bda:c811  — RTL8811CU, unrelated silicon, not supported here. */
+static bool is_rtl8821a_pid(uint16_t vid, uint16_t pid) {
+  const uint32_t key = (static_cast<uint32_t>(vid) << 16) | pid;
+  switch (key) {
+  case 0x0BDA0820:
+  case 0x0BDA0821:
+  case 0x0BDA0823:
+  case 0x0BDA8822:
+  case 0x0411'0242:
+  case 0x0411'029B:
+  case 0x04BB'0953:
+  case 0x056E'4007:
+  case 0x056E'400E:
+  case 0x056E'400F:
+  case 0x0846'9052:
+  case 0x0E66'0023:
+  case 0x2001'3314:
+  case 0x2001'3318:
+  case 0x2019'AB32:
+  case 0x20F4'804B:
+  case 0x2357'011E:
+  case 0x2357'0120:
+  case 0x2357'0122:
+  case 0x3823'6249:
+  case 0x7392'A811:
+  case 0x7392'A812:
+  case 0x7392'A813:
+  case 0x7392'B611:
+    return true;
+  default:
+    return false;
+  }
+}
+
+void EepromManager::read_chip_version_8812a(RtlUsbAdapter device) {
   uint32_t value32 = device.rtw_read32(REG_SYS_CFG);
   _logger->info("read_chip_version_8812a SYS_CFG(0x{:X})=0x{:08X}", REG_SYS_CFG,
                 value32);
 
-  // RTL8811AU stays on the 8812/Jaguar HAL but advertises 1T1R through
-  // RF_TYPE_ID. RTL8821AU is selected earlier by USB family detection and uses
-  // the separate 8821A HAL path.
-  const auto rfType = device.IsRtl8821A()
-                          ? RF_TYPE_1T1R
-                          : ((value32 & RF_TYPE_ID) ? RF_TYPE_1T1R
-                                                     : RF_TYPE_2T2R);
+  const uint16_t pid = device.idProduct();
+  const uint16_t vid = device.idVendor();
+  const bool is_8814a = (pid == 0x8813);
+  const bool is_8821 = !is_8814a && is_rtl8821a_pid(vid, pid);
 
-  version_id = {
-      .ICType = device.IsRtl8821A() ? CHIP_8821 : CHIP_8812,
-      .ChipType = (value32 & RTL_ID) ? TEST_CHIP : NORMAL_CHIP,
-      .VendorType = CHIP_VENDOR_TSMC,
-      .RFType = rfType,
-  };
-
-  if (device.IsRtl8821A()) {
-    uint32_t vendor = (value32 & EXT_VENDOR_ID) >> EXT_VENDOR_ID_SHIFT;
-    switch (vendor) {
-    case 1:
-      version_id.VendorType = CHIP_VENDOR_SMIC;
-      break;
-    case 2:
-      version_id.VendorType = CHIP_VENDOR_UMC;
-      break;
-    default:
-      version_id.VendorType = CHIP_VENDOR_TSMC;
-      break;
-    }
+  HAL_IC_TYPE_E ic_type;
+  if (is_8814a) {
+    ic_type = CHIP_8814A;
+  } else if (is_8821) {
+    ic_type = CHIP_8821;
   } else {
-    version_id.VendorType =
-        (value32 & VENDOR_ID) ? CHIP_VENDOR_UMC : CHIP_VENDOR_TSMC;
+    ic_type = CHIP_8812;
   }
 
-  if (!device.IsRtl8821A() && registry_priv::special_rf_path == 1)
-  {
-    // Manual override for 8812-family boards with incorrect RF_TYPE_ID straps.
+  /* RFType:
+   *   8814AU      → 4T4R RF (baseband caps at 3 spatial streams)
+   *   8821AU      → always 1T1R (Jaguar-family AC+BT combo, single chain)
+   *   8812/8811AU → SYS_CFG bit 27 (RF_TYPE_ID): set on 1T1R, clear on 2T2R */
+  HAL_RF_TYPE_E rf_type;
+  if (is_8814a) {
+    rf_type = RF_TYPE_4T4R;
+  } else if (is_8821) {
+    rf_type = RF_TYPE_1T1R;
+  } else {
+    rf_type =
+        (value32 & RF_TYPE_ID) ? RF_TYPE_1T1R : RF_TYPE_2T2R;
+  }
+
+  version_id = {
+      .ICType = ic_type,
+      .ChipType = (value32 & RTL_ID) ? TEST_CHIP : NORMAL_CHIP,
+      .VendorType = (value32 & VENDOR_ID) ? CHIP_VENDOR_UMC : CHIP_VENDOR_TSMC,
+      .RFType = rf_type,
+  };
+
+  /* Manual override: force 1T1R even when SYS_CFG reports 2T2R
+   * (useful if EFUSE/strap is mis-burnt on a 1T1R board). Only meaningful
+   * for the 8812-family; 8814AU keeps its 4T4R RFType, 8821AU is already 1T1R. */
+  if (!is_8814a && !is_8821 && registry_priv::special_rf_path == 1) {
     version_id.RFType = RF_TYPE_1T1R;
   }
 
-  version_id.CUTVersion = (HAL_CUT_VERSION_E)(((value32 & CHIP_VER_RTL_MASK) >>
-                                               CHIP_VER_RTL_SHIFT) +
-                                              (device.IsRtl8821A() ? 0 : 1));
+  /* IC version (CUT). Upstream rtw88's rtw88xxa_read_efuse does `cut_version
+   * += 1` ONLY for 8812A (chip->id == RTW_CHIP_TYPE_8812A) — for 8814A the
+   * raw chip-reported value is used as-is. Our previous unconditional +1
+   * was breaking PhyTableLoader's check_positive matching on 8814 (the
+   * "cut_for_para" byte at c1[27:24] never matched the table's expected
+   * value), which is why AGC_TBL_081C reads back as 0 (not loaded) on our
+   * chip while rtw88's same chip shows 0x017e0303. */
+  const uint32_t raw_cut =
+      (value32 & CHIP_VER_RTL_MASK) >> CHIP_VER_RTL_SHIFT;
+  version_id.CUTVersion =
+      (HAL_CUT_VERSION_E)(is_8814a ? raw_cut : (raw_cut + 1));
 
   version_id.ROMVer = 0; /* ROM code version. */
 
   rtw_hal_config_rftype();
 
   dump_chip_info(version_id);
+}
+
+JaguarPhyContext EepromManager::GetPhyContext() const {
+  /* ODM_ITRF_USB and ODM_CE are phydm enum values (we don't pull the phydm
+   * subsystem in, so hardcode the canonical numbers from upstream
+   * include/phydm.h). */
+  constexpr uint8_t kOdmItrfUsb = 0x02;
+  constexpr uint8_t kOdmCe = 0x04;
+
+  /* Every conditional block in array_mp_8814a_phy_reg + _agc_tab requires
+   * a non-zero rfe_type (122 + 52 blocks, low-byte values 1..11). If
+   * LateInitFor8814A hasn't run yet — or the chip's EFUSE doesn't carry
+   * a board RFE — fall back to rfe_type=1 so at least the BB/AGC tables
+   * apply. The board's RFE pinmux may then be slightly off, but the chip
+   * will still receive: verified on CF-938AC, even with the fallback
+   * value the chip lands on the same RFE_PIN_0824 = 0x00033E40 that
+   * rtw88's working trace shows. */
+  const uint8_t rfe_for_ctx =
+      (version_id.ICType == CHIP_8814A && rfe_type == 0)
+          ? 1
+          : static_cast<uint8_t>(rfe_type);
+
+  return JaguarPhyContext{
+      .cut_version = static_cast<uint8_t>(version_id.CUTVersion),
+      .support_interface = kOdmItrfUsb,
+      .support_platform = kOdmCe,
+      .package_type = 0,
+      .rfe_type = rfe_for_ctx,
+      .type_glna = TypeGLNA,
+      .type_gpa = TypeGPA,
+      .type_alna = TypeALNA,
+      .type_apa = TypeAPA,
+  };
 }
 
 void EepromManager::rtw_hal_config_rftype() {
@@ -118,8 +255,12 @@ void EepromManager::rtw_hal_config_rftype() {
     numTotalRfPath = 1;
   }
 
-  _logger->info("RF_Type is {} TotalTxPath is {}", (int)rf_type,
-                (int)numTotalRfPath);
+  /* RTL8814AU has 4 RF paths but the baseband caps at 3 spatial streams.
+   * For 8812/8811-family the cap equals the path count. */
+  maxSpatialStreams = IS_8814A_SERIES(version_id) ? 3 : numTotalRfPath;
+
+  _logger->info("RF_Type is {} TotalTxPath is {} MaxSS is {}", (int)rf_type,
+                (int)numTotalRfPath, (int)maxSpatialStreams);
 }
 
 void EepromManager::dump_chip_info(HAL_VERSION ChipVersion) {

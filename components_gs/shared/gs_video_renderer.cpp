@@ -1099,9 +1099,16 @@ void GsVideoRenderer::handleImGuiKeysLocked()
 
     if (!m_menu_visible)
     {
+        if (gs::runtime::handleResolutionCycleKeysFromImGui(*m_menu_config))
+        {
+            return;
+        }
+
         if (ImGui::IsKeyPressed(ImGuiKey_Menu, false) ||
             ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))
+            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_UpArrow, false) ||
+            ImGui::IsKeyPressed(ImGuiKey_DownArrow, false))
         {
             m_menu_controller->open();
         }

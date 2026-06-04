@@ -40,7 +40,7 @@ if /i "%LAUNCH_MODE%"=="mcp-stop" (
   exit /b 0
 )
 
-echo Detecting RTL8812AU USB adapter...
+echo Detecting RTL88XXAU USB adapter...
 del /q "%BUSID_FILE%" 2>nul
 powershell -NoProfile -Command ^
   "$ErrorActionPreference='Stop';" ^
