@@ -19,8 +19,12 @@
 
 extern SemaphoreHandle_t s_safe_printf_mux;
 
+#ifdef SUPPRESS_LOGGING
+#define SAFE_PRINTF(...) do {} while (false)
+#else
 #define SAFE_PRINTF(...)  \
     do { xSemaphoreTake(s_safe_printf_mux, portMAX_DELAY); \
         ets_printf(__VA_ARGS__); \
         xSemaphoreGive(s_safe_printf_mux); \
     } while (false)
+#endif

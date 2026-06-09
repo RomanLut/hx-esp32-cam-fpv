@@ -150,6 +150,10 @@
 
 #ifdef BOARD_ESP32C5
 
+#ifdef ESP32C5_EARLY_PROTOTYPE
+//---------------------------------------------------------------
+// first prototype
+
 //  Debug is on USB UART
 //  UART0:  MSP-OSD  RX=12 TX=11
 //  UART1:  MAVLINK  RX=27 (no TX)
@@ -175,8 +179,8 @@
 //define to use mavlink telemetry on UART1 
 #define UART_MAVLINK UART_NUM_1
 #define INIT_UART_1
-#define RXD1_PIN    GPIO_NUM_27
 #define TXD1_PIN    UART_PIN_NO_CHANGE   //23
+#define RXD1_PIN    GPIO_NUM_27
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 #define UART1_BAUDRATE 115200
@@ -184,6 +188,51 @@
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
 #define HAS_REC_BUTTON_LED   //LED is connected to REC button, 1k to 3.3V
+
+#else 
+
+//-------------------------------------------------------------------
+// c5 air
+
+//  UART0:  MSP-OSD  RX=24 TX=25
+//  UART1:  MAVLINK  RX=13 TX=14 (USB pins) when USBUART_DEBUG_OUTPUT is not defined
+//  USB UART: debug logging when USBUART_DEBUG_OUTPUT is defined
+
+#define CAMERA_MODEL_ESP32C5
+
+#define DVR_SUPPORT
+#define SD_CARD_SPI
+#define SD_CS_PIN      GPIO_NUM_23
+#define SD_CLK_PIN     GPIO_NUM_25
+#define SD_DI_PIN      GPIO_NUM_24
+#define SD_DO_PIN      GPIO_NUM_26
+
+//define to use DisplayPort OSD on UART0
+#define UART_MSP_OSD UART_NUM_0
+#define INIT_UART_0
+#define TXD0_PIN    GPIO_NUM_25
+#define RXD0_PIN    GPIO_NUM_24
+#define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
+#define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+
+#ifndef USBUART_DEBUG_OUTPUT
+//define to use mavlink telemetry on UART1 
+#define UART_MAVLINK UART_NUM_1
+#define INIT_UART_1
+#define TXD1_PIN    14
+#define RXD1_PIN    13
+#define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
+#define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
+#define UART1_BAUDRATE 115200
+
+#endif
+
+
+#define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
+
+#define HAS_REC_BUTTON_LED   //LED is connected to REC button, 220Ohm to 3.3V
+
+#endif
 
 #endif
 //===============================================================
@@ -317,7 +366,11 @@
 #elif defined(CAMERA_MODEL_ESP32C5)
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
+#ifdef ESP32C5_EARLY_PROTOTYPE
 #define XCLK_GPIO_NUM     -1
+#else
+#define XCLK_GPIO_NUM     27
+#endif
 #define SIOD_GPIO_NUM     26  //SDA
 #define SIOC_GPIO_NUM     25  //SLC
 

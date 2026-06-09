@@ -68,6 +68,12 @@
 
 #include "mock_camera.h"
 
+#ifdef SUPPRESS_LOGGING
+#define printf(...) do {} while (false)
+#define heap_caps_print_heap_info(...) do {} while (false)
+#define sdmmc_card_print_info(...) do {} while (false)
+#endif
+
 static int s_stats_last_tp = -10000;
 static int s_last_osd_packet_tp = -10000;
 static int s_last_config_packet_tp = -10000;
@@ -136,7 +142,11 @@ static int s_mavlinkOutBufferCount = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
+#ifdef SUPPRESS_LOGGING
+int s_uart_verbose = 0;
+#else
 int s_uart_verbose = 1;
+#endif
 
 /////////////////////////////////////////////////////////////////////////
 
@@ -2924,7 +2934,9 @@ static void init_camera()
         .pin_vsync = VSYNC_GPIO_NUM,
         .pin_href = HREF_GPIO_NUM,
         .pin_pclk = PCLK_GPIO_NUM,
-#ifdef SENSOR_OV5640
+#if defined(BOARD_ESP32C5)
+        .xclk_freq_hz = 24000000,
+#elif SENSOR_OV5640
         .xclk_freq_hz = 20000000,
 #else
         .xclk_freq_hz = 12000000,  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
@@ -3235,6 +3247,10 @@ bool isUSBDiskMounted()
 extern "C" void app_main()
 {
     //esp_task_wdt_init();
+
+#ifdef SUPPRESS_LOGGING
+    esp_log_level_set("*", ESP_LOG_NONE);
+#endif
 
 #if defined(BOARD_XIAOS3SENSE) || defined(BOARD_ESP32C5)
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages

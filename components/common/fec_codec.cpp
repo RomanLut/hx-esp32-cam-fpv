@@ -11,6 +11,10 @@
 
 #include "vcd_profiler.h"
 
+#ifdef SUPPRESS_LOGGING
+#define printf(...) do {} while (false)
+#endif
+
 //todo: use fec codec property instead
 extern bool isHQDVRMode();
 

@@ -2,6 +2,10 @@
 #include "freertos/FreeRTOS.h" 
 #include "freertos/semphr.h"   
 
+#ifdef SUPPRESS_LOGGING
+#define printf(...) do {} while (false)
+#endif
+
 nvs_handle_t nvs_handler;
 static SemaphoreHandle_t s_nvs_mux = NULL; 
 
