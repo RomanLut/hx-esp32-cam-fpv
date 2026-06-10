@@ -2,6 +2,11 @@ name: Deploy GitHub Pages
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional release tag whose firmware web files should be deployed"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,10 +32,26 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare Pages payload
+        run: |
+          mkdir -p pages_payload
+          cp -R web/. pages_payload/
+
+      - name: Download release firmware web files
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "pages_payload/firmware/${{ inputs.release_tag }}"
+          gh release download "${{ inputs.release_tag }}" \
+            --pattern "*_manifest.json" \
+            --pattern "*_merged.bin" \
+            --dir "pages_payload/firmware/${{ inputs.release_tag }}"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: pages_payload
 
       - name: Deploy Pages
         id: deployment

@@ -16,6 +16,7 @@ payload_dir = Path(args.payload_dir)
 repo_name = args.repository.split("/", 1)[1]
 release_base_url = f"https://github.com/{args.repository}/releases/download/{quote(args.tag)}"
 pages_install_url = f"https://{args.owner}.github.io/{repo_name}/install.html"
+pages_firmware_url = f"https://{args.owner}.github.io/{repo_name}/firmware/{quote(args.tag, safe='')}"
 
 rows = []
 firmware_versions = []
@@ -30,7 +31,7 @@ for manifest_path in sorted(payload_dir.glob("*_manifest.json")):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
     version = str(manifest.get("version", args.tag))
     firmware_versions.append(version)
-    manifest_url = f"{release_base_url}/{quote(manifest_path.name)}"
+    manifest_url = f"{pages_firmware_url}/{quote(manifest_path.name)}"
     ota_url = f"{release_base_url}/{quote(ota_path.name)}"
     install_query = urlencode(
         {

@@ -189,8 +189,7 @@
     <section class="panel" aria-labelledby="install-title">
       <h2 id="install-title">Install</h2>
       <p id="install-copy">The installer button will appear when the release link provides a manifest.</p>
-      <div class="installer">
-        <esp-web-install-button id="install-button" class="hidden"></esp-web-install-button>
+      <div class="installer" id="installer">
         <a id="ota-link" class="hidden" href="#">Download OTA image</a>
       </div>
       <div id="missing-manifest" class="warning hidden">
@@ -213,13 +212,14 @@
     document.getElementById("firmware-description").textContent =
       `This page installs ${firmware} version ${version}.`;
 
-    const installButton = document.getElementById("install-button");
+    const installer = document.getElementById("installer");
     const missingManifest = document.getElementById("missing-manifest");
     const installCopy = document.getElementById("install-copy");
 
     if (manifest) {
+      const installButton = document.createElement("esp-web-install-button");
       installButton.setAttribute("manifest", manifest);
-      installButton.classList.remove("hidden");
+      installer.prepend(installButton);
       installCopy.textContent = "Use the button below to start ESP Web Tools.";
     } else {
       missingManifest.classList.remove("hidden");
