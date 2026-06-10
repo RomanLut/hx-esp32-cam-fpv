@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HX ESP32-CAM FPV Firmware Installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #59657a;
+      --line: #d9deea;
+      --accent: #1168d9;
+      --accent-soft: #e8f1ff;
+      --danger-soft: #fff3d8;
+      --danger-text: #6f4a00;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #10141d;
+        --panel: #171d28;
+        --text: #ecf1fb;
+        --muted: #a7b1c4;
+        --line: #2a3344;
+        --accent: #6ba7ff;
+        --accent-soft: #162a46;
+        --danger-soft: #30250d;
+        --danger-text: #f2c45c;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(860px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(30px, 4vw, 44px);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 19px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    .panel {
+      margin-top: 24px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .meta-item {
+      padding: 14px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+    }
+
+    .label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .value {
+      overflow-wrap: anywhere;
+      font-weight: 650;
+    }
+
+    ol {
+      margin: 0;
+      padding-left: 22px;
+      color: var(--text);
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    .installer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .warning {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 8px;
+      background: var(--danger-soft);
+      color: var(--danger-text);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      main {
+        width: min(100% - 24px, 860px);
+        padding: 32px 0;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .meta {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>HX ESP32-CAM FPV Firmware Installer</h1>
+      <p id="intro">Use this page to install firmware with ESP Web Tools from your browser.</p>
+    </header>
+
+    <section class="panel" aria-labelledby="firmware-title">
+      <h2 id="firmware-title">Firmware</h2>
+      <p id="firmware-description">Firmware details are loaded from the release link.</p>
+
+      <div class="meta">
+        <div class="meta-item">
+          <span class="label">Firmware</span>
+          <span class="value" id="firmware-name">Unknown</span>
+        </div>
+        <div class="meta-item">
+          <span class="label">Version</span>
+          <span class="value" id="firmware-version">Unknown</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="steps-title">
+      <h2 id="steps-title">Before You Flash</h2>
+      <ol>
+        <li>Connect the ESP board to this computer over USB.</li>
+        <li>Use Chrome, Edge, or another browser with Web Serial support.</li>
+        <li>If the board does not enter flashing mode automatically, hold BOOT while connecting or resetting it.</li>
+        <li>Press Install, select the serial port, and follow the ESP Web Tools prompts.</li>
+      </ol>
+    </section>
+
+    <section class="panel" aria-labelledby="install-title">
+      <h2 id="install-title">Install</h2>
+      <p id="install-copy">The installer button will appear when the release link provides a manifest.</p>
+      <div class="installer">
+        <esp-web-install-button id="install-button" class="hidden"></esp-web-install-button>
+        <a id="ota-link" class="hidden" href="#">Download OTA image</a>
+      </div>
+      <div id="missing-manifest" class="warning hidden">
+        Missing manifest URL. Open this page from a release install link.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const firmware = params.get("firmware") || "Unknown firmware";
+    const version = params.get("version") || "Unknown version";
+    const manifest = params.get("manifest");
+    const ota = params.get("ota");
+
+    document.title = `${firmware} Installer`;
+    document.getElementById("firmware-title").textContent = firmware;
+    document.getElementById("firmware-name").textContent = firmware;
+    document.getElementById("firmware-version").textContent = version;
+    document.getElementById("firmware-description").textContent =
+      `This page installs ${firmware} version ${version}.`;
+
+    const installButton = document.getElementById("install-button");
+    const missingManifest = document.getElementById("missing-manifest");
+    const installCopy = document.getElementById("install-copy");
+
+    if (manifest) {
+      installButton.setAttribute("manifest", manifest);
+      installButton.classList.remove("hidden");
+      installCopy.textContent = "Use the button below to start ESP Web Tools.";
+    } else {
+      missingManifest.classList.remove("hidden");
+    }
+
+    if (ota) {
+      const otaLink = document.getElementById("ota-link");
+      otaLink.href = ota;
+      otaLink.classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
