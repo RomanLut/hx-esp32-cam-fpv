@@ -15,6 +15,7 @@ parser.add_argument("--asset-pattern", action="append", default=[])
 parser.add_argument("--current-assets", required=True)
 parser.add_argument("--asset-catalog", required=True)
 args = parser.parse_args()
+release_ref = args.release_ref.rstrip("/").rsplit("/", 1)[-1]
 
 token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
 
@@ -66,6 +67,7 @@ def matches_release(release, release_ref):
         str(release.get("id", "")),
         release.get("tag_name", ""),
         release.get("name", ""),
+        release.get("html_url", ""),
         release.get("html_url", "").rstrip("/").rsplit("/", 1)[-1],
     ]
 
@@ -73,11 +75,16 @@ def matches_release(release, release_ref):
 
 
 releases = get_releases()
-release = next((item for item in releases if matches_release(item, args.release_ref)), None)
+release = next((item for item in releases if matches_release(item, release_ref)), None)
 
 if release is None:
     print(f"Release not found: {args.release_ref}", file=sys.stderr)
+    print("Available releases:", file=sys.stderr)
+    for item in releases:
+        print(f"  id={item.get('id')} tag={item.get('tag_name')} name={item.get('name')} url={item.get('html_url')}", file=sys.stderr)
     sys.exit(1)
+
+print(f"Matched release: id={release.get('id')} tag={release.get('tag_name')} name={release.get('name')} url={release.get('html_url')}")
 
 assets = api_json(release["assets_url"])
 asset_records = [
