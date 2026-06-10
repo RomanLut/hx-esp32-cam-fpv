@@ -76,7 +76,7 @@ jobs:
         run: |
           python .github/scripts/package_firmware.py \
             --project "${{ matrix.project }}" \
-            --suffix "${{ matrix.artifact_suffix }}" \
+            --suffix="${{ matrix.artifact_suffix }}" \
             --version "${{ steps.version.outputs.version }}" \
             --output-dir "firmware_artifacts/${{ matrix.project }}${{ matrix.artifact_suffix }}"
 

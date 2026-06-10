@@ -19,6 +19,10 @@ base_name = f"{args.project}{args.suffix}"
 output_dir = Path(args.output_dir)
 output_dir.mkdir(parents=True, exist_ok=True)
 
+if not build_root.is_dir():
+    print(f"Missing PlatformIO build directory: {build_root}", file=sys.stderr)
+    sys.exit(1)
+
 build_dirs = [
     path
     for path in build_root.iterdir()
