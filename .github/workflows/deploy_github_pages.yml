@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish on Pages. Leave empty to use the latest release."
+        description: "Release tag or release URL to publish on Pages. Leave empty to use the latest release."
         required: false
         type: string
 
@@ -38,7 +38,8 @@ jobs:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if [ -n "$INPUT_RELEASE_TAG" ]; then
-            tag="$INPUT_RELEASE_TAG"
+            tag="${INPUT_RELEASE_TAG%/}"
+            tag="${tag##*/}"
           else
             tag="$(gh release view --json tagName --jq '.tagName')"
           fi
@@ -55,38 +56,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release_firmware_zips
-          gh release download "$release_tag" \
-            --pattern "air_firmware_*.zip" \
-            --dir release_firmware_zips
+          python .github/scripts/download_release_assets.py \
+            --repository "${{ github.repository }}" \
+            --release-ref "$release_tag" \
+            --zip-dir release_firmware_zips \
+            --asset-pattern "air_firmware_*.zip" \
+            --current-assets release_assets.json \
+            --asset-catalog release_asset_catalog.json
 
       - name: Extract firmware files for ESP Web Tools
         run: |
           python .github/scripts/extract_pages_firmware.py \
             --zip-dir release_firmware_zips \
             --output-dir "pages_payload/firmware/$release_tag"
-
-      - name: Create release asset list
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view "$release_tag" \
-            --json assets \
-            --jq '.assets[].name' > release_assets.txt
-
-      - name: Create release asset catalog
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release list --limit 30 --json tagName \
-            --jq '.[].tagName' > release_tags.txt
-          echo "[]" > release_asset_catalog.json
-          while IFS= read -r tag; do
-            gh release view "$tag" \
-              --json tagName,assets \
-              --jq '{tagName: .tagName, assets: [.assets[] | {name: .name}]}' > release_asset_entry.json
-            jq -s '.[0] + [.[1]]' release_asset_catalog.json release_asset_entry.json > release_asset_catalog_next.json
-            mv release_asset_catalog_next.json release_asset_catalog.json
-          done < release_tags.txt
 
       - name: Generate download page
         run: |
@@ -95,7 +77,7 @@ jobs:
             --repository "${{ github.repository }}" \
             --owner "${{ github.repository_owner }}" \
             --tag "$release_tag" \
-            --asset-list release_assets.txt \
+            --asset-list release_assets.json \
             --release-asset-catalog release_asset_catalog.json \
             --output pages_payload/download.html
 

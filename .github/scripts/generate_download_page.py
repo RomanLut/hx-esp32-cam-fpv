@@ -16,23 +16,42 @@ parser.add_argument("--output", required=True)
 args = parser.parse_args()
 
 firmware_dir = Path(args.firmware_dir)
-asset_names = [
-    line.strip()
-    for line in Path(args.asset_list).read_text(encoding="utf-8").splitlines()
-    if line.strip()
-]
+asset_records = json.loads(Path(args.asset_list).read_text(encoding="utf-8"))
+asset_by_name = {
+    asset["name"]: asset
+    for asset in asset_records
+}
+asset_names = list(asset_by_name.keys())
 release_asset_catalog = json.loads(Path(args.release_asset_catalog).read_text(encoding="utf-8"))
 repo_name = args.repository.split("/", 1)[1]
-release_base_url = f"https://github.com/{args.repository}/releases/download/{quote(args.tag)}"
 pages_base_url = f"https://{args.owner}.github.io/{repo_name}"
 firmware_base_url = f"{pages_base_url}/firmware/{quote(args.tag, safe='')}"
 
 
 def release_asset_url(name):
-    return f"{release_base_url}/{quote(name)}"
+    asset = asset_by_name.get(name)
+
+    if asset is not None:
+        return asset["browser_download_url"]
+
+    return f"https://github.com/{args.repository}/releases/download/{quote(args.tag)}/{quote(name)}"
 
 
 def release_asset_url_for_tag(tag, name):
+    for release in release_asset_catalog:
+        tag_values = {
+            release.get("tagName", ""),
+            release.get("name", ""),
+            release.get("htmlRef", ""),
+        }
+
+        if tag not in tag_values:
+            continue
+
+        for asset in release.get("assets") or []:
+            if asset.get("name") == name:
+                return asset["browser_download_url"]
+
     return f"https://github.com/{args.repository}/releases/download/{quote(tag)}/{quote(name)}"
 
 
@@ -52,7 +71,7 @@ def find_current_or_previous_asset(current_name, prefix, suffix):
         tag = release.get("tagName")
         assets = release.get("assets") or []
 
-        if tag == args.tag:
+        if args.tag in {tag, release.get("name", ""), release.get("htmlRef", "")}:
             continue
 
         for asset in assets:
