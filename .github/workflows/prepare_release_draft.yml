@@ -173,22 +173,12 @@ jobs:
       - name: Create release tag
         run: echo "tag=release-$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
 
-      - name: Generate release body
-        run: |
-          python .github/scripts/generate_release_body.py \
-            --payload-dir release_payload \
-            --repository "${{ github.repository }}" \
-            --owner "${{ github.repository_owner }}" \
-            --tag "${{ env.tag }}" \
-            --output release_body.md
-
       - name: Create GitHub draft release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.tag }}
           name: Release ${{ env.tag }}
           draft: true
-          body_path: release_body.md
           files: release_payload/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

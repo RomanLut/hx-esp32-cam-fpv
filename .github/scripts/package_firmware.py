@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -41,6 +42,7 @@ flasher_args = build_dir / "flasher_args.json"
 merged_bin = output_dir / f"{base_name}_merged.bin"
 manifest_json = output_dir / f"{base_name}_manifest.json"
 ota_bin = output_dir / f"{base_name}_ota.bin"
+firmware_zip = output_dir / f"{base_name}.zip"
 
 if not flasher_args.is_file():
     print(f"Missing PlatformIO flasher metadata: {flasher_args}", file=sys.stderr)
@@ -114,7 +116,12 @@ manifest = {
 
 manifest_json.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
+with zipfile.ZipFile(firmware_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for path in (merged_bin, manifest_json, ota_bin):
+        archive.write(path, arcname=path.name)
+
 print(f"Packaged {base_name}:")
 print(f"  {merged_bin}")
 print(f"  {manifest_json}")
 print(f"  {ota_bin}")
+print(f"  {firmware_zip}")

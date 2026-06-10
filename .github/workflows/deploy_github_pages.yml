@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional release tag whose firmware web files should be deployed"
+        description: "Release tag to publish on Pages. Leave empty to use the latest release."
         required: false
         type: string
 
@@ -32,21 +32,72 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Resolve release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [ -n "$INPUT_RELEASE_TAG" ]; then
+            tag="$INPUT_RELEASE_TAG"
+          else
+            tag="$(gh release view --json tagName --jq '.tagName')"
+          fi
+          echo "release_tag=$tag" >> "$GITHUB_ENV"
+          echo "Deploying release $tag"
+
       - name: Prepare Pages payload
         run: |
           mkdir -p pages_payload
           cp -R web/. pages_payload/
 
-      - name: Download release firmware web files
-        if: ${{ inputs.release_tag != '' }}
+      - name: Download release firmware zip files
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "pages_payload/firmware/${{ inputs.release_tag }}"
-          gh release download "${{ inputs.release_tag }}" \
-            --pattern "*_manifest.json" \
-            --pattern "*_merged.bin" \
-            --dir "pages_payload/firmware/${{ inputs.release_tag }}"
+          mkdir -p release_firmware_zips
+          gh release download "$release_tag" \
+            --pattern "air_firmware_*.zip" \
+            --dir release_firmware_zips
+
+      - name: Extract firmware files for ESP Web Tools
+        run: |
+          python .github/scripts/extract_pages_firmware.py \
+            --zip-dir release_firmware_zips \
+            --output-dir "pages_payload/firmware/$release_tag"
+
+      - name: Create release asset list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$release_tag" \
+            --json assets \
+            --jq '.assets[].name' > release_assets.txt
+
+      - name: Create release asset catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 30 --json tagName \
+            --jq '.[].tagName' > release_tags.txt
+          echo "[]" > release_asset_catalog.json
+          while IFS= read -r tag; do
+            gh release view "$tag" \
+              --json tagName,assets \
+              --jq '{tagName: .tagName, assets: [.assets[] | {name: .name}]}' > release_asset_entry.json
+            jq -s '.[0] + [.[1]]' release_asset_catalog.json release_asset_entry.json > release_asset_catalog_next.json
+            mv release_asset_catalog_next.json release_asset_catalog.json
+          done < release_tags.txt
+
+      - name: Generate download page
+        run: |
+          python .github/scripts/generate_download_page.py \
+            --firmware-dir "pages_payload/firmware/$release_tag" \
+            --repository "${{ github.repository }}" \
+            --owner "${{ github.repository_owner }}" \
+            --tag "$release_tag" \
+            --asset-list release_assets.txt \
+            --release-asset-catalog release_asset_catalog.json \
+            --output pages_payload/download.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
