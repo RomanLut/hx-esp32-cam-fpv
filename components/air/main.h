@@ -210,13 +210,16 @@
 //define to use DisplayPort OSD on UART0
 #define UART_MSP_OSD UART_NUM_0
 #define INIT_UART_0
-#define TXD0_PIN    GPIO_NUM_25
-#define RXD0_PIN    GPIO_NUM_24
+#define TXD0_PIN    GPIO_NUM_11
+#define RXD0_PIN    GPIO_NUM_12
 #define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
-#ifndef USBUART_DEBUG_OUTPUT
-//define to use mavlink telemetry on UART1 
+#ifdef USBUART_DEBUG_OUTPUT
+//keep D+ D- pins assigned to usbuart
+#else
+//define to use mavlink telemetry on UART1
+//allocate D+ D- pins to UART1
 #define UART_MAVLINK UART_NUM_1
 #define INIT_UART_1
 #define TXD1_PIN    14
@@ -366,11 +369,10 @@
 #elif defined(CAMERA_MODEL_ESP32C5)
 #define PWDN_GPIO_NUM     -1
 #define RESET_GPIO_NUM    -1
+
 #ifdef ESP32C5_EARLY_PROTOTYPE
+
 #define XCLK_GPIO_NUM     -1
-#else
-#define XCLK_GPIO_NUM     27
-#endif
 #define SIOD_GPIO_NUM     26  //SDA
 #define SIOC_GPIO_NUM     25  //SLC
 
@@ -397,6 +399,26 @@
 //boot button  GPIO_NUM_28 
 //USB D+       GPIO_NUM_14
 //USB D-       GPIO_NUM_13
+
+#else
+
+#define XCLK_GPIO_NUM     27
+#define SIOD_GPIO_NUM     5  //SDA
+#define SIOC_GPIO_NUM     4  //SLC
+
+#define Y9_GPIO_NUM       2   //D7
+#define Y8_GPIO_NUM       3   //D6
+#define Y7_GPIO_NUM       0   //D5
+#define Y6_GPIO_NUM       6   //D4
+#define Y5_GPIO_NUM       8   //D3
+#define Y4_GPIO_NUM       10   //D2
+#define Y3_GPIO_NUM       9   //D1
+#define Y2_GPIO_NUM       7  //D0
+#define VSYNC_GPIO_NUM    -1
+#define HREF_GPIO_NUM     -1
+#define PCLK_GPIO_NUM     1
+
+#endif
 
 #else
 #error "Camera model not selected"
