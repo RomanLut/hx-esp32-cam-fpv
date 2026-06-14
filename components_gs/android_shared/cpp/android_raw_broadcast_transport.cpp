@@ -13,6 +13,7 @@
 #include "Log.h"
 #include "gs_shared_state.h"
 #include "structures.h"
+#include "wifi_channels.h"
 #include "devourer/src/FrameParser.h"
 #include "devourer/src/SelectedChannel.h"
 #include "devourer/src/ieee80211_radiotap.h"
@@ -84,6 +85,49 @@ SelectedChannel makeSelectedChannel(int channel)
     selected_channel.ChannelOffset = 0;
     selected_channel.ChannelWidth = CHANNEL_WIDTH_20;
     return selected_channel;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns a different allowed channel so devourer cannot optimize retune as no-op.
+int chooseForcedTxPowerRetuneChannel(int current_channel)
+{
+    current_channel = getBandAwareWifiChannel(current_channel, s_groundstation_config.wifiBand);
+    int current_index = getWifiChannelIndex(current_channel);
+    if (current_index < 0)
+    {
+        current_index = getFirstWifiChannelIndexForBand(s_groundstation_config.wifiBand);
+    }
+
+    for (int offset = 1; offset < WIFI_CHANNELS_COUNT; offset++)
+    {
+        const int candidate_index = (current_index + offset) % WIFI_CHANNELS_COUNT;
+        const int candidate_channel = WIFI_CHANNELS_BY_INDEX[candidate_index];
+        if (candidate_channel != current_channel &&
+            isWifiChannelAllowedByBand(candidate_channel, s_groundstation_config.wifiBand))
+        {
+            return candidate_channel;
+        }
+    }
+
+    return current_channel;
+}
+
+//===================================================================================
+//===================================================================================
+// Stores TX power in devourer, then forces channel programming so TXAGC is rewritten.
+void applyTxPowerWithForcedChannelProgram(const std::shared_ptr<RtlJaguarDevice>& device, uint8_t tx_power)
+{
+    const int current_channel =
+        getBandAwareWifiChannel(s_groundstation_config.wifi_channel, s_groundstation_config.wifiBand);
+    const int retune_channel = chooseForcedTxPowerRetuneChannel(current_channel);
+
+    device->SetTxPower(tx_power);
+    if (retune_channel != current_channel)
+    {
+        device->SetMonitorChannel(makeSelectedChannel(retune_channel));
+    }
+    device->SetMonitorChannel(makeSelectedChannel(current_channel));
 }
 
 //===================================================================================
@@ -509,7 +553,7 @@ void AndroidRawBroadcastTransport::setTxPower(int txPower)
                 }
 
                 LOGI("Setting TX power to {} on adapter {}", m_tx_power, adapter->index);
-                adapter->device->SetTxPower(m_tx_power);
+                applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
             }
             catch (const std::exception& e)
             {
@@ -694,7 +738,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         if (m_tx_power > 0)
         {
             std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-            adapter->device->SetTxPower(m_tx_power);
+            applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
         }
         m_usb_adapters.push_back(adapter);
     }

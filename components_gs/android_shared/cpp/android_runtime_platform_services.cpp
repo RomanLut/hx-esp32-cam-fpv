@@ -221,9 +221,14 @@ void AndroidRuntimePlatformServices::applyGroundStationWifiChannel(Ground2Air_Co
 
 //===================================================================================
 //===================================================================================
-// Applies the selected GS TX power by committing the Android config packet immediately.
+// Applies the selected GS TX power to the active Android transport and commits the config packet.
 void AndroidRuntimePlatformServices::applyGroundStationTxPower(Ground2Air_Config_Packet& config)
 {
+    if (s_transport != nullptr)
+    {
+        applyGSTxPowerToTransport(*s_transport);
+    }
+
     s_runtimeCore.config_packet = config;
     commitGround2AirConfig(s_runtimeCore.config_packet);
 }
