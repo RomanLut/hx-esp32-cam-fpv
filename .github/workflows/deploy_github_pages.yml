@@ -33,6 +33,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Resolve release tag
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
@@ -50,8 +51,11 @@ jobs:
         run: |
           mkdir -p pages_payload
           cp -R web/. pages_payload/
+          mkdir -p pages_payload/tools/ov5640_pclk_calculator
+          cp tools/ov5640_pclk_calculator/ov5640_pclk_calculator.html pages_payload/tools/ov5640_pclk_calculator/
 
       - name: Download release firmware zip files
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -61,12 +65,14 @@ jobs:
             --dir release_firmware_zips
 
       - name: Extract firmware files for ESP Web Tools
+        continue-on-error: true
         run: |
           python .github/scripts/extract_pages_firmware.py \
             --zip-dir release_firmware_zips \
             --output-dir "pages_payload/firmware/$release_tag"
 
       - name: Create release asset list
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -74,6 +80,7 @@ jobs:
             --jq '[.assets[] | {name: .name, browser_download_url: .browser_download_url}]' > release_assets.json
 
       - name: Create release asset catalog
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -88,6 +95,7 @@ jobs:
           done < release_tags.txt
 
       - name: Generate download page
+        continue-on-error: true
         run: |
           python .github/scripts/generate_download_page.py \
             --firmware-dir "pages_payload/firmware/$release_tag" \
