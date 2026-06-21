@@ -78,14 +78,16 @@ enum class Resolution : uint8_t
 
 //======================================================
 //======================================================
-typedef struct 
+typedef struct
 {
     uint16_t width;
     uint16_t height;
     uint8_t FPS2640;
     uint8_t FPS5640;
+    uint8_t FPS3660;
     uint8_t highFPS2640;
     uint8_t highFPS5640;
+    uint8_t highFPS3660;
 } TVMode;
 
 extern TVMode vmodes[];

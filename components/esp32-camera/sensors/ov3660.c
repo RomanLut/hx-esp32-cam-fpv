@@ -143,7 +143,7 @@ static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sy
     int PCLK = PLLCLK / 2 / ((pclk_manual && pclk_div)?pclk_div:1);
     int SYSCLK = PLLCLK / 4;
 
-    ESP_LOGI(TAG, "Calculated VCO: %d Hz, PLLCLK: %d Hz, SYSCLK: %d Hz, PCLK: %d Hz", VCO*1000, PLLCLK, SYSCLK, PCLK);
+    //ESP_LOGI(TAG, "Calculated VCO: %d Hz, PLLCLK: %d Hz, SYSCLK: %d Hz, PCLK: %d Hz", VCO*1000, PLLCLK, SYSCLK, PCLK); // causes stack overflow in cam_task
     return SYSCLK;
 }
 
@@ -312,8 +312,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 {
     int ret = 0;
 
-    if(framesize > FRAMESIZE_QXGA){
-        ESP_LOGW(TAG, "Invalid framesize: %u", framesize);
+    if(framesize >= FRAMESIZE_INVALID){
         framesize = FRAMESIZE_QXGA;
     }
     framesize_t old_framesize = sensor->status.framesize;
@@ -356,9 +355,12 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-        if (framesize == FRAMESIZE_QXGA || sensor->xclk_freq_hz == 16000000) {
-            //40MHz SYSCLK and 10MHz PCLK
+        if (framesize == FRAMESIZE_QXGA) {
+            //32MHz SYSCLK, 8MHz PCLK - conservative for max resolution
             ret = set_pll(sensor, false, 24, 1, 3, false, 0, true, 8);
+        } else if (sensor->xclk_freq_hz == 16000000) {
+            //320MHz VCO, 80MHz SYSCLK, 40MHz PCLK - fast video at 16MHz XCLK
+            ret = set_pll(sensor, false, 20, 1, 0, false, 0, true, 4);
         } else {
             //50MHz SYSCLK and 10MHz PCLK
             ret = set_pll(sensor, false, 30, 1, 3, false, 0, true, 10);
@@ -384,7 +386,6 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 
 fail:
     sensor->status.framesize = old_framesize;
-    ESP_LOGE(TAG, "Setting framesize to: %ux%u failed", w, h);
     return ret;
 }
 
