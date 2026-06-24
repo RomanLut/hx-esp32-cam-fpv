@@ -29,6 +29,32 @@ float calcLossRatio(int out_count, int in_count)
     return (loss * 100.0f) / out_count;
 }
 
+//===================================================================================
+//===================================================================================
+// Prints an unknown stats value when the air-side stats snapshot is stale.
+void textAirValue(bool valid, const char* format, int value)
+{
+    if (!valid)
+    {
+        ImGui::TextUnformatted("?");
+        return;
+    }
+    ImGui::Text(format, value);
+}
+
+//===================================================================================
+//===================================================================================
+// Prints an unknown stats value when the air-side stats snapshot is stale.
+void textAirValue(bool valid, const char* format, double value)
+{
+    if (!valid)
+    {
+        ImGui::TextUnformatted("?");
+        return;
+    }
+    ImGui::Text(format, value);
+}
+
 } // namespace
 
 //===================================================================================
@@ -40,6 +66,7 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     const int current_quality = snapshot.current_quality;
     const int wifi_queue_max = snapshot.wifi_queue_max;
     const int cpu_temp_c = snapshot.cpu_temp_c;
+    const bool air_stats_valid = snapshot.air_stats_valid;
     const AirStats& air_stats = snapshot.air_stats;
     const GSStats& ground_stats = snapshot.ground_stats;
     const Stats& frame_stats = snapshot.frame_stats;
@@ -79,13 +106,27 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     ImGui::PlotHistogram("Parts", Stats::getter, const_cast<Stats*>(&frame_parts_stats), frame_parts_stats.count(), 0, overlay, 0, frame_parts_stats.average() * 2 + 1.0f, ImVec2(0, 60.0f * osd_scale));
     ImGui::PlotHistogram("Period", Stats::getter, const_cast<Stats*>(&frame_time_stats), frame_time_stats.count(), 0, nullptr, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
-    std::snprintf(overlay, sizeof(overlay), "cur: %d", current_quality);
+    if (air_stats_valid)
+    {
+        std::snprintf(overlay, sizeof(overlay), "cur: %d", current_quality);
+    }
+    else
+    {
+        std::snprintf(overlay, sizeof(overlay), "cur: ?");
+    }
     ImGui::PlotHistogram("Quality", Stats::getter, const_cast<Stats*>(&frame_quality_stats), frame_quality_stats.count(), 0, overlay, 0, 64.0f, ImVec2(0, 60.0f * osd_scale));
 
     std::snprintf(overlay, sizeof(overlay), "avg: %d KB/sec", static_cast<int>(data_size_stats.average() + 0.5f) * 10);
     ImGui::PlotHistogram("DataSize", Stats::getter, const_cast<Stats*>(&data_size_stats), data_size_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
-    std::snprintf(overlay, sizeof(overlay), "%d%%", wifi_queue_max);
+    if (air_stats_valid)
+    {
+        std::snprintf(overlay, sizeof(overlay), "%d%%", wifi_queue_max);
+    }
+    else
+    {
+        std::snprintf(overlay, sizeof(overlay), "?");
+    }
     ImGui::PlotHistogram("Wifi Load", Stats::getter, const_cast<Stats*>(&queue_usage_stats), queue_usage_stats.count(), 0, overlay, 0, 100.0f, ImVec2(0, 60.0f * osd_scale));
 
     const float graphs_bottom_y = ImGui::GetCursorPosY();
@@ -112,10 +153,10 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
             draw_value();
         };
 
-        row("AirOutPacketRate", [&] { ImGui::Text("%d pkt/s", air_stats.outPacketRate); });
-        row("AirInPacketRate", [&] { ImGui::Text("%d pkt/s", air_stats.inPacketRate); });
-        row("AirOthersPacketRate", [&] { ImGui::Text("%d pkt/s", air_stats.inRejectedPacketRate); });
-        row("AirPacketLossRatio", [&] { ImGui::Text("%.1f%%", calcLossRatio(ground_stats.outPacketCounter, air_stats.inPacketRate)); });
+        row("AirOutPacketRate", [&] { textAirValue(air_stats_valid, "%d pkt/s", air_stats.outPacketRate); });
+        row("AirInPacketRate", [&] { textAirValue(air_stats_valid, "%d pkt/s", air_stats.inPacketRate); });
+        row("AirOthersPacketRate", [&] { textAirValue(air_stats_valid, "%d pkt/s", air_stats.inRejectedPacketRate); });
+        row("AirPacketLossRatio", [&] { textAirValue(air_stats_valid, "%.1f%%", static_cast<double>(calcLossRatio(ground_stats.outPacketCounter, air_stats.inPacketRate))); });
         row("GSOutPacketRate", [&] { ImGui::Text("%d pkt/s", ground_stats.outPacketCounter); });
         row("GSInPacketRateAll", [&] { ImGui::Text("%d+%d", ground_stats.inPacketCounterAll[0], ground_stats.inPacketCounterAll[1]); });
         row("GSInPacketRate", [&] { ImGui::Text("%d+%d", ground_stats.inPacketCounter[0], ground_stats.inPacketCounter[1]); });
@@ -131,20 +172,28 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
             const int n = static_cast<int>((ground_stats.lastPacketIndex - ground_stats.statsPacketIndex) / 12 * fec_codec_n);
             ImGui::Text("%.1f%%", calcLossRatio(n, ground_stats.inUniquePacketCounter));
         });
-        row("Air RSSI", [&] { ImGui::Text("%d dbm", -air_stats.rssiDbm); });
-        row("Air Noise Floor", [&] { ImGui::Text("%d dbm", -air_stats.noiseFloorDbm); });
-        row("Air SNR", [&] { ImGui::Text("%d db", static_cast<int>(air_stats.noiseFloorDbm) - static_cast<int>(air_stats.rssiDbm)); });
-        row("GS RSSI 1", [&] { ImGui::Text("%d dbm", ground_stats.rssiDbm[0]); });
-        row("GS RSSI 2", [&] { ImGui::Text("%d dbm", ground_stats.rssiDbm[1]); });
-        row("GS Noise Floor", [&] { ImGui::Text("%d dbm", ground_stats.noiseFloorDbm); });
+        row("Air RSSI", [&] { textAirValue(air_stats_valid, "%d dbm", -air_stats.rssiDbm); });
+        row("Air Noise Floor", [&] { textAirValue(air_stats_valid, "%d dbm", -air_stats.noiseFloorDbm); });
+        row("Air SNR", [&] { textAirValue(air_stats_valid, "%d db", static_cast<int>(air_stats.noiseFloorDbm) - static_cast<int>(air_stats.rssiDbm)); });
+        row("GS RSSI 1", [&] { textAirValue(air_stats_valid, "%d dbm", ground_stats.rssiDbm[0]); });
+        row("GS RSSI 2", [&] { textAirValue(air_stats_valid, "%d dbm", ground_stats.rssiDbm[1]); });
+        row("GS Noise Floor", [&] { textAirValue(air_stats_valid, "%d dbm", ground_stats.noiseFloorDbm); });
         row("Ping min", [&] { ImGui::Text("%d ms", ground_stats.pingMinMS); });
         row("Ping max", [&] { ImGui::Text("%d ms", ground_stats.pingMaxMS); });
-        row("Capture FPS", [&] { ImGui::Text("%d FPS", air_stats.captureFPS); });
-        row("Frame size min", [&] { ImGui::Text("%d b", air_stats.cam_frame_size_min); });
-        row("Frame size max", [&] { ImGui::Text("%d b", air_stats.cam_frame_size_max); });
-        row("Camera Overflow", [&] { ImGui::Text("%d", air_stats.cam_ovf_count); });
+        row("Capture FPS", [&] { textAirValue(air_stats_valid, "%d FPS", air_stats.captureFPS); });
+        row("Frame size min", [&] { textAirValue(air_stats_valid, "%d b", air_stats.cam_frame_size_min); });
+        row("Frame size max", [&] { textAirValue(air_stats_valid, "%d b", air_stats.cam_frame_size_max); });
+        row("Camera Overflow", [&] { textAirValue(air_stats_valid, "%d", air_stats.cam_ovf_count); });
         row("Broken frames", [&] { ImGui::Text("%d", ground_stats.brokenFrames); });
-        row("Temperature GS/Air", [&] { ImGui::Text("%dC/%dC", cpu_temp_c, static_cast<int>(air_stats.temperature)); });
+        row("Temperature GS/Air", [&]
+        {
+            if (!air_stats_valid)
+            {
+                ImGui::Text("%dC/?", cpu_temp_c);
+                return;
+            }
+            ImGui::Text("%dC/%dC", cpu_temp_c, static_cast<int>(air_stats.temperature));
+        });
 
         ImGui::EndTable();
     }
@@ -169,12 +218,17 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
             draw_value();
         };
 
-        row("Mavlink Up", [&] { ImGui::Text("%d b/s", air_stats.inMavlinkRate); });
-        row("Mavlink Down", [&] { ImGui::Text("%d b/s", air_stats.outMavlinkRate); });
+        row("Mavlink Up", [&] { textAirValue(air_stats_valid, "%d b/s", air_stats.inMavlinkRate); });
+        row("Mavlink Down", [&] { textAirValue(air_stats_valid, "%d b/s", air_stats.outMavlinkRate); });
         row("GS RC Period Max", [&] { ImGui::Text("%d ms", ground_stats.RCPeriodMax); });
         row("AIR RC Period Max", [&]
         {
             int v = -1;
+            if (!air_stats_valid)
+            {
+                ImGui::TextUnformatted("?");
+                return;
+            }
             if (air_stats.RCPeriodMax > 0 && air_stats.RCPeriodMax <= 100)
             {
                 v = air_stats.RCPeriodMax;

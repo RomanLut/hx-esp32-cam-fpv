@@ -14,6 +14,7 @@ struct FullscreenStatsSnapshot
     int current_quality = 0;
     int wifi_queue_max = 0;
     int cpu_temp_c = 0;
+    bool air_stats_valid = true;
     AirStats air_stats = {};
     GSStats ground_stats = {};
     Stats frame_stats;

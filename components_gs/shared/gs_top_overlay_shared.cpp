@@ -111,12 +111,23 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
     bool show_gs_temp = false;
     bool show_air_temp = false;
 
-    std::snprintf(buf, sizeof(buf), "AIR:%d", -input.air_rssi_dbm);
+    if (input.air_stats_valid)
+    {
+        std::snprintf(buf, sizeof(buf), "AIR:%d", -input.air_rssi_dbm);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "AIR:?");
+    }
     air_link_text = buf;
 
     if (input.has_gs_stats)
     {
-        if (!input.is_dual)
+        if (!input.air_stats_valid)
+        {
+            gs_link_text = input.is_dual ? "GS:?/?" : "GS:?";
+        }
+        else if (!input.is_dual)
         {
             std::snprintf(buf, sizeof(buf), "GS:%d", formatGSRSSI(input.gs_rssi_dbm0));
             gs_link_text = buf;
@@ -137,7 +148,7 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
         show_gs_temp = true;
         gs_temp_text = buf;
     }
-    if (input.air_temperature >= 110)
+    if (input.air_stats_valid && input.air_temperature >= 110)
     {
         std::snprintf(buf, sizeof(buf), "Air:%02dC", input.air_temperature);
         show_air_temp = true;
@@ -150,7 +161,14 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
         chips.push_back({gs_link_text, false, gs_link_text.find('/') == std::string::npos ? 113.0f : 183.0f});
     }
 
-    std::snprintf(buf, sizeof(buf), "%d%%", input.wifi_queue_percent);
+    if (input.air_stats_valid)
+    {
+        std::snprintf(buf, sizeof(buf), "%d%%", input.wifi_queue_percent);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "?");
+    }
     chips.push_back({buf, input.wifi_queue_alert, 55.0f});
 
     if (!throughput_text.empty()) chips.push_back({throughput_text, false, 90.0f});

@@ -36,6 +36,21 @@ bool s_wifi_ovf = false;
 bool s_noPing = false;
 std::atomic<LinkState> s_link_state = LinkState::None;
 
+namespace
+{
+
+constexpr Clock::duration kAirStatsStaleDuration = std::chrono::seconds(2);
+
+} // namespace
+
+//===================================================================================
+//===================================================================================
+// Returns whether air-derived status values are recent enough to display as valid.
+bool isAirStatsFresh(Clock::time_point now)
+{
+    return now - s_runtimeCore.last_packet_tp < kAirStatsStaleDuration;
+}
+
 //===================================================================================
 //===================================================================================
 // Returns the lazily initialized mutex guarding the shared link-state detail text.

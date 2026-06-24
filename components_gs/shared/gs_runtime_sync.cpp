@@ -15,6 +15,13 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
 {
     RuntimeSyncState state;
     const Clock::time_point now = Clock::now();
+    const bool air_stats_valid = isAirStatsFresh(now);
+    AirStats display_air_stats = core.session.lastAirStats();
+    if (!air_stats_valid)
+    {
+        display_air_stats.rssiDbm = 0;
+        display_air_stats.noiseFloorDbm = 0;
+    }
     if (now - core.last_data_rate_sample_tp >= std::chrono::milliseconds(100))
     {
         core.data_size_stats.add(core.session.consumeDataRateSample());
@@ -51,9 +58,12 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.gs_stats.outPacketCounter = static_cast<uint16_t>(periodic_stats.sent_count);
         core.gs_stats.pingMinMS = link_status.ping_min_ms;
         core.gs_stats.pingMaxMS = link_status.ping_max_ms;
-        const int8_t gs_rssi0 = core.gs_stats.rssiDbm[0];
-        const int8_t gs_rssi1 = core.gs_stats.rssiDbm[1];
-        const int8_t gs_noise_floor = core.gs_stats.noiseFloorDbm;
+        const int8_t gs_rssi0 = air_stats_valid ? core.gs_stats.rssiDbm[0] : 0;
+        const int8_t gs_rssi1 = air_stats_valid ? core.gs_stats.rssiDbm[1] : 0;
+        const int8_t gs_noise_floor = air_stats_valid ? core.gs_stats.noiseFloorDbm : 0;
+        core.gs_stats.rssiDbm[0] = gs_rssi0;
+        core.gs_stats.rssiDbm[1] = gs_rssi1;
+        core.gs_stats.noiseFloorDbm = gs_noise_floor;
 
         const gs::core::VideoFrameAssembler::Stats assembler_stats = core.assembler.consumeStats();
         const gs::stabilization::StabilizationStats stabilization_stats =
@@ -111,28 +121,29 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_periodic_stats_tp = now;
     }
 
-    s_isOV5640 = core.session.lastAirStats().isOV5640 != 0;
+    s_isOV5640 = air_stats_valid && display_air_stats.isOV5640 != 0;
     s_isDual = params.is_dual;
     overlay_input.config = core.config_packet;
-    overlay_input.air_rssi_dbm = core.session.lastAirStats().rssiDbm;
-    overlay_input.air_temperature = core.session.lastAirStats().temperature;
-    overlay_input.air_overheat = core.session.lastAirStats().overheatTrottling != 0;
-    overlay_input.air_suspended = core.session.lastAirStats().suspended == 1;
+    overlay_input.air_stats_valid = air_stats_valid;
+    overlay_input.air_rssi_dbm = air_stats_valid ? display_air_stats.rssiDbm : 0;
+    overlay_input.air_temperature = air_stats_valid ? display_air_stats.temperature : -1;
+    overlay_input.air_overheat = air_stats_valid && display_air_stats.overheatTrottling != 0;
+    overlay_input.air_suspended = air_stats_valid && display_air_stats.suspended == 1;
     overlay_input.has_gs_stats = true;
-    overlay_input.gs_rssi_dbm0 = core.last_ground_stats.rssiDbm[0];
-    overlay_input.gs_rssi_dbm1 = core.last_ground_stats.rssiDbm[1];
-    overlay_input.is_ov5640 = core.session.lastAirStats().isOV5640 != 0;
+    overlay_input.gs_rssi_dbm0 = air_stats_valid ? core.last_ground_stats.rssiDbm[0] : 0;
+    overlay_input.gs_rssi_dbm1 = air_stats_valid ? core.last_ground_stats.rssiDbm[1] : 0;
+    overlay_input.is_ov5640 = air_stats_valid && display_air_stats.isOV5640 != 0;
     overlay_input.is_dual = params.is_dual;
-    overlay_input.wifi_queue_percent = core.session.lastAirStats().wifi_queue_max;
-    overlay_input.wifi_queue_alert = core.session.lastAirStats().wifi_ovf != 0;
+    overlay_input.wifi_queue_percent = air_stats_valid ? display_air_stats.wifi_queue_max : -1;
+    overlay_input.wifi_queue_alert = air_stats_valid && display_air_stats.wifi_ovf != 0;
     overlay_input.throughput_mbps = core.last_throughput_mbps;
     overlay_input.video_fps = core.last_ground_stats.receivedCompletedFrames +
         core.last_ground_stats.restoredCompletedFrames;
     overlay_input.video_fps_alert = core.last_had_frame_loss;
     overlay_input.image_stabilization_enabled = s_imageStabilizationState.enabled;
-    overlay_input.air_record = core.session.lastAirStats().air_record_state != 0;
+    overlay_input.air_record = air_stats_valid && display_air_stats.air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();
-    overlay_input.hq_dvr = core.session.lastAirStats().hq_dvr_mode != 0;
+    overlay_input.hq_dvr = air_stats_valid && display_air_stats.hq_dvr_mode != 0;
     overlay_input.gs_temp_celsius = s_RuntimePlatformServices != nullptr
         ? s_RuntimePlatformServices->getCpuTemperatureCelsius()
         : 0.0f;
@@ -147,10 +158,11 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         const auto& frame_stats = core.session.frameStats();
         gs::stats::FullscreenStatsSnapshot stats_snapshot = {};
         stats_snapshot.fec_codec_n = core.config_packet.dataChannel.fec_codec_n;
-        stats_snapshot.current_quality = core.session.lastAirStats().curr_quality;
-        stats_snapshot.wifi_queue_max = core.session.lastAirStats().wifi_queue_max;
+        stats_snapshot.current_quality = air_stats_valid ? display_air_stats.curr_quality : -1;
+        stats_snapshot.wifi_queue_max = air_stats_valid ? display_air_stats.wifi_queue_max : -1;
         stats_snapshot.cpu_temp_c = static_cast<int>(overlay_input.gs_temp_celsius + 0.5f);
-        stats_snapshot.air_stats = core.session.lastAirStats();
+        stats_snapshot.air_stats_valid = air_stats_valid;
+        stats_snapshot.air_stats = display_air_stats;
         stats_snapshot.ground_stats = core.last_ground_stats;
         stats_snapshot.frame_stats = frame_stats.frame_stats;
         stats_snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
