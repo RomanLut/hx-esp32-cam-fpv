@@ -36,6 +36,8 @@ extern uint8_t s_curr_quality;
 extern bool s_wifi_ovf;
 extern bool s_noPing;
 
+bool isAirStatsFresh(Clock::time_point now);
+
 //===================================================================================
 //===================================================================================
 // Describes the current high-level link progress shown in the shared top overlay.

@@ -14,6 +14,7 @@ namespace gs::imgui
 struct TopOverlayData
 {
     Ground2Air_Config_Packet config = {};
+    bool air_stats_valid = true;
     int air_rssi_dbm = 0;
     int air_temperature = 0;
     bool air_overheat = false;

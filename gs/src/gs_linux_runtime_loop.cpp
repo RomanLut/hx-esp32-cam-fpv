@@ -219,9 +219,13 @@ void comms_thread_proc()
             s_noPing = link_status.no_ping;
             {
                 std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-                const int8_t rssi0 = s_gs_stats.rssiDbm[0];
-                const int8_t rssi1 = s_gs_stats.rssiDbm[1];
-                const int8_t noise_floor = s_gs_stats.noiseFloorDbm;
+                const bool air_stats_valid = isAirStatsFresh(now);
+                const int8_t rssi0 = air_stats_valid ? s_gs_stats.rssiDbm[0] : 0;
+                const int8_t rssi1 = air_stats_valid ? s_gs_stats.rssiDbm[1] : 0;
+                const int8_t noise_floor = air_stats_valid ? s_gs_stats.noiseFloorDbm : 0;
+                s_gs_stats.rssiDbm[0] = rssi0;
+                s_gs_stats.rssiDbm[1] = rssi1;
+                s_gs_stats.noiseFloorDbm = noise_floor;
                 s_gs_stats.pingMinMS = link_status.ping_min_ms;
                 s_gs_stats.pingMaxMS = link_status.ping_max_ms;
                 s_gs_stats.receivedCompletedFrames = periodic_stats.received_completed_frames;
@@ -438,6 +442,14 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         gs::stats::FullscreenStatsSnapshot overlay_stats_snapshot = {};
         if (frame_ui.overlay_stats_visible)
         {
+            const Clock::time_point now = Clock::now();
+            const bool air_stats_valid = isAirStatsFresh(now);
+            AirStats display_air_stats = s_last_airStats;
+            if (!air_stats_valid)
+            {
+                display_air_stats.rssiDbm = 0;
+                display_air_stats.noiseFloorDbm = 0;
+            }
             GSStats last_gs_stats = {};
             {
                 std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
@@ -445,10 +457,11 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             }
             const gs::core::FrameStatsState frame_stats = s_runtimeCore.session.copyFrameStats();
             overlay_stats_snapshot.fec_codec_n = config.dataChannel.fec_codec_n;
-            overlay_stats_snapshot.current_quality = s_curr_quality;
-            overlay_stats_snapshot.wifi_queue_max = s_wifi_queue_max;
+            overlay_stats_snapshot.current_quality = air_stats_valid ? s_curr_quality : -1;
+            overlay_stats_snapshot.wifi_queue_max = air_stats_valid ? s_wifi_queue_max : -1;
             overlay_stats_snapshot.cpu_temp_c = static_cast<int>(s_RuntimePlatformServices->getCpuTemperatureCelsius() + 0.5f);
-            overlay_stats_snapshot.air_stats = s_last_airStats;
+            overlay_stats_snapshot.air_stats_valid = air_stats_valid;
+            overlay_stats_snapshot.air_stats = display_air_stats;
             overlay_stats_snapshot.ground_stats = last_gs_stats;
             overlay_stats_snapshot.frame_stats = frame_stats.frame_stats;
             overlay_stats_snapshot.frame_parts_stats = frame_stats.frame_parts_stats;
@@ -483,33 +496,36 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
 
             //------------------------------------------------
             gs::imgui::TopOverlayData input = {};
+            const Clock::time_point now = Clock::now();
+            const bool air_stats_valid = isAirStatsFresh(now);
 
             input.config = config;
-            input.air_rssi_dbm = s_last_airStats.rssiDbm;
-            input.air_temperature = s_last_airStats.temperature;
-            input.air_overheat = s_last_airStats.overheatTrottling != 0;
-            input.air_suspended = s_last_airStats.suspended == 1;
+            input.now = now;
+            input.air_stats_valid = air_stats_valid;
+            input.air_rssi_dbm = air_stats_valid ? s_last_airStats.rssiDbm : 0;
+            input.air_temperature = air_stats_valid ? s_last_airStats.temperature : -1;
+            input.air_overheat = air_stats_valid && s_last_airStats.overheatTrottling != 0;
+            input.air_suspended = air_stats_valid && s_last_airStats.suspended == 1;
             input.has_gs_stats = true;
-            input.gs_rssi_dbm0 = s_last_gs_stats.rssiDbm[0];
-            input.gs_rssi_dbm1 = s_last_gs_stats.rssiDbm[1];
-            input.is_ov5640 = s_isOV5640;
+            input.gs_rssi_dbm0 = air_stats_valid ? s_last_gs_stats.rssiDbm[0] : 0;
+            input.gs_rssi_dbm1 = air_stats_valid ? s_last_gs_stats.rssiDbm[1] : 0;
+            input.is_ov5640 = air_stats_valid && s_isOV5640;
             input.is_dual = s_isDual;
-            input.wifi_queue_percent = s_wifi_queue_max;
-            input.wifi_queue_alert = s_wifi_ovf;
+            input.wifi_queue_percent = air_stats_valid ? s_wifi_queue_max : -1;
+            input.wifi_queue_alert = air_stats_valid && s_wifi_ovf;
             input.throughput_mbps = static_cast<float>(s_total_data) * 8.0f / (1024.0f * 1024.0f);
             input.video_fps = static_cast<int>(video_fps);
             input.video_fps_alert = had_loss;
             input.image_stabilization_enabled = s_imageStabilizationState.enabled;
             input.no_ping = s_noPing;
             input.interference = shouldShowInterferenceChip(s_last_gs_stats);
-            input.sd_slow = s_SDSlow;
-            input.air_record = s_air_record;
+            input.sd_slow = air_stats_valid && s_SDSlow;
+            input.air_record = air_stats_valid && s_air_record;
             input.gs_record = s_recordingsStorage->isRecording();
-            input.hq_dvr = isHQDVRMode();
+            input.hq_dvr = air_stats_valid && isHQDVRMode();
             input.gs_temp_celsius = s_RuntimePlatformServices->getCpuTemperatureCelsius();
             input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
-            input.now = Clock::now();
             input.transport_message = s_transport != nullptr ? s_transport->getTransportMessage() : "";
 
             gs::imgui::drawTopOverlayStatus(input, overlay_width);

@@ -6,11 +6,19 @@ if "%GS_DIR:~-1%"=="\" set "GS_DIR=%GS_DIR:~0,-1%"
 set "WSL_DISTRO=Ubuntu"
 set "USBIPD_EXE=C:\Program Files\usbipd-win\usbipd.exe"
 set "BUSID="
+set "BUSIDS="
+set "BUSID_COUNT=0"
 set "IFACE="
+set "IFACES="
+set "IFACE_COUNT=0"
+set "TX_IFACE="
+set "RX_IFACE_ARGS="
 set "GS_WSL_DIR="
 set "ATTACHED="
 set "IFACE_RETRY_MAX=5"
 set "BUSID_FILE=%TEMP%\gs_wsl_busid.txt"
+set "BUSIDS_FILE=%TEMP%\gs_wsl_busids.txt"
+set "IFACES_FILE=%TEMP%\gs_wsl_ifaces.txt"
 set "WSL_HELPER_PS1=%GS_DIR%\launch_gs_wsl_helper.ps1"
 set "LAUNCH_MODE=normal"
 set "WSL_MCP_CLIENT="
@@ -40,21 +48,30 @@ if /i "%LAUNCH_MODE%"=="mcp-stop" (
   exit /b 0
 )
 
-echo Detecting RTL88XXAU USB adapter...
-del /q "%BUSID_FILE%" 2>nul
+echo Detecting RTL88XXAU USB adapters...
+del /q "%BUSIDS_FILE%" 2>nul
 powershell -NoProfile -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$state = & 'C:\Program Files\usbipd-win\usbipd.exe' state | ConvertFrom-Json;" ^
-  "$dev = $state.Devices | Where-Object { $_.InstanceId -match 'VID_0BDA&PID_8812' -or $_.Description -match '8812AU|RTL8812AU' } | Select-Object -First 1;" ^
-  "if ($dev) { Set-Content -LiteralPath '%BUSID_FILE%' -Value $dev.BusId -NoNewline }"
-if exist "%BUSID_FILE%" set /p "BUSID="<"%BUSID_FILE%"
+  "$devs = @($state.Devices | Where-Object { $_.InstanceId -match 'VID_0BDA&PID_8812' -or $_.Description -match '8812AU|RTL8812AU|88XXAU|RTL88XXAU' } | Select-Object -First 2);" ^
+  "if ($devs.Count -gt 0) { Set-Content -LiteralPath '%BUSIDS_FILE%' -Value @($devs | ForEach-Object { $_.BusId }) }"
+if exist "%BUSIDS_FILE%" (
+  for /f "usebackq delims=" %%B in ("%BUSIDS_FILE%") do (
+    if not defined BUSIDS (
+      set "BUSIDS=%%B"
+    ) else (
+      set "BUSIDS=!BUSIDS! %%B"
+    )
+    set /a BUSID_COUNT+=1
+  )
+)
 
-if not defined BUSID (
+if not defined BUSIDS (
   echo Could not auto-detect RTL8812AU adapter bus id.
   exit /b 1
 )
 
-echo Using BUSID %BUSID%.
+echo Using %BUSID_COUNT% USB adapters: %BUSIDS%.
 
 echo Starting WSL distro "%WSL_DISTRO%"...
 wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "nohup sleep 300 >/dev/null 2>&1 &" >nul 2>&1
@@ -62,41 +79,48 @@ wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "nohup sleep 300 >/dev/null 2>&1 &" 
 echo Waiting for WSL...
 timeout /t 2 /nobreak >nul
 
-echo Attaching USB adapter %BUSID% to WSL...
-"%USBIPD_EXE%" bind --busid %BUSID% >nul 2>&1
-call :detect_attached
-if /i "%ATTACHED%"=="1" (
-  echo USB adapter is already attached.
-) else (
-  "%USBIPD_EXE%" attach --wsl %WSL_DISTRO% --busid %BUSID%
-  if errorlevel 1 (
-    call :detect_attached
-    if /i not "%ATTACHED%"=="1" (
-      echo usbipd attach failed.
-      exit /b 1
+for %%B in (%BUSIDS%) do (
+  echo Attaching USB adapter %%B to WSL...
+  "%USBIPD_EXE%" bind --busid %%B >nul 2>&1
+  call :detect_attached "%%B"
+  if /i "!ATTACHED!"=="1" (
+    echo USB adapter %%B is already attached.
+  ) else (
+    "%USBIPD_EXE%" attach --wsl %WSL_DISTRO% --busid %%B
+    if errorlevel 1 (
+      call :detect_attached "%%B"
+      if /i not "!ATTACHED!"=="1" (
+        echo usbipd attach failed for %%B.
+        exit /b 1
+      )
     )
   )
 )
 
 call :wait_iface_with_restarts
-if defined IFACE goto :iface_ready
+if defined IFACES goto :iface_ready
 
-echo Could not detect Wifi interface in WSL after %IFACE_RETRY_MAX% retries.
+echo Could not detect %BUSID_COUNT% Wifi interfaces in WSL after %IFACE_RETRY_MAX% retries.
 exit /b 1
 
 :iface_ready
-echo Using interface %IFACE%.
+call :build_iface_args
+echo Using %IFACE_COUNT% interfaces: %IFACES%.
+echo Using TX interface %TX_IFACE%.
 
 echo Waiting for Wifi interface readiness in WSL...
 for /l %%N in (1,1,60) do (
   set "IFACE_READY="
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" probe_iface_ready "%WSL_DISTRO%" "%IFACE%"
-  if not errorlevel 1 set "IFACE_READY=1"
+  set "IFACE_READY=1"
+  for %%I in (%IFACES%) do (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" probe_iface_ready "%WSL_DISTRO%" "%%I"
+    if errorlevel 1 set "IFACE_READY="
+  )
   if /i "!IFACE_READY!"=="1" goto :iface_ready_ok
   timeout /t 1 /nobreak >nul
 )
 
-echo Wifi interface %IFACE% did not become ready in WSL.
+echo Wifi interfaces %IFACES% did not become ready in WSL.
 exit /b 1
 
 :iface_ready_ok
@@ -119,39 +143,51 @@ if errorlevel 1 (
 
 if /i "%LAUNCH_MODE%"=="mcp" goto :launch_mcp
 
-echo Launching gs on interface %IFACE%...
-wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "cd '%GS_WSL_DIR%' && exec ./gs -rx '%IFACE%' -tx '%IFACE%' -fullscreen 0 -sm 1"
+echo Launching gs on interfaces %IFACES%...
+wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "cd '%GS_WSL_DIR%' && exec ./gs -rx %RX_IFACE_ARGS% -tx '%TX_IFACE%' -fullscreen 0 -sm 1"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo gs exited with code %EXIT_CODE%.
 exit /b %EXIT_CODE%
 
 :launch_mcp
-echo Launching gs in MCP mode on interface %IFACE% in a dedicated WSL window...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" launch_mcp_full "%WSL_DISTRO%" "%IFACE%" "%GS_WSL_DIR%" "%WSL_MCP_CLIENT%"
+echo Launching gs in MCP mode on interfaces %IFACES% in a dedicated WSL window...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" launch_mcp_full "%WSL_DISTRO%" "%IFACES%" "%GS_WSL_DIR%" "%WSL_MCP_CLIENT%"
 if errorlevel 1 (
   echo gs MCP startup failed.
   exit /b 1
 )
-echo gs MCP ready on interface %IFACE%.
+echo gs MCP ready on interfaces %IFACES%.
 exit /b 0
 
-:detect_iface
-set "IFACE="
-del /q "%BUSID_FILE%" 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_iface "%WSL_DISTRO%" "%BUSID_FILE%" "5"
-if exist "%BUSID_FILE%" set /p "IFACE="<"%BUSID_FILE%"
-:detect_iface_done
+:detect_ifaces
+set "IFACES="
+set "IFACE_COUNT=0"
+del /q "%IFACES_FILE%" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%WSL_HELPER_PS1%" detect_ifaces "%WSL_DISTRO%" "%IFACES_FILE%" "5" "%BUSID_COUNT%"
+if exist "%IFACES_FILE%" (
+  for /f "usebackq delims=" %%I in ("%IFACES_FILE%") do (
+    if not defined IFACES (
+      set "IFACES=%%I"
+    ) else (
+      set "IFACES=!IFACES! %%I"
+    )
+    set /a IFACE_COUNT+=1
+  )
+)
+:detect_ifaces_done
 exit /b 0
 
 :wait_iface_with_restarts
-set "IFACE="
+set "IFACES="
 for /l %%R in (1,1,%IFACE_RETRY_MAX%) do (
-  echo Waiting for Wifi interface in WSL... attempt %%R/%IFACE_RETRY_MAX%
-  call :detect_iface
-  if defined IFACE goto :wait_iface_with_restarts_done
+  echo Waiting for %BUSID_COUNT% Wifi interfaces in WSL... attempt %%R/%IFACE_RETRY_MAX%
+  call :detect_ifaces
+  if defined IFACES (
+    if !IFACE_COUNT! geq %BUSID_COUNT% goto :wait_iface_with_restarts_done
+  )
   if %%R lss %IFACE_RETRY_MAX% (
-    echo Wifi interface not found in 5 seconds. Restarting WSL and retrying...
+    echo Wifi interfaces not found in 5 seconds. Restarting WSL and retrying...
     call :restart_wsl_and_reattach
   )
 )
@@ -163,8 +199,23 @@ wsl.exe --shutdown >nul 2>&1
 timeout /t 1 /nobreak >nul
 wsl.exe -d %WSL_DISTRO% -u root -- bash -lc "nohup sleep 300 >/dev/null 2>&1 &" >nul 2>&1
 timeout /t 2 /nobreak >nul
-"%USBIPD_EXE%" bind --busid %BUSID% >nul 2>&1
-"%USBIPD_EXE%" attach --wsl %WSL_DISTRO% --busid %BUSID% >nul 2>&1
+for %%B in (%BUSIDS%) do (
+  "%USBIPD_EXE%" bind --busid %%B >nul 2>&1
+  "%USBIPD_EXE%" attach --wsl %WSL_DISTRO% --busid %%B >nul 2>&1
+)
+exit /b 0
+
+:build_iface_args
+set "TX_IFACE="
+set "RX_IFACE_ARGS="
+for %%I in (%IFACES%) do (
+  if not defined TX_IFACE set "TX_IFACE=%%I"
+  if not defined RX_IFACE_ARGS (
+    set "RX_IFACE_ARGS='%%I'"
+  ) else (
+    set "RX_IFACE_ARGS=!RX_IFACE_ARGS! '%%I'"
+  )
+)
 exit /b 0
 
 :resolve_wsl_dir
@@ -204,5 +255,7 @@ exit /b 0
 
 :detect_attached
 set "ATTACHED="
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $state = & 'C:\Program Files\usbipd-win\usbipd.exe' state | ConvertFrom-Json; $dev = $state.Devices | Where-Object { $_.BusId -eq '%BUSID%' } | Select-Object -First 1; if ($dev -and $dev.ClientIPAddress) { '1' }"`) do set "ATTACHED=%%I"
+set "CHECK_BUSID=%~1"
+if not defined CHECK_BUSID set "CHECK_BUSID=%BUSID%"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $state = & 'C:\Program Files\usbipd-win\usbipd.exe' state | ConvertFrom-Json; $dev = $state.Devices | Where-Object { $_.BusId -eq '%CHECK_BUSID%' } | Select-Object -First 1; if ($dev -and $dev.ClientIPAddress) { '1' }"`) do set "ATTACHED=%%I"
 exit /b 0

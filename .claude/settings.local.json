@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "Bash(curl *)",
+      "Bash(git clone *)",
       "Bash(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\OpenCV\\\\OpenCVWrapper\" -Recurse -Filter \"*.cpp\")",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(Select-String -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\components_gs\\\\shared\\\\core\\\\osd_menu_controller.cpp\" -Pattern \"<>\" -SimpleMatch)",
@@ -22,7 +24,10 @@
       "PowerShell(Get-ChildItem -Path \"d:\\\\Github\\\\esp32-cam-fpv\\\\esp32-cam-fpv\\\\oculus_quest_gs\\\\app\\\\src\\\\main\\\\cpp\" -Depth 0 -File | Where-Object { $_.Extension -match '\\\\.\\(cpp|h\\)$' } | Select-Object -ExpandProperty FullName | Sort-Object)",
       "PowerShell(Get-ChildItem *)",
       "Bash(\"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)",
-      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)"
+      "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)",
+      "Read(//tmp/openipc-research/**)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)"
     ]
   }
 }

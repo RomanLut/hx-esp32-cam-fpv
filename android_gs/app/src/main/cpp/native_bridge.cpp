@@ -398,9 +398,29 @@ std::string buildInfoString()
 
 //===================================================================================
 //===================================================================================
+// Appends one debug field, printing unknown when the air stats snapshot is stale.
+template<typename Value>
+void appendAirDebugField(std::ostringstream& out,
+                         const char* name,
+                         bool air_stats_valid,
+                         const Value& value)
+{
+    out << " | " << name << "=";
+    if (!air_stats_valid)
+    {
+        out << "?";
+        return;
+    }
+    out << value;
+}
+
+//===================================================================================
+//===================================================================================
 // Builds a transport-agnostic runtime status summary for the JNI debug surface.
 std::string describeHandleString(const NativeHandle& handle)
 {
+    const bool air_stats_valid = isAirStatsFresh(Clock::now());
+    const AirStats& air_stats = s_runtimeCore.session.lastAirStats();
     std::ostringstream out;
     out << "Session ready"
         << " | gs_id=" << s_runtimeCore.gs_device_id
@@ -426,12 +446,15 @@ std::string describeHandleString(const NativeHandle& handle)
         << " | vid_frame=" << s_runtimeCore.last_video_frame_index
         << " | vid_part=" << s_runtimeCore.last_video_part_index
         << " | vid_last=" << s_runtimeCore.last_video_last_part
-        << " | vid_payload=" << s_runtimeCore.last_video_payload_size
-        << " | air_rssi=" << -static_cast<int>(s_runtimeCore.session.lastAirStats().rssiDbm)
-        << " | queue_max=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_queue_max)
-        << " | wifi_ovf=" << static_cast<int>(s_runtimeCore.session.lastAirStats().wifi_ovf)
-        << " | air_record=" << static_cast<int>(s_runtimeCore.session.lastAirStats().air_record_state)
-        << " | resolution=" << gs::menu::getResolutionSummary(s_runtimeCore.config_packet, s_runtimeCore.session.lastAirStats().isOV5640 != 0);
+        << " | vid_payload=" << s_runtimeCore.last_video_payload_size;
+    appendAirDebugField(out, "air_rssi", air_stats_valid, -static_cast<int>(air_stats.rssiDbm));
+    appendAirDebugField(out, "queue_max", air_stats_valid, static_cast<int>(air_stats.wifi_queue_max));
+    appendAirDebugField(out, "wifi_ovf", air_stats_valid, static_cast<int>(air_stats.wifi_ovf));
+    appendAirDebugField(out, "air_record", air_stats_valid, static_cast<int>(air_stats.air_record_state));
+    appendAirDebugField(out,
+                        "resolution",
+                        air_stats_valid,
+                        gs::menu::getResolutionSummary(s_runtimeCore.config_packet, air_stats.isOV5640 != 0));
     return out.str();
 }
 
@@ -1071,6 +1094,10 @@ ImGuiKey androidKeyCodeToImGuiKey(int key_code)
         return ImGuiKey_Enter;
     case AKEYCODE_MENU:
         return ImGuiKey_Menu;
+    case AKEYCODE_G:
+        return ImGuiKey_G;
+    case AKEYCODE_R:
+        return ImGuiKey_R;
     default:
         return ImGuiKey_None;
     }
