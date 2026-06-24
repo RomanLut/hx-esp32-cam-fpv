@@ -150,9 +150,9 @@
 
 #ifdef BOARD_ESP32C5
 
-//  Debug is on USB UART
+//  Debug is on USB UART when USBUART_DEBUG_OUTPUT is enabled
 //  UART0:  MSP-OSD  RX=12 TX=11
-//  UART1:  MAVLINK  RX=27 (no TX)
+//  UART1:  MAVLINK  RX=27 (no TX), disabled while USB UART debug output is enabled
 //  REC BUTTON: GPIO_NUM_28 (existing boot button) + LED
 
 #define CAMERA_MODEL_ESP32C5
@@ -172,7 +172,10 @@
 #define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
 
-//define to use mavlink telemetry on UART1 
+// USB debug uses the native USB Serial/JTAG peripheral. UART1 and all MAVLink
+// forwarding must remain disabled so the UART driver cannot claim the USB pins.
+#ifndef USBUART_DEBUG_OUTPUT
+//define to use mavlink telemetry on UART1
 #define UART_MAVLINK UART_NUM_1
 #define INIT_UART_1
 #define RXD1_PIN    GPIO_NUM_27
@@ -180,6 +183,7 @@
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
 #define UART1_BAUDRATE 115200
+#endif
 
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
 
