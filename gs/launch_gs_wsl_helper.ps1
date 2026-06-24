@@ -52,13 +52,59 @@ function Escape-BashSingleQuotedText {
     return $Value.Replace("'", "'\''")
 }
 
+#===================================================================================
+#===================================================================================
+# Converts a user-facing interface string into individual WSL interface names.
+function ConvertTo-InterfaceList {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InterfacesText
+    )
+
+    return @($InterfacesText.Split(@(' ', "`t", ',', ';'), [System.StringSplitOptions]::RemoveEmptyEntries))
+}
+
+#===================================================================================
+#===================================================================================
+# Builds the pgrep match pattern for a GS process launched with the selected interfaces.
 function Get-WslGsMatchPattern {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Interface
+        [string]$InterfacesText
     )
 
-    return "^./gs -rx $Interface -tx $Interface -fullscreen 0 -sm 1`$"
+    $interfaces = ConvertTo-InterfaceList -InterfacesText $InterfacesText
+    if ($interfaces.Count -eq 0) {
+        return "^./gs .* -fullscreen 0 -sm 1`$"
+    }
+
+    $rxPattern = (($interfaces | ForEach-Object { [regex]::Escape($_) }) -join " ")
+    $txPattern = [regex]::Escape($interfaces[0])
+
+    return "^./gs -rx $rxPattern -tx $txPattern -fullscreen 0 -sm 1`$"
+}
+
+#===================================================================================
+#===================================================================================
+# Builds the bash command that launches GS with all selected RX interfaces.
+function New-WslGsCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$GsDir,
+
+        [Parameter(Mandatory = $true)]
+        [string]$InterfacesText
+    )
+
+    $interfaces = ConvertTo-InterfaceList -InterfacesText $InterfacesText
+    if ($interfaces.Count -eq 0) {
+        throw 'No WSL Wi-Fi interfaces were provided.'
+    }
+
+    $rxArgs = (($interfaces | ForEach-Object { "'" + (Escape-BashSingleQuotedText $_) + "'" }) -join ' ')
+    $txInterface = Escape-BashSingleQuotedText $interfaces[0]
+
+    return "cd '$GsDir' && exec ./gs -rx $rxArgs -tx '$txInterface' -fullscreen 0 -sm 1"
 }
 
 function Stop-WslGsInstance {
@@ -87,13 +133,13 @@ function Start-WslGsMcpInstance {
         [string]$GsDir,
 
         [Parameter(Mandatory = $true)]
-        [string]$Interface
+        [string]$InterfacesText
     )
 
     # Detached WSL launches were unstable in testing: GS could bring up MCP and then
     # disappear immediately. Keep GS in its own visible WSL console so SDL/WSLg stay
     # attached to an interactive session, while the helper polls MCP separately.
-    $gsCommand = "cd '$GsDir' && exec ./gs -rx '$Interface' -tx '$Interface' -fullscreen 0 -sm 1"
+    $gsCommand = New-WslGsCommand -GsDir $GsDir -InterfacesText $InterfacesText
     $cmdLine = "/c start """" wsl.exe -d $DistroName -u root -- bash -lc ""$gsCommand"""
     $process = Start-Process -FilePath 'cmd.exe' -ArgumentList $cmdLine -PassThru
 
@@ -145,36 +191,44 @@ function Ensure-WindowsMcpProxy {
     return ($LASTEXITCODE -eq 0)
 }
 
-function Find-WslWifiInterface {
+#===================================================================================
+#===================================================================================
+# Waits for the requested number of WSL Wi-Fi monitor-capable interface names.
+function Find-WslWifiInterfaces {
     param(
         [Parameter(Mandatory = $true)]
         [string]$DistroName,
 
-        [int]$TimeoutSeconds = 15
+        [int]$TimeoutSeconds = 15,
+
+        [int]$TargetCount = 1
     )
 
+    $TargetCount = [Math]::Max(1, $TargetCount)
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $probeCommand = @'
 for module in 88XXau rtl88xxau 8812au; do
     modprobe "$module" >/dev/null 2>&1 && break
 done
 udevadm settle --timeout=3 >/dev/null 2>&1 || true
-ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | head -n1
+ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | sort
 '@
 
     do {
         $result = Invoke-WslCommand -DistroName $DistroName -CommandText $probeCommand
-        $iface = $result.StdOut.Trim().Split([Environment]::NewLine, [System.StringSplitOptions]::RemoveEmptyEntries) |
-            Select-Object -Last 1
+        $ifaces = @($result.StdOut.Trim().Split([Environment]::NewLine, [System.StringSplitOptions]::RemoveEmptyEntries) |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First $TargetCount)
 
-        if (-not [string]::IsNullOrWhiteSpace($iface)) {
-            return $iface.Trim()
+        if ($ifaces.Count -ge $TargetCount) {
+            return $ifaces
         }
 
         Start-Sleep -Seconds 1
     } while ([DateTime]::UtcNow -lt $deadline)
 
-    return $null
+    return @()
 }
 
 switch ($Action) {
@@ -188,9 +242,33 @@ switch ($Action) {
             $timeoutSeconds = [Math]::Max(1, [int]$Arg2)
         }
 
-        $iface = Find-WslWifiInterface -DistroName $Distro -TimeoutSeconds $timeoutSeconds
-        if (-not [string]::IsNullOrWhiteSpace($iface)) {
-            Set-Content -LiteralPath $Arg1 -Value $iface -NoNewline
+        $ifaces = Find-WslWifiInterfaces -DistroName $Distro -TimeoutSeconds $timeoutSeconds -TargetCount 1
+        if ($ifaces.Count -gt 0) {
+            Set-Content -LiteralPath $Arg1 -Value $ifaces[0] -NoNewline
+            exit 0
+        }
+
+        exit 1
+    }
+
+    'detect_ifaces' {
+        if ([string]::IsNullOrWhiteSpace($Arg1)) {
+            throw 'detect_ifaces requires an output file path.'
+        }
+
+        $timeoutSeconds = 15
+        if (-not [string]::IsNullOrWhiteSpace($Arg2)) {
+            $timeoutSeconds = [Math]::Max(1, [int]$Arg2)
+        }
+
+        $targetCount = 1
+        if (-not [string]::IsNullOrWhiteSpace($Arg3)) {
+            $targetCount = [Math]::Max(1, [int]$Arg3)
+        }
+
+        $ifaces = Find-WslWifiInterfaces -DistroName $Distro -TimeoutSeconds $timeoutSeconds -TargetCount $targetCount
+        if ($ifaces.Count -ge $targetCount) {
+            Set-Content -LiteralPath $Arg1 -Value $ifaces
             exit 0
         }
 
@@ -217,21 +295,21 @@ switch ($Action) {
         if ([string]::IsNullOrWhiteSpace($Arg1) -or
             [string]::IsNullOrWhiteSpace($Arg2) -or
             [string]::IsNullOrWhiteSpace($Arg3)) {
-            throw 'launch_mcp_full requires interface, WSL gs dir, and WSL client path.'
+            throw 'launch_mcp_full requires interfaces, WSL gs dir, and WSL client path.'
         }
 
-        $iface = Escape-BashSingleQuotedText $Arg1
+        $interfacesText = $Arg1
         $gsDir = Escape-BashSingleQuotedText $Arg2
         $clientPath = Escape-BashSingleQuotedText $Arg3
         $pidPath = "/tmp/gs-wsl-mcp.pid"
-        $matchPattern = Get-WslGsMatchPattern -Interface $iface
+        $matchPattern = Get-WslGsMatchPattern -InterfacesText $interfacesText
 
         $cleanupResult = Stop-WslGsInstance -DistroName $Distro -MatchPattern $matchPattern -PidPath $pidPath
         if ($cleanupResult.ExitCode -ne 0) {
             exit $cleanupResult.ExitCode
         }
 
-        $launchResult = Start-WslGsMcpInstance -DistroName $Distro -GsDir $gsDir -Interface $iface
+        $launchResult = Start-WslGsMcpInstance -DistroName $Distro -GsDir $gsDir -InterfacesText $interfacesText
         if ($launchResult.ExitCode -ne 0) {
             exit $launchResult.ExitCode
         }
@@ -268,7 +346,7 @@ switch ($Action) {
     }
 
     'stop_mcp' {
-        $matchPattern = Get-WslGsMatchPattern -Interface ".*"
+        $matchPattern = "^./gs .* -fullscreen 0 -sm 1`$"
         $stopResult = Stop-WslGsInstance -DistroName $Distro -MatchPattern $matchPattern
         Remove-WindowsMcpProxy
         exit 0
