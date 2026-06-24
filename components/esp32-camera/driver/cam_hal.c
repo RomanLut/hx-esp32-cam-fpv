@@ -515,7 +515,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
 #if CONFIG_IDF_TARGET_ESP32
     cam_obj->psram_mode = false;
 #else
-    cam_obj->psram_mode = (config->xclk_freq_hz == 16000000);
+    cam_obj->psram_mode = (config->fb_location != CAMERA_FB_IN_DRAM);
 #endif
     cam_obj->frame_cnt = config->fb_count;
     cam_obj->width = resolution[frame_size].width;
