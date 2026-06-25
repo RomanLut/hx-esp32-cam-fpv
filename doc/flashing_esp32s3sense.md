@@ -38,7 +38,9 @@
  
 * Clone repository: ```git clone -b release --recursive https://github.com/RomanLut/esp32-cam-fpv```
 
-* Open project: ```esp32-cam-fpv\air_firmware_esp32s3sense\esp32-cam-fpv-esp32s3sense.code-workspace```  (or other for ov5640)
+* Open project: ```esp32-cam-fpv\air_firmware_esp32s3sense\esp32-cam-fpv-esp32s3sense.code-workspace```
+
+  The same firmware supports both OV2640 and OV5640 cameras and detects the connected sensor at runtime.
 
 * Let **PlatformIO** to install all components
 

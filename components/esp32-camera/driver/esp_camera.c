@@ -272,6 +272,7 @@ static pixformat_t get_output_data_format(camera_conv_mode_t conv_mode)
 esp_err_t esp_camera_init(const camera_config_t *config)
 {
     esp_err_t err;
+    camera_config_t detected_sensor_config = *config;
     err = cam_init(config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
@@ -284,6 +285,29 @@ esp_err_t esp_camera_init(const camera_config_t *config)
         ESP_LOGE(TAG, "Camera probe failed with error 0x%x(%s)", err, esp_err_to_name(err));
         goto fail;
     }
+
+    int detected_xclk_freq_hz = config->xclk_freq_hz;
+    if (s_state->sensor.id.PID == OV2640_PID && config->ov2640_xclk_freq_hz > 0)
+    {
+        detected_xclk_freq_hz = config->ov2640_xclk_freq_hz;
+    }
+    else if (s_state->sensor.id.PID == OV5640_PID && config->ov5640_xclk_hz > 0)
+    {
+        detected_xclk_freq_hz = config->ov5640_xclk_hz;
+    }
+
+    // Sensor probing must use the generic XCLK. Switch only after the PID is known so
+    // one firmware can safely detect both OV2640 and OV5640 before capture starts.
+    if (detected_xclk_freq_hz != config->xclk_freq_hz)
+    {
+        err = s_state->sensor.set_xclk(&s_state->sensor, config->ledc_timer, detected_xclk_freq_hz / 1000000);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to set detected sensor XCLK to %d Hz", detected_xclk_freq_hz);
+            goto fail;
+        }
+    }
+    detected_sensor_config.xclk_freq_hz = detected_xclk_freq_hz;
 
     framesize_t frame_size = (framesize_t) config->frame_size;
     pixformat_t pix_format = (pixformat_t) config->pixel_format;
@@ -299,7 +323,7 @@ esp_err_t esp_camera_init(const camera_config_t *config)
         frame_size = camera_sensor[camera_model].max_size;
     }
 
-    err = cam_config(config, frame_size, s_state->sensor.id.PID);
+    err = cam_config(&detected_sensor_config, frame_size, s_state->sensor.id.PID);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera config failed with error 0x%x", err);
         goto fail;
@@ -335,7 +359,7 @@ esp_err_t esp_camera_init(const camera_config_t *config)
 
 
 #if CONFIG_IDF_TARGET_ESP32C5
-    cam_start_continuous(config);
+    cam_start_continuous(&detected_sensor_config);
 #endif
 
     cam_start();

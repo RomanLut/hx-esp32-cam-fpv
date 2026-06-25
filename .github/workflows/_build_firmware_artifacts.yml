@@ -28,12 +28,6 @@ jobs:
           - project: air_firmware_esp32s3sense
             artifact_suffix: "-apfpv"
             build_flags: "-DAPFPV_FIRMWARE"
-          - project: air_firmware_esp32s3sense_ov5640
-            artifact_suffix: ""
-            build_flags: ""
-          - project: air_firmware_esp32s3sense_ov5640
-            artifact_suffix: "-apfpv"
-            build_flags: "-DAPFPV_FIRMWARE"
 
     steps:
       - name: Checkout repository

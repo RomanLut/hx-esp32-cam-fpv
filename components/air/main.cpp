@@ -122,6 +122,7 @@ int32_t s_dbg;
 uint16_t s_framesCounter = 0;
 
 static bool s_initialized = false;
+static uint16_t s_camera_sensor_pid = OV2640_PID;
 
 static uint32_t s_last_rc_packet_tp = 0;
 
@@ -160,6 +161,14 @@ static bool s_camera_stopped_requested = false;
 volatile uint64_t s_shouldRestartRecording = 0;
 
 HXMavlinkParser mavlinkParserIn(true);
+
+//===================================================================================
+//===================================================================================
+// Returns whether runtime camera detection identified an OV5640 sensor.
+static bool camera_is_ov5640()
+{
+    return s_camera_sensor_pid == OV5640_PID;
+}
 
 //=============================================================================================
 //=============================================================================================
@@ -1044,11 +1053,9 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
         }
         
         const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
-#ifdef SENSOR_OV5640
-        uint8_t fps = s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
-#else
-        uint8_t fps = s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
-#endif        
+        uint8_t fps = camera_is_ov5640()
+            ? (s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640)
+            : (s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640);
         uint16_t frameWidth = v->width;
         uint16_t frameHeight = v->height;
 
@@ -1558,10 +1565,11 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     sensor_t* s = esp_camera_sensor_get();
 #endif
 
-    #ifdef SENSOR_OV5640
-    //on ov5640, aec2 is not aec dsp but "night vision" mode which decimate framerate dynamically
-    src.camera.aec2 = false;
-#endif
+    if (camera_is_ov5640())
+    {
+        // On OV5640, AEC2 is a night mode that dynamically reduces frame rate.
+        src.camera.aec2 = false;
+    }
 
     bool resolutionChanged = (dst.camera.resolution != src.camera.resolution);
     bool ov2640HighFPSChanged = (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS );
@@ -1571,22 +1579,25 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
 
-#ifdef SENSOR_OV5640
-        s->set_colorbar(s, src.camera.ov5640HighFPS?1:0);
-#else
-        if ( src.camera.ov2640HighFPS && 
-            ((src.camera.resolution == Resolution::VGA) ||
-            (src.camera.resolution == Resolution::VGA16) ||
-            (src.camera.resolution == Resolution::SVGA16)) 
-            )
+        if (camera_is_ov5640())
         {
-            s->set_xclk( s, LEDC_TIMER_0, 16 );
+            s->set_colorbar(s, src.camera.ov5640HighFPS ? 1 : 0);
         }
         else
         {
-            s->set_xclk( s, LEDC_TIMER_0, 12 );
+            if ( src.camera.ov2640HighFPS &&
+                ((src.camera.resolution == Resolution::VGA) ||
+                (src.camera.resolution == Resolution::VGA16) ||
+                (src.camera.resolution == Resolution::SVGA16))
+                )
+            {
+                s->set_xclk( s, LEDC_TIMER_0, 16 );
+            }
+            else
+            {
+                s->set_xclk( s, LEDC_TIMER_0, 12 );
+            }
         }
-#endif
 
         switch (src.camera.resolution)
         {
@@ -1596,41 +1607,42 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
 
             case Resolution::VGA16:
-#ifdef SENSOR_OV5640
-                s->set_framesize(s, FRAMESIZE_P_3MP); //640x360
-#else
-                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
-                
-#endif
+                if (camera_is_ov5640())
+                {
+                    s->set_framesize(s, FRAMESIZE_P_3MP); //640x360
+                }
+                else
+                {
+                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                }
             break;
 
             case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); break;
 
             case Resolution::SVGA16:
-#ifdef SENSOR_OV5640
-                //s->set_res_raw(s, 0, 0, 2623, 1951, 32, 16, 2844, 1968, 800, 600, true, true);  //attempt for 800x600
-                //s->set_res_raw(s, 0, 240, 2623, 1711, 32, 16, 2844, 1488, 800, 450, true, true); //attempt for 800x450
-
-                //s->set_pll(s, false, 26, 1, 1, false, 3, true, 4);  - root2x and pre_div are swapped due to incompatible signatures!
-                //s->set_pll(s, false, 25, 1, false, 1, 3, true, 4); 
-
-                //waning: LOGxxx should be commented out in ov5640.c otherwise there will be stack overflow in camtask
-                s->set_framesize(s, FRAMESIZE_P_HD); //800x456
-#else
-                //s->set_framesize(s, FRAMESIZE_P_HD);  800x448 13 fps
-                s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456 13 fps
-#endif
+                if (camera_is_ov5640())
+                {
+                    // Warning: verbose logging in ov5640.c can overflow the camera task stack.
+                    s->set_framesize(s, FRAMESIZE_P_HD); //800x456
+                }
+                else
+                {
+                    //s->set_framesize(s, FRAMESIZE_P_HD);  800x448 13 fps
+                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456 13 fps
+                }
             break;
 
             case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break; //1024x768
 
             case Resolution::XGA16:  //1024x576
-#ifdef SENSOR_OV5640
-                s->set_framesize(s, FRAMESIZE_P_FHD);
-#else
-                s->set_res_raw(s, 0/*OV2640_MODE_UXGA*/,0,0,0, 0, 150, 1600, 1200-300, 1024, 576, false, false);   //1024x576 13 fps
-                
-#endif
+                if (camera_is_ov5640())
+                {
+                    s->set_framesize(s, FRAMESIZE_P_FHD);
+                }
+                else
+                {
+                    s->set_res_raw(s, 0/*OV2640_MODE_UXGA*/,0,0,0, 0, 150, 1600, 1200-300, 1024, 576, false, false);   //1024x576 13 fps
+                }
             break;
             case Resolution::SXGA: s->set_framesize(s, FRAMESIZE_SXGA); break;
             case Resolution::HD: s->set_framesize(s, FRAMESIZE_HD); break;
@@ -1710,18 +1722,20 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     }
     APPLY(denoise, denoise, int);
 
-#ifdef SENSOR_OV5640
-    //gainceiling for ov5640 is range 0...3ff
-    if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling)) 
-    { 
-        LOG("Camera gainceiling from %d to %d\n", (int)dst.camera.gainceiling, (int)src.camera.gainceiling); 
-        //s->set_gainceiling(s, (gainceiling_t)(2 << src.camera.gainceiling));
-        //do not limit gainceiling on OV5640. Contrary to OV2640, it does good images with large gain ceiling, without enormous noise in dark scenes.
-        s->set_gainceiling(s, (gainceiling_t)(0x3ff));
+    if (camera_is_ov5640())
+    {
+        // OV5640 gain ceiling is 0...0x3ff and high values do not cause the severe
+        // low-light noise seen on OV2640, so leave its full gain range available.
+        if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling))
+        {
+            LOG("Camera gainceiling from %d to %d\n", (int)dst.camera.gainceiling, (int)src.camera.gainceiling);
+            s->set_gainceiling(s, (gainceiling_t)(0x3ff));
+        }
     }
-#else
-    APPLY(gainceiling, gainceiling, gainceiling_t);
-#endif
+    else
+    {
+        APPLY(gainceiling, gainceiling, gainceiling_t);
+    }
 
     APPLY(awb, whitebal, int);
     APPLY(awb_gain, awb_gain, int);
@@ -2177,11 +2191,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
         packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS / 10 + 101;   
     }
 
-#ifdef SENSOR_OV5640
-    packet.stats.isOV5640 = 1;
-#else
-    packet.stats.isOV5640 = 0;
-#endif    
+    packet.stats.isOV5640 = (s_camera_sensor_pid == OV5640_PID) ? 1 : 0;
 
     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
     packet.stats.inPacketRate = s_last_stats.inPacketCounter;
@@ -2983,12 +2993,14 @@ static void init_camera()
         .pin_vsync = VSYNC_GPIO_NUM,
         .pin_href = HREF_GPIO_NUM,
         .pin_pclk = PCLK_GPIO_NUM,
+        // Use 12 MHz until SCCB probing identifies the sensor. The camera driver
+        // switches to the matching sensor-specific XCLK before capture starts.
+        .xclk_freq_hz = 12000000,
+        .ov2640_xclk_freq_hz = 12000000,
 #if defined(BOARD_ESP32C5)
-        .xclk_freq_hz = 24000000,
-#elif SENSOR_OV5640
-        .xclk_freq_hz = 20000000,
+        .ov5640_xclk_hz = 24000000,
 #else
-        .xclk_freq_hz = 12000000,  //real frequency will be 80Mhz/6 = 13,333Mhz and we use clk2x
+        .ov5640_xclk_hz = 20000000,
 #endif
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
@@ -3010,6 +3022,10 @@ static void init_camera()
         vTaskDelay(pdMS_TO_TICKS(1000));
         esp_restart();
     }
+
+    sensor_t* sensor = esp_camera_sensor_get();
+    s_camera_sensor_pid = sensor->id.PID;
+    LOG("Detected camera sensor PID: 0x%04x\n", s_camera_sensor_pid);
 
     // Set camera event callback for profiling
     cam_set_camera_event_callback(camera_event_callback);

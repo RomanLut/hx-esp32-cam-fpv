@@ -138,7 +138,9 @@ typedef struct {
     int pin_href;                   /*!< GPIO pin for camera HREF line */
     int pin_pclk;                   /*!< GPIO pin for camera PCLK line */
 
-    int xclk_freq_hz;               /*!< Frequency of XCLK signal, in Hz. EXPERIMENTAL: Set to 16MHz on ESP32-S2 or ESP32-S3 to enable EDMA mode */
+    int xclk_freq_hz;               /*!< Initial detection frequency and fallback XCLK frequency for sensors without a sensor-specific value */
+    int ov2640_xclk_freq_hz;        /*!< OV2640 XCLK frequency selected after runtime sensor detection, or 0 to use xclk_freq_hz */
+    int ov5640_xclk_hz;             /*!< OV5640 XCLK frequency selected after runtime sensor detection, or 0 to use xclk_freq_hz */
 
     ledc_timer_t ledc_timer;        /*!< LEDC timer to be used for generating XCLK  */
     ledc_channel_t ledc_channel;    /*!< LEDC channel to be used for generating XCLK  */
