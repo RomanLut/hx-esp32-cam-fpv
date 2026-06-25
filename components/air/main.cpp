@@ -2913,6 +2913,55 @@ IRAM_ATTR static void camera_event_callback(int eventType, int64_t timestamp)
 
 //=============================================================================================
 //=============================================================================================
+// Blinks one Morse-code symbol and leaves a one-unit gap before the next symbol.
+static void blink_status_led_morse_symbol(uint32_t duration_ms)
+{
+    static constexpr uint32_t MORSE_UNIT_MS = 150;
+
+    set_status_led(true);
+    vTaskDelay(pdMS_TO_TICKS(duration_ms));
+    set_status_led(false);
+    vTaskDelay(pdMS_TO_TICKS(MORSE_UNIT_MS));
+}
+
+//=============================================================================================
+//=============================================================================================
+// Blinks the SOS distress signal three times to indicate that camera initialization failed.
+static void blink_camera_init_failure_sos()
+{
+    static constexpr uint32_t MORSE_UNIT_MS = 150;
+    static constexpr uint32_t MORSE_DOT_MS = MORSE_UNIT_MS;
+    static constexpr uint32_t MORSE_DASH_MS = MORSE_UNIT_MS * 3;
+
+    for (int repeat = 0; repeat < 3; ++repeat)
+    {
+        for (int symbol = 0; symbol < 3; ++symbol)
+        {
+            blink_status_led_morse_symbol(MORSE_DOT_MS);
+        }
+        vTaskDelay(pdMS_TO_TICKS(MORSE_UNIT_MS * 2));
+
+        for (int symbol = 0; symbol < 3; ++symbol)
+        {
+            blink_status_led_morse_symbol(MORSE_DASH_MS);
+        }
+        vTaskDelay(pdMS_TO_TICKS(MORSE_UNIT_MS * 2));
+
+        for (int symbol = 0; symbol < 3; ++symbol)
+        {
+            blink_status_led_morse_symbol(MORSE_DOT_MS);
+        }
+
+        if (repeat < 2)
+        {
+            vTaskDelay(pdMS_TO_TICKS(MORSE_UNIT_MS * 6));
+        }
+    }
+}
+
+//=============================================================================================
+//=============================================================================================
+// Initializes the camera and reboots after signaling SOS if initialization fails.
 static void init_camera()
 {
     printf("Init camera...\n");
@@ -2952,12 +3001,14 @@ static void init_camera()
         .sccb_i2c_port = I2C_NUM_0,
         .data_available_callback = camera_data_available };
 
-    // camera init
+    //camera init
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK)
     {
-        LOG("Camera init failed with error 0x%x", err);
-        return;
+        //LOG("Camera init failed with error 0x%x", err);
+        blink_camera_init_failure_sos();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_restart();
     }
 
     // Set camera event callback for profiling
