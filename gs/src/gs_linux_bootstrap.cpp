@@ -279,7 +279,6 @@ int runLinuxBootstrap(int argc, const char* argv[])
     tx_descriptor.interface = "auto";
 
     s_hal.reset(new PI_HAL());
-    memset(&s_last_airStats, 0, sizeof(AirStats));
 
     loadSharedSettings(0);
     if (s_groundstation_config.deviceId == 0)

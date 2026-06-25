@@ -225,7 +225,12 @@ bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
         return false;
     }
 
-    m_last_air_stats = osd_packet->stats;
+    {
+        // AirStats is a packed structure containing unaligned bitfields. The receive
+        // thread must not update it while render/runtime threads copy sensor flags.
+        std::lock_guard<std::mutex> state_lock(m_state_mutex);
+        m_last_air_stats = osd_packet->stats;
+    }
 
     out_view.packet = osd_packet;
     out_view.osd_data_size = osd_packet->size - (sizeof(Air2Ground_OSD_Packet) - 1);
@@ -563,20 +568,12 @@ Ground2Air_Config_Packet GsSessionCore::copyConfigPacket() const
     return m_config_packet;
 }
 
-
 //===================================================================================
 //===================================================================================
-// Returns a mutable reference to the last received air stats.
-AirStats& GsSessionCore::lastAirStats()
+// Returns a thread-safe snapshot of the last received air-unit statistics.
+AirStats GsSessionCore::copyLastAirStats() const
 {
-    return m_last_air_stats;
-}
-
-//===================================================================================
-//===================================================================================
-// Returns a const reference to the last received air stats.
-const AirStats& GsSessionCore::lastAirStats() const
-{
+    std::lock_guard<std::mutex> state_lock(m_state_mutex);
     return m_last_air_stats;
 }
 

@@ -176,10 +176,8 @@ public:
                                        ITransport& transport);
 
     Ground2Air_Config_Packet copyConfigPacket() const;
+    AirStats copyLastAirStats() const;
 
-
-    AirStats& lastAirStats();
-    const AirStats& lastAirStats() const;
     uint8_t currentPingToken() const;
     void onPingSent(Clock::time_point now);
     void onVideoPong(uint8_t pong, Clock::time_point now);

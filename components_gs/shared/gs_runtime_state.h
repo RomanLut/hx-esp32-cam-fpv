@@ -23,7 +23,6 @@ extern std::mutex s_gs_stats_mutex;
 extern Clock::time_point s_last_stats_packet_tp;
 extern Clock::time_point s_incompatibleFirmwareTime;
 extern GSStats& s_last_gs_stats;
-extern AirStats& s_last_airStats;
 extern Stats& s_dataSize_stats;
 extern float video_fps;
 extern bool had_loss;

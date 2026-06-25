@@ -16,7 +16,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     RuntimeSyncState state;
     const Clock::time_point now = Clock::now();
     const bool air_stats_valid = isAirStatsFresh(now);
-    AirStats display_air_stats = core.session.lastAirStats();
+    AirStats display_air_stats = core.session.copyLastAirStats();
     if (!air_stats_valid)
     {
         display_air_stats.rssiDbm = 0;

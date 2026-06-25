@@ -22,7 +22,6 @@ Clock::time_point s_last_stats_packet_tp = Clock::now();
 Clock::time_point s_incompatibleFirmwareTime = Clock::now() - std::chrono::milliseconds(10000);
 GSStats& s_gs_stats = s_runtimeCore.gs_stats;
 GSStats& s_last_gs_stats = s_runtimeCore.last_gs_stats;
-AirStats& s_last_airStats = s_runtimeCore.session.lastAirStats();
 Stats& s_dataSize_stats = s_runtimeCore.data_size_stats;
 float video_fps = 0.0f;
 bool had_loss = false;
@@ -344,7 +343,7 @@ ApfpvCameraStateSnapshot copyApfpvCameraState()
 // Synchronizes shared air-unit status globals from the latest session snapshot.
 void syncAirStatusGlobals()
 {
-    const AirStats& air_stats = s_runtimeCore.session.lastAirStats();
+    const AirStats air_stats = s_runtimeCore.session.copyLastAirStats();
     s_curr_wifi_rate = static_cast<WIFI_Rate>(air_stats.curr_wifi_rate);
     s_wifi_queue_min = air_stats.wifi_queue_min;
     s_wifi_queue_max = air_stats.wifi_queue_max;
@@ -364,5 +363,5 @@ void syncAirStatusGlobals()
 // Returns whether the current air link reports HQ DVR mode enabled.
 bool isHQDVRMode()
 {
-    return s_last_airStats.hq_dvr_mode != 0;
+    return s_runtimeCore.session.copyLastAirStats().hq_dvr_mode != 0;
 }

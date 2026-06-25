@@ -45,7 +45,7 @@ ProcessedVideoEvent processVideoSessionEvent(const gs::core::SessionEvent& event
                                                event.video.payload,
                                                event.video.payload_size,
                                                restored_by_fec);
-    const AirStats& air_stats = session.lastAirStats();
+    const AirStats air_stats = session.copyLastAirStats();
     const uint8_t queue_usage = air_stats.wifi_queue_max;
     const uint8_t quality = air_stats.curr_quality;
 

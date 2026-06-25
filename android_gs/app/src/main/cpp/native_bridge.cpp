@@ -420,7 +420,7 @@ void appendAirDebugField(std::ostringstream& out,
 std::string describeHandleString(const NativeHandle& handle)
 {
     const bool air_stats_valid = isAirStatsFresh(Clock::now());
-    const AirStats& air_stats = s_runtimeCore.session.lastAirStats();
+    const AirStats air_stats = s_runtimeCore.session.copyLastAirStats();
     std::ostringstream out;
     out << "Session ready"
         << " | gs_id=" << s_runtimeCore.gs_device_id

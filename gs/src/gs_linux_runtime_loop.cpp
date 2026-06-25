@@ -438,13 +438,16 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
     auto render_callback = [&config, argv]
     {
         RuntimeFrameUiState frame_ui = {};
+        // Use one mutex-protected snapshot so every AirStats field rendered in this
+        // frame comes from the same received packet.
+        const AirStats air_stats = s_runtimeCore.session.copyLastAirStats();
         frame_ui.overlay_stats_visible = s_groundstation_config.stats;
         gs::stats::FullscreenStatsSnapshot overlay_stats_snapshot = {};
         if (frame_ui.overlay_stats_visible)
         {
             const Clock::time_point now = Clock::now();
             const bool air_stats_valid = isAirStatsFresh(now);
-            AirStats display_air_stats = s_last_airStats;
+            AirStats display_air_stats = air_stats;
             if (!air_stats_valid)
             {
                 display_air_stats.rssiDbm = 0;
@@ -502,10 +505,10 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.config = config;
             input.now = now;
             input.air_stats_valid = air_stats_valid;
-            input.air_rssi_dbm = air_stats_valid ? s_last_airStats.rssiDbm : 0;
-            input.air_temperature = air_stats_valid ? s_last_airStats.temperature : -1;
-            input.air_overheat = air_stats_valid && s_last_airStats.overheatTrottling != 0;
-            input.air_suspended = air_stats_valid && s_last_airStats.suspended == 1;
+            input.air_rssi_dbm = air_stats_valid ? air_stats.rssiDbm : 0;
+            input.air_temperature = air_stats_valid ? air_stats.temperature : -1;
+            input.air_overheat = air_stats_valid && air_stats.overheatTrottling != 0;
+            input.air_suspended = air_stats_valid && air_stats.suspended == 1;
             input.has_gs_stats = true;
             input.gs_rssi_dbm0 = air_stats_valid ? s_last_gs_stats.rssiDbm[0] : 0;
             input.gs_rssi_dbm1 = air_stats_valid ? s_last_gs_stats.rssiDbm[1] : 0;
@@ -522,7 +525,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.sd_slow = air_stats_valid && s_SDSlow;
             input.air_record = air_stats_valid && s_air_record;
             input.gs_record = s_recordingsStorage->isRecording();
-            input.hq_dvr = air_stats_valid && isHQDVRMode();
+            input.hq_dvr = air_stats_valid && air_stats.hq_dvr_mode != 0;
             input.gs_temp_celsius = s_RuntimePlatformServices->getCpuTemperatureCelsius();
             input.osd_font_error = s_flightOSD.isFontError();
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
