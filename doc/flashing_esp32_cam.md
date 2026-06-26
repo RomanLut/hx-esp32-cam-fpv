@@ -2,19 +2,18 @@
 
 **esp32-cam** with **esp32-cam-mb** adapter is recommended.
 
-Experienced users who connect **esp32cam** using USB-UART adapter should enter flashing mode by holding **Boot** button and pressing **Reset** button before starting flashing.
-
 ## Flashing using online tool
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
-* Navigate to https://esp.huhn.me/
-* Connect esp32-cam-mb adapter to USB, click **[Connect]**, select USB UART of **esp32cam**
-* Add firmware files as shown on screenshot:
+* Navigate to https://thelastoutpostworkshop.github.io/ESPConnect/
+* Se speed to 115200
+* Connect esp32-cam-mb adapter to USB, click **[Connect]**, select USB UART of **esp32cam**. You may need to enter flashing mode by holding **Boot** button whyle connecting power.
+* Add **merged** firmware as shown on screenshot:
  
 ![alt text](images/espwebtool.png "espwebtool.png")
 
-* Make sure addresses are filled corectly
-* Click **[Program]**
+* It is recommented to check "Erase entire flash before writing" to reset settings
+* Click **[Flash Firmware]**
 
 ## Flashing using Flash download tool
 
@@ -30,8 +29,8 @@ Experienced users who connect **esp32cam** using USB-UART adapter should enter f
 ![alt text](images/flash_download_tool_files.png "flash_download_tool_files.png")
 
 * Make sure checkboxes are selected
-* Make sure addresses are filled corectly
-* Make sure files are selected in correct order
+* Make sure address is filled corectly (0x0)
+* Make sure COM port is selected
 * Click **[Start]**
 
 
