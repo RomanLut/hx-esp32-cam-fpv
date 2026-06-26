@@ -183,6 +183,9 @@ The Air Unit mode can be changed either from the GS menu or from the [camera web
 > [!NOTE]
 > If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.
 
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-9bb4-2e1dd850a5d8
+
+
 # Building
 
 > [!NOTE]
