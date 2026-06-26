@@ -216,6 +216,7 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 | Ubuntu | + | + | [Building guide](/doc/ground_station_ubuntu.md) |
 | Fedora Linux Workstation | + | + | [Building guide](/doc/ground_station_fedora.md) |
 
+----
 
 # Features
 
@@ -231,13 +232,15 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 [Latency](/doc/latency.md)
 
-# Modes of perations
+# Other modes of operation
 
 [Wifi channels scanning](/doc/wifi_channels_scanning.md)
 
 [Test mode](/doc/test_mode.md)
 
-# Considerations
+[Recordings playaback](/doc/playback.md)
+
+# Design considerations
 
 [Image resolution selection](/doc/image_resolution_selection.md)
 
@@ -259,13 +262,13 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 [Drivers](/doc/drivers.md)
 
-[Unsuccessfull attempts](/doc/unsuccessful_attempts.md)
-
 # Development
 
 [Development guide](https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/development.md)
 
 [Original project](/doc/original_project.md)
+
+[Unsuccessfull attempts](/doc/unsuccessful_attempts.md)
 
 # References
 
@@ -279,3 +282,5 @@ Getting Started with Seeed Studio XIAO ESP32S3 (Sense) https://wiki.seeedstudio.
 # FAQ
 
 [FAQ](/doc/faq.md)
+
+https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
