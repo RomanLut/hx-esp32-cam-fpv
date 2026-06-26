@@ -194,7 +194,7 @@ typedef enum {
 
 #define COM10_HREF_EN       0x80 /* HSYNC changes to HREF */
 #define COM10_HSYNC_EN      0x40 /* HREF changes to HSYNC */
-#define COM10_PCLK_FREE     0x20 /* PCLK output option: free running PCLK */
+#define COM10_PCLK_HREF_GATE 0x20 /* Gate PCLK by the active video period defined by HREF */
 #define COM10_PCLK_EDGE     0x10 /* Data is updated at the rising edge of PCLK */
 #define COM10_HREF_NEG      0x08 /* HREF negative */
 #define COM10_VSYNC_NEG     0x02 /* VSYNC negative */
