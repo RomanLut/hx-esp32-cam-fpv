@@ -159,6 +159,8 @@ However, compared to other open-source digital FPV solutions like OpenHD, RubyFP
 - Low power usage (under 300mA at 5V)
 - The same ground station hardware used for OpenHD/RubyFPV/OpenIPC can be reused — just swap the SD card.
 
+https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/3abe7b94-f14d-45f1-8d33-997f12b7d9aa
+
 # Modes of operation: Raw Broadcast / APFPV
 
 The Air Unit can transmit video either in **Raw Broadcast mode** or in **APFPV mode**.
