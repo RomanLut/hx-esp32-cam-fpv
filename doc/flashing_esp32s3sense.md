@@ -1,15 +1,21 @@
 # Flashing esp32s3sense
 
+>Note: The only difference between the Broadcast and APFPV firmware is the default operating mode. You can switch between modes at any time through the OSD menu.
+>
+>If you are flashing APFPV over Broadcast firmware (or vice versa), you **must erase the flash during the update**. Otherwise, the existing settings will be preserved, and the device will continue using the previously selected mode.
+
 ## Flashing using online tool
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
-* Navigate to [https://espressif.github.io/esptool-js/](https://espressif.github.io/esptool-js/)
+* Navigate to https://thelastoutpostworkshop.github.io/ESPConnect/
 * Connect **esp32s3sense** to USB, click ```[Connect]```, select ```USB JTAG/serial debug unit``` of **esp32s3sense**
-* Add firmware files as shown on screenshot:
+* You may need to hold Boot (Rec) button while connecting power to enter flashing mode
+* Add **merged** firmware file as shown on screenshot:
  
 ![alt text](images/espwebtool_s3sense.png "espwebtool_s3sense.png")
 
-* Make sure addresses are filled corectly
+* Make sure address is filled corectly(0x0)
+* It isrecommended tocheck "Erase entire flash" before writing to reset all settings
 * Click ```[Program]```
 
 ## Flashing using Flash download tool
@@ -21,14 +27,14 @@
 ![alt text](images/flash_download_tool_esp32s3.png "flash_download_tool_esp32s3.png")
  
 * Connect **esp32s3sense** to USB
-* Add firmware files as shown on screenshot:
+* Add **merged** firmware file as shown on screenshot:
  
 ![alt text](images/flash_download_tool_files_s3sense.png "flash_download_tool_files_s3sense.png")
 
-* Make sure checkboxes are selected
+* Make sure checkboxe is checked
 * Make sure addresses are filled corectly
-* Make sure files are selected in correct order
-* Select correct COM port
+* Make sure address is filled corectly (0x0)
+* Make sure COM port is selected
 * Click ```[Start]```
 
 
@@ -48,6 +54,24 @@
 
 * Click ```[PlatformIO: Upload]``` on bottom toolbar.
 
+
+# Over the Air update (OTA)
+
+To enter OTA mode, connect the USB cable and wait 1 second. Then press and hold the REC button for 5 seconds, and release it to enter OTA mode.
+
+>[!IMPORTANT]
+>Do not hold the REC button while connecting power. If you do, the air unit will enter boot mode.
+
+
+**OTA/Fileserver mode** is indicated by LED blinking with 1 Hz frequency.
+
+* Enter **OTA mode**.
+* Connect to **espvtx** access point.
+* Navigate to http://192.168.4.1/ota
+* Select **firmware_ota.bin** file.
+* Click **Upload**
+
+To upload firmware with Visual Studio Code, uncomment "OTA Update" lines in the ```platformio.ini```.
 
 # Solving constant reboot problem (unbricking)
 

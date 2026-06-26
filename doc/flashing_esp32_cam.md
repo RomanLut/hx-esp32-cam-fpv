@@ -2,6 +2,10 @@
 
 **esp32-cam** with **esp32-cam-mb** adapter is recommended.
 
+>Note: The only difference between the Broadcast and APFPV firmware is the default operating mode. You can switch between modes at any time through the OSD menu.
+>
+>If you are flashing APFPV over Broadcast firmware (or vice versa), you **must erase the flash during the update**. Otherwise, the existing settings will be preserved, and the device will continue using the previously selected mode.
+
 ## Flashing using online tool
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
@@ -28,7 +32,7 @@
  
 ![alt text](images/flash_download_tool_files.png "flash_download_tool_files.png")
 
-* Make sure checkboxes are selected
+* Make sure checkboxe is checked
 * Make sure address is filled corectly (0x0)
 * Make sure COM port is selected
 * Click **[Start]**
@@ -48,6 +52,7 @@
 
 * Click **[PlatformIO: Upload]** on bottom toolbar.
 
+
 # Over the Air update (OTA)
 
 When **esp32cam** is installed on UAV, it would require desoldering to update firmware. 
@@ -61,7 +66,7 @@ Hold **REC** button while powering up to enter **OTA mode**.
 * Enter **OTA mode**.
 * Connect to **espvtx** access point.
 * Navigate to http://192.168.4.1/ota
-* Select **firmware.bin** file.
+* Select **firmware_ota.bin** file.
 * Click **Upload**
 
 To upload firmware with Visual Studio Code, uncomment "OTA Update" lines in the ```platformio.ini```.
