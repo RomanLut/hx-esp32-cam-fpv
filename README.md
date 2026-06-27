@@ -2,6 +2,7 @@
 
 ![GitHub stars](https://img.shields.io/github/stars/RomanLut/hx-esp32-cam-fpv?style=for-the-badge)
 ![GitHub forks](https://img.shields.io/github/forks/RomanLut/hx-esp32-cam-fpv?style=for-the-badge)
+![Downloads](https://img.shields.io/github/downloads/RomanLut/hx-esp32-cam-fpv/total?style=for-the-badge)
 
 
 Open source digital FPV system based on esp32cam.
