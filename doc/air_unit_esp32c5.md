@@ -54,4 +54,6 @@ https://github.com/user-attachments/assets/3dfc3725-5c03-43d9-bf62-a5a76a4a5fef
 
 ## Current consumption
 
-**esp32c5** consumes about 540mA.
+1st protottyp  with linear regulator: 540mA @ 5V.
+
+Current prototype https://github.com/us3r-d0e5nt-3x1st/esp32c5-airunit-nano : 270mA @ 5V, 330mA @ 4V, 390mA @ 3V  
