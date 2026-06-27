@@ -8,6 +8,7 @@
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
 #include <sys/unistd.h>
@@ -675,12 +676,15 @@ static esp_err_t configs_handler(httpd_req_t *req)
     if(req->method == HTTP_GET)
     {
         char channel_str[6]="";
+        char mavlink_baudrate_str[8]="";
         char packet_version_str[6]="";
         cJSON *root;
         root = cJSON_CreateObject();
 
         snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
+        snprintf(mavlink_baudrate_str, sizeof(mavlink_baudrate_str), "%lu", (unsigned long)s_mavlink_baudrate);
         cJSON_AddStringToObject(root,"channel",channel_str);
+        cJSON_AddStringToObject(root,"mavlink_baudrate",mavlink_baudrate_str);
         cJSON_AddBoolToObject(root, "wifi_5ghz_supported", getValidWifiChannel(DEFAULT_WIFI_CHANNEL_5_8_GHZ) == DEFAULT_WIFI_CHANNEL_5_8_GHZ);
         cJSON_AddStringToObject(root, "apfpv", s_ground2air_config_packet.misc.apfpv ? "true" : "false");
         cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.misc.autostartRecord ? "true" : "false");
@@ -698,8 +702,8 @@ static esp_err_t configs_handler(httpd_req_t *req)
     }
     else
     {
-        char buf[100]={0};
-        httpd_req_recv(req,buf,req->content_len);
+        char buf[160]={0};
+        httpd_req_recv(req, buf, MIN(req->content_len, sizeof(buf) - 1));
         
         cJSON *root = cJSON_Parse(buf);
         
@@ -722,7 +726,15 @@ static esp_err_t configs_handler(httpd_req_t *req)
         {
             s_ground2air_config_packet.misc.autostartRecord = strcmp(default_dvr->valuestring, "true") == 0;
             nvs_args_set("autostartRecord", s_ground2air_config_packet.misc.autostartRecord ? 1 : 0);
-        }        
+        }
+
+        cJSON *mavlink_baudrate = cJSON_GetObjectItem(root, "mavlink_baudrate");
+        if (mavlink_baudrate != NULL && cJSON_IsString(mavlink_baudrate))
+        {
+            uint32_t baudrate = getValidMavlinkBaudrate(strtoul(mavlink_baudrate->valuestring, NULL, 10));
+            s_mavlink_baudrate = baudrate;
+            nvs_args_set("mavlink_baudrate", baudrate);
+        }
         
         cJSON_Delete(root);
         httpd_resp_sendstr(req, "Ok");

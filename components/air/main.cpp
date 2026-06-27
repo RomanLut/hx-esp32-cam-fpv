@@ -115,8 +115,27 @@ extern WIFI_Rate s_wlan_rate;
 bool SDError = false;
 uint16_t SDTotalSpaceGB16 = 0;
 uint16_t SDFreeSpaceGB16 = 0;
+uint32_t s_mavlink_baudrate = DEFAULT_MAVLINK_BAUDRATE;
 static uint8_t cam_ovf_count = 0;
 static float s_camera_temperature = 0;
+
+//=============================================================================================
+//=============================================================================================
+// Returns a supported MAVLink UART baudrate, falling back to the default for invalid input.
+uint32_t getValidMavlinkBaudrate(uint32_t baudrate)
+{
+    switch (baudrate)
+    {
+        case 9600:
+        case 19200:
+        case 38400:
+        case 57600:
+        case 115200:
+            return baudrate;
+        default:
+            return DEFAULT_MAVLINK_BAUDRATE;
+    }
+}
 
 int32_t s_dbg;
 uint16_t s_framesCounter = 0;
@@ -3208,6 +3227,12 @@ void readConfig()
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 
     s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );
+    uint32_t mavlink_baudrate = nvs_args_read( "mavlink_baudrate", DEFAULT_MAVLINK_BAUDRATE );
+    s_mavlink_baudrate = getValidMavlinkBaudrate(mavlink_baudrate);
+    if ( mavlink_baudrate != s_mavlink_baudrate )
+    {
+        nvs_args_set("mavlink_baudrate", s_mavlink_baudrate);
+    }
 
     s_ground2air_config_packet.misc.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );
     if ( s_ground2air_config_packet.misc.cameraStopChannel > 18 )
@@ -3367,7 +3392,7 @@ extern "C" void app_main()
     printf("Init UART0...\n");
     uart_config_t uart_config0 =
     {
-        .baud_rate = 115200,
+        .baud_rate = UART0_BAUDRATE == MAVLINK_BAUDRATE_SETTING ? (int)s_mavlink_baudrate : UART0_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -3522,7 +3547,7 @@ extern "C" void app_main()
 
     uart_config_t uart_config1 =
     {
-        .baud_rate = UART1_BAUDRATE,
+        .baud_rate = UART1_BAUDRATE == MAVLINK_BAUDRATE_SETTING ? (int)s_mavlink_baudrate : UART1_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
@@ -3548,7 +3573,7 @@ extern "C" void app_main()
 
     uart_config_t uart_config2 =
     {
-        .baud_rate = UART2_BAUDRATE,
+        .baud_rate = UART2_BAUDRATE == MAVLINK_BAUDRATE_SETTING ? (int)s_mavlink_baudrate : UART2_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,

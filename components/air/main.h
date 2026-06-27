@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 
 #include "safe_printf.h"
@@ -11,15 +12,27 @@
 #define UART_RX_BUFFER_SIZE_MAVLINK      512
 #define UART_TX_BUFFER_SIZE_MAVLINK      256
 
+#define MAVLINK_BAUDRATE_SETTING         1
+#define DEFAULT_MAVLINK_BAUDRATE         115200
+
+uint32_t getValidMavlinkBaudrate(uint32_t baudrate);
+
 //===============================================================
 //For esp32cam
 
 #ifdef BOARD_ESP32CAM
 
 //   Debug log on pin 33 (existing LED)
-//   UART0:  Mavlink RX=3 TX=1 
+//   UART0:  Debug output on pin 33
+//   UART1:  Mavlink RX=3 TX=1 (USB)
 //   UART2:  MSP-OSD RX=13 TX=12
 //   STATUS LED: 4 (existing FLASH LED)
+
+//if USBUART_DEBUG_OUTPUT is defined:
+//UART0 - Debug output RX=3 TX=1 (USB)
+//UART1 - Mavlink disabled
+//UART2 - MSP OSD RX=13 TX=12
+
 
 #define UART_MAVLINK UART_NUM_1
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
@@ -52,6 +65,7 @@
 //#define SD_DO_PIN      GPIO_NUM_2
 //-----------------------------
 
+//debug output
 #define INIT_UART_0
 #ifdef USBUART_DEBUG_OUTPUT
 #define TXD0_PIN    1
@@ -63,6 +77,7 @@
 
 #define UART0_BAUDRATE 115200
 
+//Mavlink
 #define INIT_UART_1
 #ifdef USBUART_DEBUG_OUTPUT
 #define TXD1_PIN    UART_PIN_NO_CHANGE
@@ -72,8 +87,9 @@
 #define RXD1_PIN    3
 #endif
 
-#define UART1_BAUDRATE 115200
+#define UART1_BAUDRATE MAVLINK_BAUDRATE_SETTING
 
+//MSP OSD
 #define INIT_UART_2
 #define TXD2_PIN    12   //should be low at boot!!!
 #define RXD2_PIN    13 
@@ -140,7 +156,7 @@
 #define INIT_UART_2
 #define TXD2_PIN    GPIO_NUM_43 //D6
 #define RXD2_PIN    GPIO_NUM_44 //D7
-#define UART2_BAUDRATE 115200
+#define UART2_BAUDRATE MAVLINK_BAUDRATE_SETTING
 
 #endif
 //===============================================================
@@ -159,6 +175,9 @@
 //  UART1:  MAVLINK  RX=27 (no TX), disabled while USB UART debug output is enabled
 //  REC BUTTON: GPIO_NUM_28 (existing boot button) + LED
 
+//if USBUART_DEBUG_OUTPUT is defined:
+//USB uart is use for debugging, MAVLINK pins are disabled
+
 #define CAMERA_MODEL_ESP32C5
 
 #define DVR_SUPPORT
@@ -168,16 +187,18 @@
 #define SD_DI_PIN      GPIO_NUM_23
 #define SD_DO_PIN      GPIO_NUM_24
 
-//define to use DisplayPort OSD on UART0
+//MSP OSD
 #define UART_MSP_OSD UART_NUM_0
 #define INIT_UART_0
 #define TXD0_PIN    GPIO_NUM_11
 #define RXD0_PIN    GPIO_NUM_12
 #define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+#define UART0_BAUDRATE 115200
 
 // USB debug uses the native USB Serial/JTAG peripheral. UART1 and all MAVLink
 // forwarding must remain disabled so the UART driver cannot claim the USB pins.
+//Mavlink
 #ifndef USBUART_DEBUG_OUTPUT
 //define to use mavlink telemetry on UART1
 #define UART_MAVLINK UART_NUM_1
@@ -186,7 +207,7 @@
 #define RXD1_PIN    GPIO_NUM_27
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
-#define UART1_BAUDRATE 115200
+#define UART1_BAUDRATE MAVLINK_BAUDRATE_SETTING
 #endif
 
 #define REC_BUTTON_PIN  GPIO_NUM_28 //Boot button
@@ -198,9 +219,13 @@
 //-------------------------------------------------------------------
 // c5 air
 
-//  UART0:  MSP-OSD  RX=24 TX=25
-//  UART1:  MAVLINK  RX=13 TX=14 (USB pins) when USBUART_DEBUG_OUTPUT is not defined
-//  USB UART: debug logging when USBUART_DEBUG_OUTPUT is defined
+//UART0:  MSP-OSD  RX=24 TX=25
+//UART1:  MAVLINK  RX=13 TX=14 (USB pins) when USBUART_DEBUG_OUTPUT is not defined
+
+//if USBUART_DEBUG_OUTPUT is defined:
+//USB UART: debug logging
+//UART1 (mavlink) is disabled
+
 
 #define CAMERA_MODEL_ESP32C5
 
@@ -211,13 +236,14 @@
 #define SD_DI_PIN      GPIO_NUM_24
 #define SD_DO_PIN      GPIO_NUM_26
 
-//define to use DisplayPort OSD on UART0
+//MSP OSD
 #define UART_MSP_OSD UART_NUM_0
 #define INIT_UART_0
 #define TXD0_PIN    GPIO_NUM_11
 #define RXD0_PIN    GPIO_NUM_12
 #define UART0_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MSP_OSD
 #define UART0_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MSP_OSD
+#define UART0_BAUDRATE 115200
 
 #ifdef USBUART_DEBUG_OUTPUT
 //keep D+ D- pins assigned to usbuart
@@ -230,7 +256,7 @@
 #define RXD1_PIN    13
 #define UART1_RX_BUFFER_SIZE UART_RX_BUFFER_SIZE_MAVLINK
 #define UART1_TX_BUFFER_SIZE UART_TX_BUFFER_SIZE_MAVLINK
-#define UART1_BAUDRATE 115200
+#define UART1_BAUDRATE MAVLINK_BAUDRATE_SETTING
 
 #endif
 
@@ -434,6 +460,7 @@ extern bool SDError;
 extern uint16_t SDTotalSpaceGB16;
 extern uint16_t SDFreeSpaceGB16;
 extern bool s_sd_initialized;
+extern uint32_t s_mavlink_baudrate;
 
 extern int s_uart_verbose;
 #define LOG(...) do { if (s_uart_verbose > 0) SAFE_PRINTF(__VA_ARGS__); } while (false) 
