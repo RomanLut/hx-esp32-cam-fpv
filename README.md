@@ -239,6 +239,8 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 [Latency](/doc/latency.md)
 
+[USB Mass Storage mode (esp32s3)](/doc/web_interface.md#esp32-s3-usb-mass-storage-device)
+
 # Other modes of operation
 
 [Wifi channels scanning](/doc/wifi_channels_scanning.md)
