@@ -195,11 +195,13 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 ## Air Unit
 
-| Air Unit Hardware | OV2640 | OV5640 | 2.4GHz | 5.8GHz | OTA Update | USB Disk | Wi-Fi File Server | SD Card Recording | Power Consumption | Building Guide |
+| Air Unit Hardware | OV2640 | OV5640 | 2.4GHz | 5.8GHz | OTA Update | USB Disk | Wi-Fi File Server | DVR | I @ 5V | Guide |
 |-------------------|:------:|:------:|:------:|:------:|:----------:|:--------:|:-----------------:|:-----------------:|-------------------|----------------|
 | ESP32-CAM | + |  | + |  | + |  | + | + | <300mA | [Building guide](/doc/air_unit_esp32cam.md) |
 | ESP32-S3 Sense | + | + | + |  | + | + | + | + | <300mA | [Building guide](/doc/air_unit_esp32s3sense.md) |
-| ESP32-C5 |  | + | + | + | + |  | + | 1/4 speed | 540mA | [Building guide](/doc/air_unit_esp32c5.md) |
+| ESP32-C5 |  | + | + | + | + |  | + | 1/4 speed* | <300mA | [Building guide](/doc/air_unit_esp32c5.md) |
+
+* every 4th frame is recorded.
 
 ## Ground Station
 
