@@ -66,7 +66,7 @@ To enter OTA mode, connect the USB cable and wait 1 second. Then press and hold 
 **OTA/Fileserver mode** is indicated by LED blinking with 1 Hz frequency.
 
 * Enter **OTA mode**.
-* Connect to **espvtx** access point.
+* Connect to **esp32cam-fpv-config** access point.
 * Navigate to http://192.168.4.1/ota
 * Select **firmware_ota.bin** file.
 * Click **Upload**
