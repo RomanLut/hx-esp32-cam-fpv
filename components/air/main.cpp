@@ -3227,11 +3227,11 @@ void readConfig()
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 
     s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );
-    uint32_t mavlink_baudrate = nvs_args_read( "mavlink_baudrate", DEFAULT_MAVLINK_BAUDRATE );
+    uint32_t mavlink_baudrate = nvs_args_read( NVS_KEY_MAVLINK_BAUDRATE, DEFAULT_MAVLINK_BAUDRATE );
     s_mavlink_baudrate = getValidMavlinkBaudrate(mavlink_baudrate);
     if ( mavlink_baudrate != s_mavlink_baudrate )
     {
-        nvs_args_set("mavlink_baudrate", s_mavlink_baudrate);
+        nvs_args_set(NVS_KEY_MAVLINK_BAUDRATE, s_mavlink_baudrate);
     }
 
     s_ground2air_config_packet.misc.cameraStopChannel = nvs_args_read( "cameraStopCH", 0 );

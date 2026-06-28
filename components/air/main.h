@@ -14,6 +14,9 @@
 
 #define MAVLINK_BAUDRATE_SETTING         1
 #define DEFAULT_MAVLINK_BAUDRATE         115200
+// ESP-IDF NVS keys are limited to 15 characters, so the stored key is shorter
+// than the web/API field name mavlink_baudrate.
+#define NVS_KEY_MAVLINK_BAUDRATE         "mavlink_baud"
 
 uint32_t getValidMavlinkBaudrate(uint32_t baudrate);
 

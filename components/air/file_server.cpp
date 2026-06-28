@@ -733,7 +733,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         {
             uint32_t baudrate = getValidMavlinkBaudrate(strtoul(mavlink_baudrate->valuestring, NULL, 10));
             s_mavlink_baudrate = baudrate;
-            nvs_args_set("mavlink_baudrate", baudrate);
+            nvs_args_set(NVS_KEY_MAVLINK_BAUDRATE, baudrate);
         }
         
         cJSON_Delete(root);
