@@ -1,13 +1,14 @@
 # Android Ground Station
 
-Android GS application can receive video streams in RAW Broadcast mode using an RTL8812AU adapter, and in APFPV mode using the phone's built-in Wi-Fi.
+[Android GS application](https://romanlut.github.io/hx-esp32-cam-fpv/#downloads) can receive video streams in **RAW Broadcast mode** using an **RTL8812AU/RTL8811AU** adapter, and in **APFPV mode** using the phone's built-in Wi-Fi.
 
-Any USB Wi-Fi adapter based on the RTL8812AU chipset should work. For example, the adapter included with the Eachine Sphere Link.
+Dual adapters are supported.
 
-Currently only single adapter is supported.
-
-[VR mode](/README.md#vr-mode) allows using the Android GS application with VR headsets.
+[VR mode](/doc/vr_mode.md) allows using the **Android GS application** with VR headsets.
 
 **USB Serial** in **OTG USB port** can be used to transfer Mavlink stream.
+
+> [!NOTE]
+> **Raw Broadcast** mode works only with **RTL8812au/RTL8811au** adapter.
 
 ![android gs](/doc/images/android_gs.jpg "android gs")
