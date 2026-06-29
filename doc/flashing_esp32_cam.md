@@ -6,7 +6,12 @@
 >
 >If you are flashing APFPV over Broadcast firmware (or vice versa), you **must erase the flash during the update**. Otherwise, the existing settings will be preserved, and the device will continue using the previously selected mode.
 
-## Flashing using online tool
+## Flashing online 
+
+Flash online from donwloads section on landing page:
+https://romanlut.github.io/hx-esp32-cam-fpv/#firmware-by-board
+
+## Flashing online using ESPConnect
 
 * Download and uncompress prebuilt firmware files from https://github.com/RomanLut/hx-esp32-cam-fpv/releases
 * Navigate to https://thelastoutpostworkshop.github.io/ESPConnect/
