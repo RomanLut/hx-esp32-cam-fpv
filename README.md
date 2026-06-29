@@ -203,9 +203,9 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 |-------------------|:------:|:------:|:------:|:------:|:----------:|:--------:|:-----------------:|:-----------------:|-------------------|----------------|
 | ESP32-CAM | + |  | + |  | + |  | + | + | <300mA | [Building guide](/doc/air_unit_esp32cam.md) |
 | ESP32-S3 Sense | + | + | + |  | + | + | + | + | <300mA | [Building guide](/doc/air_unit_esp32s3sense.md) |
-| ESP32-C5 |  | + | + | + | + |  | + | 1/4 speed* | <300mA | [Building guide](/doc/air_unit_esp32c5.md) |
+| ESP32-C5 |  | + | + | + | + |  | + | 1/4 speed<sup>1</sup> | <300mA | [Building guide](/doc/air_unit_esp32c5.md) |
 
-* every 4th frame is recorded.
+<sup>1</sup> every 4th frame is recorded.
 
 ## Ground Station
 
