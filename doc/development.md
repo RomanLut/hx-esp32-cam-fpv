@@ -5,13 +5,6 @@
  
   Building GS development image for Raspberry PI: [/doc/building_gs_image_rpi.md](/doc/building_gs_sd_rpi.md#building-ground-station-development-image-for-raspberry-pi)
 
- 
-# Development UI
-
-Development UI is enabled with **d** key or **middle mouse click**.
-
-![alt text](images/debug_menu.jpg "debugmenu")
-
 # Statistics
 
  Statistic can be enabled in development menu or in OSD menu.
