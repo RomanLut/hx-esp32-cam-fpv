@@ -186,7 +186,7 @@ The Air Unit mode can be changed either from the GS menu or from the [camera web
 
 > [!NOTE]
 > **Raw Broadcast** mode works only with **RTL8812AU/RTL8821AU** adapter.
-> 
+
 > [!NOTE]
 > If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.
 
