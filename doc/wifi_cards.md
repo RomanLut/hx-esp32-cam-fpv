@@ -38,4 +38,6 @@ Chip has marking **RTL8811AU** but there is **RTL8821AU** silicon inside.
 
 Not recommended for single adapter configuration. Might be acceptable for dual adapter configurations.
 
+Note that thay are many adaper revisions which are based on diferrent chipsets. The correct one is named **TPLink Archer T2U Plus AC600**.
+
 ![alt text](/doc/images/tplink_t2u_plus.jpg "plink t2u plus")
