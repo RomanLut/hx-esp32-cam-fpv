@@ -7,7 +7,7 @@
 
 # Statistics
 
- Statistic can be enabled in development menu or in OSD menu.
+ Statistic can be enabled in [OSD menu](/doc/osd_menu.md).
 
 ![alt text](images/stats.jpg "stats.jpg")
 
