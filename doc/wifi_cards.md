@@ -10,6 +10,9 @@
 
 **RTL8812EU** and **RTL8812EU2** support **5.8Ghz** band only and thus can be used with **esp32c5** air unit only.
 
+> [!NOTE]
+> Android and Oculus applications support **RTL8812AU** and **RTL8821AU** only.
+
 ### Noname RTL8812AU
 
 Card can be powered from 5V and comes with good 5dBi dualband antenas.
