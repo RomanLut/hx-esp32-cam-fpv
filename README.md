@@ -269,6 +269,8 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 [Antenas](/doc/antenas.md)
 
+[Range](/doc/range.md)
+
 [Dual Wifi Adapters](/doc/dual_wifi_adapters.md)
 
 [Drivers](/doc/drivers.md)
