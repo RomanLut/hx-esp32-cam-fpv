@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>hx-esp32-cam-fpv — Digital FPV on a $10 camera</title>
+<meta name="description" content="Open source digital low-latency FPV video system based on the ESP32-CAM. 90–110ms latency, up to 2km range, MAVLink telemetry & RC, DisplayPort MSP OSD." />
+<link rel="stylesheet" href="aker.css" />
+<style>
+  body { opacity: 0; transition: opacity .7s ease; }
+  body.page-ready { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { body { opacity: 1 !important; transition: none; } }
+</style>
+</head>
+<body>
+
+<!-- ===================== NAV PILL ===================== -->
+<a class="nav-pill" href="https://github.com/RomanLut/hx-esp32-cam-fpv" target="_blank" rel="noopener" aria-label="View project on GitHub">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width: 17px; height: 17px"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05A9.4 9.4 0 0 1 12 6.84c.85 0 1.71.12 2.51.34 1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+  <span class="mark" style="font-size: 13px; font-weight: 500">GitHub</span>
+</a>
+
+<!-- ===================== HERO ===================== -->
+<header class="hero">
+  <div class="hero-media" style="line-height: 1">
+    <!-- Base layer: shown until your flight clip loads. Swap for an aerial frame if you have one. -->
+    <img src="https://github.com/RomanLut/hx-esp32-cam-fpv/raw/master/doc/images/xiaoesp32s3sense.jpg" alt="hx-esp32-cam-fpv air unit" />
+    <!-- Motion layer: drop your OV5640 flight clip in as flight-ov5640.mp4 and it covers the frame above. -->
+    <video autoplay muted loop playsinline
+           poster="https://github.com/RomanLut/hx-esp32-cam-fpv/raw/master/doc/images/xiaoesp32s3sense.jpg">
+      <source src="flight-ov5640.mp4" type="video/mp4" />
+    </video>
+  </div>
+  <div class="hero-top">
+    <p class="intro" style="width: 480px">An open-source digital FPV link that fits on a bare ESP32-CAM. Low-latency video, MAVLink telemetry &amp; RC, and a DisplayPort OSD — built for the price of cheap analog gear.</p>
+  </div>
+  <div class="hero-bottom">
+    <div class="display" style="line-height: 1.1; font-family: system-ui; font-weight: 400">hx-esp32<br/>cam-fpv</div>
+    <div class="hero-meta">
+      <div class="hero-tags">
+        <span class="tag em" style="border-color: rgba(255, 255, 255, 0.4); color: rgb(255, 255, 255)">90–110ms latency</span>
+        <span class="tag">up to 2km range</span>
+        <span class="tag">1280x720*</span>
+        <span class="tag">30 / 50 fps</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== WHAT YOU GET (cards) ===================== -->
+<section class="section">
+  <div class="wrap">
+    <div class="lead-block reveal">
+      <span class="label">What you get</span>
+      <h2 class="h">A full digital FPV stack, end to end.</h2>
+    </div>
+    <div class="cardgrid reveal">
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/></svg></div>
+        <h3>Low-latency video link</h3>
+        <p>Frames are transmitted in real time as they are read from the camera sensor, using Wi-Fi packet injection — no waiting for the full frame to arrive first.</p>
+        <div class="meta">640×360 · 800×456 · 1024×576 · 1280x720</div>
+      </div>
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12a8 8 0 0 1 8-8"/><path d="M4 12a8 8 0 0 0 8 8"/><path d="M12 4a8 8 0 0 1 8 8"/><circle cx="12" cy="12" r="2.5"/></svg></div>
+        <h3>MAVLink telemetry &amp; RC</h3>
+        <p>Bidirectional, FEC-encoded serial link carries MAVLink 2 telemetry downlink and RC_CHANNELS_OVERRIDE uplink for full control.</p>
+        <div class="meta">MAVLink 1 / 2 · MSP RC translation</div>
+      </div>
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h5M6 12h3M15 16h3"/></svg></div>
+        <h3>DisplayPort MSP OSD</h3>
+        <p>Render INAV / Betaflight / Ardupilot OSD at 115200 with selectable fonts — your whole HUD, drawn on the ground station.</p>
+        <div class="meta">MSP DisplayPort · MSP RC</div>
+      </div>
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3"/></svg></div>
+        <h3>Dual recording</h3>
+        <p>Record to SD on both the air unit and ground station simultaneously — identical quality, no recompression. </p>
+        <div class="meta">.avi on air + ground</div>
+      </div>
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4v5c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V7l8-4Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>Forward error correction</h3>
+        <p>FEC 6/12 by default doubles bandwidth so any 6 of 12 packets can drop and the frame still recovers — no acknowledgements, no retransmits.</p>
+        <div class="meta">k=6 n=12</div>
+      </div>
+      <div class="acard">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l5-5 4 3 8-8"/><path d="M16 7h5v5"/></svg></div>
+        <h3>Adaptive compression</h3>
+        <p>Per-frame JPEG quality is tuned in real time to the available bandwidth, SD write speed and Wi-Fi queue — the key to a usable stream.</p>
+        <div class="meta">2-12MB · bandwidth-aware</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FEATURE CARDS ===================== -->
+<section class="section" style="padding-top:0;">
+  <div class="wrap">
+    <div class="lead-block reveal">
+      <span class="label">Two boards, one flight</span>
+      <h2 class="h">A tiny air unit. A ground station that listens for kilometers.</h2>
+    </div>
+    <div class="fcards reveal">
+      <div class="fcard photo">
+        <img src="https://github.com/RomanLut/hx-esp32-cam-fpv/raw/master/doc/images/xiaoesp32s3sense.jpg" alt="XIAO ESP32-S3 Sense air unit with OV5640 camera" loading="lazy" />
+        <div class="fc-inner">
+          <span class="label">VTX · Air unit</span>
+          <h3 class="fc-h h" style="font-size:32px;">XIAO ESP32-S3 Sense + OV5640</h3>
+          <p style="color:rgba(255,255,255,.82);margin-top:14px;max-width:34ch;">Compact, under 300mA, with the best image quality and 720p HQ DVR. The recommended build.</p>
+          <div class="fc-foot">
+            <a class="btn-text on-dark em" href="https://github.com/RomanLut/hx-esp32-cam-fpv#air-unit" target="_blank" rel="noopener"><span style="color: #ffffff">Build the air unit
+</span><span style="color: #ffffff">→</span></a>
+
+          </div>
+        </div>
+      </div>
+      <div class="fcard photo">
+        <img src="https://github.com/RomanLut/hx-esp32-cam-fpv/raw/master/doc/images/radxa3w_gs.jpg" alt="Radxa Zero 3W ground station with dual Wi-Fi cards" loading="lazy" />
+        <div class="fc-inner">
+          <span class="label">VRX · Ground station</span>
+          <h3 class="fc-h h" style="font-size:32px;">Radxa Zero 3W, dual diversity</h3>
+          <div class="fc-foot">
+            <a class="btn-text on-dark" href="https://github.com/RomanLut/hx-esp32-cam-fpv#ground-station" target="_blank" rel="noopener">Build the ground station <span class="arr">→</span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions reveal" style="margin-top:40px;">
+      <a class="btn-pill" href="https://github.com/RomanLut/hx-esp32-cam-fpv#building" target="_blank" rel="noopener">See all hardware variants
+→</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== WHO IS THIS FOR ===================== -->
+<section class="section">
+  <div class="wrap">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;" class="reveal">
+      <div>
+        <span class="label">Who is this for?</span>
+        <h2 class="h" style="margin-top:10px;">Built for DIY enthusiasts.</h2>
+        <p style="color:var(--pewter);margin-top:20px;font-size:17px;">This project is for DIY enthusiasts who want to build an FPV system for their own vehicles — RC planes, drones, RC cars and RC boats. This is for people who are experienced in electronics, soldering and embedded programming.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:28px;">
+          <span class="tag" style="border-color:var(--ink);color:var(--ink);">RC Planes</span>
+          <span class="tag" style="border-color:var(--ink);color:var(--ink);">Drones</span>
+          <span class="tag" style="border-color:var(--ink);color:var(--ink);">RC Cars</span>
+          <span class="tag" style="border-color:var(--ink);color:var(--ink);">RC Boats</span>
+        </div>
+      </div>
+      <div style="border-radius:10px;overflow:hidden;">
+        <img src="https://github.com/RomanLut/hx-esp32-cam-fpv/raw/master/doc/images/esp32s3sense_pinout.png" alt="ESP32-S3 Sense pinout diagram" style="width:100%;height:auto;display:block;" loading="lazy" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="hairline" />
+
+<!-- ===================== HONEST EXPECTATIONS ===================== -->
+<section class="section">
+  <div class="wrap">
+    <div class="lead-block reveal">
+      <span class="label">Pros and cons</span>
+      <h2 class="h">Honest expectations</h2>
+    </div>
+    <div class="split2 reveal">
+      <div class="qcard light">
+        <div class="qh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg> What you gain vs analog</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg> Clean digital image, no analog interference</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg> Simultaneous recording on air unit and ground</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg> Digital OSD with MAVLink telemetry &amp; RC</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m20 6-11 11-5-5"/></svg> Tiny, low-power air unit (&lt;300mA @ 5V)</li>
+          <li>Reuses OpenIPC / RubyFPV ground-station hardware</li>
+        </ul>
+      </div>
+      <div class="qcard dark">
+        <div class="qh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg> Honest drawbacks</div>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Blocky JPEG compression artifacts</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> No wide dynamic range, distorted colors</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Poor low-light performance (especially OV2640)</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Occasional dropped frames on busy channels</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg> Outclassed by all commercial digital FPV systems</li>
+        </ul>
+      </div>
+    </div>
+    <div class="actions reveal" style="margin-top:40px;">
+      <a class="btn-pill" href="https://github.com/RomanLut/hx-esp32-cam-fpv#theory" target="_blank" rel="noopener">How it works <span class="arr">→</span></a>
+    </div>
+  </div>
+</section>
+
+<hr class="hairline" />
+
+<!-- ===================== CTA ===================== -->
+<section class="section cta">
+  <div class="wrap">
+    <div class="reveal">
+      <span class="label">Ready to fly</span>
+      <h2 class="h-lg">Pick your boards. Flash. Fly.</h2>
+      <p>Head to the GitHub repository to explore the project, or go straight to the downloads page to grab the firmware — or flash it online.</p>
+      <div class="actions">
+        <a class="btn-pill fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv#building" target="_blank" rel="noopener">Start the build guide <span class="arr">→</span></a>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="hairline" />
+
+<!-- ===================== PAGE HEAD ===================== -->
+<header class="page-head" id="downloads" style="padding: 80px 0px 0px">
+  <div class="wrap">
+    <div class="reveal">
+      <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+        <h2 class="h-lg" style="margin:0;">Downloads</h2>
+        <a class="release-pill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" style="margin: 0px 0px 0px 50px; padding: 14px 16px 15px; font-size: 14px" data-release-link>
+          <span class="dot"></span> Latest release · <b data-release-version>v0.6.3</b>
+        </a>
+      </div>
+      <p>Everything you need to get flying — ground-station images, companion apps, and air-unit firmware you can flash straight from the browser or download as binaries.</p>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== SOFTWARE / IMAGES ===================== -->
+<section class="section" style="padding: 80px 0px 20px">
+  <div class="wrap">
+    <div class="lead-block reveal">
+      <span class="label">Ground stations &amp; apps</span>
+      <h2 class="h">Images and companion apps</h2>
+    </div>
+    <div class="dlgrid reveal">
+      <a class="dlcard" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-dl="radxa">
+        <span class="di"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg></span>
+        <span class="dc-body">
+          <span class="dc-title">Radxa Zero 3 SD Card Image
+↓</span>
+          <span class="dc-desc">Flashable SD-card image for Rada Zero 3W/3E, Runcam WiFiLink VRX and Emax Wyvern Link VRX</span>
+        </span>
+      </a>
+      <a class="dlcard" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-dl="rpi">
+        <span class="di"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h10v18H7zM10 3v3M14 3v3"/><circle cx="12" cy="14" r="2"/></svg></span>
+        <span class="dc-body">
+          <span class="dc-title">Raspberry Pi SD Card Image
+↓</span>
+          <span class="dc-desc">SD-card image for Raspberry Pi Zero 2W / 3 / 4
+</span>
+        </span>
+      </a>
+      <a class="dlcard" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-dl="android">
+        <span class="di"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg></span>
+        <span class="dc-body">
+          <span class="dc-title">Android app <span class="arr">↓</span></span>
+          <span class="dc-desc">View the link, telemetry and OSD on an Android phone or tablet (APK).</span>
+        </span>
+      </a>
+      <a class="dlcard" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-dl="oculus">
+        <span class="di"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-3l-2-2h-2l-2 2H6a3 3 0 0 1-3-3z"/></svg></span>
+        <span class="dc-body">
+          <span class="dc-title">Oculus Quest app ↓</span>
+          <span class="dc-desc">Immersive headset viewer for Meta Quest. Fly in VR-scale FPV (APK).</span>
+        </span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FIRMWARE TABLE ===================== -->
+<section class="section">
+  <div class="wrap">
+    <div class="lead-block reveal">
+      <span class="label">Air unit firmware</span>
+      <h2 class="h">Firmware by board</h2>
+      <p style="color:var(--pewter);margin-top:20px;">Pick your board, then choose a stack. <b>Broadcast</b> is the standard one-way video link; <b>APFPV</b> adds the access-point pairing workflow. Flash online from a Chrome-based browser, or download the binary.</p>
+    </div>
+
+    <div class="fwtable-wrap reveal">
+      <table class="fwtable">
+        <thead>
+          <tr>
+            <th>Board</th>
+            <th>Broadcast</th>
+            <th>APFPV</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-col="Board">
+              <div class="fw-board"><span class="bn">ESP32-CAM</span><span class="bd">OV2640 · AI-Thinker</span></div>
+            </td>
+            <td data-col="Broadcast">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32cam" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32cam" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+            <td data-col="APFPV">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32cam-apfpv" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32cam-apfpv" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td data-col="Board">
+              <div class="fw-board"><span class="bn">XIAO ESP32-S3 Sense</span><span class="bd">OV2640 · OV5640 · autodetect</span></div>
+            </td>
+            <td data-col="Broadcast">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32s3sense" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32s3sense" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+            <td data-col="APFPV">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32s3sense-apfpv" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32s3sense-apfpv" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td data-col="Board">
+              <div class="fw-board"><span class="bn">ESP32-C5</span><span class="bd">OV5640 · 2.4 + 5.8GHz · experimental</span></div>
+            </td>
+            <td data-col="Broadcast">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32c5" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32c5" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+            <td data-col="APFPV">
+              <div class="fw-actions">
+                <a class="btn-sm fill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32c5-apfpv" data-fw-kind="download"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg> Download</a>
+                <a class="btn-sm ghost" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-fw="air_firmware_esp32c5-apfpv" data-fw-kind="flash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg> Flash online</a>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions reveal" style="margin-top:36px;">
+      <a class="btn-pill" href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases/tag/v0.6.3" target="_blank" rel="noopener" data-release-link>All assets on GitHub <span class="arr">→</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="footer" style="padding: 80px 0px 40px; height: 350px">
+  <div class="wrap" style="height: 194px">
+    <div class="footer-grid">
+      <div style="width: 415px">
+        <div class="mark" style="margin: 0px">hx-esp32-cam-fpv</div>
+        <p class="fdesc" style="width: 415px; font-size: 12px">Open source digital low-latency FPV system based on the ESP32. </p>
+      </div>
+      <div class="fcol" style="margin: 0px 0px 0px 20px"><h4>Docs</h4><a href="https://github.com/RomanLut/hx-esp32-cam-fpv#theory" target="_blank" rel="noopener">How it works</a><a href="https://github.com/RomanLut/hx-esp32-cam-fpv#building" target="_blank" rel="noopener">Hardware</a><a href="https://github.com/RomanLut/hx-esp32-cam-fpv#hx-esp32-cam-fpv" target="_blank" rel="noopener">Roadmap</a></div>
+      <div class="fcol" style="margin: 0px 0px 0px 20px"><h4>Project</h4><a href="https://github.com/RomanLut/hx-esp32-cam-fpv" target="_blank" rel="noopener">GitHub repo</a><a href="https://github.com/RomanLut/hx-esp32-cam-fpv/releases" target="_blank" rel="noopener">Releases</a><a href="https://github.com/RomanLut/hx-esp32-cam-fpv/issues" target="_blank" rel="noopener">Issues</a></div>
+      <div class="fcol" style="margin: 0px"><h4>Related</h4><a href="https://github.com/jeanlemotan/esp32-cam-fpv" target="_blank" rel="noopener">Original project</a><a href="https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/" target="_blank" rel="noopener">XIAO ESP32-S3</a><a href="https://www.thingiverse.com/RomanL/collections/44134851/things" target="_blank" rel="noopener">3D print files</a></div>
+    </div>
+    <div class="footer-bot" style="margin: 60px 0px 0px; padding: 24px 0px 0px; border-width: 1px 0px 0px">
+      <p>© <span data-year>2026</span> hx-esp32-cam-fpv contributors · Not affiliated with Espressif.</p>
+      <span class="mit">MIT License</span>
+    </div>
+  </div>
+</footer>
+
+<script src="site.js"></script>
+<script>
+  (function () {
+    var v = document.querySelector('.hero-media video');
+    if (v) { var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+
+    var done = false;
+    function reveal() {
+      if (done) return;
+      done = true;
+      document.body.classList.add('page-ready');
+    }
+    // Fade in once the video has enough data to render its first frame.
+    if (v) {
+      if (v.readyState >= 2) { reveal(); }
+      else {
+        v.addEventListener('loadeddata', reveal);
+        v.addEventListener('canplay', reveal);
+        v.addEventListener('error', reveal);
+      }
+    }
+    // Safety fallbacks so the page never stays hidden.
+    window.addEventListener('load', reveal);
+    setTimeout(reveal, 3000);
+  })();
+</script>
+</body>
+</html>

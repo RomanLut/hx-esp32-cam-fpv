@@ -1,6 +1,12 @@
 name: Deploy GitHub Pages
 
 on:
+  push:
+    branches:
+      - master
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy_github_pages.yml"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -94,17 +100,17 @@ jobs:
             mv release_asset_catalog_next.json release_asset_catalog.json
           done < release_tags.txt
 
-      - name: Generate download page
+      - name: Populate landing page download links
         continue-on-error: true
         run: |
-          python .github/scripts/generate_download_page.py \
+          python .github/scripts/populate_landing_page.py \
+            --index pages_payload/index.html \
             --firmware-dir "pages_payload/firmware/$release_tag" \
             --repository "${{ github.repository }}" \
             --owner "${{ github.repository_owner }}" \
             --tag "$release_tag" \
             --asset-list release_assets.json \
-            --release-asset-catalog release_asset_catalog.json \
-            --output pages_payload/download.html
+            --release-asset-catalog release_asset_catalog.json
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
