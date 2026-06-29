@@ -27,7 +27,8 @@
       "PowerShell(& \"C:\\\\Users\\\\roman\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" *)",
       "Read(//tmp/openipc-research/**)",
       "Bash(echo \"exit=$?\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "WebFetch(domain:romanlut.github.io)"
     ]
   }
 }
