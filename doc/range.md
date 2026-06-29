@@ -1,4 +1,4 @@
-## Range 
+# Range 
 
 **2dbi dipole on plane, 5dbi dipoles on GS:** 650m reliable, 1.2km max at 24Mbps, 600m max at 36Mbps (line of sight, away from wifi routers). Range is decreased significantly with walls/trees on the way.
 
