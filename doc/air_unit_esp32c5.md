@@ -59,10 +59,19 @@ Build the firmware with define: **ESP32C5_EARLY_PROTOTYPE**
 
 Current consumption: 540mA @ 5V.
 
-## esp32c5-airunit-nano
+## esp32c5-airunit-nano (current) (recommended)
 
 https://github.com/us3r-d0e5nt-3x1st/esp32c5-airunit-nano
 
+<img width="2352" height="1288" alt="image" src="https://github.com/user-attachments/assets/19c9240d-efa6-46d4-b668-0461ae432789" />
+
+<img width="1725" height="1188" alt="image" src="https://github.com/user-attachments/assets/d4abbcfa-bfcd-420a-8d7f-7c377790b74e" />
+
 Current release firmware is built for this pinout.
+
+## Flashing online 
+
+Flash online from donwloads section on landing page:
+https://romanlut.github.io/hx-esp32-cam-fpv/#firmware-by-board
 
 Current consumption:  : 270mA @ 5V, 330mA @ 4V, 390mA @ 3V  
