@@ -182,7 +182,7 @@ In general, **APFPV mode** is recommended only for ground vehicles.
 Air Unit can be flashed with either **Raw Broadcast** or **APFPV** firmware. In fact, the firmware itself is the same - the only difference is the initial mode setting.
 When switching between firmware types, make sure to fully erase the flash before reflashing. Otherwise, the mode may not change.
 
-The Air Unit mode can be changed either from the GS menu or from the [camera web interface](#camera-web-interface-and-ota-update)
+The Air Unit mode can be changed either from the GS menu or from the [camera web interface](/doc/web_interface.md)
 
 > [!NOTE]
 > If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.
