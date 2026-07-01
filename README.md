@@ -111,7 +111,9 @@ The air unit can also record video directly to an SD card. To compensate for the
 
 JPEG image sizes vary depending on scene complexity. Adaptive JPEG compression dynamically adjusts the quality level to match the available bandwidth and maintain smooth streaming.
 
-The Ground Station can be a **Radxa Zero 3W**, **Raspberry Pi Zero 2W, up to Raspberry Pi 4**, equipped with Wi-Fi cards in monitor mode such as **Realtek 8812AU** (recommended) or **AR9271**. Dual Wi-Fi cards can be used for diversity reception.
+The Ground Station can be a **Radxa Zero 3W**, **Raspberry Pi Zero 2W, up to Raspberry Pi 4**, equipped with Wi-Fi cards in monitor mode such as **Realtek 8812AU** (recommended), **Realtek 8821AU** or **AR9271**. Dual Wi-Fi cards can be used for diversity reception.
+
+Since release 0.6.3, Android phone and Oculus Qeust 2/3 can be used for Ground station. **Realtek 8812AU** or **Realtek 8821AU** wifi card are still required for **Raw Broadcast** mode. In **APFPV mode**, built-in wifi can be used.
 
 **8812au** with a low-noise amplifier (LNA) is preferred; however, a high-power amplifier (PA) is not critical since the range is primarily limited by the **ESP32's** maximum transmit power of 100 mW (20 dBm).
 
