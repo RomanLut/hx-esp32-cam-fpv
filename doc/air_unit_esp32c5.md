@@ -18,8 +18,6 @@ Camera and SD card wires should be as short as possible (2-3cm).
 
 ![alt text](/doc/images/esp32-c5-prototype.jpg "esp32c5_air_unit")
 
-Build the firmware with define: **ESP32C5_EARLY_PROTOTYPE**
-
 Current consumption: 540mA @ 5V.
 
 ## esp32c5 DIY air unit gen1
@@ -54,8 +52,6 @@ Size comparison with esp32s3sense:
 **esp32c5** 1280x720 25fps streaming, recorded on GS:
 
 https://github.com/user-attachments/assets/3dfc3725-5c03-43d9-bf62-a5a76a4a5fef
-
-Build the firmware with define: **ESP32C5_EARLY_PROTOTYPE**
 
 Current consumption: 540mA @ 5V.
 
