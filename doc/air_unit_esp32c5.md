@@ -4,6 +4,10 @@ The **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Thanks to lower i
 
 Unfortunately, there are currently no **esp32c5** boards on the market with a good form factor and a proper camera connector. Using an **esp32c5** as an air unit requires advanced hardware skills and custom assembly. For this reason, the **esp32s3sense** remains the best choice for an air unit for now.
 
+![alt text](/doc/images/c5-air-shell.jpg "c5-air-flashing")
+
+Current consumption:  : 270mA @ 5V, 330mA @ 4V, 390mA @ 3V  (**c5-air-nano**)
+
 ## esp32c5 proof-of-concept air unit
 
 Air unit can be built using **esp32-c5-devkit-c1-N8R4** board, **BY-OV5640** camera adapter and microSD card adapter.
@@ -55,17 +59,48 @@ Current consumption: 540mA @ 5V.
 
 ## esp32c5-airunit-nano (current) (recommended)
 
+c5-air is designed by **us3r-d0e5nt-3x1st** and is maintained in repository:
+
 https://github.com/us3r-d0e5nt-3x1st/esp32c5-airunit-nano
 
 <img width="2352" height="1288" alt="image" src="https://github.com/user-attachments/assets/19c9240d-efa6-46d4-b668-0461ae432789" />
 
 <img width="1725" height="1188" alt="image" src="https://github.com/user-attachments/assets/d4abbcfa-bfcd-420a-8d7f-7c377790b74e" />
 
+![alt text](/doc/images/c5-air-pinout.jpg "c5-air-pinout")
+
 Current release firmware is built for this pinout.
 
 ## Flashing online 
 
-Flash online from donwloads section on landing page:
+For the first time flashing, solder USB cable to the following pins:
+
+![alt text](/doc/images/c5-air-flashing.jpg "c5-air-flashing")
+
+Hold **REC** button while connecting to USB to enter flashing mode.
+
+Flash online from downloads section on the landing page:
 https://romanlut.github.io/hx-esp32-cam-fpv/#firmware-by-board
 
-Current consumption:  : 270mA @ 5V, 330mA @ 4V, 390mA @ 3V  
+After flashing, unsolder USB cable. It will not work anymore - USB pins are reused for UART. Upading firmware should be done using **OTA mode**.
+
+# Over the Air update (OTA)
+
+To enter OTA mode, connect the power and wait for 1 second. Then press and hold the **REC** button for 5 seconds, then release.
+
+>[!IMPORTANT]
+>Do not hold the **REC** button while connecting power. If you do, the air unit will enter boot mode.
+
+
+**OTA/Fileserver mode** is indicated by LED blinking with 1 Hz frequency.
+
+* Enter **OTA mode**.
+* Connect to **esp32cam-fpv-config** access point.
+* Navigate to http://192.168.4.1/ota
+* Select **firmware_ota.bin** file.
+* Click **Upload**
+
+
+
+
+
