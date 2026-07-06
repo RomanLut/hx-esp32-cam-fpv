@@ -105,6 +105,6 @@ To enter OTA mode, connect the power and wait for 1 second. Then press and hold 
 * Click **Upload**
 
 
-
+3D Printed shell design: https://www.thingiverse.com/thing:7379821
 
 
