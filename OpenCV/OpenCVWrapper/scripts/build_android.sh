@@ -32,12 +32,17 @@ if [[ ! -f "${TOOLCHAIN}" ]]; then
 fi
 
 if [[ -z "${CMAKE_EXE:-}" ]]; then
-    if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/cmake" ]]; then
+    if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/cmake" ]] && find "${ANDROID_SDK_ROOT}/cmake" -mindepth 1 -maxdepth 1 -type d | read -r; then
         CMAKE_DIR="$(find "${ANDROID_SDK_ROOT}/cmake" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
         CMAKE_EXE="${CMAKE_DIR}/bin/cmake"
     else
         CMAKE_EXE="cmake"
     fi
+fi
+
+if ! command -v "${CMAKE_EXE}" >/dev/null 2>&1 && [[ ! -x "${CMAKE_EXE}" ]]; then
+    echo "CMake was not found at '${CMAKE_EXE}'. Install cmake or set CMAKE_EXE." >&2
+    exit 1
 fi
 
 if [[ -z "${NINJA_EXE:-}" ]]; then
@@ -47,6 +52,11 @@ if [[ -z "${NINJA_EXE:-}" ]]; then
     else
         NINJA_EXE="ninja"
     fi
+fi
+
+if ! command -v "${NINJA_EXE}" >/dev/null 2>&1 && [[ ! -x "${NINJA_EXE}" ]]; then
+    echo "Ninja was not found at '${NINJA_EXE}'. Install ninja-build or set NINJA_EXE." >&2
+    exit 1
 fi
 
 OPENCV_BUILD="${BUILD_ROOT}/opencv"
