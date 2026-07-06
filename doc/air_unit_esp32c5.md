@@ -4,8 +4,6 @@ The **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Thanks to lower i
 
 Unfortunately, there are currently no **esp32c5** boards on the market with a good form factor and a proper camera connector. Using an **esp32c5** as an air unit requires advanced hardware skills and custom assembly. For this reason, the **esp32s3sense** remains the best choice for an air unit for now.
 
-![alt text](/doc/images/esp32c5_air_unit.jpg "esp32c5_air_unit")
-
 ## esp32c5 proof-of-concept air unit
 
 Air unit can be built using **esp32-c5-devkit-c1-N8R4** board, **BY-OV5640** camera adapter and microSD card adapter.
