@@ -71,6 +71,10 @@ https://github.com/us3r-d0e5nt-3x1st/esp32c5-airunit-nano
 
 Current release firmware is built for this pinout.
 
+Size comparison vs **XIAO S3 Sense**:
+
+![alt text](/doc/images/c5-air-vs-s3-sense.jpg "c5-air-vs-s3-sense")
+
 ## Flashing online 
 
 For the first time flashing, solder USB cable to the following pins:
@@ -101,6 +105,6 @@ To enter OTA mode, connect the power and wait for 1 second. Then press and hold 
 * Click **Upload**
 
 
-
+3D Printed shell design: https://www.thingiverse.com/thing:7379821
 
 
