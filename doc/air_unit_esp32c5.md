@@ -82,7 +82,7 @@ Hold **REC** button while connecting to USB to enter flashing mode.
 Flash online from downloads section on the landing page:
 https://romanlut.github.io/hx-esp32-cam-fpv/#firmware-by-board
 
-After flashing, unsolder USB cable. It will not work anymore - USB pins are reused for UART. Upading firmware should be done using **OTA mode**.
+After flashing, unsolder USB cable. It will not work anymore - USB pins are reused for UART. Updating firmware should be done using **OTA mode**.
 
 # Over the Air update (OTA)
 
