@@ -96,7 +96,7 @@
         .frequency-chain {
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: stretch;
             margin: 2rem 0;
             flex-wrap: wrap;
             gap: 1rem;
@@ -113,6 +113,9 @@
             border: 1px solid var(--border-color);
             transition: transform 0.2s;
             margin-left: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .freq-block.pll-clk {
@@ -354,8 +357,13 @@
 </head>
 <body>
     <div class="container">
-        <div style="position:absolute; top:20px; right:30px; font-size:13px; color:#6c757d;">Version: 1.1.0</div>
-        <h1>OV5640 Frequency Calculator</h1>
+        <h1 style="margin-bottom: 0.25rem;">OV5640 Frequency Calculator</h1>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.1</div>
+
+        <div class="input-group" style="margin-bottom: 2rem;">
+            <label for="configPreset">Apply preset:</label>
+            <select id="configPreset"></select>
+        </div>
 
         <section class="inputs-section">
 
@@ -517,8 +525,6 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             'cif': { name: 'CIF 400x296 4:3', ratio: 0, width: 400, height: 296 },
             'hvga': { name: 'HVGA 480x320 3:2', ratio: 1, width: 480, height: 320 },
             'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480 },
-            '640x360': { name: 'nHD 640x360 16:9', ratio: 4, width: 640, height: 360 },
-            '800x480': { name: 'WVGA 800x480 5:3', ratio: 3, width: 800, height: 480 },
             'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
             'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720 },
@@ -887,6 +893,70 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
             updateDisplay();
         });
 
+        // --------- Project configuration presets ---------
+        // Values taken from the firmware:
+        // - ov5640.c set_framesize(), ESP32-S3 branch set_pll() arguments;
+        //   the higher-FPS variants are the colorbar paths selected by the
+        //   ov5640HighFPS flag (main.cpp passes it via set_colorbar())
+        // - ESP32-C5 uses the generic branch: set_pll(false, 160, 4, 2, false, 2, true, 4)
+        //   for every resolution
+        // - XVCLK from main.cpp camera_config_t: ov5640_xclk_hz = 20 MHz (S3) / 24 MHz (C5)
+        const configPresets = [
+            { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 23,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x360 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 30,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'vga' },
+            { name: 'ESP32-S3 640x480 40fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 23,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 30,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'svga' },
+            { name: 'ESP32-S3 1024x768 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 39,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 5, resolution: 'xga' },
+            { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 29,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'hd' },
+            { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'svga' },
+            { name: 'ESP32-C5 1024x768 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'xga' },
+            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'hd' }
+        ];
+
+        const configPresetSelect = document.getElementById('configPreset');
+        {
+            const dash = document.createElement('option');
+            dash.value = '-';
+            dash.textContent = '-';
+            configPresetSelect.appendChild(dash);
+            configPresets.forEach((p, i) => {
+                const option = document.createElement('option');
+                option.value = String(i);
+                option.textContent = p.name;
+                configPresetSelect.appendChild(option);
+            });
+        }
+
+        function applyConfigPreset(index) {
+            const p = configPresets[index];
+            if (!p) return;
+            document.getElementById('capturePlatform').value = p.platform;
+            document.getElementById('xvclk').value = p.xvclk;
+            document.getElementById('preDiv').value = p.preDiv;
+            document.getElementById('multiplier').value = p.multiplier;
+            document.getElementById('root2x').value = p.root2x ? 'true' : 'false';
+            document.getElementById('bypass').value = 'false';
+            document.getElementById('sysDiv').value = p.sysDiv;
+            document.getElementById('bitMode').value = '10'; // driver always writes 0x3034 = 0x1A
+            document.getElementById('pclkRootDiv').value = p.pclkRootDiv;
+            document.getElementById('pclkManual').value = 'true';
+            document.getElementById('pclkDiv').value = p.pclkDiv;
+            applyPreset(p.resolution);
+            validateMultiplier();
+            updateDisplay();
+        }
+
+        configPresetSelect.addEventListener('change', function () {
+            if (this.value === '-') return;
+            applyConfigPreset(parseInt(this.value));
+        });
+
         // --------- Validation / Tests ---------
         function validateMultiplier() {
             const el = document.getElementById('multiplier');
@@ -956,7 +1026,11 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
         }
 
         // --------- Event listeners / Init ---------
-        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', updateDisplay));
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', () => {
+            // Any manual change below invalidates the applied project preset
+            if (el.id !== 'configPreset') configPresetSelect.value = '-';
+            updateDisplay();
+        }));
 
         function focusAndFlash(id) {
             const el = document.getElementById(id);
