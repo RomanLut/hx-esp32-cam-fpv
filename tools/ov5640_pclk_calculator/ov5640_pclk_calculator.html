@@ -912,7 +912,7 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
         const configPresets = [
             { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 23,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portrait3mp' },
             { name: 'ESP32-S3 640x360 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
-            { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 30,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'vga' },
+            { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 91,  sysDiv: 1, preDiv: 3, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
             { name: 'ESP32-S3 640x480 40fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
             { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 23,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
