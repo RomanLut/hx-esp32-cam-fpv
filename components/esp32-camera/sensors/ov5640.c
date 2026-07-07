@@ -519,7 +519,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             ((framesize == FRAMESIZE_VGA) || (framesize == FRAMESIZE_P_3MP) || (framesize == FRAMESIZE_P_HD)))
         {
             //high FPS modes (ov5640HighFPS flag, passed via set_colorbar())
-            ret = set_pll(sensor, false, 33, 1, 1, false, 2, true, 4); //19.8 mhz pclk; 640x480: 39.1 FPS, 640x360/800x456: 51.7 FPS
+            const int high_fps_pll_multiplier = (framesize == FRAMESIZE_VGA) ? 101 : 32;
+            const int high_fps_pre_div = (framesize == FRAMESIZE_VGA) ? 3 : 1;
+            ret = set_pll(sensor, false, high_fps_pll_multiplier, 1, high_fps_pre_div, false, 2, true, 4); //640x360/800x456: 19.2 mhz pclk 50.1 FPS; 640x480: 20.2 mhz pclk 40.0 FPS
         }
         else
         {
