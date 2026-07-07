@@ -143,7 +143,8 @@ static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sy
     int PCLK = PLLCLK / 2 / ((pclk_manual && pclk_div)?pclk_div:1);
     int SYSCLK = PLLCLK / 4;
 
-    ESP_LOGI(TAG, "Calculated VCO: %d Hz, PLLCLK: %d Hz, SYSCLK: %d Hz, PCLK: %d Hz", VCO*1000, PLLCLK, SYSCLK, PCLK);
+    //Warning: verbose logging here runs in cam_task and overflows its stack (see ov5640.c)
+    //ESP_LOGI(TAG, "Calculated VCO: %d Hz, PLLCLK: %d Hz, SYSCLK: %d Hz, PCLK: %d Hz", VCO*1000, PLLCLK, SYSCLK, PCLK);
     return SYSCLK;
 }
 
@@ -312,7 +313,10 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 {
     int ret = 0;
 
-    if(framesize > FRAMESIZE_QXGA){
+    // Accept by real dimensions (2048x1536 array) instead of enum order so
+    // FRAMESIZE_P_FHD (1024x576, defined in the 5MP enum section) works too.
+    if(framesize >= FRAMESIZE_INVALID
+        || resolution[framesize].width > 2048 || resolution[framesize].height > 1536){
         ESP_LOGW(TAG, "Invalid framesize: %u", framesize);
         framesize = FRAMESIZE_QXGA;
     }
@@ -356,13 +360,31 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-        if (framesize == FRAMESIZE_QXGA || sensor->xclk_freq_hz == 16000000) {
-            //40MHz SYSCLK and 10MHz PCLK
-            ret = set_pll(sensor, false, 24, 1, 3, false, 0, true, 8);
+        //FPS = SYSCLK / (HTS * VTS); binned VTS = total_y/2+1 (see tools/ov3660_pclk_calculator)
+        //high FPS variants are selected by the ov5640HighFPS flag passed via set_colorbar()
+        bool highFPS = sensor->status.colorbar != 0;
+#if defined(CONFIG_IDF_TARGET_ESP32C5)
+        //24 MHz XCLK (ESP32-C5)
+        if (sensor->status.binning && highFPS) {
+            ret = set_pll(sensor, false, 18, 1, 1, false, 0, true, 6); //SYSCLK 72 MHz: 4:3 40.0 FPS, 16:9 50.1 FPS, 24 mhz pclk
+        } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
+            ret = set_pll(sensor, false, 11, 1, 1, false, 0, true, 4); //SYSCLK 44 MHz: 30.6 FPS, 22 mhz pclk
         } else {
-            //50MHz SYSCLK and 10MHz PCLK
-            ret = set_pll(sensor, false, 30, 1, 3, false, 0, true, 10);
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 4); //SYSCLK 54 MHz: 4:3 binned 30.0 FPS, QXGA 15.0 FPS, 16:9 full 20.5 FPS, 27 mhz pclk
         }
+#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
+        //20 MHz XCLK (ESP32 / ESP32-S3)
+        if (sensor->status.binning && highFPS) {
+            ret = set_pll(sensor, false, 29, 1, 2, false, 0, true, 6); //SYSCLK 72.5 MHz: 4:3 40.3 FPS, 16:9 50.4 FPS, 24.2 mhz pclk
+        } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
+            ret = set_pll(sensor, false, 13, 1, 1, false, 0, true, 4); //SYSCLK 43.3 MHz: 30.1 FPS, 21.7 mhz pclk
+        } else {
+            ret = set_pll(sensor, false, 11, 1, 0, false, 0, true, 4); //SYSCLK 55 MHz: 4:3 binned 30.5 FPS, QXGA 15.3 FPS, 16:9 full 20.9 FPS, 27.5 mhz pclk
+        }
+#else
+        //legacy: 40MHz SYSCLK and 10MHz PCLK
+        ret = set_pll(sensor, false, 24, 1, 3, false, 0, true, 8);
+#endif
     } else {
         //tuned for 16MHz XCLK and 8MHz PCLK
         if (framesize > FRAMESIZE_HVGA) {
@@ -423,13 +445,13 @@ static int set_quality(sensor_t *sensor, int qs)
 
 static int set_colorbar(sensor_t *sensor, int enable)
 {
-    int ret = 0;
-    ret = write_reg_bits(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR, enable);
-    if (ret == 0) {
-        sensor->status.colorbar = enable;
-        ESP_LOGD(TAG, "Set colorbar to: %d", enable);
-    }
-    return ret;
+    // NOTE: like the OV5640 driver in this project, the colorbar flag is
+    // repurposed as the "high FPS" mode selector (main.cpp passes the
+    // ov5640HighFPS flag via set_colorbar) and does not enable the actual
+    // test pattern.
+    //write_reg_bits(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR, enable);
+    sensor->status.colorbar = enable;
+    return 0;
 }
 
 static int set_gain_ctrl(sensor_t *sensor, int enable)

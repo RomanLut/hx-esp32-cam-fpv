@@ -184,9 +184,11 @@ HXMavlinkParser mavlinkParserIn(true);
 //===================================================================================
 //===================================================================================
 // Returns whether runtime camera detection identified an OV5640 sensor.
+// OV3660 is intentionally treated as OV5640 here: it is reported to the GS as OV5640
+// (the packet format has no OV3660 id yet).
 static bool camera_is_ov5640()
 {
-    return s_camera_sensor_pid == OV5640_PID;
+    return (s_camera_sensor_pid == OV5640_PID) || (s_camera_sensor_pid == OV3660_PID);
 }
 
 //=============================================================================================
@@ -2210,7 +2212,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
         packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS / 10 + 101;   
     }
 
-    packet.stats.isOV5640 = (s_camera_sensor_pid == OV5640_PID) ? 1 : 0;
+    packet.stats.isOV5640 = camera_is_ov5640() ? 1 : 0; //OV3660 is reported as OV5640 to the GS (no packet format change)
 
     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
     packet.stats.inPacketRate = s_last_stats.inPacketCounter;

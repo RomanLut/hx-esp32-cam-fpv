@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OV3660 Frequency Calculator</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --container-bg: #ffffff;
+            --text-color: #212529;
+            --label-color: #495057;
+            --border-color: #dee2e6;
+            --primary-color: #007bff;
+            --danger-color: #dc3545;
+            --disabled-bg: #e9ecef;
+            --shadow-color: rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            background-color: var(--container-bg);
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        h1 {
+            color: var(--text-color);
+            text-align: center;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+
+        h2 {
+            color: var(--label-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            margin-top: 2.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .inputs-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-group {
+            min-width: 250px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--label-color);
+            font-size: 0.9rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        input:disabled, select:disabled {
+            background-color: var(--disabled-bg);
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .frequency-chain {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .freq-block {
+            background-color: var(--disabled-bg);
+            padding: 15px 20px;
+            border-radius: 8px;
+            min-width: 120px;
+            text-align: center;
+            position: relative;
+            cursor: help;
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s;
+            margin-left: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .freq-block.pll-clk {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+
+        .freq-block:hover {
+            transform: translateY(-2px);
+        }
+
+        .freq-block::after {
+            content: "→";
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            color: #6c757d;
+        }
+
+        .freq-block:last-child::after {
+            display: none;
+        }
+
+        .factor-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(0, 123, 255, 0.45);
+            padding: 0 2px;
+            border-radius: 3px;
+        }
+
+        .factor-link:hover {
+            border-bottom-color: rgba(0, 123, 255, 0.9);
+            background: rgba(0, 123, 255, 0.08);
+        }
+
+        .flash-focus {
+            animation: flashFocus 900ms ease-out 1;
+        }
+
+        @keyframes flashFocus {
+            0% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+            30% { box-shadow: 0 0 0 4px rgba(0,123,255,0.35); }
+            100% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+        }
+
+        .freq-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .freq-value.out-of-range {
+            color: var(--danger-color) !important;
+        }
+
+        .freq-value small {
+            display: block;
+            font-size: 0.7em;
+            font-weight: normal;
+            color: #6c757d;
+        }
+
+        .settings-display {
+            margin-top: 2rem;
+        }
+
+        .settings-display pre {
+            background-color: var(--disabled-bg);
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        }
+
+        .notes {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 2rem;
+            text-align: left;
+            background: var(--bg-color);
+            padding: 1rem;
+            border-radius: 6px;
+        }
+
+        .notes ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .info-table {
+            width: 100%;
+            margin-top: 1rem;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .info-table th, .info-table td {
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            vertical-align: middle;
+            text-align: left;
+        }
+
+        .info-table th {
+            background-color: var(--bg-color);
+            font-weight: 600;
+            width: 200px;
+        }
+
+        .info-table td {
+            text-align: center;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.85rem;
+        }
+
+        .viewport-section {
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .viewport-container {
+            position: relative;
+            width: 648px;
+            height: 482px;
+            background-color: #e0e0e0;
+            border: 1px solid var(--border-color);
+            display: inline-block;
+            margin-top: 1rem;
+        }
+
+        .sensor-window {
+            position: absolute;
+            background-color: rgba(108, 117, 125, 0.18);
+            border: none;
+            box-sizing: border-box;
+            z-index: 0;
+        }
+
+        .scanned-area-window {
+            position: absolute;
+            background-color: rgba(0, 123, 255, 0.3);
+            border: none;
+            box-sizing: border-box;
+            z-index: 2;
+        }
+
+        .output-window {
+            position: absolute;
+            background-color: rgba(220, 53, 69, 0.4);
+            border: 1px solid var(--danger-color);
+            box-sizing: border-box;
+            z-index: 3;
+        }
+
+        .blanking-h-window, .blanking-v-window {
+            position: absolute;
+            background-color: rgba(40, 167, 69, 0.25);
+            border: 1px dashed #28a745;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        .viewport-label {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .viewport-legend {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.2);
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OV3660 Frequency Calculator</h1>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.0</div>
+
+        <div class="input-group" style="margin-bottom: 2rem;">
+            <label for="configPreset">Apply preset:</label>
+            <select id="configPreset"></select>
+        </div>
+
+        <section class="inputs-section">
+
+            <div class="input-group">
+                <label for="capturePlatform">Capture platform:</label>
+                <select id="capturePlatform">
+                    <option value="esp32">ESP32 - PCLK capture limit 20 MHz</option>
+                    <option value="esp32s3" selected>ESP32-S3 - PCLK capture limit 40 MHz</option>
+                    <option value="esp32c5">ESP32-C5 - PCLK capture limit 80 MHz</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="xvclk">XVCLK Frequency (Hz):</label>
+                <input type="number" id="xvclk" value="20000000" min="1000000" step="1000000">
+            </div>
+
+            <div class="input-group">
+                <label for="preDiv">pll_pre_div (0x303D[5:4]):</label>
+                <select id="preDiv">
+                    <option value="0" selected>÷1</option>
+                    <option value="1">÷1.5</option>
+                    <option value="2">÷2</option>
+                    <option value="3">÷3</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="multiplier">pll_multiplier (1-31, 0x303B):</label>
+                <input type="number" id="multiplier" value="11" min="1" max="31">
+            </div>
+
+            <div class="input-group">
+                <label for="root2x">pll_root_2x (0x303D[6]):</label>
+                <select id="root2x">
+                    <option value="false" selected>×1 (Disable)</option>
+                    <option value="true">×2 (Enable)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="bypass">pll_bypass (0x303A[7]):</label>
+                <select id="bypass">
+                    <option value="false" selected>0 - Use PLL</option>
+                    <option value="true">1 - Bypass (Direct XVCLK)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="sysDiv">pll_sys_div (1-15, 0x303C[3:0]):</label>
+                <input type="number" id="sysDiv" value="1" min="1" max="15">
+            </div>
+
+            <div class="input-group">
+                <label for="seld5">pll_seld5 (0x303D[1:0]):</label>
+                <select id="seld5">
+                    <option value="0" selected>÷1</option>
+                    <option value="2">÷2</option>
+                    <option value="3">÷2.5</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="pclkManual">pclk_manual (0x460C[1]):</label>
+                <select id="pclkManual">
+                    <option value="false">Auto</option>
+                    <option value="true" selected>Manual</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="pclkDiv">pclk_div (1-31, 0x3824, ignored in auto):</label>
+                <input type="number" id="pclkDiv" value="4" min="1" max="31">
+            </div>
+
+            <div class="input-group">
+                <label>FPS:</label>
+                <div id="fpsDisplay" style="font-size: 26px; font-weight: bold; color: var(--label-color); line-height: 42px;">-</div>
+            </div>
+        </section>
+
+        <section>
+            <hr style="border: 2px solid var(--border-color); margin: 2rem 0;">
+            <h2 style="border-bottom: none;">Frequency Chain</h2>
+            <div class="frequency-chain" id="pllChain"></div>
+            <div class="frequency-chain" id="pclkChain"></div>
+        </section>
+
+        <div class="notes">
+            <h3>Notes:</h3>
+            <ul>
+                <li><strong>Clock formulas</strong> (from ov3660.c calc_sysclk, PLLS registers 0x303A-0x303D):<pre>
+REFIN   = XVCLK / pll_pre_div;                    // /1, /1.5, /2, /3      (0x303D[5:4])
+VCO     = REFIN * pll_multiplier * pll_root_2x;   // multiplier 1..31      (0x303B)
+PLLCLK  = pll_bypass ? XVCLK : (VCO * 2 / pll_sys_div / seld5_2x);  // seld5: /1, /2, /2.5
+SYSCLK  = PLLCLK / 4;
+PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
+</pre></li>
+                <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). In binning mode the driver programs VTS = total_y/2 + 1.</li>
+                <li><strong>VCO range is not published</strong> for the OV3660 PLLS; stock configs run 160-200 MHz, project presets up to ~293 MHz. Values above 400 MHz are flagged.</li>
+                <li><strong>High FPS presets (SYSCLK ~72 MHz) need hardware validation</strong> — stock configs never exceed 50 MHz SYSCLK.</li>
+                <li><strong>1024x576 / 1280x720 cannot reach 30 FPS:</strong> they exceed the max binned 16:9 size (960x540), so the sensor scans the full 1080-line window (~19 FPS at 55 MHz SYSCLK). Tightened blanking at 72 MHz was tried and does not work on hardware.</li>
+                <li><strong>All frequencies in Hz</strong></li>
+            </ul>
+        </div>
+
+        <div class="settings-display">
+            <h2>PLL Setup</h2>
+            <pre id="pllSetup"></pre>
+        </div>
+
+        <div class="settings-display">
+            <h2>Register Settings</h2>
+            <pre id="registerSettings"></pre>
+        </div>
+
+        <section class="viewport-section">
+            <h2 style="text-align: left;">Timing</h2>
+            <div class="input-group" style="margin-bottom: 1rem; text-align: left;">
+                <label for="presets">Resolution Preset:</label>
+                <select id="presets"></select>
+            </div>
+            <div id="timingTable"></div>
+            <div class="viewport-container" id="viewportContainer">
+                <div class="blanking-h-window" id="blankingHLeft"></div>
+                <div class="blanking-h-window" id="blankingHRight"></div>
+                <div class="blanking-v-window" id="blankingV"></div>
+                <div class="sensor-window" id="sensorWindow"></div>
+                <div class="scanned-area-window" id="scannedAreaWindow"></div>
+                <div class="output-window" id="outputWindow"></div>
+                <div class="viewport-label">Sensor view</div>
+            </div>
+            <div class="viewport-legend" aria-label="Viewport legend">
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(108,117,125,0.18); border-color: rgba(108,117,125,0.9)"></span><span>gray - Sensor Size</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(0,123,255,0.3); border-color: var(--primary-color)"></span><span>blue - Scanned Pixels Size</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(220,53,69,0.4); border-color: var(--danger-color)"></span><span>red - Final Output</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(40,167,69,0.25); border:1px dashed #28a745"></span><span>green - Blanking (H/V)</span></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // --------- Constants / Maps (from ov3660.c) ---------
+        const preDiv2xMap = [2, 3, 4, 6];   // 0x303D[5:4]: /1, /1.5, /2, /3
+        const seld52xMap = [2, 2, 4, 5];    // 0x303D[1:0]: /1, /1, /2, /2.5
+
+        const CAPTURE_PLATFORMS = {
+            esp32:   { name: 'ESP32',    pclkMax: 20_000_000 },
+            esp32s3: { name: 'ESP32-S3', pclkMax: 40_000_000 },
+            esp32c5: { name: 'ESP32-C5', pclkMax: 80_000_000 }
+        };
+
+        // ratio_table from ov3660_settings.h
+        const ratioTable = [
+            { max_w: 2048, max_h: 1536, start_x: 0,   start_y: 0,   end_x: 2079, end_y: 1547, offset_x: 16, offset_y: 6, total_x: 2300, total_y: 1564 }, //4x3
+            { max_w: 1920, max_h: 1280, start_x: 64,  start_y: 128, end_x: 2015, end_y: 1419, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1436 }, //3x2
+            { max_w: 2048, max_h: 1280, start_x: 0,   start_y: 128, end_x: 2079, end_y: 1419, offset_x: 16, offset_y: 6, total_x: 2300, total_y: 1436 }, //16x10
+            { max_w: 1920, max_h: 1152, start_x: 64,  start_y: 192, end_x: 2015, end_y: 1355, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1372 }, //5x3
+            { max_w: 1920, max_h: 1080, start_x: 64,  start_y: 242, end_x: 2015, end_y: 1333, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1322 }, //16x9
+            { max_w: 2048, max_h: 880,  start_x: 0,   start_y: 328, end_x: 2079, end_y: 1219, offset_x: 16, offset_y: 6, total_x: 2300, total_y: 1236 }, //21x9
+            { max_w: 1920, max_h: 1536, start_x: 64,  start_y: 0,   end_x: 2015, end_y: 1547, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1564 }, //5x4
+            { max_w: 1536, max_h: 1536, start_x: 256, start_y: 0,   end_x: 1823, end_y: 1547, offset_x: 16, offset_y: 6, total_x: 2044, total_y: 1564 }, //1x1
+            { max_w: 864,  max_h: 1536, start_x: 592, start_y: 0,   end_x: 1487, end_y: 1547, offset_x: 16, offset_y: 6, total_x: 2044, total_y: 1564 }  //9x16
+        ];
+
+        const FULL_SENSOR_WIDTH = 2080;
+        const FULL_SENSOR_HEIGHT = 1548;
+
+        const presets = {
+            'qvga': { name: 'QVGA 320x240 4:3', ratio: 0, width: 320, height: 240 },
+            'cif': { name: 'CIF 400x296 4:3', ratio: 0, width: 400, height: 296 },
+            'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480 },
+            'portrait3mp': { name: '640x360 16:9', ratio: 4, width: 640, height: 360 },
+            'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
+            'portraithd': { name: '800x456 16:9', ratio: 4, width: 800, height: 456 },
+            'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
+            '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576 },
+            'sxga': { name: 'SXGA 1280x960 4:3', ratio: 0, width: 1280, height: 960 },
+            'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720 },
+            'uxga': { name: 'UXGA 1600x1200 4:3', ratio: 0, width: 1600, height: 1200 },
+            'fhd': { name: 'FHD 1920x1080 16:9', ratio: 4, width: 1920, height: 1080 },
+            'qxga': { name: 'QXGA 2048x1536 4:3', ratio: 0, width: 2048, height: 1536 }
+        };
+
+        let currentPreset = presets['vga'];
+
+        function calculateFrequencies() {
+            const platformKey = document.getElementById('capturePlatform').value;
+            const platform = CAPTURE_PLATFORMS[platformKey] || CAPTURE_PLATFORMS.esp32s3;
+            const xvclk = parseFloat(document.getElementById('xvclk').value);
+            const preDivCode = parseInt(document.getElementById('preDiv').value);
+            let multiplier = parseInt(document.getElementById('multiplier').value);
+            multiplier = Math.min(31, Math.max(1, isFinite(multiplier) ? multiplier : 1));
+            const root2x = document.getElementById('root2x').value === 'true';
+            const bypass = document.getElementById('bypass').value === 'true';
+            const sysDiv = Math.max(1, parseInt(document.getElementById('sysDiv').value) || 1);
+            const seld5Code = parseInt(document.getElementById('seld5').value);
+            const pclkManual = document.getElementById('pclkManual').value === 'true';
+            const pclkDiv = Math.max(1, parseInt(document.getElementById('pclkDiv').value) || 1);
+
+            const preDiv = preDiv2xMap[preDivCode] / 2;
+            const seld5 = seld52xMap[seld5Code] / 2;
+
+            const refIn = xvclk / preDiv;
+            const vco = refIn * multiplier * (root2x ? 2 : 1);
+            const pllClk = bypass ? xvclk : (vco * 2 / sysDiv / (seld5 * 2));
+            const sysClk = pllClk / 4;
+            const pclk = pllClk / 2 / (pclkManual ? pclkDiv : 1);
+
+            // timing from the active ratio, binning like the driver
+            const settings = ratioTable[currentPreset.ratio];
+            const binning = (currentPreset.width <= settings.max_w / 2) && (currentPreset.height <= settings.max_h / 2);
+            const hts = settings.total_x;
+            const vts = binning ? (Math.floor(settings.total_y / 2) + 1) : settings.total_y;
+            const fps = sysClk / (hts * vts);
+
+            const ranges = {
+                xvclk: { min: 6000000, max: 27000000, name: 'XVCLK (6-27 MHz)' },
+                refIn: { min: 6000000, max: 27000000, name: 'REFIN (6-27 MHz)' },
+                // PLLS VCO limits are not published; warn above 400 MHz (stock max ~200 MHz)
+                vco: { min: 0, max: 400000000, name: 'VCO (max ~400 MHz, unpublished)' },
+                pclk: { min: 0, max: platform.pclkMax, name: `PCLK (${platform.name} limit ${platform.pclkMax / 1e6} MHz)` }
+            };
+
+            const isValid = {
+                xvclk: (xvclk >= ranges.xvclk.min && xvclk <= ranges.xvclk.max),
+                refIn: (refIn >= ranges.refIn.min && refIn <= ranges.refIn.max),
+                vco: (vco <= ranges.vco.max),
+                pclk: (pclk >= ranges.pclk.min && pclk <= ranges.pclk.max)
+            };
+
+            return {
+                xvclk, refIn, vco, pllClk, sysClk, pclk, fps,
+                preDiv, preDivCode, multiplier, root2x, bypass, sysDiv, seld5, seld5Code,
+                pclkManual, pclkDiv, hts, vts, binning, settings, ranges, isValid
+            };
+        }
+
+        function createChainBlock(labelHtml, value, isValid, suffix, rangeName, titlePlain) {
+            const validClass = isValid ? '' : 'out-of-range';
+            suffix = suffix || 'MHz';
+            const rangeText = rangeName && rangeName.split(' (')[1] ? rangeName.split(' (')[1].slice(0, -1) : '';
+            const title = titlePlain || (labelHtml || '').replace(/<[^>]*>/g, '');
+            return `
+                <div class="freq-block ${labelHtml.startsWith('PLLCLK') ? 'pll-clk' : ''}" title="${title}">
+                    <div class="freq-label">${labelHtml}</div>
+                    <div class="freq-value ${validClass}">
+                        ${value} ${suffix}
+                        ${rangeText ? `<small>(${rangeText})</small>` : ''}
+                    </div>
+                </div>`;
+        }
+
+        function toHex(v) { return '0x' + (v & 0xFF).toString(16).padStart(2, '0'); }
+
+        function updateDisplay() {
+            const f = calculateFrequencies();
+
+            document.getElementById('pllChain').innerHTML = `
+                ${createChainBlock('XVCLK', (f.xvclk / 1e6).toFixed(1), f.isValid.xvclk, 'MHz', f.ranges.xvclk.name, 'XVCLK')}
+                ${createChainBlock(`REFIN (XVCLK<a class="factor-link" href="#" data-focus="preDiv">÷${f.preDiv}</a>)`, (f.refIn / 1e6).toFixed(1), f.isValid.refIn, 'MHz', f.ranges.refIn.name, 'REFIN')}
+                ${createChainBlock(`VCO (REFIN<a class="factor-link" href="#" data-focus="multiplier">×${f.multiplier}</a>${f.root2x ? '<a class="factor-link" href="#" data-focus="root2x">×2</a>' : ''})`, (f.vco / 1e6).toFixed(1), f.isValid.vco, 'MHz', f.ranges.vco.name, 'VCO')}
+                ${createChainBlock(`PLLCLK (${f.bypass ? 'bypass → XVCLK' : `VCO ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"sysDiv\">${f.sysDiv}</a> ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"seld5\">${f.seld5}</a>`})`, (f.pllClk / 1e6).toFixed(1), true, 'MHz', 'Intermediate', 'PLLCLK')}
+                ${createChainBlock('SYSCLK (PLLCLK÷4)', (f.sysClk / 1e6).toFixed(1), true, 'MHz', 'Intermediate', 'SYSCLK')}
+            `;
+
+            document.getElementById('pclkChain').innerHTML = `
+                ${createChainBlock('PLLCLK', (f.pllClk / 1e6).toFixed(1), true, 'MHz', 'Intermediate', 'PLLCLK')}
+                ${createChainBlock(`PCLK (PLLCLK÷2÷<a class="factor-link" href="#" data-focus="${f.pclkManual ? 'pclkDiv' : 'pclkManual'}">${f.pclkManual ? f.pclkDiv : 1}</a>)`, (f.pclk / 1e6).toFixed(2), f.isValid.pclk, 'MHz', f.ranges.pclk.name, 'PCLK')}
+            `;
+
+            ['multiplier', 'sysDiv', 'preDiv', 'root2x', 'seld5'].forEach(id => {
+                document.getElementById(id).disabled = f.bypass;
+            });
+            document.getElementById('pclkDiv').disabled = !f.pclkManual;
+
+            document.getElementById('fpsDisplay').textContent = f.fps.toFixed(2);
+
+            document.getElementById('pllSetup').textContent =
+`set_pll(sensor, ${f.bypass} /*bypass*/, ${f.multiplier} /*multiplier*/, ${f.sysDiv} /*sys_div*/, ${f.preDivCode} /*pre_div*/, ${f.root2x} /*root_2x*/, ${f.seld5Code} /*seld5*/, ${f.pclkManual} /*pclk_manual*/, ${f.pclkDiv} /*pclk_div*/);`;
+
+            const reg303a = f.bypass ? 0x80 : 0x00;
+            const reg303b = f.multiplier & 0x1F;
+            const reg303c = 0x10 | (f.sysDiv & 0x0F);
+            const reg303d = ((f.preDivCode & 3) << 4) | (f.seld5Code & 3) | (f.root2x ? 0x40 : 0x00);
+            const reg3824 = f.pclkManual ? (f.pclkDiv & 0x1F) : 0;
+            const reg460c = f.pclkManual ? 0x22 : 0x20;
+
+            document.getElementById('registerSettings').textContent =
+`// PLLS Registers (0x303A-0x303D)
+SCCB_Write(0x303a, ${toHex(reg303a)});
+SCCB_Write(0x303b, ${toHex(reg303b)});
+SCCB_Write(0x303c, ${toHex(reg303c)}); // charge pump | sys_div
+SCCB_Write(0x303d, ${toHex(reg303d)}); // root_2x | pre_div | seld5
+
+// PCLK Registers
+SCCB_Write(0x3824, ${toHex(reg3824)});
+SCCB_Write(0x460c, ${toHex(reg460c)});
+
+// Timing (HTS/VTS${f.binning ? ', binning: VTS = total_y/2+1' : ''})
+SCCB_Write(0x380c, ${toHex(f.hts >> 8)});
+SCCB_Write(0x380d, ${toHex(f.hts & 0xFF)});
+SCCB_Write(0x380e, ${toHex(f.vts >> 8)});
+SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
+`;
+
+            // ---- Timing table and sensor-view diagram ----
+            const settings = f.settings;
+            const scannedWidth = settings.end_x - settings.start_x + 1;
+            const scannedHeight = settings.end_y - settings.start_y + 1;
+            const hBlank = settings.total_x - scannedWidth;
+            const vBlank = settings.total_y - scannedHeight;
+
+            document.getElementById('timingTable').innerHTML = `
+                <table class="info-table">
+                    <tr><th>Parameter</th><th>Horizontal</th><th>Vertical</th><th>H Regs</th><th>V Regs</th></tr>
+                    <tr><th>Sensor Size</th><td>${FULL_SENSOR_WIDTH}</td><td>${FULL_SENSOR_HEIGHT}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Scanned Pixels Start</th><td>${settings.start_x}</td><td>${settings.start_y}</td><td>0x3800/01</td><td>0x3802/03</td></tr>
+                    <tr><th>Scanned Pixels End</th><td>${settings.end_x}</td><td>${settings.end_y}</td><td>0x3804/05</td><td>0x3806/07</td></tr>
+                    <tr><th>Scanned Pixels Size</th><td>${scannedWidth}</td><td>${scannedHeight}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Active Image Size</th><td>${settings.max_w}</td><td>${settings.max_h}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Output size</th><td>${currentPreset.width}</td><td>${currentPreset.height}</td><td>0x3808/09</td><td>0x380A/0B</td></tr>
+                    <tr><th>Optical Offsets</th><td>${settings.offset_x}</td><td>${settings.offset_y}</td><td>0x3810/11</td><td>0x3812/13</td></tr>
+                    <tr><th>Timing (HTS, VTS)</th><td>${f.hts}</td><td>${f.vts}</td><td>0x380C/0D</td><td>0x380E/0F</td></tr>
+                    <tr><th>Blank Interval</th><td>${hBlank}</td><td>${vBlank}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Binning</th><td colspan="4">${f.binning ? 'Enabled' : 'Disabled'}</td></tr>
+                    <tr><th>SYSCLK</th><td colspan="4">${(f.sysClk / 1e6).toFixed(2)} MHz</td></tr>
+                    <tr><th>FPS</th><td colspan="4">${f.fps.toFixed(2)}</td></tr>
+                </table>
+            `;
+
+            const container = document.getElementById('viewportContainer');
+            const scaleX = container.clientWidth / FULL_SENSOR_WIDTH;
+            const scaleY = container.clientHeight / FULL_SENSOR_HEIGHT;
+
+            const sensorWindow = document.getElementById('sensorWindow');
+            sensorWindow.style.left = `0px`;
+            sensorWindow.style.top = `0px`;
+            sensorWindow.style.width = `${FULL_SENSOR_WIDTH * scaleX}px`;
+            sensorWindow.style.height = `${FULL_SENSOR_HEIGHT * scaleY}px`;
+            sensorWindow.title = `Sensor Size: ${FULL_SENSOR_WIDTH}x${FULL_SENSOR_HEIGHT}`;
+
+            const scannedAreaWindow = document.getElementById('scannedAreaWindow');
+            scannedAreaWindow.style.left = `${settings.start_x * scaleX}px`;
+            scannedAreaWindow.style.top = `${settings.start_y * scaleY}px`;
+            scannedAreaWindow.style.width = `${scannedWidth * scaleX}px`;
+            scannedAreaWindow.style.height = `${scannedHeight * scaleY}px`;
+            scannedAreaWindow.title = `Scanned Pixels Size: ${scannedWidth}x${scannedHeight}`;
+
+            // Final output rectangle in sensor coordinates (2x when binned)
+            const outputWidth = currentPreset.width * (f.binning ? 2 : 1);
+            const outputHeight = currentPreset.height * (f.binning ? 2 : 1);
+            const outputWindow = document.getElementById('outputWindow');
+            outputWindow.style.width = `${outputWidth * scaleX}px`;
+            outputWindow.style.height = `${outputHeight * scaleY}px`;
+            outputWindow.style.left = `${(settings.start_x + (scannedWidth - outputWidth) / 2) * scaleX}px`;
+            outputWindow.style.top = `${(settings.start_y + (scannedHeight - outputHeight) / 2) * scaleY}px`;
+            outputWindow.title = `Final Output: ${currentPreset.width}x${currentPreset.height}${f.binning ? ' (binned 2x)' : ''}`;
+
+            // Horizontal blanking split around the scanned window; vertical below it
+            const hBlankLeft = Math.max(0, settings.start_x);
+            const hBlankRight = Math.max(0, settings.total_x - (settings.start_x + scannedWidth));
+            const blankingHLeft = document.getElementById('blankingHLeft');
+            blankingHLeft.style.left = `0px`;
+            blankingHLeft.style.top = `${settings.start_y * scaleY}px`;
+            blankingHLeft.style.width = `${hBlankLeft * scaleX}px`;
+            blankingHLeft.style.height = `${scannedHeight * scaleY}px`;
+            blankingHLeft.title = `Horizontal Blanking (left): ${hBlankLeft} pixels`;
+
+            const blankingHRight = document.getElementById('blankingHRight');
+            blankingHRight.style.left = `${(settings.start_x + scannedWidth) * scaleX}px`;
+            blankingHRight.style.top = `${settings.start_y * scaleY}px`;
+            blankingHRight.style.width = `${hBlankRight * scaleX}px`;
+            blankingHRight.style.height = `${scannedHeight * scaleY}px`;
+            blankingHRight.title = `Horizontal Blanking (right): ${hBlankRight} pixels`;
+
+            const blankingV = document.getElementById('blankingV');
+            blankingV.style.left = `0px`;
+            blankingV.style.top = `${(settings.start_y + scannedHeight) * scaleY}px`;
+            blankingV.style.width = `${settings.total_x * scaleX}px`;
+            blankingV.style.height = `${vBlank * scaleY}px`;
+            blankingV.title = `Vertical Blanking: ${vBlank} lines`;
+        }
+
+        // --------- Resolution presets ---------
+        const presetsSelect = document.getElementById('presets');
+        for (const key in presets) {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = presets[key].name;
+            presetsSelect.appendChild(option);
+        }
+        presetsSelect.value = 'vga';
+
+        function applyPreset(presetKey) {
+            const preset = presets[presetKey];
+            if (!preset) return;
+            presetsSelect.value = presetKey;
+            currentPreset = preset;
+        }
+
+        presetsSelect.addEventListener('change', function () {
+            applyPreset(this.value);
+            updateDisplay();
+        });
+
+        // --------- Project configuration presets ---------
+        // Values match ov3660.c set_framesize() JPEG configs for this project.
+        // The "high FPS" variants are selected in firmware by the ov5640HighFPS
+        // flag (passed via set_colorbar). XVCLK: 20 MHz (ESP32/S3), 24 MHz (C5).
+        const configPresets = [
+            { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x360 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-S3 640x480 40fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'vga' },
+            { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
+            { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: '1024x576' },
+            { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'hd' },
+            { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 11, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x360 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-C5 640x480 40fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'vga' },
+            { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 11, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x456 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
+            { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: '1024x576' },
+            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'hd' }
+        ];
+
+        const configPresetSelect = document.getElementById('configPreset');
+        {
+            const dash = document.createElement('option');
+            dash.value = '-';
+            dash.textContent = '-';
+            configPresetSelect.appendChild(dash);
+            configPresets.forEach((p, i) => {
+                const option = document.createElement('option');
+                option.value = String(i);
+                option.textContent = p.name;
+                configPresetSelect.appendChild(option);
+            });
+        }
+
+        function applyConfigPreset(index) {
+            const p = configPresets[index];
+            if (!p) return;
+            document.getElementById('capturePlatform').value = p.platform;
+            document.getElementById('xvclk').value = p.xvclk;
+            document.getElementById('preDiv').value = String(p.preDiv);
+            document.getElementById('multiplier').value = p.multiplier;
+            document.getElementById('root2x').value = p.root2x ? 'true' : 'false';
+            document.getElementById('bypass').value = 'false';
+            document.getElementById('sysDiv').value = p.sysDiv;
+            document.getElementById('seld5').value = String(p.seld5);
+            document.getElementById('pclkManual').value = 'true';
+            document.getElementById('pclkDiv').value = p.pclkDiv;
+            applyPreset(p.resolution);
+            updateDisplay();
+        }
+
+        configPresetSelect.addEventListener('change', function () {
+            if (this.value === '-') return;
+            applyConfigPreset(parseInt(this.value));
+        });
+
+        // --------- Event listeners / Init ---------
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', () => {
+            // Any manual change below invalidates the applied preset
+            if (el.id !== 'configPreset') configPresetSelect.value = '-';
+            updateDisplay();
+        }));
+
+        function focusAndFlash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus({ preventScroll: true });
+            el.classList.remove('flash-focus');
+            void el.offsetWidth;
+            el.classList.add('flash-focus');
+            setTimeout(() => el.classList.remove('flash-focus'), 1000);
+        }
+
+        document.addEventListener('click', (e) => {
+            const a = e.target && e.target.closest ? e.target.closest('a.factor-link[data-focus]') : null;
+            if (!a) return;
+            e.preventDefault();
+            const id = a.getAttribute('data-focus');
+            focusAndFlash(id);
+        });
+
+        applyPreset('vga');
+        updateDisplay();
+    </script>
+</body>
+</html>
