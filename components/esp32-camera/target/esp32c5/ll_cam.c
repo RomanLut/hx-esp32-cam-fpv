@@ -34,6 +34,16 @@
 //parlio buffer
 #define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 16384
 
+// IDF 5.5.2 inverted this setting on ESP32-C5, so the old pioarduino
+// platform needed NEG to sample the camera on the rising PCLK edge.
+// IDF 5.5.4 fixed the PARLIO edge mapping; using NEG there samples the
+// wrong edge and prevents stable JPEG frame detection.
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 4)
+#define CAMERA_PARLIO_SAMPLE_EDGE PARLIO_SAMPLE_EDGE_POS
+#else
+#define CAMERA_PARLIO_SAMPLE_EDGE PARLIO_SAMPLE_EDGE_NEG
+#endif
+
 // Forward declaration for helper function
 static bool ll_cam_calc_rgb_dma_sizes(cam_obj_t *cam);
 
@@ -116,7 +126,7 @@ bool ll_cam_start_continuous(cam_obj_t *cam, const camera_config_t *config)
 
     // Create software delimiter (required for ESP32-C5 since no valid signal support)
     parlio_rx_soft_delimiter_config_t delim_config = {
-        .sample_edge = PARLIO_SAMPLE_EDGE_NEG,   //BUG in SDK: actually sets rising edge
+        .sample_edge = CAMERA_PARLIO_SAMPLE_EDGE,
         .eof_data_len = cam->payload_size,
         .timeout_ticks = 0,  // No timeout
     };
