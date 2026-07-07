@@ -517,8 +517,14 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-        sys_mul=160;
-#endif 
+        if (framesize == FRAMESIZE_P_3MP) sys_mul = 154;      //640x360: 11.55 mhz pclk 30.1 FPS
+        else if (framesize == FRAMESIZE_VGA) sys_mul = 203;   //640x480: even-masked to 202 -> 15.15 mhz pclk 29.9 FPS
+        else if (framesize == FRAMESIZE_SVGA) sys_mul = 203;  //800x600: even-masked to 202 -> 15.15 mhz pclk 29.9 FPS
+        else if (framesize == FRAMESIZE_P_HD) sys_mul = 154;  //800x456: 11.55 mhz pclk 30.1 FPS
+        else if (framesize == FRAMESIZE_P_FHD) sys_mul = 197; //1024x576: even-masked to 196 -> 14.7 mhz pclk 29.9 FPS
+        else if (framesize == FRAMESIZE_HD) sys_mul = 197;    //1280x720: even-masked to 196 -> 14.7 mhz pclk 29.9 FPS
+        else sys_mul = 160;
+#endif
 
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
         //Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4

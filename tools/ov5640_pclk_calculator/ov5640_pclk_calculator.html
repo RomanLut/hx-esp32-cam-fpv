@@ -437,6 +437,11 @@
                 <label for="pclkDiv">pclk_div (1-31, ignored in auto):</label>
                 <input type="number" id="pclkDiv" value="4" min="1" max="31">
             </div>
+
+            <div class="input-group">
+                <label>FPS:</label>
+                <div id="fpsDisplay" style="font-size: 26px; font-weight: bold; color: var(--label-color); line-height: 42px;">-</div>
+            </div>
         </section>
 
         <section>
@@ -527,6 +532,7 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480 },
             'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
+            '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576 },
             'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720 },
             'sxga': { name: 'SXGA 1280x960 4:3', ratio: 0, width: 1280, height: 960 },
             'uxga': { name: 'UXGA 1600x1200 4:3', ratio: 0, width: 1600, height: 1200 },
@@ -703,6 +709,8 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             });
 
             document.getElementById('pclkDiv').disabled = !pclkManual;
+
+            document.getElementById('fpsDisplay').textContent = freq.fps.toFixed(2);
 
             // Viewport and ratio
             const sensorWindow = document.getElementById('sensorWindow');
@@ -909,14 +917,14 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
             { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 23,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 40,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 30,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'svga' },
-            { name: 'ESP32-S3 1024x768 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 39,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 5, resolution: 'xga' },
+            { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 29,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: '1024x576' },
             { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 29,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'hd' },
-            { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
-            { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
-            { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
-            { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'svga' },
-            { name: 'ESP32-C5 1024x768 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'xga' },
-            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 160, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'hd' }
+            { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 154, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 203, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 154, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 203, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'svga' },
+            { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 197, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: '1024x576' },
+            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 197, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'hd' }
         ];
 
         const configPresetSelect = document.getElementById('configPreset');
