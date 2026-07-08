@@ -39,6 +39,15 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Validate vendored ESP Web Tools
+        run: |
+          test -s web/espwebtool/install-button.js
+          test -n "$(find web/espwebtool -maxdepth 1 -name 'stub_flasher_32c5-*.js' -print -quit)"
+          if grep -q "unpkg.com/esp-web-tools" web/install.html; then
+            echo "web/install.html must use the vendored ESP Web Tools bundle" >&2
+            exit 1
+          fi
+
       - name: Resolve release tag
         continue-on-error: true
         env:
