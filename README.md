@@ -65,20 +65,23 @@ Open source digital FPV system based on esp32cam https://romanlut.github.io/hx-e
 
 ## Features:
 - **esp32/esp32s3 + ov2640**: 640x360 30fps, 640x480 30fps, 800x456 30fps, 800x600 30fps, 1024x576 12fps
-- **esp32/esp32s3/esp32c5 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
+- **esp32/esp32s3 + ov2640 with sensor overclocking**: 640x360 40fps, 640x480 40fps, 800x456 40fps
 - **esp32s3/esp32c5 + ov5640**: 640x360 30/50fps, 640x480 30/40fps, 800x456 30/50fps, 1024x576 30fps
-- HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground
+- HQ DVR Mode: 1280x720 30fps (**esp32s3 + ov5640**) or 1280x720 12fps(**esp32/esp32s3 + ov2640**) recoding with maximum possible quality on Air, low FPS transmission to the ground 
 - up to 1km at 24Mbps (actual transfer rate is ~8-10Mbps total with FEC 6/12), 600m at 36Mbps (actual transfer rate is ~10-12Mbps total with FEC 6/12) (line of sight)
 - latency 90-110ms
 - bidirectional stream for RC and telemetry 115200 Kbps (for Mavlink etc.)
 - Displayport MSP OSD
 - on-board and groundstation video recording
 
+See a list of all supported sensor/boards combinations below.
+
 **Air unit variants (VTX):**
 - **esp32s3sense** with **ov5640** camera **(recommended)**
 - **esp32s3sense** with **ov2640** camera
 - **esp32cam** with **ov2640** camera
 - **esp32c5** with **ov5640** camera **(experimental)**
+- **esp32/esp32s3/esp32c5** with **ov3660** camera
 
 **Ground station variants (VRX):**
 - **Radxa Zero 3W/3E** with **rtl8812au** wifi card(s) **(recommended)**
@@ -99,7 +102,7 @@ Although the project can be compiled for various platforms, the recommended hard
 
 # Theory
 
-Wi-Fi bandwidth is insufficient for uncompressed video streaming, and the **ESP32** lacks the processing power for real-time video encoding. Fortunately, **OV2640/OV5640** camera modules can output frames as JPEG images. This project utilizes that feature to stream MJPEG video.
+Wi-Fi bandwidth is insufficient for uncompressed video streaming, and the **ESP32** lacks the processing power for real-time video encoding. Fortunately, **OV*** camera modules can output frames as JPEG images. This project utilizes that feature to stream MJPEG video.
 
 The camera continuously scans the image sensor and encodes the data row-by-row into JPEG format. These JPEG frames are transmitted to the **ESP32** over I2S at 10 MHz (or 20 MHz for **ESP32-S3** with OV5640), where they are optionally written to an SD card (if DVR mode is enabled), forward error correction (FEC) encoded, and streamed over Wi-Fi.
 
@@ -204,13 +207,25 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 ## Air Unit
 
-| Air Unit Hardware | OV2640 | OV5640 | 2.4GHz | 5.8GHz | OTA Update | USB Disk | Wi-Fi File Server | DVR | I @ 5V | Guide |
-|-------------------|:------:|:------:|:------:|:------:|:----------:|:--------:|:-----------------:|:-----------------:|-------------------|----------------|
-| ESP32-CAM | + |  | + |  | + |  | + | + | <300mA | [Building guide](/doc/air_unit_esp32cam.md) |
-| ESP32-S3 Sense | + | + | + |  | + | + | + | + | <300mA | [Building guide](/doc/air_unit_esp32s3sense.md) |
-| ESP32-C5 |  | + | + | + | + |  | + | 1/4 speed<sup>1</sup> | <300mA | [Building guide](/doc/air_unit_esp32c5.md) |
+| Air Unit Hardware | OV2640 | OV3660 | OV5640 | 2.4GHz | 5.8GHz | OTA Update | USB Disk | Wi-Fi File Server | DVR | I @ 5V | Guide |
+|-------------------|:------:|:------:|:------:|:------:|:------:|:----------:|:--------:|:-----------------:|:-----------------:|-------------------|----------------|
+| ESP32-CAM | + | + |  | + |  | + |  | + | + | <300mA | [Building guide](/doc/air_unit_esp32cam.md) |
+| ESP32-S3 Sense | + | + | + | + |  | + | + | + | + | <300mA | [Building guide](/doc/air_unit_esp32s3sense.md) |
+| ESP32-C5 |  | + | + | + | + | + |  | + | 1/4 speed<sup>1</sup> | <300mA | [Building guide](/doc/air_unit_esp32c5.md) |
 
 <sup>1</sup> every 4th frame is recorded.
+
+## Air Unit FPS
+
+| Air Unit + Sensor | 640x360 | 640x480 | 800x456 | 800x600 | 1024x576 | 1280x720 |
+|-------------------|:-------:|:-------:|:-------:|:-------:|:--------:|:--------:|
+| ESP32 + OV2640 | 30/40 | 30/40 | 30/40 | 30 | 12 | 12 |
+| ESP32 + OV3660 | 30/35 | 25 | 30/35 | 25 | 22.5 | 18.4 |
+| ESP32-S3 + OV2640 | 30/40 | 30/40 | 30/40 | 30 | 12 | 12 |
+| ESP32-S3 + OV3660 | 30/50 | 30 | 30/50 | 30 | 30 | 29 |
+| ESP32-S3 + OV5640 | 30/50 | 30/40 | 30/50 | 30 | 30 | 30 |
+| ESP32-C5 + OV3660 | 30/50 | 30 | 30/50 | 30 | 30 | 29 |
+| ESP32-C5 + OV5640 | 30/50 | 30/40 | 30/50 | 30 | 30 | 30 |
 
 ## Ground Station
 
