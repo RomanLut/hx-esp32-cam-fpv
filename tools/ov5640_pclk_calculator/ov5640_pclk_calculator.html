@@ -96,7 +96,7 @@
         .frequency-chain {
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: stretch;
             margin: 2rem 0;
             flex-wrap: wrap;
             gap: 1rem;
@@ -113,6 +113,9 @@
             border: 1px solid var(--border-color);
             transition: transform 0.2s;
             margin-left: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .freq-block.pll-clk {
@@ -354,8 +357,13 @@
 </head>
 <body>
     <div class="container">
-        <div style="position:absolute; top:20px; right:30px; font-size:13px; color:#6c757d;">Version: 1.0.1</div>
-        <h1>OV5640 Frequency Calculator</h1>
+        <h1 style="margin-bottom: 0.25rem;">OV5640 Frequency Calculator</h1>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.1</div>
+
+        <div class="input-group" style="margin-bottom: 2rem;">
+            <label for="configPreset">Apply preset:</label>
+            <select id="configPreset"></select>
+        </div>
 
         <section class="inputs-section">
 
@@ -429,6 +437,11 @@
                 <label for="pclkDiv">pclk_div (1-31, ignored in auto):</label>
                 <input type="number" id="pclkDiv" value="4" min="1" max="31">
             </div>
+
+            <div class="input-group">
+                <label>FPS:</label>
+                <div id="fpsDisplay" style="font-size: 26px; font-weight: bold; color: var(--label-color); line-height: 42px;">-</div>
+            </div>
         </section>
 
         <section>
@@ -445,12 +458,14 @@
             <ul>
                 <li><strong>Clock formulas:</strong><pre>
 REFIN   = xclk / pll_pre_div;
-VCO     = REFIN * pll_multiplier / root_2x_div;
-PLL_CLK = pll_bypass ? xclk : (VCO / pll_sys_div * 2 / bit_div_2x);
-SYSCLK  = PLL_CLK / 4;
+VCO     = REFIN * pll_multiplier;
+PLL_CLK = pll_bypass ? xclk : (VCO / pll_sys_div / root_2x_div * 2 / bit_div_2x);
+SYSCLK  = PLL_CLK / 4;   // SCLK root divider fixed to /4 (driver writes 0x3108[1:0] = 2)
 PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
 </pre></li>
-                <li><strong>FPS formula:</strong> FPS = PCLK / (HTS × VTS), where HTS=0x380C/0x380D and VTS=0x380E/0x380F</li>
+                <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). The sensor row scan is driven by SYSCLK (ISP clock), not by PCLK. HTS=0x380C/0x380D, VTS=0x380E/0x380F.</li>
+                <li><strong>Binning:</strong> when binning is active the driver programs VTS = total_y/2 and HTS = total_x−200 (width &gt; 920) or 2060 (width ≤ 920); the Timing row, FPS and register output reflect this.</li>
+                <li><strong>PCLK auto divider:</strong> the ÷2 used in auto mode (0x460C[1]=0) is an assumption inherited from the driver; the datasheet does not document the auto value.</li>
                 <li><strong>All frequencies in Hz</strong></li>
             </ul>
         </div>
@@ -517,6 +532,7 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480 },
             'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
+            '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576 },
             'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720 },
             'sxga': { name: 'SXGA 1280x960 4:3', ratio: 0, width: 1280, height: 960 },
             'uxga': { name: 'UXGA 1600x1200 4:3', ratio: 0, width: 1600, height: 1200 },
@@ -560,7 +576,8 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             const platform = CAPTURE_PLATFORMS[platformKey] || CAPTURE_PLATFORMS.esp32;
             const xvclk = parseFloat(document.getElementById('xvclk').value);
             const bypass = document.getElementById('bypass').value === 'true';
-            const multiplier = parseInt(document.getElementById('multiplier').value);
+            let multiplier = parseInt(document.getElementById('multiplier').value);
+            if (multiplier > 127) multiplier &= 0xFE; // 0x3036: only even values above 127, driver masks with &0xFE
             const sysDiv = Math.max(1, parseInt(document.getElementById('sysDiv').value) || 1);
             const preDivRaw = parseFloat(document.getElementById('preDiv').value);
             const root2x = document.getElementById('root2x').value === 'true';
@@ -574,10 +591,11 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             const refIn = xvclk / preDivVal;
             const rootDiv = root2x ? 2 : 1;
 
-            // Formulas aligned to requested model
             // REFIN = xclk / pll_pre_div
-            // VCO   = REFIN * pll_multiplier / root_2x_div
-            const vco = (refIn * multiplier) / rootDiv;
+            // VCO   = REFIN * pll_multiplier
+            // The PLL root divider (0x3037[4]) sits after the system divider,
+            // not inside the VCO (see Linux ov5640.c clock tree / OmniVision app note).
+            const vco = refIn * multiplier;
 
             const bitMode = parseInt(document.getElementById('bitMode').value);
             const bitDiv2x = bitDiv2xMap[bitMode] || 5;
@@ -586,17 +604,26 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             // (Naming follows the existing UI in this file.)
             const pllClk = bypass
                 ? xvclk
-                : (vco / sysDiv * 2 / bitDiv2x);
+                : (vco / sysDiv / rootDiv * 2 / bitDiv2x);
 
             const sysClk = pllClk / 4;
 
             const pclkDenominator = pclkManual ? (Math.max(1, pclkDiv || 1)) : 2;
             const pclk = pllClk / pclkRootDiv / pclkDenominator;
-            // HTS/VTS used for FPS come from the active ratio_table entry (Sensor Area)
+            // HTS/VTS come from the active ratio_table entry; in binning mode the
+            // driver (ov5640.c set_framesize) overrides them:
+            //   VTS = total_y / 2, HTS = total_x - 200 (width > 920) or 2060 (width <= 920)
             const timing = ratioTable[currentRatio] || { total_x: 2844, total_y: 1968 };
-            const hts = timing.total_x;
-            const vts = timing.total_y;
-            const fps = (hts > 0 && vts > 0) ? (pclk / (hts * vts)) : 0;
+            const binning = viewportSettings.binning;
+            const outW = viewportSettings.output_width / (binning ? 2 : 1);
+            let hts = timing.total_x;
+            let vts = timing.total_y;
+            if (binning) {
+                hts = (outW > 920) ? (timing.total_x - 200) : 2060;
+                vts = timing.total_y / 2;
+            }
+            // Frame timing is driven by SYSCLK (ISP clock), not PCLK
+            const fps = (hts > 0 && vts > 0) ? (sysClk / (hts * vts)) : 0;
 
             const ranges = {
                 xvclk: { min: 6000000, max: 27000000, name: 'XVCLK (6-27 MHz)' },
@@ -617,6 +644,7 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
                 xvclk,
                 refIn,
                 vco,
+                effMultiplier: multiplier,
                 pllClk,
                 sysClk,
                 pclk,
@@ -655,15 +683,15 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             const pllChain = document.getElementById('pllChain');
             const pclkChain = document.getElementById('pclkChain');
 
-            const multiplier = parseInt(document.getElementById('multiplier').value);
+            const multiplier = freq.effMultiplier;
             const sysDiv = Math.max(1, parseInt(document.getElementById('sysDiv').value) || 1);
             const rootDiv = freq.rootDiv;
 
             pllChain.innerHTML = `
                 ${createChainBlock('XVCLK', (freq.xvclk / 1000000).toFixed(1), freq.isValid.xvclk, 'MHz', freq.ranges.xvclk.name, 'XVCLK')}
                 ${createChainBlock(`REFIN (XVCLK<a class="factor-link" href="#" data-focus="preDiv">÷${freq.preDivVal}</a>)`, (freq.refIn / 1000000).toFixed(1), freq.isValid.refIn, 'MHz', freq.ranges.refIn.name, 'REFIN')}
-                ${createChainBlock(`VCO (REFIN<a class="factor-link" href="#" data-focus="multiplier">×${multiplier}</a> <a class="factor-link" href="#" data-focus="root2x">÷${rootDiv}</a>)`, (freq.vco / 1000000).toFixed(1), freq.isValid.vco, 'MHz', freq.ranges.vco.name, 'VCO')}
-                ${createChainBlock(`PLL_CLK (${document.getElementById('bypass').value === 'true' ? 'bypass → XVCLK' : `VCO ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"sysDiv\">${sysDiv}</a> ×2 ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"bitMode\">${freq.bitDiv2x}</a>`})`, (freq.pllClk / 1000000).toFixed(1), true, 'MHz', 'Intermediate', 'PLL_CLK')}
+                ${createChainBlock(`VCO (REFIN<a class="factor-link" href="#" data-focus="multiplier">×${multiplier}</a>)`, (freq.vco / 1000000).toFixed(1), freq.isValid.vco, 'MHz', freq.ranges.vco.name, 'VCO')}
+                ${createChainBlock(`PLL_CLK (${document.getElementById('bypass').value === 'true' ? 'bypass → XVCLK' : `VCO ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"sysDiv\">${sysDiv}</a> ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"root2x\">${rootDiv}</a> ×2 ÷ <a class=\"factor-link\" href=\"#\" data-focus=\"bitMode\">${freq.bitDiv2x}</a>`})`, (freq.pllClk / 1000000).toFixed(1), true, 'MHz', 'Intermediate', 'PLL_CLK')}
                 ${createChainBlock(`SYSCLK (PLL_CLK÷4)`, (freq.sysClk / 1000000).toFixed(1), true, 'MHz', 'Intermediate', 'SYSCLK')}
             `;
 
@@ -681,6 +709,8 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             });
 
             document.getElementById('pclkDiv').disabled = !pclkManual;
+
+            document.getElementById('fpsDisplay').textContent = freq.fps.toFixed(2);
 
             // Viewport and ratio
             const sensorWindow = document.getElementById('sensorWindow');
@@ -718,7 +748,9 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
 
             const outputWidth = viewportSettings.output_width / (viewportSettings.binning ? 2 : 1);
             const outputHeight = viewportSettings.output_height / (viewportSettings.binning ? 2 : 1);
-            const is_scaling = (viewportSettings.output_width < scannedWidth) || (viewportSettings.output_height < scannedHeight);
+            // Mirrors driver logic: scaling is off only for exact full-size or exact half-size (binned) output
+            const is_scaling = !((outputWidth == settings.max_w && outputHeight == settings.max_h)
+                || (outputWidth == settings.max_w / 2 && outputHeight == settings.max_h / 2));
 
             outputWindow.style.width = `${outputWidth * scaleX}px`;
             outputWindow.style.height = `${outputHeight * scaleY}px`;
@@ -777,7 +809,7 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
 
             // PLL setup string
             const bypassVal = document.getElementById('bypass').value === 'true';
-            const multiplierVal = parseInt(document.getElementById('multiplier').value);
+            const multiplierVal = freq.effMultiplier;
             const sysDivVal = Math.max(1, parseInt(document.getElementById('sysDiv').value) || 1);
             const preDivVal = isOneOf(parseFloat(document.getElementById('preDiv').value), pllPreDivAllowed) ? parseFloat(document.getElementById('preDiv').value) : 2;
             const root2xVal = document.getElementById('root2x').value === 'true';
@@ -785,29 +817,40 @@ PCLK    = PLL_CLK / pclk_root_div / (pclk_manual ? pclk_div : 2);
             const pclkManualVal = document.getElementById('pclkManual').value === 'true';
             const pclkDivVal = parseInt(document.getElementById('pclkDiv').value);
 
-            document.getElementById('pllSetup').textContent =
+            const bitModeVal = parseInt(document.getElementById('bitMode').value);
+
+            let pllSetupText =
 `set_pll(sensor, ${bypassVal} /*bypass*/, ${multiplierVal} /*multiplier*/, ${sysDivVal} /*sys_div*/, ${preDivVal} /*pre_div*/, ${root2xVal} /*root_2x*/, ${pclkRootDivVal} /*pclk_root_div*/, ${pclkManualVal} /*pclk_manual*/, ${pclkDivVal} /*pclk_div*/);`;
+            if (bitModeVal === 8) {
+                pllSetupText += `\n// NOTE: set_pll() always writes 0x3034 = 0x1A (10-bit mode); 8-bit mode requires a manual register write (0x3034 = 0x18)`;
+            }
+            document.getElementById('pllSetup').textContent = pllSetupText;
 
             // Register settings (PLL only)
+            const sc_pll_ctrl0 = 0x10 | (bitModeVal & 0x0F); // bit[6:4] charge pump = 1, bit[3:0] bit mode -> 0x1A / 0x18
             const sc_pll_ctrl1 = ((sysDivVal & 0x0F) << 4) | 0x01;
             const sc_pll_ctrl2 = (multiplierVal & 0xFF);
             const preDivNibble = (Math.round(preDivVal) & 0x0F);
             const sc_pll_ctrl3 = (root2xVal ? (1 << 4) : 0) | preDivNibble;
             const sc_pll_ctrl5 = bypassVal ? 0x80 : 0x00;
 
-            const pclk_ratio = pclkManualVal ? Math.max(1, pclkDivVal || 1) : 0;
-            const vfifo_ctrl0c = pclkManualVal ? 0b10 : 0;
+            // 0x3108: bit[5:4] PCLK root div, bit[3:2] sclk2x root div (/2), bit[1:0] SCLK root div (/4 -> SYSCLK = PLL_CLK/4)
+            const sc_root_divider = ((pclkRootDivVal & 0x03) << 4) | 0x06;
 
-            const bitModeVal = parseInt(document.getElementById('bitMode').value);
-            const sc_system_root_div = (bitModeVal & 0x0F); // 0x3034[3:0]
+            const pclk_ratio = pclkManualVal ? Math.max(1, pclkDivVal || 1) : 0;
+            const vfifo_ctrl0c = pclkManualVal ? 0x22 : 0x20; // bit[1] manual PCLK divider, bit[5] kept at default 1
 
             document.getElementById('registerSettings').textContent =
 `// PLL Registers (0x3034-0x3037, 0x3039)
-SCCB_Write(0x3034, 0x${sc_system_root_div.toString(16).padStart(2, '0')});
+SCCB_Write(0x3034, 0x${sc_pll_ctrl0.toString(16).padStart(2, '0')});
 SCCB_Write(0x3035, 0x${sc_pll_ctrl1.toString(16).padStart(2, '0')});
 SCCB_Write(0x3036, 0x${sc_pll_ctrl2.toString(16).padStart(2, '0')});
 SCCB_Write(0x3037, 0x${sc_pll_ctrl3.toString(16).padStart(2, '0')});
 SCCB_Write(0x3039, 0x${sc_pll_ctrl5.toString(16).padStart(2, '0')});
+
+// Clock root dividers / source
+SCCB_Write(0x3103, 0x13); // system clock from PLL
+SCCB_Write(0x3108, 0x${sc_root_divider.toString(16).padStart(2, '0')}); // PCLK root div [5:4], sclk2x /2, SCLK root /4
 
 // PCLK Registers
 SCCB_Write(0x3824, 0x${pclk_ratio.toString(16).padStart(2, '0')});
@@ -856,6 +899,73 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
         presetsSelect.addEventListener('change', function () {
             applyPreset(this.value);
             updateDisplay();
+        });
+
+        // --------- Project configuration presets ---------
+        // Values taken from the firmware:
+        // - ov5640.c set_framesize(), ESP32-S3 branch set_pll() arguments;
+        //   the higher-FPS variants are the colorbar paths selected by the
+        //   ov5640HighFPS flag (main.cpp passes it via set_colorbar())
+        // - ESP32-C5 uses the generic branch: set_pll(false, 160, 4, 2, false, 2, true, 4)
+        //   for every resolution
+        // - XVCLK from main.cpp camera_config_t: ov5640_xclk_hz = 20 MHz (S3) / 24 MHz (C5)
+        const configPresets = [
+            { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 46,  sysDiv: 2, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x360 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 77,  sysDiv: 1, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 91,  sysDiv: 1, preDiv: 3, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'vga' },
+            { name: 'ESP32-S3 640x480 40fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 81,  sysDiv: 1, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 46,  sysDiv: 2, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 77,  sysDiv: 1, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 91,  sysDiv: 1, preDiv: 3, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'svga' },
+            { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 59,  sysDiv: 1, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: '1024x576' },
+            { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 59,  sysDiv: 1, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 3, resolution: 'hd' },
+            { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 154, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x360 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 32,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portrait3mp' },
+            { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 203, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-C5 640x480 40fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 101, sysDiv: 1, preDiv: 3, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'vga' },
+            { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 154, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x456 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 32,  sysDiv: 1, preDiv: 1, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'portraithd' },
+            { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 203, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'svga' },
+            { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 197, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: '1024x576' },
+            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 197, sysDiv: 4, preDiv: 2, root2x: false, pclkRootDiv: 2, pclkDiv: 4, resolution: 'hd' }
+        ];
+
+        const configPresetSelect = document.getElementById('configPreset');
+        {
+            const dash = document.createElement('option');
+            dash.value = '-';
+            dash.textContent = '-';
+            configPresetSelect.appendChild(dash);
+            configPresets.forEach((p, i) => {
+                const option = document.createElement('option');
+                option.value = String(i);
+                option.textContent = p.name;
+                configPresetSelect.appendChild(option);
+            });
+        }
+
+        function applyConfigPreset(index) {
+            const p = configPresets[index];
+            if (!p) return;
+            document.getElementById('capturePlatform').value = p.platform;
+            document.getElementById('xvclk').value = p.xvclk;
+            document.getElementById('preDiv').value = p.preDiv;
+            document.getElementById('multiplier').value = p.multiplier;
+            document.getElementById('root2x').value = p.root2x ? 'true' : 'false';
+            document.getElementById('bypass').value = 'false';
+            document.getElementById('sysDiv').value = p.sysDiv;
+            document.getElementById('bitMode').value = '10'; // driver always writes 0x3034 = 0x1A
+            document.getElementById('pclkRootDiv').value = p.pclkRootDiv;
+            document.getElementById('pclkManual').value = 'true';
+            document.getElementById('pclkDiv').value = p.pclkDiv;
+            applyPreset(p.resolution);
+            validateMultiplier();
+            updateDisplay();
+        }
+
+        configPresetSelect.addEventListener('change', function () {
+            if (this.value === '-') return;
+            applyConfigPreset(parseInt(this.value));
         });
 
         // --------- Validation / Tests ---------
@@ -927,7 +1037,11 @@ SCCB_Write(0x380f, 0x${(freq.vts & 0xFF).toString(16).padStart(2, '0')});
         }
 
         // --------- Event listeners / Init ---------
-        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', updateDisplay));
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', () => {
+            // Any manual change below invalidates the applied project preset
+            if (el.id !== 'configPreset') configPresetSelect.value = '-';
+            updateDisplay();
+        }));
 
         function focusAndFlash(id) {
             const el = document.getElementById(id);
