@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - "web/**"
+      - "tools/ov*_pclk_calculator/**"
       - ".github/workflows/deploy_github_pages.yml"
   workflow_dispatch:
     inputs:
@@ -66,8 +67,8 @@ jobs:
         run: |
           mkdir -p pages_payload
           cp -R web/. pages_payload/
-          mkdir -p pages_payload/tools/ov5640_pclk_calculator
-          cp tools/ov5640_pclk_calculator/ov5640_pclk_calculator.html pages_payload/tools/ov5640_pclk_calculator/
+          mkdir -p pages_payload/tools
+          cp -R tools/ov*_pclk_calculator pages_payload/tools/
 
       - name: Download release firmware zip files
         continue-on-error: true
