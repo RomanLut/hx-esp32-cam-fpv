@@ -536,6 +536,8 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             // timing from the active ratio, binning like the driver
             const settings = ratioTable[currentPreset.ratio];
             const binning = (currentPreset.width <= settings.max_w / 2) && (currentPreset.height <= settings.max_h / 2);
+            const scale = !((currentPreset.width == settings.max_w && currentPreset.height == settings.max_h)
+                || (currentPreset.width == settings.max_w / 2 && currentPreset.height == settings.max_h / 2));
             const hts = settings.total_x;
             const vts = binning ? (Math.floor(settings.total_y / 2) + 1) : settings.total_y;
             const fps = sysClk / (hts * vts);
@@ -558,7 +560,7 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             return {
                 xvclk, refIn, vco, pllClk, sysClk, pclk, fps,
                 preDiv, preDivCode, multiplier, root2x, bypass, sysDiv, seld5, seld5Code,
-                pclkManual, pclkDiv, hts, vts, binning, settings, ranges, isValid
+                pclkManual, pclkDiv, hts, vts, binning, scale, settings, ranges, isValid
             };
         }
 
@@ -650,6 +652,7 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
                     <tr><th>Timing (HTS, VTS)</th><td>${f.hts}</td><td>${f.vts}</td><td>0x380C/0D</td><td>0x380E/0F</td></tr>
                     <tr><th>Blank Interval</th><td>${hBlank}</td><td>${vBlank}</td><td>-</td><td>-</td></tr>
                     <tr><th>Binning</th><td colspan="4">${f.binning ? 'Enabled' : 'Disabled'}</td></tr>
+                    <tr><th>Scaler</th><td colspan="4">${f.scale ? 'Enabled' : 'Disabled'}</td></tr>
                     <tr><th>SYSCLK</th><td colspan="4">${(f.sysClk / 1e6).toFixed(2)} MHz</td></tr>
                     <tr><th>FPS</th><td colspan="4">${f.fps.toFixed(2)}</td></tr>
                 </table>
@@ -673,15 +676,17 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             scannedAreaWindow.style.height = `${scannedHeight * scaleY}px`;
             scannedAreaWindow.title = `Scanned Pixels Size: ${scannedWidth}x${scannedHeight}`;
 
-            // Final output rectangle in sensor coordinates (2x when binned)
-            const outputWidth = currentPreset.width * (f.binning ? 2 : 1);
-            const outputHeight = currentPreset.height * (f.binning ? 2 : 1);
+            // Red matches the final output raster programmed into 0x3808..0x380B.
+            // Binning/scaling affect how the sensor produces this raster, but do
+            // not change the raster dimensions themselves.
+            const outputWidth = currentPreset.width;
+            const outputHeight = currentPreset.height;
             const outputWindow = document.getElementById('outputWindow');
             outputWindow.style.width = `${outputWidth * scaleX}px`;
             outputWindow.style.height = `${outputHeight * scaleY}px`;
             outputWindow.style.left = `${(settings.start_x + (scannedWidth - outputWidth) / 2) * scaleX}px`;
             outputWindow.style.top = `${(settings.start_y + (scannedHeight - outputHeight) / 2) * scaleY}px`;
-            outputWindow.title = `Final Output: ${currentPreset.width}x${currentPreset.height}${f.binning ? ' (binned 2x)' : ''}`;
+            outputWindow.title = `Final Output: ${currentPreset.width}x${currentPreset.height}${f.binning ? ', binning enabled' : ''}${f.scale ? ', scaler enabled' : ''}`;
 
             // Horizontal blanking split around the scanned window; vertical below it
             const hBlankLeft = Math.max(0, settings.start_x);
