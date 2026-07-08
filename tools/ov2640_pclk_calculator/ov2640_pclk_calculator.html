@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OV2640 Frequency Calculator</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --container-bg: #ffffff;
+            --text-color: #212529;
+            --label-color: #495057;
+            --border-color: #dee2e6;
+            --primary-color: #007bff;
+            --danger-color: #dc3545;
+            --disabled-bg: #e9ecef;
+            --shadow-color: rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            background-color: var(--container-bg);
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+        }
+
+        h1 {
+            color: var(--text-color);
+            text-align: center;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+
+        h2 {
+            color: var(--label-color);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            margin-top: 2.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .inputs-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-group {
+            min-width: 250px;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--label-color);
+            font-size: 0.9rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        }
+
+        input:disabled, select:disabled {
+            background-color: var(--disabled-bg);
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .frequency-chain {
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .freq-block {
+            background-color: var(--disabled-bg);
+            padding: 15px 20px;
+            border-radius: 8px;
+            min-width: 120px;
+            text-align: center;
+            position: relative;
+            cursor: help;
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s;
+            margin-left: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .freq-block.clk {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+
+        .freq-block:hover {
+            transform: translateY(-2px);
+        }
+
+        .freq-block::after {
+            content: "→";
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 20px;
+            color: #6c757d;
+        }
+
+        .freq-block:last-child::after {
+            display: none;
+        }
+
+        .factor-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(0, 123, 255, 0.45);
+            padding: 0 2px;
+            border-radius: 3px;
+        }
+
+        .factor-link:hover {
+            border-bottom-color: rgba(0, 123, 255, 0.9);
+            background: rgba(0, 123, 255, 0.08);
+        }
+
+        .flash-focus {
+            animation: flashFocus 900ms ease-out 1;
+        }
+
+        @keyframes flashFocus {
+            0% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+            30% { box-shadow: 0 0 0 4px rgba(0,123,255,0.35); }
+            100% { box-shadow: 0 0 0 0 rgba(0,123,255,0); }
+        }
+
+        .freq-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .freq-value.out-of-range {
+            color: var(--danger-color) !important;
+        }
+
+        .freq-value small {
+            display: block;
+            font-size: 0.7em;
+            font-weight: normal;
+            color: #6c757d;
+        }
+
+        .settings-display {
+            margin-top: 2rem;
+        }
+
+        .settings-display pre {
+            background-color: var(--disabled-bg);
+            padding: 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        }
+
+        .notes {
+            font-size: 14px;
+            color: #6c757d;
+            margin-top: 2rem;
+            text-align: left;
+            background: var(--bg-color);
+            padding: 1rem;
+            border-radius: 6px;
+        }
+
+        .notes ul {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .info-table {
+            width: 100%;
+            margin-top: 1rem;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .info-table th, .info-table td {
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            vertical-align: middle;
+            text-align: left;
+        }
+
+        .info-table th {
+            background-color: var(--bg-color);
+            font-weight: 600;
+            width: 200px;
+        }
+
+        .info-table td {
+            text-align: center;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.85rem;
+        }
+
+        .viewport-section {
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .viewport-container {
+            position: relative;
+            width: 648px;
+            background-color: #e0e0e0;
+            border: 1px solid var(--border-color);
+            display: inline-block;
+            margin-top: 1rem;
+        }
+
+        .active-window {
+            position: absolute;
+            background-color: rgba(0, 123, 255, 0.18);
+            border: none;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        .dsp-window {
+            position: absolute;
+            background-color: rgba(111, 66, 193, 0.30);
+            border: 1px dashed #6f42c1;
+            box-sizing: border-box;
+            z-index: 2;
+        }
+
+        .output-window {
+            position: absolute;
+            background-color: rgba(220, 53, 69, 0.4);
+            border: 1px solid var(--danger-color);
+            box-sizing: border-box;
+            z-index: 3;
+        }
+
+        .blanking-h-window, .blanking-v-window {
+            position: absolute;
+            background-color: rgba(40, 167, 69, 0.25);
+            border: 1px dashed #28a745;
+            box-sizing: border-box;
+            z-index: 1;
+        }
+
+        .viewport-label {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .viewport-legend {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: #495057;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            border: 1px solid rgba(0,0,0,0.2);
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OV2640 Frequency Calculator</h1>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.1</div>
+
+        <div class="input-group" style="margin-bottom: 2rem;">
+            <label for="configPreset">Apply preset:</label>
+            <select id="configPreset"></select>
+        </div>
+
+        <section class="inputs-section">
+
+            <div class="input-group">
+                <label for="capturePlatform">Capture platform:</label>
+                <select id="capturePlatform">
+                    <option value="esp32" selected>ESP32 - PCLK capture limit 20 MHz</option>
+                    <option value="esp32s3">ESP32-S3 - PCLK capture limit 40 MHz</option>
+                    <option value="" disabled>ESP32-C5 - OV2640 not supported in this project</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="xvclk">XVCLK Frequency (Hz):</label>
+                <input type="number" id="xvclk" value="12000000" min="1000000" step="1000000">
+            </div>
+
+            <div class="input-group">
+                <label for="clk2x">clk_2x - frequency doubler (CLKRC 0x11[7]):</label>
+                <select id="clk2x">
+                    <option value="false">×1 (OFF)</option>
+                    <option value="true" selected>×2 (ON)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="clkDiv">clk_div (0-63, CLKRC 0x11[5:0]):</label>
+                <input type="number" id="clkDiv" value="0" min="0" max="63">
+            </div>
+
+            <div class="input-group">
+                <label for="pclkAuto">pclk_auto (R_DVP_SP 0xD3[7]):</label>
+                <select id="pclkAuto">
+                    <option value="true">Auto</option>
+                    <option value="false" selected>Manual</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="pclkDiv">pclk_div (1-127, R_DVP_SP 0xD3[6:0], ignored in auto):</label>
+                <input type="number" id="pclkDiv" value="8" min="1" max="127">
+            </div>
+
+            <div class="input-group">
+                <label>FPS:</label>
+                <div id="fpsDisplay" style="font-size: 26px; font-weight: bold; color: var(--label-color); line-height: 42px;">-</div>
+            </div>
+        </section>
+
+        <section>
+            <hr style="border: 2px solid var(--border-color); margin: 2rem 0;">
+            <h2 style="border-bottom: none;">Frequency Chain</h2>
+            <div class="frequency-chain" id="clkChain"></div>
+            <div class="frequency-chain" id="pclkChain"></div>
+        </section>
+
+        <div class="notes">
+            <h3>Notes:</h3>
+            <ul>
+                <li><strong>Clock formulas</strong> (OV2640 has no PLL - only the CLKRC doubler/divider and the DSP DVP prescaler; see ov2640.c set_window and OV2640_DS.pdf):<pre>
+CLK       = XVCLK * (clk_2x ? 2 : 1) / (clk_div + 1);   // CLKRC 0x11 (sensor bank)
+PIXRATE   = CLK / (CIF mode ? 2 : 1);                   // sensor pixel rate (1/tP)
+FPS       = PIXRATE / (tLINE * frame_lines);
+PCLK      = pclk_auto ? (DSP controlled) : CLK / pclk_div;  // R_DVP_SP 0xD3 (DSP bank)
+</pre></li>
+                <li><strong>Sensor mode timings are fixed</strong> (datasheet Figures 13-15): UXGA tLINE=1922 tP × 1248 lines, SVGA tLINE=1190 tP × 672 lines, CIF tLINE=595 tP × 336 lines. Changing the DSP window or output size does <em>not</em> change the frame rate - only COM7 mode and CLKRC do.</li>
+                <li><strong>CIF mode ÷2 is empirical:</strong> the datasheet does not state it, but measured FPS in this project (QVGA/CIF 60 FPS at XVCLK 12 MHz, doubler ON) matches pixel rate = CLK/2 in CIF mode. UXGA/SVGA modes match pixel rate = CLK exactly (SVGA 30 FPS, UXGA 10 FPS at 12 MHz).</li>
+                <li><strong>JPEG modes in this project always use</strong> clk_2x=1, clk_div=0, pclk_manual, pclk_div=8 (CIF/SVGA modes) or 12 (UXGA mode). Non-JPEG (YUV) path uses pclk_auto and clk_div=7 (3 in CIF mode) instead.</li>
+                <li><strong>OV2640 "high FPS" mode is implemented by raising XCLK from 12 to 16 MHz</strong> (main.cpp), and only for VGA 640x480, VGA16 (640x360) and SVGA16 (800x456): 30 → 40 FPS.</li>
+                <li><strong>On OV2640, VGA16 and SVGA16 share the same SVGA-mode 16:9 window</strong> (offset_y=72, window 800x456) via set_res_raw. SVGA16 outputs it unscaled (800x456); VGA16 engages the DSP scaler (ZMOW/ZMOH) to output a true 640x360 — FPS is identical since frame rate depends only on the sensor mode raster. 1024x576 uses a UXGA-mode 16:9 window (offset_y=150, window 1600x900).</li>
+                <li><strong>UXGA-mode FPS bookkeeping:</strong> theoretical FPS is 10.0 at XVCLK 12 MHz; the vmodes table lists 12 FPS nominal for XGA/XGA16/SXGA/HD, and main.cpp comments mention ~13 FPS measured for the 16:9 sub-window modes.</li>
+                <li><strong>OV2640 is not supported on ESP32-C5 in this project</strong> - the platform list has no C5 entry. XVCLK datasheet range: 6-24 MHz (16 MHz high-FPS mode is in range; nominal is 24 MHz where sysclk becomes the "48" in the R_DVP_SP formula).</li>
+                <li><strong>R_DVP_SP formula per datasheet:</strong> DVP PCLK = sysclk/[6:0] (YUV/JPEG), sysclk/(2×[6:0]) (RAW), where sysclk is CLK after the CLKRC doubler/divider (nominally 48 MHz at XVCLK 24 MHz, doubler ON).</li>
+                <li><strong>All frequencies in Hz</strong></li>
+            </ul>
+        </div>
+
+        <div class="settings-display">
+            <h2>Clock Setup</h2>
+            <pre id="clkSetup"></pre>
+        </div>
+
+        <div class="settings-display">
+            <h2>Register Settings</h2>
+            <pre id="registerSettings"></pre>
+        </div>
+
+        <section class="viewport-section">
+            <h2 style="text-align: left;">Timing</h2>
+            <div class="input-group" style="margin-bottom: 1rem; text-align: left;">
+                <label for="presets">Resolution Preset:</label>
+                <select id="presets"></select>
+            </div>
+            <div id="timingTable"></div>
+            <div class="viewport-container" id="viewportContainer">
+                <div class="blanking-h-window" id="blankingH"></div>
+                <div class="blanking-v-window" id="blankingV"></div>
+                <div class="active-window" id="activeWindow"></div>
+                <div class="dsp-window" id="dspWindow"></div>
+                <div class="output-window" id="outputWindow"></div>
+            </div>
+            <div class="viewport-legend" aria-label="Viewport legend">
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(0,123,255,0.18); border-color: var(--primary-color)"></span><span>blue - Sensor view</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(111,66,193,0.30); border:1px dashed #6f42c1"></span><span>purple - DSP Window (HSIZE/VSIZE)</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(220,53,69,0.4); border-color: var(--danger-color)"></span><span>red - Final Output (scaled)</span></div>
+                <div class="legend-item"><span class="legend-swatch" style="background: rgba(40,167,69,0.25); border:1px dashed #28a745"></span><span>green - Blanking (H/V)</span></div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // --------- Constants / Maps (from ov2640.c and OV2640_DS.pdf) ---------
+        const CAPTURE_PLATFORMS = {
+            esp32:   { name: 'ESP32',    pclkMax: 20_000_000 },
+            esp32s3: { name: 'ESP32-S3', pclkMax: 40_000_000 }
+            // ESP32-C5: OV2640 is not supported in this project
+        };
+
+        // Datasheet Figures 13-15: fixed rasters per COM7 sensor mode.
+        // pixelRateDiv=2 for CIF is empirical: measured 60 FPS (QVGA/CIF JPEG,
+        // XVCLK 12 MHz, doubler ON) matches CLK/2, not CLK.
+        const SENSOR_MODES = {
+            uxga: { name: 'UXGA (full)',    com7: 0x00, activeW: 1600, activeH: 1200, tLine: 1922, lines: 1248, pixelRateDiv: 1 },
+            svga: { name: 'SVGA (1/2 sub)', com7: 0x40, activeW: 800,  activeH: 600,  tLine: 1190, lines: 672,  pixelRateDiv: 1 },
+            cif:  { name: 'CIF (1/4 sub)',  com7: 0x20, activeW: 400,  activeH: 296,  tLine: 595,  lines: 336,  pixelRateDiv: 2 }
+        };
+
+        // DSP window values as passed to set_window() (after set_framesize()
+        // mode scaling of ratio_table, or raw values from set_res_raw()).
+        const presets = {
+            '640x360':  { name: 'VGA16 640x360 16:9 (SVGA mode, set_res_raw, scaled)', mode: 'svga', winW: 800, winH: 456, offX: 0, offY: 72, width: 640, height: 360 },
+            'vga':      { name: 'VGA 640x480 4:3 (SVGA mode)',              mode: 'svga', winW: 800,  winH: 600,  offX: 0, offY: 0,   width: 640,  height: 480 },
+            '800x456':  { name: 'SVGA16 800x456 16:9 (SVGA mode, set_res_raw)', mode: 'svga', winW: 800, winH: 456, offX: 0, offY: 72, width: 800, height: 456 },
+            'svga':     { name: 'SVGA 800x600 4:3 (SVGA mode)',             mode: 'svga', winW: 800,  winH: 600,  offX: 0, offY: 0,   width: 800,  height: 600 },
+            'xga':      { name: 'XGA 1024x768 4:3 (UXGA mode)',             mode: 'uxga', winW: 1600, winH: 1200, offX: 0, offY: 0,   width: 1024, height: 768 },
+            '1024x576': { name: '1024x576 16:9 (UXGA mode, set_res_raw)',   mode: 'uxga', winW: 1600, winH: 900,  offX: 0, offY: 150, width: 1024, height: 576 },
+            'hd':       { name: 'HD 1280x720 16:9 (UXGA mode)',             mode: 'uxga', winW: 1600, winH: 900,  offX: 0, offY: 150, width: 1280, height: 720 }
+        };
+
+        let currentPreset = presets['svga'];
+
+        function calculateFrequencies() {
+            const platformKey = document.getElementById('capturePlatform').value;
+            const platform = CAPTURE_PLATFORMS[platformKey] || CAPTURE_PLATFORMS.esp32;
+            const xvclk = parseFloat(document.getElementById('xvclk').value);
+            const clk2x = document.getElementById('clk2x').value === 'true';
+            let clkDiv = parseInt(document.getElementById('clkDiv').value);
+            clkDiv = Math.min(63, Math.max(0, isFinite(clkDiv) ? clkDiv : 0));
+            const pclkAuto = document.getElementById('pclkAuto').value === 'true';
+            let pclkDiv = parseInt(document.getElementById('pclkDiv').value);
+            pclkDiv = Math.min(127, Math.max(1, isFinite(pclkDiv) ? pclkDiv : 1));
+
+            const mode = SENSOR_MODES[currentPreset.mode];
+
+            const clk = xvclk * (clk2x ? 2 : 1) / (clkDiv + 1);
+            const pixRate = clk / mode.pixelRateDiv;
+            const pclk = pclkAuto ? clk : clk / pclkDiv;
+            const fps = pixRate / (mode.tLine * mode.lines);
+
+            const scale = !(currentPreset.width == currentPreset.winW && currentPreset.height == currentPreset.winH);
+
+            const ranges = {
+                xvclk: { min: 6000000, max: 24000000, name: 'XVCLK (6-24 MHz)' },
+                // Datasheet Table 1 tops out at tP = 36 MHz (UXGA 15 fps)
+                clk: { min: 0, max: 36000000, name: 'CLK (max 36 MHz, DS Table 1)' },
+                pclk: { min: 0, max: platform.pclkMax, name: `PCLK (${platform.name} limit ${platform.pclkMax / 1e6} MHz)` }
+            };
+
+            const isValid = {
+                xvclk: (xvclk >= ranges.xvclk.min && xvclk <= ranges.xvclk.max),
+                clk: (clk <= ranges.clk.max),
+                pclk: (pclk >= ranges.pclk.min && pclk <= ranges.pclk.max)
+            };
+
+            return {
+                xvclk, clk, pixRate, pclk, fps,
+                clk2x, clkDiv, pclkAuto, pclkDiv,
+                mode, scale, ranges, isValid
+            };
+        }
+
+        function createChainBlock(labelHtml, value, isValid, suffix, rangeName, titlePlain) {
+            const validClass = isValid ? '' : 'out-of-range';
+            suffix = suffix || 'MHz';
+            const rangeText = rangeName && rangeName.split(' (')[1] ? rangeName.split(' (')[1].slice(0, -1) : '';
+            const title = titlePlain || (labelHtml || '').replace(/<[^>]*>/g, '');
+            return `
+                <div class="freq-block ${labelHtml.startsWith('CLK ') ? 'clk' : ''}" title="${title}">
+                    <div class="freq-label">${labelHtml}</div>
+                    <div class="freq-value ${validClass}">
+                        ${value} ${suffix}
+                        ${rangeText ? `<small>(${rangeText})</small>` : ''}
+                    </div>
+                </div>`;
+        }
+
+        function toHex(v) { return '0x' + (v & 0xFF).toString(16).padStart(2, '0'); }
+
+        function updateDisplay() {
+            const f = calculateFrequencies();
+
+            document.getElementById('clkChain').innerHTML = `
+                ${createChainBlock('XVCLK', (f.xvclk / 1e6).toFixed(1), f.isValid.xvclk, 'MHz', f.ranges.xvclk.name, 'XVCLK')}
+                ${createChainBlock(`CLK (XVCLK${f.clk2x ? '<a class="factor-link" href="#" data-focus="clk2x">×2</a>' : ''}<a class="factor-link" href="#" data-focus="clkDiv">÷${f.clkDiv + 1}</a>)`, (f.clk / 1e6).toFixed(1), f.isValid.clk, 'MHz', f.ranges.clk.name, 'CLK')}
+                ${createChainBlock(`PIXRATE (CLK÷${f.mode.pixelRateDiv}, ${f.mode.name})`, (f.pixRate / 1e6).toFixed(1), true, 'MHz', 'Intermediate', 'PIXRATE')}
+            `;
+
+            document.getElementById('pclkChain').innerHTML = `
+                ${createChainBlock('CLK ', (f.clk / 1e6).toFixed(1), f.isValid.clk, 'MHz', 'Intermediate', 'CLK')}
+                ${createChainBlock(`PCLK (${f.pclkAuto ? '<a class="factor-link" href="#" data-focus="pclkAuto">auto</a>' : `CLK÷<a class="factor-link" href="#" data-focus="pclkDiv">${f.pclkDiv}</a>`})`, (f.pclk / 1e6).toFixed(2), f.isValid.pclk, 'MHz', f.ranges.pclk.name, 'PCLK')}
+            `;
+
+            document.getElementById('pclkDiv').disabled = f.pclkAuto;
+
+            document.getElementById('fpsDisplay').textContent = f.fps.toFixed(2);
+
+            document.getElementById('clkSetup').textContent =
+`// ov2640.c set_window() clock config (ov2640_clk_t)
+c.clk_2x    = ${f.clk2x ? 1 : 0};   // CLKRC[7] frequency doubler
+c.clk_div   = ${f.clkDiv};   // CLKRC[5:0], CLK = XVCLK${f.clk2x ? '*2' : ''}/(clk_div+1)
+c.pclk_auto = ${f.pclkAuto ? 1 : 0};   // R_DVP_SP[7]
+c.pclk_div  = ${f.pclkDiv};   // R_DVP_SP[6:0]${f.pclkAuto ? ' (ignored in auto)' : ''}`;
+
+            const regClkrc = (f.clk2x ? 0x80 : 0x00) | (f.clkDiv & 0x3F);
+            const regDvpSp = (f.pclkAuto ? 0x80 : 0x00) | (f.pclkDiv & 0x7F);
+
+            // window regs exactly like ov2640.c set_window(): sizes are written
+            // in units of 4 pixels, offsets in pixels
+            const mx = currentPreset.winW >> 2;
+            const my = currentPreset.winH >> 2;
+            const ow = currentPreset.width >> 2;
+            const oh = currentPreset.height >> 2;
+            const offX = currentPreset.offX;
+            const offY = currentPreset.offY;
+            const regVhyx = ((my >> 1) & 0x80) | ((offY >> 4) & 0x70) | ((mx >> 5) & 0x08) | ((offX >> 8) & 0x07);
+            const regTest = (mx >> 2) & 0x80;
+            const regZmhh = ((oh >> 6) & 0x04) | ((ow >> 8) & 0x03);
+
+            document.getElementById('registerSettings').textContent =
+`// Sensor bank (0xFF = 0x01)
+SCCB_Write(0xFF, 0x01);
+SCCB_Write(0x12, ${toHex(f.mode.com7)}); // COM7: ${f.mode.name} mode
+SCCB_Write(0x11, ${toHex(regClkrc)}); // CLKRC: doubler | clk_div
+
+// DSP bank (0xFF = 0x00)
+SCCB_Write(0xFF, 0x00);
+
+// DSP window (units of 4 px) and offsets (px)
+SCCB_Write(0x51, ${toHex(mx)}); // HSIZE
+SCCB_Write(0x52, ${toHex(my)}); // VSIZE
+SCCB_Write(0x53, ${toHex(offX)}); // XOFFL
+SCCB_Write(0x54, ${toHex(offY)}); // YOFFL
+SCCB_Write(0x55, ${toHex(regVhyx)}); // VHYX
+SCCB_Write(0x57, ${toHex(regTest)}); // TEST
+
+// Output size (units of 4 px)
+SCCB_Write(0x5A, ${toHex(ow)}); // ZMOW
+SCCB_Write(0x5B, ${toHex(oh)}); // ZMOH
+SCCB_Write(0x5C, ${toHex(regZmhh)}); // ZMHH
+
+// DVP prescaler
+SCCB_Write(0xD3, ${toHex(regDvpSp)}); // R_DVP_SP: ${f.pclkAuto ? 'auto' : 'manual, PCLK = CLK/' + f.pclkDiv}
+`;
+
+            // ---- Timing table and mode-raster diagram ----
+            const mode = f.mode;
+            const hBlank = mode.tLine - mode.activeW;
+            const vBlank = mode.lines - mode.activeH;
+
+            document.getElementById('timingTable').innerHTML = `
+                <table class="info-table">
+                    <tr><th>Parameter</th><th>Horizontal</th><th>Vertical</th><th>H Regs</th><th>V Regs</th></tr>
+                    <tr><th>Sensor Mode (COM7)</th><td colspan="4">${mode.name} = ${toHex(mode.com7)}</td></tr>
+                    <tr><th>Mode Raster (tLINE, lines)</th><td>${mode.tLine} tP</td><td>${mode.lines}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Active Pixels</th><td>${mode.activeW}</td><td>${mode.activeH}</td><td>-</td><td>-</td></tr>
+                    <tr><th>Blank Interval</th><td>${hBlank} tP</td><td>${vBlank}</td><td>-</td><td>-</td></tr>
+                    <tr><th>DSP Window Offset</th><td>${offX}</td><td>${offY}</td><td>0x53/0x55</td><td>0x54/0x55</td></tr>
+                    <tr><th>DSP Window Size</th><td>${currentPreset.winW}</td><td>${currentPreset.winH}</td><td>0x51/0x55/0x57</td><td>0x52/0x55</td></tr>
+                    <tr><th>Output Size</th><td>${currentPreset.width}</td><td>${currentPreset.height}</td><td>0x5A/0x5C</td><td>0x5B/0x5C</td></tr>
+                    <tr><th>Scaler (zoom)</th><td colspan="4">${f.scale ? 'Enabled (window scaled to output)' : 'Disabled (window = output)'}</td></tr>
+                    <tr><th>CLK / Pixel Rate</th><td colspan="4">${(f.clk / 1e6).toFixed(2)} MHz / ${(f.pixRate / 1e6).toFixed(2)} MHz</td></tr>
+                    <tr><th>PCLK</th><td colspan="4">${f.pclkAuto ? 'auto' : (f.pclk / 1e6).toFixed(2) + ' MHz'}</td></tr>
+                    <tr><th>FPS</th><td colspan="4">${f.fps.toFixed(2)}</td></tr>
+                </table>
+            `;
+
+            const container = document.getElementById('viewportContainer');
+            const containerWidth = 648;
+            const containerHeight = Math.round(containerWidth * mode.lines / mode.tLine);
+            container.style.height = `${containerHeight}px`;
+            const scaleX = containerWidth / mode.tLine;
+            const scaleY = containerHeight / mode.lines;
+            container.title = `Mode Raster: ${mode.tLine} tP x ${mode.lines} lines`;
+
+            const activeWindow = document.getElementById('activeWindow');
+            activeWindow.style.left = `0px`;
+            activeWindow.style.top = `0px`;
+            activeWindow.style.width = `${mode.activeW * scaleX}px`;
+            activeWindow.style.height = `${mode.activeH * scaleY}px`;
+            activeWindow.title = `Sensor view: ${mode.activeW}x${mode.activeH}`;
+
+            const dspWindow = document.getElementById('dspWindow');
+            dspWindow.style.left = `${offX * scaleX}px`;
+            dspWindow.style.top = `${offY * scaleY}px`;
+            dspWindow.style.width = `${currentPreset.winW * scaleX}px`;
+            dspWindow.style.height = `${currentPreset.winH * scaleY}px`;
+            dspWindow.title = `DSP Window: ${currentPreset.winW}x${currentPreset.winH} @ ${offX},${offY}`;
+
+            // Red = final output raster (ZMOW/ZMOH). The DSP scales the purple
+            // window down to this size; drawn centered in the window to convey
+            // the relative size only.
+            const outputWindow = document.getElementById('outputWindow');
+            outputWindow.style.width = `${currentPreset.width * scaleX}px`;
+            outputWindow.style.height = `${currentPreset.height * scaleY}px`;
+            outputWindow.style.left = `${(offX + (currentPreset.winW - currentPreset.width) / 2) * scaleX}px`;
+            outputWindow.style.top = `${(offY + (currentPreset.winH - currentPreset.height) / 2) * scaleY}px`;
+            outputWindow.title = `Final Output: ${currentPreset.width}x${currentPreset.height}${f.scale ? ', scaler enabled' : ''}`;
+
+            const blankingH = document.getElementById('blankingH');
+            blankingH.style.display = hBlank > 0 ? 'block' : 'none';
+            blankingH.style.left = `${mode.activeW * scaleX}px`;
+            blankingH.style.top = `0px`;
+            blankingH.style.width = `${hBlank * scaleX}px`;
+            blankingH.style.height = `${mode.activeH * scaleY}px`;
+            blankingH.title = `Horizontal Blanking: ${hBlank} tP per line`;
+
+            const blankingV = document.getElementById('blankingV');
+            blankingV.style.display = vBlank > 0 ? 'block' : 'none';
+            blankingV.style.left = `0px`;
+            blankingV.style.top = `${mode.activeH * scaleY}px`;
+            blankingV.style.width = `${containerWidth}px`;
+            blankingV.style.height = `${vBlank * scaleY}px`;
+            blankingV.title = `Vertical Blanking: ${vBlank} lines`;
+        }
+
+        // --------- Resolution presets ---------
+        const presetsSelect = document.getElementById('presets');
+        for (const key in presets) {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = presets[key].name;
+            presetsSelect.appendChild(option);
+        }
+        presetsSelect.value = 'svga';
+
+        function applyPreset(presetKey) {
+            const preset = presets[presetKey];
+            if (!preset) return;
+            presetsSelect.value = presetKey;
+            currentPreset = preset;
+        }
+
+        presetsSelect.addEventListener('change', function () {
+            applyPreset(this.value);
+            updateDisplay();
+        });
+
+        // --------- Project configuration presets ---------
+        // Values match ov2640.c set_window() JPEG configs used by the air
+        // firmware (main.cpp). ESP32 and ESP32-S3 use identical OV2640
+        // settings, so each mode is listed once. "High FPS" on OV2640 means
+        // XCLK is raised from 12 to 16 MHz (VGA/VGA16/SVGA16 only).
+        // OV2640 is not supported on ESP32-C5.
+        const configPresets = [
+            { name: 'ESP32/S3 640x360 30fps (VGA16)',                  xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: '640x360' },
+            { name: 'ESP32/S3 640x360 40fps (VGA16 highFPS, XCLK 16)', xvclk: 16000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: '640x360' },
+            { name: 'ESP32/S3 640x480 30fps (VGA)',                  xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: 'vga' },
+            { name: 'ESP32/S3 640x480 40fps (VGA highFPS, XCLK 16)', xvclk: 16000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: 'vga' },
+            { name: 'ESP32/S3 800x456 30fps (SVGA16)',                  xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: '800x456' },
+            { name: 'ESP32/S3 800x456 40fps (SVGA16 highFPS, XCLK 16)', xvclk: 16000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: '800x456' },
+            { name: 'ESP32/S3 800x600 30fps (SVGA)',                 xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 8,  resolution: 'svga' },
+            { name: 'ESP32/S3 1024x768 10fps (XGA)',                 xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 12, resolution: 'xga' },
+            { name: 'ESP32/S3 1024x576 10fps (XGA16)',               xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 12, resolution: '1024x576' },
+            { name: 'ESP32/S3 1280x720 10fps (HD)',                  xvclk: 12000000, clk2x: true, clkDiv: 0, pclkDiv: 12, resolution: 'hd' }
+        ];
+
+        const configPresetSelect = document.getElementById('configPreset');
+        {
+            const dash = document.createElement('option');
+            dash.value = '-';
+            dash.textContent = '-';
+            configPresetSelect.appendChild(dash);
+            configPresets.forEach((p, i) => {
+                const option = document.createElement('option');
+                option.value = String(i);
+                option.textContent = p.name;
+                configPresetSelect.appendChild(option);
+            });
+        }
+
+        function applyConfigPreset(index) {
+            const p = configPresets[index];
+            if (!p) return;
+            document.getElementById('xvclk').value = p.xvclk;
+            document.getElementById('clk2x').value = p.clk2x ? 'true' : 'false';
+            document.getElementById('clkDiv').value = p.clkDiv;
+            document.getElementById('pclkAuto').value = 'false';
+            document.getElementById('pclkDiv').value = p.pclkDiv;
+            applyPreset(p.resolution);
+            updateDisplay();
+        }
+
+        configPresetSelect.addEventListener('change', function () {
+            if (this.value === '-') return;
+            applyConfigPreset(parseInt(this.value));
+        });
+
+        // --------- Event listeners / Init ---------
+        document.querySelectorAll('input, select').forEach(el => el.addEventListener('change', () => {
+            // Any manual change below invalidates the applied preset
+            if (el.id !== 'configPreset') configPresetSelect.value = '-';
+            updateDisplay();
+        }));
+
+        function focusAndFlash(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus({ preventScroll: true });
+            el.classList.remove('flash-focus');
+            void el.offsetWidth;
+            el.classList.add('flash-focus');
+            setTimeout(() => el.classList.remove('flash-focus'), 1000);
+        }
+
+        document.addEventListener('click', (e) => {
+            const a = e.target && e.target.closest ? e.target.closest('a.factor-link[data-focus]') : null;
+            if (!a) return;
+            e.preventDefault();
+            const id = a.getAttribute('data-focus');
+            focusAndFlash(id);
+        });
+
+        applyPreset('svga');
+        updateDisplay();
+    </script>
+</body>
+</html>

@@ -1660,7 +1660,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
                 }
                 else
                 {
-                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 640,360,false,false);   //800x456 window scaled by DSP to 640x360, 30 fps
                 }
             break;
 
