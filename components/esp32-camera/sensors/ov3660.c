@@ -326,25 +326,40 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     uint16_t h = resolution[framesize].height;
     aspect_ratio_t ratio = resolution[sensor->status.framesize].aspect_ratio;
     ratio_settings_t settings = ratio_table[ratio];
+    bool is_wide_16x9_timing = (framesize == FRAMESIZE_P_FHD || framesize == FRAMESIZE_HD);
 
-    sensor->status.binning = (w <= (settings.max_width / 2) && h <= (settings.max_height / 2));
-    sensor->status.scale = !((w == settings.max_width && h == settings.max_height)
-        || (w == (settings.max_width / 2) && h == (settings.max_height / 2)));
-
-    ret  = write_addr_reg(sensor->slv_addr, X_ADDR_ST_H, settings.start_x, settings.start_y)
-        || write_addr_reg(sensor->slv_addr, X_ADDR_END_H, settings.end_x, settings.end_y)
-        || write_addr_reg(sensor->slv_addr, X_OUTPUT_SIZE_H, w, h);
-
-    if (ret) {
-        goto fail;
-    }
-
-    if (sensor->status.binning) {
-        ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, (settings.total_y / 2) + 1)
-            || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 8, 2);
-    } else {
-        ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, settings.total_y)
+    if (is_wide_16x9_timing) {
+        // OV3660's generic 16:9 table scans the full 1920x1080 window and tops
+        // out near 20 FPS. This custom mode scans a wider 1728x972 16:9 active
+        // area and scales it down to 1024x576 or 1280x720 at 30 FPS, avoiding
+        // the strong crop of the datasheet 720p window.
+        sensor->status.binning = false;
+        sensor->status.scale = true;
+        ret  = write_addr_reg(sensor->slv_addr, X_ADDR_ST_H, 160, 282)
+            || write_addr_reg(sensor->slv_addr, X_ADDR_END_H, 1919, 1265)
+            || write_addr_reg(sensor->slv_addr, X_OUTPUT_SIZE_H, w, h)
+            || write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, 1800, 1000)
             || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 16, 6);
+    } else {
+        sensor->status.binning = (w <= (settings.max_width / 2) && h <= (settings.max_height / 2));
+        sensor->status.scale = !((w == settings.max_width && h == settings.max_height)
+            || (w == (settings.max_width / 2) && h == (settings.max_height / 2)));
+
+        ret  = write_addr_reg(sensor->slv_addr, X_ADDR_ST_H, settings.start_x, settings.start_y)
+            || write_addr_reg(sensor->slv_addr, X_ADDR_END_H, settings.end_x, settings.end_y)
+            || write_addr_reg(sensor->slv_addr, X_OUTPUT_SIZE_H, w, h);
+
+        if (ret) {
+            goto fail;
+        }
+
+        if (sensor->status.binning) {
+            ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, (settings.total_y / 2) + 1)
+                || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 8, 2);
+        } else {
+            ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, settings.total_y)
+                || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 16, 6);
+        }
     }
 
     if (ret == 0) {
@@ -365,7 +380,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         bool highFPS = sensor->status.colorbar != 0;
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         //24 MHz XCLK (ESP32-C5)
-        if (sensor->status.binning && highFPS) {
+        if (is_wide_16x9_timing) {
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 4); //SYSCLK 54 MHz: 1024x576/1280x720 30.0 FPS, 27 mhz pclk
+        } else if (sensor->status.binning && highFPS) {
             ret = set_pll(sensor, false, 18, 1, 1, false, 0, true, 6); //SYSCLK 72 MHz: 4:3 40.0 FPS, 16:9 50.1 FPS, 24 mhz pclk
         } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
             ret = set_pll(sensor, false, 11, 1, 1, false, 0, true, 4); //SYSCLK 44 MHz: 30.6 FPS, 22 mhz pclk
@@ -374,7 +391,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
 #elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3)
         //20 MHz XCLK (ESP32 / ESP32-S3)
-        if (sensor->status.binning && highFPS) {
+        if (is_wide_16x9_timing) {
+            ret = set_pll(sensor, false, 11, 1, 0, false, 0, true, 4); //SYSCLK 55 MHz: 1024x576/1280x720 30.6 FPS, 27.5 mhz pclk
+        } else if (sensor->status.binning && highFPS) {
             ret = set_pll(sensor, false, 29, 1, 2, false, 0, true, 6); //SYSCLK 72.5 MHz: 4:3 40.3 FPS, 16:9 50.4 FPS, 24.2 mhz pclk
         } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
             ret = set_pll(sensor, false, 13, 1, 1, false, 0, true, 4); //SYSCLK 43.3 MHz: 30.1 FPS, 21.7 mhz pclk
