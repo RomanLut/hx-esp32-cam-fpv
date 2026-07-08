@@ -1074,7 +1074,7 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
         }
         
         const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
-        uint8_t fps = camera_is_ov5640()
+        uint8_t fps = camera_uses_ov5640_mode_table()
             ? (s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640)
             : (s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640);
         uint16_t frameWidth = v->width;
@@ -1586,9 +1586,9 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     sensor_t* s = esp_camera_sensor_get();
 #endif
 
-    if (camera_is_ov5640())
+    if (camera_uses_ov5640_mode_table())
     {
-        // On OV5640, AEC2 is a night mode that dynamically reduces frame rate.
+        // On OV5640-family sensors, AEC2 is a night mode that dynamically reduces frame rate.
         src.camera.aec2 = false;
     }
 
@@ -1600,7 +1600,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
 
-        if (camera_is_ov5640())
+        if (camera_uses_ov5640_mode_table())
         {
             s->set_colorbar(s, src.camera.ov5640HighFPS ? 1 : 0);
         }
@@ -1628,7 +1628,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
 
             case Resolution::VGA16:
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     s->set_framesize(s, FRAMESIZE_P_3MP); //640x360
                 }
@@ -1641,7 +1641,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); break;
 
             case Resolution::SVGA16:
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     // Warning: verbose logging in ov5640.c can overflow the camera task stack.
                     s->set_framesize(s, FRAMESIZE_P_HD); //800x456
@@ -1656,7 +1656,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break; //1024x768
 
             case Resolution::XGA16:  //1024x576
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     s->set_framesize(s, FRAMESIZE_P_FHD);
                 }
@@ -1743,9 +1743,9 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     }
     APPLY(denoise, denoise, int);
 
-    if (camera_is_ov5640())
+    if (camera_uses_ov5640_mode_table())
     {
-        // OV5640 gain ceiling is 0...0x3ff and high values do not cause the severe
+        // OV5640-family gain ceiling is 0...0x3ff and high values do not cause the severe
         // low-light noise seen on OV2640, so leave its full gain range available.
         if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling))
         {
@@ -2212,7 +2212,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
         packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS / 10 + 101;   
     }
 
-    packet.stats.isOV5640 = camera_is_ov5640() ? 1 : 0; //OV3660 is reported as OV5640 to the GS (no packet format change)
+    packet.stats.isOV5640 = camera_is_ov5640() ? 1 : 0;
 
     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
     packet.stats.inPacketRate = s_last_stats.inPacketCounter;
