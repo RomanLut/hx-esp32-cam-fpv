@@ -318,7 +318,7 @@
 <body>
     <div class="container">
         <h1>OV3660 Frequency Calculator</h1>
-        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.0</div>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.1</div>
 
         <div class="input-group" style="margin-bottom: 2rem;">
             <label for="configPreset">Apply preset:</label>
@@ -424,9 +424,9 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
 </pre></li>
                 <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). In binning mode the driver programs VTS = total_y/2 + 1.</li>
                 <li><strong>VCO range is not published</strong> for the OV3660 PLLS; stock configs run 160-200 MHz, project presets up to ~293 MHz. Values above 400 MHz are flagged.</li>
-                <li><strong>High FPS presets (SYSCLK ~72 MHz) need hardware validation</strong> — stock configs never exceed 50 MHz SYSCLK.</li>
+                <li><strong>ESP32 OV3660 high-FPS mode is only used for 16:9 binned modes</strong> in the current air firmware; GS controls it through the OV2640 high-FPS flag because OV3660 is no longer reported as OV5640.</li>
                 <li><strong>1024x576 uses a dedicated 16:9 timing:</strong> HTS=1920, VTS=1040, active source 1728x972. <strong>1280x720 uses the aligned 16:9 timing:</strong> HTS=2172, VTS=1128, active source 1920x1080. Both avoid binning.</li>
-                <li><strong>ESP32 (esp32cam) quirks:</strong> PLLS VCO 220-290 MHz flickers on that board (stable ≤ 180 MHz), root_2x does not double cleanly, and shortening HTS breaks the image (2050 full-scan and 1900 binned both failed) — so ESP32 modes run at SYSCLK ≤ 45 MHz with PCLK ≤ 10 MHz: 16:9 binned 30 FPS, 4:3 binned 25 FPS, 1024x576 22.5 FPS, 1280x720 18.4 FPS.</li>
+                <li><strong>ESP32 (esp32cam) quirks:</strong> VCO 230 MHz 16:9 high-FPS flickered, VCO 200 MHz is the current high-FPS test point, root_2x does not double cleanly, and shortening HTS breaks the image. Current ESP32 OV3660 modes are: 16:9 binned 30 FPS normal / 34.8 FPS high-FPS, 4:3 VGA/SVGA 25 FPS, 1024x576 22.5 FPS, 1280x720 18.4 FPS. 1024x768 currently falls through to the 30.5 FPS 4:3 fallback.</li>
                 <li><strong>All frequencies in Hz</strong></li>
             </ul>
         </div>
@@ -773,15 +773,15 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
 
         // --------- Project configuration presets ---------
         // Values match ov3660.c set_framesize() JPEG configs for this project.
-        // The "high FPS" variants are selected in firmware by the ov5640HighFPS
-        // flag (passed via set_colorbar). XVCLK: 20 MHz (ESP32/S3), 24 MHz (C5).
+        // The "high FPS" variants are selected in firmware through set_colorbar.
+        // On ESP32 OV3660, air firmware enables that flag only for 16:9 binned
+        // modes. XVCLK: 20 MHz (ESP32/S3), 24 MHz (C5).
         const configPresets = [
             { name: 'ESP32 640x360 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'portrait3mp' },
-            { name: 'ESP32 640x360 50fps',  platform: 'esp32', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 15, resolution: 'portrait3mp' },
+            { name: 'ESP32 640x360 35fps',  platform: 'esp32', xvclk: 20000000, multiplier: 15, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 10, resolution: 'portrait3mp' },
             { name: 'ESP32 640x480 25fps',  platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'vga' },
-            { name: 'ESP32 640x480 40fps',  platform: 'esp32', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 15, resolution: 'vga' },
             { name: 'ESP32 800x456 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'portraithd' },
-            { name: 'ESP32 800x456 50fps',  platform: 'esp32', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 15, resolution: 'portraithd' },
+            { name: 'ESP32 800x456 35fps',  platform: 'esp32', xvclk: 20000000, multiplier: 15, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 10, resolution: 'portraithd' },
             { name: 'ESP32 800x600 25fps',  platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'svga' },
             { name: 'ESP32 1024x576 22fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: '1024x576' },
             { name: 'ESP32 1280x720 18fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'hd' },

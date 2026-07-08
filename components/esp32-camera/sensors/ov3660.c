@@ -375,9 +375,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             if (esp32_normal_4x3_vga_svga)
             {
                 // OV3660 breaks frames on ESP32-CAM at the low VCO 140 setting.
-                // Keep the PLL in the stable VCO 180 range and lower the frame
-                // cadence by extending VTS instead.
-                total_y = 1010;
+                // Keep the PLL in the stable VCO 180 range and use the normal
+                // binned VTS for a 25 FPS test cadence.
+                total_y = 783;
             }
 #endif
             ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, total_y)
@@ -431,28 +431,28 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             ret = set_pll(sensor, false, 11, 1, 0, false, 0, true, 4); //SYSCLK 55 MHz: 4:3 binned 30.5 FPS, QXGA 15.3 FPS, 16:9 full 20.9 FPS, 27.5 mhz pclk
         }
 #elif defined(CONFIG_IDF_TARGET_ESP32)
-        //20 MHz XCLK (ESP32): keep VGA/SVGA normal 4:3 near 19.4 FPS using
+        //20 MHz XCLK (ESP32): keep VGA/SVGA normal 4:3 near 25 FPS using
         //stable VCO 180 timing; VCO 140 produced broken frames on ESP32-CAM.
         if (is_1024x576_timing)
         {
-            ret = set_pll(sensor, false, 12, 1, 0, false, 0, true, 8); //SYSCLK 60 MHz: 1024x576 30.0 FPS, 15 mhz pclk
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1024x576 22.5 FPS, 10 mhz pclk
         }
         else if (is_1280x720_timing)
         {
-            ret = set_pll(sensor, false, 11, 1, 0, false, 0, true, 8); //SYSCLK 55 MHz: 1280x720 22.5 FPS, 13.75 mhz pclk
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1280x720 18.4 FPS, 10 mhz pclk
         }
-        else if (sensor->status.binning && highFPS)
+        else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9 && highFPS)
         {
-            ret = set_pll(sensor, false, 29, 1, 2, false, 0, true, 15); //VCO 290! SYSCLK 72.5 MHz: 4:3 40.3 FPS, 16:9 50.4 FPS, 9.7 mhz pclk
+            ret = set_pll(sensor, false, 15, 1, 1, false, 0, true, 10); //VCO 200, SYSCLK 50.0 MHz: 16:9 binned 34.8 FPS, 10 mhz pclk
         }
         else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9)
         {
             ret = set_pll(sensor, false, 13, 1, 1, false, 0, true, 9); //VCO 173, SYSCLK 43.3 MHz: 30.1 FPS, 9.6 mhz pclk
         }
-        else if (sensor->status.binning && !highFPS && ratio == ASPECT_RATIO_4X3
+        else if (sensor->status.binning && ratio == ASPECT_RATIO_4X3
             && (framesize == FRAMESIZE_VGA || framesize == FRAMESIZE_SVGA))
         {
-            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 4:3 binned 19.4 FPS with VTS=1010, 10 mhz pclk
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 4:3 binned 25.0 FPS with VTS=783, 10 mhz pclk
         }
         else
         {

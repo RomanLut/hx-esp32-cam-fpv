@@ -183,10 +183,24 @@ HXMavlinkParser mavlinkParserIn(true);
 
 //===================================================================================
 //===================================================================================
-// Returns whether runtime camera detection identified an OV5640 sensor.
-// OV3660 is intentionally treated as OV5640 here: it is reported to the GS as OV5640
-// (the packet format has no OV3660 id yet).
+// Returns whether runtime camera detection identified an exact OV5640 sensor.
 static bool camera_is_ov5640()
+{
+    return s_camera_sensor_pid == OV5640_PID;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether runtime camera detection identified an OV3660 sensor.
+static bool camera_is_ov3660()
+{
+    return s_camera_sensor_pid == OV3660_PID;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether the detected sensor uses the OV5640-family timing and control path.
+static bool camera_uses_ov5640_mode_table()
 {
     return (s_camera_sensor_pid == OV5640_PID) || (s_camera_sensor_pid == OV3660_PID);
 }
@@ -1074,8 +1088,11 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
         }
         
         const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+        bool ov5640_family_high_fps = camera_is_ov5640()
+            ? s_ground2air_config_packet2.camera.ov5640HighFPS
+            : s_ground2air_config_packet2.camera.ov2640HighFPS;
         uint8_t fps = camera_uses_ov5640_mode_table()
-            ? (s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640)
+            ? (ov5640_family_high_fps ? (camera_is_ov3660() ? v->highFPS2640 : v->highFPS5640) : v->FPS5640)
             : (s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640);
         uint16_t frameWidth = v->width;
         uint16_t frameHeight = v->height;
@@ -1602,7 +1619,16 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
         if (camera_uses_ov5640_mode_table())
         {
-            s->set_colorbar(s, src.camera.ov5640HighFPS ? 1 : 0);
+            // OV3660 is reported to GS as non-OV5640, so GS controls its high-FPS
+            // toggle through the OV2640 flag while the sensor still uses the
+            // OV5640-family timing path internally. Limit the OV3660 high-FPS
+            // flag to the 16:9 modes; the old 4:3 high-FPS PLL flickers.
+            bool ov3660HighFPSMode = src.camera.resolution == Resolution::VGA16
+                || src.camera.resolution == Resolution::SVGA16;
+            bool highFPS = camera_is_ov5640()
+                ? src.camera.ov5640HighFPS
+                : (src.camera.ov2640HighFPS && ov3660HighFPSMode);
+            s->set_colorbar(s, highFPS ? 1 : 0);
         }
         else
         {
