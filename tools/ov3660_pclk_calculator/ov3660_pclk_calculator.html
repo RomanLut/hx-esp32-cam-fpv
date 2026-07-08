@@ -425,7 +425,7 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
                 <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). In binning mode the driver programs VTS = total_y/2 + 1.</li>
                 <li><strong>VCO range is not published</strong> for the OV3660 PLLS; stock configs run 160-200 MHz, project presets up to ~293 MHz. Values above 400 MHz are flagged.</li>
                 <li><strong>High FPS presets (SYSCLK ~72 MHz) need hardware validation</strong> — stock configs never exceed 50 MHz SYSCLK.</li>
-                <li><strong>1024x576 / 1280x720 use a dedicated wide 16:9 timing:</strong> HTS=1800, VTS=1000, scanned window 1760x984 with a 16x6 ISP offset border. Both outputs scale from the same 1728x972 active source window to avoid the strong 720p crop.</li>
+                <li><strong>1024x576 uses a dedicated 16:9 timing:</strong> HTS=1920, VTS=1040, active source 1728x972. <strong>1280x720 uses the aligned 16:9 timing:</strong> HTS=2172, VTS=1128, active source 1920x1080. Both avoid binning.</li>
                 <li><strong>All frequencies in Hz</strong></li>
             </ul>
         </div>
@@ -490,9 +490,12 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
         ];
 
         const specialModes = {
-            // Wide 16:9 30 FPS timing. The scanned area includes the 16x6 ISP
-            // offset border, so the active source image is 1728x972.
-            'wide16x9': { max_w: 1728, max_h: 972, start_x: 160, start_y: 282, end_x: 1919, end_y: 1265, offset_x: 16, offset_y: 6, total_x: 1800, total_y: 1000 }
+            // Moderate 16:9 path for 1024x576. The scanned area includes the
+            // 16x6 ISP offset border, so the active source image is 1728x972.
+            'wide1024': { max_w: 1728, max_h: 972, start_x: 160, start_y: 282, end_x: 1919, end_y: 1265, offset_x: 16, offset_y: 6, total_x: 1920, total_y: 1040 },
+            // Aligned 16:9 timing. The scanned area includes the 16x6 ISP
+            // offset border, so the active source image is 1920x1080.
+            'aligned16x9': { max_w: 1920, max_h: 1080, start_x: 64, start_y: 242, end_x: 2015, end_y: 1333, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1128 }
         };
 
         const FULL_SENSOR_WIDTH = 2080;
@@ -506,9 +509,9 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
             'portraithd': { name: '800x456 16:9', ratio: 4, width: 800, height: 456 },
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
-            '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576, specialMode: 'wide16x9' },
+            '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576, specialMode: 'wide1024' },
             'sxga': { name: 'SXGA 1280x960 4:3', ratio: 0, width: 1280, height: 960 },
-            'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720, specialMode: 'wide16x9' },
+            'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720, specialMode: 'aligned16x9' },
             'uxga': { name: 'UXGA 1600x1200 4:3', ratio: 0, width: 1600, height: 1200 },
             'fhd': { name: 'FHD 1920x1080 16:9', ratio: 4, width: 1920, height: 1080 },
             'qxga': { name: 'QXGA 2048x1536 4:3', ratio: 0, width: 2048, height: 1536 }
@@ -718,23 +721,29 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             const hBlankLeft = Math.max(0, settings.start_x);
             const hBlankRight = Math.max(0, FULL_SENSOR_WIDTH - (settings.start_x + scannedWidth));
             const blankingHLeft = document.getElementById('blankingHLeft');
+            blankingHLeft.style.display = hBlankLeft > 0 ? 'block' : 'none';
             blankingHLeft.style.left = `0px`;
+            blankingHLeft.style.right = `auto`;
             blankingHLeft.style.top = `${settings.start_y * scaleY}px`;
             blankingHLeft.style.width = `${hBlankLeft * scaleX}px`;
             blankingHLeft.style.height = `${scannedHeight * scaleY}px`;
             blankingHLeft.title = `Horizontal Blanking (left): ${hBlankLeft} pixels`;
 
             const blankingHRight = document.getElementById('blankingHRight');
+            blankingHRight.style.display = hBlankRight > 0 ? 'block' : 'none';
             blankingHRight.style.left = `${(settings.start_x + scannedWidth) * scaleX}px`;
+            blankingHRight.style.right = `auto`;
             blankingHRight.style.top = `${settings.start_y * scaleY}px`;
             blankingHRight.style.width = `${hBlankRight * scaleX}px`;
             blankingHRight.style.height = `${scannedHeight * scaleY}px`;
             blankingHRight.title = `Horizontal Blanking (right): ${hBlankRight} pixels`;
 
             const blankingV = document.getElementById('blankingV');
+            blankingV.style.display = vBlank > 0 ? 'block' : 'none';
             blankingV.style.left = `0px`;
+            blankingV.style.right = `0px`;
             blankingV.style.top = `${(settings.start_y + scannedHeight) * scaleY}px`;
-            blankingV.style.width = `${FULL_SENSOR_WIDTH * scaleX}px`;
+            blankingV.style.width = `auto`;
             blankingV.style.height = `${vBlank * scaleY}px`;
             blankingV.title = `Vertical Blanking: ${vBlank} lines`;
         }
@@ -773,8 +782,8 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             { name: 'ESP32-S3 800x456 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
-            { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: '1024x576' },
-            { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'hd' },
+            { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 12, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: '1024x576' },
+            { name: 'ESP32-S3 1280x720 29fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'hd' },
             { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 11, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },
             { name: 'ESP32-C5 640x360 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portrait3mp' },
             { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'vga' },
@@ -782,8 +791,8 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             { name: 'ESP32-C5 800x456 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 11, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portraithd' },
             { name: 'ESP32-C5 800x456 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
             { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
-            { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: '1024x576' },
-            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'hd' }
+            { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 10, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: '1024x576' },
+            { name: 'ESP32-C5 1280x720 29fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'hd' }
         ];
 
         const configPresetSelect = document.getElementById('configPreset');
