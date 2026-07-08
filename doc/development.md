@@ -53,6 +53,12 @@ pf.sd_slow_buf      | Size of SD card PSRAM queue in %
 ps.sd_ovf           | Toggled every time any SD card queue overflows
 
 
+# Sensor parameters calcualators
+
+- [OV2640 PCLK calculator](https://romanlut.github.io/hx-esp32-cam-fpv/tools/ov2640_pclk_calculator/ov2640_pclk_calculator.html)
+- [OV3660 PCLK calculator](https://romanlut.github.io/hx-esp32-cam-fpv/tools/ov3660_pclk_calculator/ov3660_pclk_calculator.html)
+- [OV5640 PCLK calculator](https://romanlut.github.io/hx-esp32-cam-fpv/tools/ov5640_pclk_calculator/ov5640_pclk_calculator.html)
+
 # Considerations
 
  GS application is based on SDL2. Application uses OpenGL ES API. In environment without desktop, KMSDRM should provide hardware OpenGL ES acceleration.
