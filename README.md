@@ -257,12 +257,18 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 
 This project uses [OpenIPC devourer](https://github.com/OpenIPC/devourer/tree/master) for Android/Oculus Quest Raw Broadcast Wi-Fi adapter support.
 
+Tested cards: 
+
 | Network card | 2.4GHz | 5.8GHz |
 |--------------|:------:|:------:|
 | RTL8812AU | + | + |
+| RTL8821AU | + | + |
+
+Untested cards:
+
+| Network card | 2.4GHz | 5.8GHz |
 | RTL8811AU | + | + |
 | RTL8814AU | + | + |
-| RTL8821AU | + | + |
 | RTL8822BU | ? | + |
 | RTL8812BU | ? | + |
 | RTL8811CU | ? | + |
@@ -273,6 +279,8 @@ This project uses [OpenIPC devourer](https://github.com/OpenIPC/devourer/tree/ma
 | RTL8822EU | ? | + |
 
 ? The chipset itself (e.g. RTL8822BU, RTL8812BU, RTL8821CU) supports both 2.4 GHz and 5 GHz, but the finished hardware may not implement both bands.
+
+The support of untested cards are not mature in devourer. There are bugs. Please use tested cards.
 
 ----
 
