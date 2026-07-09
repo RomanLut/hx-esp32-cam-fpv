@@ -174,6 +174,9 @@ static int write_addr_reg(uint8_t slv_addr, const uint16_t reg, uint16_t x_value
 
 #define write_reg_bits(slv_addr, reg, mask, enable) set_reg_bits(slv_addr, reg, 0, mask, (enable)?(mask):0)
 
+//SYSCLK of the PLL setting last programmed by set_pll(); drives the sensor line time
+static unsigned int s_sysclk = 0;
+
 static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sys_div, int pre_div, bool root_2x, int pclk_root_div, bool pclk_manual, int pclk_div)
 {
     //why this map is needed at all?
@@ -209,7 +212,7 @@ static int set_pll(sensor_t *sensor, bool bypass, uint8_t multiplier, uint8_t sy
     }
     //ESP_LOGI(TAG, "Set PLL: bypass: %u, multiplier: %u, sys_div: %u, pre_div: %u, root_2x: %u, pclk_root_div: %u, pclk_manual: %u, pclk_div: %u", bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
-    calc_sysclk(sensor->xclk_freq_hz, bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
+    s_sysclk = calc_sysclk(sensor->xclk_freq_hz, bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
     ret = write_reg(sensor->slv_addr, 0x3039, bypass?0x80:0x00);
     if (ret == 0) {
@@ -238,6 +241,49 @@ static int set_pll(sensor_t *sensor, bool bypass, uint8_t multiplier, uint8_t sy
     }
     if(ret){
         ESP_LOGE(TAG, "set_sensor_pll FAILED!");
+    }
+    return ret;
+}
+
+//The AEC banding filter steps and the max exposure limits are counted in lines, so they depend on
+//SYSCLK, HTS and VTS. ov5640_settings.h programs constants that only hold for a single mode, which
+//leaves anti-banding mis-calibrated for every other resolution and PLL setting. Recompute them
+//whenever the frame timing or the PLL changes.
+static int set_banding_filter(sensor_t *sensor, unsigned int sysclk, uint16_t hts, uint16_t vts)
+{
+    if (sysclk == 0 || hts == 0 || vts <= 4) {
+        ESP_LOGE(TAG, "Invalid banding filter arguments");
+        return -1;
+    }
+
+    uint16_t max_exposure = vts - 4;
+    unsigned int band_step_50 = sysclk / (hts * 100u); //lines integrated in 1/100 s
+    unsigned int band_step_60 = sysclk / (hts * 120u); //lines integrated in 1/120 s
+    if (band_step_50 == 0 || band_step_60 == 0) {
+        ESP_LOGE(TAG, "Banding filter step underflow");
+        return -1;
+    }
+
+    unsigned int max_band_50 = max_exposure / band_step_50;
+    unsigned int max_band_60 = max_exposure / band_step_60;
+    if (max_band_50 < 1) max_band_50 = 1;
+    if (max_band_60 < 1) max_band_60 = 1;
+    if (max_band_50 > 255) max_band_50 = 255;
+    if (max_band_60 > 255) max_band_60 = 255;
+
+    int ret = write_reg(sensor->slv_addr, 0x3a02, max_exposure >> 8)          //60Hz max exposure
+           || write_reg(sensor->slv_addr, 0x3a03, max_exposure & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a14, max_exposure >> 8)          //50Hz max exposure
+           || write_reg(sensor->slv_addr, 0x3a15, max_exposure & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a08, (band_step_50 >> 8) & 0xff) //50Hz band step
+           || write_reg(sensor->slv_addr, 0x3a09, band_step_50 & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a0a, (band_step_60 >> 8) & 0xff) //60Hz band step
+           || write_reg(sensor->slv_addr, 0x3a0b, band_step_60 & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a0d, max_band_60)
+           || write_reg(sensor->slv_addr, 0x3a0e, max_band_50);
+
+    if (ret) {
+        ESP_LOGE(TAG, "set_banding_filter FAILED!");
     }
     return ret;
 }
@@ -402,15 +448,18 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         goto fail;
     }
 
+    uint16_t hts;
+    uint16_t vts;
+
     if (!sensor->status.binning) {
+        hts = settings.total_x;
+        vts = settings.total_y;
         ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, settings.total_y)
             || write_addr_reg(sensor->slv_addr, X_OFFSET_H, settings.offset_x, settings.offset_y);
     } else {
-        if (w > 920) {
-            ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x - 200, settings.total_y / 2);
-        } else {
-            ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, 2060, settings.total_y / 2);
-        }
+        hts = (w > 920) ? (settings.total_x - 200) : 2060;
+        vts = settings.total_y / 2;
+        ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, hts, vts);
         if (ret == 0) {
             ret = write_addr_reg(sensor->slv_addr, X_OFFSET_H, settings.offset_x / 2, settings.offset_y / 2);
         }
@@ -588,6 +637,19 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         } else {
             ret = set_pll(sensor, false, 20, 1, 1, false, 1, true, 8);
         }
+    }
+
+    if (ret == 0) {
+        ret = set_banding_filter(sensor, s_sysclk, hts, vts);
+    }
+
+    if (ret == 0) {
+        //A high FPS frame is shorter than two 50Hz banding periods, so the anti-banding filter would
+        //quantize the exposure down to a single 10ms band and cost a stop of light. Mains flicker is
+        //not a concern outdoors, so disable the filter (AEC_CTRL00 band enable) in the high FPS modes.
+        bool high_fps = (sensor->status.colorbar != 0)
+            && ((framesize == FRAMESIZE_VGA) || (framesize == FRAMESIZE_P_3MP) || (framesize == FRAMESIZE_P_HD));
+        ret = write_reg_bits(sensor->slv_addr, 0x3a00, 0x20, !high_fps);
     }
 
     if (ret == 0) {
