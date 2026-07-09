@@ -525,15 +525,54 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
         else
         {
-            if (framesize == FRAMESIZE_P_3MP) sys_mul = 154;      //640x360: 11.55 mhz pclk 30.1 FPS
-            else if (framesize == FRAMESIZE_VGA) sys_mul = 203;   //640x480: even-masked to 202 -> 15.15 mhz pclk 29.9 FPS
-            else if (framesize == FRAMESIZE_SVGA) sys_mul = 203;  //800x600: even-masked to 202 -> 15.15 mhz pclk 29.9 FPS
-            else if (framesize == FRAMESIZE_P_HD) sys_mul = 154;  //800x456: 11.55 mhz pclk 30.1 FPS
-            else if (framesize == FRAMESIZE_P_FHD) sys_mul = 197; //1024x576: even-masked to 196 -> 14.7 mhz pclk 29.9 FPS
-            else if (framesize == FRAMESIZE_HD) sys_mul = 197;    //1280x720: even-masked to 196 -> 14.7 mhz pclk 29.9 FPS
-            else sys_mul = 160;
+            //VCO (= XCLK / pre_div * sys_mul) must stay within 500..1000 mhz.
+            //Scaling pre_div/sys_div together with sys_mul keeps PLL_CLK, and hence SYSCLK/FPS and PCLK, unchanged.
+            uint8_t pre_div = 2;
+            uint8_t sys_div = 4;
+            uint8_t pclk_div = 4;
 
-            ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
+            if (framesize == FRAMESIZE_P_3MP)             //640x360: VCO 924 mhz, 15.4 mhz pclk, 30.1 FPS
+            {
+                sys_mul = 77;
+                sys_div = 2;
+                pclk_div = 3;
+            }
+            else if (framesize == FRAMESIZE_VGA)          //640x480: VCO 606 mhz, 15.15 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 101;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_SVGA)         //800x600: VCO 606 mhz, 15.15 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 101;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_P_HD)         //800x456: VCO 924 mhz, 11.55 mhz pclk, 30.1 FPS
+            {
+                sys_mul = 77;
+                sys_div = 2;
+            }
+            else if (framesize == FRAMESIZE_P_FHD)        //1024x576: VCO 588 mhz, 14.7 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 98;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_HD)           //1280x720: VCO 588 mhz, 14.7 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 98;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else                                          //other sizes: VCO 960 mhz, 12.0 mhz pclk
+            {
+                sys_mul = 80;
+                sys_div = 2;
+            }
+
+            ret = set_pll(sensor, false, sys_mul, sys_div, pre_div, false, 2, true, pclk_div);
         }
 #else
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
