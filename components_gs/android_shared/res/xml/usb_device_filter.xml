@@ -59,4 +59,16 @@
     <usb-device vendor-id="14371" product-id="25161" /> <!-- 0x3823:0x6249 -->
     <usb-device vendor-id="9047" product-id="286" /> <!-- 0x2357:0x011E -->
     <usb-device vendor-id="9047" product-id="288" /> <!-- 0x2357:0x0120 -->
+    <!-- Jaguar2: RTL8822BU / RTL8811CU / RTL8821CU -->
+    <usb-device vendor-id="3034" product-id="47122" /> <!-- 0x0BDA:0xB812 -->
+    <usb-device vendor-id="3034" product-id="47148" /> <!-- 0x0BDA:0xB82C -->
+    <usb-device vendor-id="9047" product-id="301" /> <!-- 0x2357:0x012D (TP-Link Archer T3U) -->
+    <usb-device vendor-id="3034" product-id="51217" /> <!-- 0x0BDA:0xC811 (COMFAST CF-811AC) -->
+    <!-- Jaguar3: RTL8812CU / RTL8822CU / RTL8812EU / RTL8822EU -->
+    <usb-device vendor-id="3034" product-id="51218" /> <!-- 0x0BDA:0xC812 (LB-LINK WDN1300H) -->
+    <usb-device vendor-id="3034" product-id="51244" /> <!-- 0x0BDA:0xC82C -->
+    <usb-device vendor-id="3034" product-id="51246" /> <!-- 0x0BDA:0xC82E -->
+    <usb-device vendor-id="3034" product-id="43034" /> <!-- 0x0BDA:0xA81A (LB-LINK BL-M8812EU2) -->
+    <usb-device vendor-id="3034" product-id="59426" /> <!-- 0x0BDA:0xE822 -->
+    <usb-device vendor-id="3034" product-id="43050" /> <!-- 0x0BDA:0xA82A -->
 </resources>

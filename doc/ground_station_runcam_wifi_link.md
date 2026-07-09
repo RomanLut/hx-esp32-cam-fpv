@@ -1,6 +1,6 @@
 # Runcam WiFiLink VRX Ground Station
 
-Runcam WiFiLink VRX is built on **rtl8255eu** cards which support **5.8Ghz** band only. It can be used with **esp32c5** air unit only.
+Runcam WiFiLink VRX is built on a **Runcam custom RTL8812EU** Wi-Fi module. RTL8812EU silicon can support 2.4GHz, but the complete RunCam RF module is specified for **5.8GHz** operation only, so it can be used with **esp32c5** air unit only.
 
 **espvrx_dualboot_radxa** image should be used on **Runcam VRX**. Note, that Runcam firmware does not allow booting from SD card. **Runcam VRX** has to be flashed with OpenIPC firmware to unlock SD card boot. Follow **OpenIPC** or **RubyFPV** documentation for flashing.
 

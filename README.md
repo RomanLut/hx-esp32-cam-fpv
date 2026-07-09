@@ -242,6 +242,38 @@ Hint: For quick start, you can use Android GS and esp32cam in APFPV mode.
 | Ubuntu | + | + | [Building guide](/doc/ground_station_ubuntu.md) |
 | Fedora Linux Workstation | + | + | [Building guide](/doc/ground_station_fedora.md) |
 
+## Radxa/RPI/Linux supported network cards
+
+| Network card | 2.4GHz | 5.8GHz |
+|--------------|:------:|:------:|
+| RTL8812AU | + | + |
+| RTL8811AU | + | + |
+| RTL8812EU | ? | + |
+| AR9271    | + | + |
+
+? The chipset itself (e.g. RTL8822BU, RTL8812BU, RTL8821CU) supports both 2.4 GHz and 5 GHz, but the finished hardware may not implement both bands.
+
+## Android/Oculus Quest supported network cards
+
+This project uses [OpenIPC devourer](https://github.com/OpenIPC/devourer/tree/master) for Android/Oculus Quest Raw Broadcast Wi-Fi adapter support.
+
+| Network card | 2.4GHz | 5.8GHz |
+|--------------|:------:|:------:|
+| RTL8812AU | + | + |
+| RTL8811AU | + | + |
+| RTL8814AU | + | + |
+| RTL8821AU | + | + |
+| RTL8822BU | ? | + |
+| RTL8812BU | ? | + |
+| RTL8811CU | ? | + |
+| RTL8821CU | ? | + |
+| RTL8812CU | ? | + |
+| RTL8822CU | ? | + |
+| RTL8812EU | ? | + |
+| RTL8822EU | ? | + |
+
+? The chipset itself (e.g. RTL8822BU, RTL8812BU, RTL8821CU) supports both 2.4 GHz and 5 GHz, but the finished hardware may not implement both bands.
+
 ----
 
 # Features

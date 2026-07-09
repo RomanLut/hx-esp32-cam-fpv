@@ -41,7 +41,12 @@ typedef enum tag_HAL_IC_Type_Definition {
 	CHIP_8188F	=	12,
 	CHIP_8822B	=	13,
 	CHIP_8723D	=	14,
-	CHIP_8821C	=	15
+	CHIP_8821C	=	15,
+	/* Jaguar3 family added by devourer (not in upstream HalVerDef). 8822C and
+	 * 8822E share the rtl8822c phydm generation; 8812EU enumerates under the
+	 * 8822E HAL. */
+	CHIP_8822C	=	16,
+	CHIP_8822E	=	17
 } HAL_IC_TYPE_E;
 
 /* HAL_CHIP_TYPE_E */
@@ -127,6 +132,11 @@ typedef	struct tag_HAL_VERSION {
 #define IS_8703B_SERIES(version)			((GET_CVID_IC_TYPE(version) == CHIP_8703B) ? TRUE : FALSE)
 #define IS_8822B_SERIES(version)			((GET_CVID_IC_TYPE(version) == CHIP_8822B) ? TRUE : FALSE)
 #define IS_8821C_SERIES(version)			((GET_CVID_IC_TYPE(version) == CHIP_8821C) ? TRUE : FALSE)
+#define IS_8822C_SERIES(version)			((GET_CVID_IC_TYPE(version) == CHIP_8822C) ? TRUE : FALSE)
+#define IS_8822E_SERIES(version)			((GET_CVID_IC_TYPE(version) == CHIP_8822E) ? TRUE : FALSE)
+/* Jaguar3 = the 8822C/8822E baseband+MAC generation (shared rtl8822c phydm).
+ * Used by the WiFiDriver factory to dispatch to RtlJaguar3Device. */
+#define IS_JAGUAR3(version)				((IS_8822C_SERIES(version) || IS_8822E_SERIES(version)) ? TRUE : FALSE)
 #define IS_8723D_SERIES(version)\
 	((GET_CVID_IC_TYPE(version) == CHIP_8723D) ? TRUE : FALSE)
 /* HAL_CHIP_TYPE_E */
