@@ -662,6 +662,10 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     }
 
     std::shared_ptr<UsbAdapter> adapter = std::make_shared<UsbAdapter>();
+    // Devourer Init() runs on the RX thread and has no externally visible readiness state.
+    // Establish the bring-up barrier before publishing the adapter so neither TX nor a
+    // menu-triggered retune can race the initial monitor/channel setup.
+    adapter->channel_change_ready_time = Clock::now() + std::chrono::seconds(1);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (const std::shared_ptr<UsbAdapter>& active_adapter : m_usb_adapters)
@@ -808,11 +812,6 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         }
     });
 
-    // Devourer Init() runs on the RX thread and has no externally visible
-    // readiness state. Hold off immediate menu-triggered retunes briefly so
-    // they don't race the initial monitor/channel setup.
-    adapter->channel_change_ready_time = Clock::now() + std::chrono::seconds(1);
-
     return true;
 }
 
@@ -948,6 +947,18 @@ void AndroidRawBroadcastTransport::setTransportPacketCallback(
 std::shared_ptr<AndroidRawBroadcastTransport::UsbAdapter> AndroidRawBroadcastTransport::txAdapterLocked(
     const UsbAdapter* excluded_adapter) const
 {
+    const Clock::time_point now = Clock::now();
+    const auto is_tx_ready = [excluded_adapter, now](const std::shared_ptr<UsbAdapter>& adapter)
+    {
+        // Devourer programs the RTL PHY asynchronously inside Init(). Sending while that
+        // programming is still in progress can stop an otherwise healthy adapter after a
+        // USB hot-plug. Use the same bring-up barrier that protects channel changes.
+        return adapter->device &&
+               !adapter->should_stop.load() &&
+               adapter.get() != excluded_adapter &&
+               now >= adapter->channel_change_ready_time;
+    };
+
     const std::string selected_tx_interface =
         m_tx_descriptor.interface.empty() ? s_groundstation_config.txInterface
                                           : m_tx_descriptor.interface;
@@ -956,9 +967,7 @@ std::shared_ptr<AndroidRawBroadcastTransport::UsbAdapter> AndroidRawBroadcastTra
         for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
             if (selected_tx_interface == rawUsbAdapterLabel(adapter->index) &&
-                adapter->device &&
-                !adapter->should_stop.load() &&
-                adapter.get() != excluded_adapter)
+                is_tx_ready(adapter))
             {
                 return adapter;
             }
@@ -970,9 +979,7 @@ std::shared_ptr<AndroidRawBroadcastTransport::UsbAdapter> AndroidRawBroadcastTra
     // active adapter during that window.
     for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
     {
-        if (adapter->device &&
-            !adapter->should_stop.load() &&
-            adapter.get() != excluded_adapter)
+        if (is_tx_ready(adapter))
         {
             return adapter;
         }
@@ -1179,6 +1186,18 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
         m_rx_decoder.pushPacket(transport_packet, transport_size, adapter->index, Clock::now());
     }
     adapter->filtered_frame_count.fetch_add(1);
+    const uint64_t adapter_filtered_lifetime_count =
+        adapter->filtered_frame_lifetime_count.fetch_add(1) + 1;
+    if ((adapter_filtered_lifetime_count % 1000U) == 1U)
+    {
+        // Keep this per-interface marker separate from the aggregate RX logs. It is the
+        // runtime evidence that every adapter recreated after a dual-device hot-plug is
+        // independently receiving valid air packets rather than merely existing natively.
+        LOGI("RX adapter={} filtered_count={} rssi={}",
+             adapter->index,
+             adapter_filtered_lifetime_count,
+             input_dbm);
+    }
     adapter->best_input_dbm.store(std::max(adapter->best_input_dbm.load(), input_dbm));
     m_best_input_dbm.store(std::max(m_best_input_dbm.load(), input_dbm));
     m_last_rx_packet_tp.store(Clock::now().time_since_epoch().count());

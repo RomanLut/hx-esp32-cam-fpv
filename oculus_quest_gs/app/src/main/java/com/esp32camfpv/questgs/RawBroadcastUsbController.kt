@@ -9,10 +9,10 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.os.Build
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -43,7 +43,6 @@ class RawBroadcastUsbController(
     private var activeConnections: List<UsbDeviceConnection> = emptyList()
     private var lastState: ControllerState? = null
     private var usbTopologyChanged = false
-    private var lastUsbTopologyRestartAtMs = 0L
     private var permissionRequestPendingDeviceName: String? = null
     private val permissionDeniedDeviceNames = mutableSetOf<String>()
     private val syncMutex = Mutex()
@@ -64,7 +63,7 @@ class RawBroadcastUsbController(
                             }
                             usbTopologyChanged = true
                         }
-                        syncNow()
+                        syncNowSafely()
                     }
                 }
 
@@ -76,7 +75,7 @@ class RawBroadcastUsbController(
                             permissionDeniedDeviceNames.clear()
                             usbTopologyChanged = true
                         }
-                        syncNow()
+                        syncNowSafely()
                     }
                 }
             }
@@ -105,7 +104,7 @@ class RawBroadcastUsbController(
 
         syncJob = activity.lifecycleScope.launch(Dispatchers.Main) {
             while (true) {
-                syncNow()
+                syncNowSafely()
                 delay(3_000L)
             }
         }
@@ -130,7 +129,20 @@ class RawBroadcastUsbController(
             syncMutex.withLock {
                 usbTopologyChanged = true
             }
+            syncNowSafely()
+        }
+    }
+
+    private suspend fun syncNowSafely() {
+        try {
             syncNow()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            // USB detach races can invalidate Android UsbDevice objects between discovery and
+            // openDevice(). One failed reconciliation must not cancel the lifecycle coroutine;
+            // the next periodic pass must remain able to recover both adapters.
+            Log.e(LOG_TAG, "USB reconciliation failed; polling will continue", error)
         }
     }
 
@@ -153,6 +165,13 @@ class RawBroadcastUsbController(
             }
 
             val targetDevices = findSupportedAdapters()
+            Log.i(
+                LOG_TAG,
+                "Sync target=${targetDevices.map { it.deviceName }} " +
+                    "active=$activeDeviceNames permission=" +
+                    targetDevices.associate { it.deviceName to usbManager.hasPermission(it) } +
+                    " pending=$permissionRequestPendingDeviceName topologyChanged=$usbTopologyChanged"
+            )
             if (targetDevices.isEmpty()) {
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
                 permissionRequestPendingDeviceName = null
@@ -189,34 +208,38 @@ class RawBroadcastUsbController(
                     NativeCore.getRawBroadcastUsbAdapterCount(handle)
                 }
                 val nativeRunning = nativeAdapterCount == targetDeviceNames.size
-                val nowMs = SystemClock.elapsedRealtime()
-                val duplicateTopologyEvent =
-                    usbTopologyChanged && nativeRunning &&
-                        nowMs - lastUsbTopologyRestartAtMs < USB_TOPOLOGY_RESTART_DEBOUNCE_MS
-                if (nativeRunning && (!usbTopologyChanged || duplicateTopologyEvent)) {
+                if (nativeRunning) {
+                    // Attach broadcasts can arrive after the periodic pass already reconciled
+                    // this exact device set. Matching Java names plus matching native count is
+                    // authoritative; restarting solely because a late topology flag is set can
+                    // stop an adapter while Devourer Init() is still entering its RX loop.
                     usbTopologyChanged = false
                     updateState(ControllerState.RUNNING, "Adapters already running on $targetDeviceNames")
                     return
                 }
-
-                if (usbTopologyChanged) {
-                    lastUsbTopologyRestartAtMs = nowMs
-                }
                 stopCurrentAdapterSync(handle)
-            } else {
+            } else if (!targetDeviceNames.containsAll(activeDeviceNames)) {
                 // USB attach/detach broadcasts and the periodic poll can arrive back-to-back.
                 // Stop and start must stay in one serialized critical section or a stale stop can
                 // tear down the adapter that a newer sync just started.
-                if (usbTopologyChanged) {
-                    lastUsbTopologyRestartAtMs = SystemClock.elapsedRealtime()
-                }
                 stopCurrentAdapterSync(handle)
+            } else if (activeDeviceNames.isNotEmpty()) {
+                val nativeAdapterCount = withContext(Dispatchers.Default) {
+                    NativeCore.getRawBroadcastUsbAdapterCount(handle)
+                }
+                if (nativeAdapterCount != activeDeviceNames.size) {
+                    // A native adapter failed after Java opened it. Rebuild the known set once;
+                    // otherwise Java would keep a stale connection and never restart that device.
+                    stopCurrentAdapterSync(handle)
+                }
             }
             usbTopologyChanged = false
 
-            val startedConnections = mutableListOf<UsbDeviceConnection>()
-            val startedDeviceNames = mutableSetOf<String>()
-            for (targetDevice in targetDevices) {
+            // A bad second adapter must not tear down a healthy first adapter on every poll.
+            // Preserve working connections and retry only devices missing from the native set.
+            val startedConnections = activeConnections.toMutableList()
+            val startedDeviceNames = activeDeviceNames.toMutableSet()
+            for (targetDevice in targetDevices.filter { it.deviceName !in startedDeviceNames }) {
                 val connection = usbManager.openDevice(targetDevice)
                 if (connection == null) {
                     Log.w(LOG_TAG, "Failed to open USB adapter ${targetDevice.deviceName}")
@@ -293,8 +316,12 @@ class RawBroadcastUsbController(
 
     private companion object {
         const val LOG_TAG = "RawBroadcastUsb"
-        const val ACTION_USB_PERMISSION = "com.esp32camfpv.questgs.USB_PERMISSION"
+        // This action must not match SerialTelemetryUsbController. Android identifies the
+        // permission PendingIntent by action/request code, and sharing it lets the serial and
+        // raw controllers receive or reuse each other's hot-plug permission result. On a hub
+        // replug that commonly starts the first RTL adapter while the second remains unopened.
+        const val ACTION_USB_PERMISSION =
+            "com.esp32camfpv.questgs.RAW_BROADCAST_USB_PERMISSION"
         const val MAX_RAW_BROADCAST_ADAPTERS = 2
-        const val USB_TOPOLOGY_RESTART_DEBOUNCE_MS = 5_000L
     }
 }

@@ -69,7 +69,10 @@ private:
     {
         std::shared_ptr<IRtlDevice> device;
         // IRtlDevice has no should_stop getter (only the StopRxLoop() setter), so
-        // the adapter tracks its own stop flag alongside calling StopRxLoop().
+        // the adapter tracks its own stop flag alongside calling StopRxLoop(). Once set,
+        // this lifecycle flag must never be cleared; recovery creates a new UsbAdapter.
+        // Clearing it from a late RX callback makes usb_event_thread miss teardown and
+        // deadlocks stopUsbAdapter() while it waits to join that thread.
         std::atomic<bool> should_stop = {false};
         std::unique_ptr<std::thread> usb_event_thread;
         std::unique_ptr<std::thread> rx_thread;
@@ -80,6 +83,7 @@ private:
         Clock::time_point channel_change_ready_time = Clock::time_point::min();
         std::atomic<uint32_t> all_frame_count = {0};
         std::atomic<uint32_t> filtered_frame_count = {0};
+        std::atomic<uint64_t> filtered_frame_lifetime_count = {0};
         std::atomic<int> best_input_dbm = {std::numeric_limits<int>::lowest()};
     };
 
