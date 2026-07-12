@@ -13,3 +13,11 @@ Default channel is set to 7 on **esp32c5** after flashing. **Runcam VRX** will n
 **USB Serial** in **OTG USB port** can be used to transfer Mavlink stream.
 
 ![runcam vrx](/doc/images/runcam_vrx.jpg "runcam_vrx")
+
+
+# Runcam VRX with Walksnail Avatar Patch
+
+ 3D printing files https://www.thingiverse.com/thing:7381953
+
+![runcam vrx](/doc/images/runcam_vrx1.jpg "runcam_vrx1")
+
