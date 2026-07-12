@@ -14,3 +14,14 @@ The main downside of the **Oculus Quest** is the need to carry VR controller, si
 > **Raw Broadcast** mode works only with **RTL8812AU/RTL8821AU** adapter.
 
 ![oculus gs](/doc/images/oculus_gs.jpg "oculus gs")
+
+# Building Oculus Quest GS 
+
+Dual rtl8812AU adapters GS with hx-esp32-now-rc mavlink receiver and GPIO joystick and buttons.
+
+![oculus gs](/doc/images/oculus_gs1.jpg "oculus gs1")
+![oculus gs](/doc/images/oculus_gs2.jpg "oculus gs2")
+![oculus gs](/doc/images/oculus_gs3.jpg "oculus gs3")
+![oculus gs](/doc/images/oculus_gs4.jpg "oculus gs4")
+![oculus gs](/doc/images/oculus_gs5.jpg "oculus gs5")
+
