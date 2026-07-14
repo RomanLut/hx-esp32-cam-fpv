@@ -267,12 +267,15 @@ Tested cards:
 
 The support of untested cards are not mature in devourer. There are bugs. Please use tested cards.
 
+Tested not working:
+
+| RTL8822BU | ? | + |
+
 Untested cards:
 
 | Network card | 2.4GHz | 5.8GHz |
 | RTL8811AU | + | + |
 | RTL8814AU | + | + |
-| RTL8822BU | ? | + |
 | RTL8812BU | ? | + |
 | RTL8811CU | ? | + |
 | RTL8821CU | ? | + |
