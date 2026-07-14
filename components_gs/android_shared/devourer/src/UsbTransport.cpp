@@ -141,16 +141,40 @@ void UsbTransport::discover_endpoints() {
       continue;
     }
 
-    if (!config->bNumInterfaces) {
-      continue;
+    const libusb_interface_descriptor *interface_desc = nullptr;
+    for (uint8_t interface_index = 0;
+         interface_index < config->bNumInterfaces && interface_desc == nullptr;
+         interface_index++) {
+      const libusb_interface *interface = &config->interface[interface_index];
+      for (int alt_index = 0; alt_index < interface->num_altsetting;
+           alt_index++) {
+        const libusb_interface_descriptor *candidate =
+            &interface->altsetting[alt_index];
+        bool has_bulk_in = false;
+        bool has_bulk_out = false;
+        for (uint8_t endpoint_index = 0;
+             endpoint_index < candidate->bNumEndpoints; endpoint_index++) {
+          const libusb_endpoint_descriptor *endpoint =
+              &candidate->endpoint[endpoint_index];
+          if ((endpoint->bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) !=
+              LIBUSB_TRANSFER_TYPE_BULK)
+            continue;
+          if (endpoint->bEndpointAddress & LIBUSB_ENDPOINT_IN)
+            has_bulk_in = true;
+          else
+            has_bulk_out = true;
+        }
+        if (candidate->bInterfaceClass == LIBUSB_CLASS_VENDOR_SPEC &&
+            has_bulk_in && has_bulk_out)
+          interface_desc = candidate;
+      }
     }
-    const libusb_interface *interface = &config->interface[0];
 
-    if (!interface->altsetting) {
+    if (interface_desc == nullptr) {
+      libusb_free_config_descriptor(config);
       continue;
     }
-    const libusb_interface_descriptor *interface_desc =
-        &interface->altsetting[0];
+    _logger->info("selected USB interface {}", interface_desc->bInterfaceNumber);
 
     bool found_bulk_in = false;
     for (uint8_t j = 0; j < interface_desc->bNumEndpoints; j++) {

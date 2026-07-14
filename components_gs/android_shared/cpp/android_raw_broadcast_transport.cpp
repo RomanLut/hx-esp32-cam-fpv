@@ -26,6 +26,56 @@ constexpr size_t kAndroidRawAdapterCount = 2;
 
 //===================================================================================
 //===================================================================================
+// Finds the vendor Wi-Fi interface of a composite RTL USB device.
+int findRtlWifiInterface(libusb_device_handle* usbHandle)
+{
+    libusb_config_descriptor* config = nullptr;
+    if (usbHandle == nullptr ||
+        libusb_get_active_config_descriptor(libusb_get_device(usbHandle), &config) != LIBUSB_SUCCESS)
+    {
+        return 0;
+    }
+
+    int interfaceNumber = 0;
+    for (uint8_t interfaceIndex = 0; interfaceIndex < config->bNumInterfaces; interfaceIndex++)
+    {
+        const libusb_interface& interface = config->interface[interfaceIndex];
+        for (int altIndex = 0; altIndex < interface.num_altsetting; altIndex++)
+        {
+            const libusb_interface_descriptor& descriptor = interface.altsetting[altIndex];
+            bool hasBulkIn = false;
+            bool hasBulkOut = false;
+            for (uint8_t endpointIndex = 0; endpointIndex < descriptor.bNumEndpoints; endpointIndex++)
+            {
+                const libusb_endpoint_descriptor& endpoint = descriptor.endpoint[endpointIndex];
+                if ((endpoint.bmAttributes & LIBUSB_TRANSFER_TYPE_MASK) != LIBUSB_TRANSFER_TYPE_BULK)
+                {
+                    continue;
+                }
+                if ((endpoint.bEndpointAddress & LIBUSB_ENDPOINT_DIR_MASK) == LIBUSB_ENDPOINT_IN)
+                {
+                    hasBulkIn = true;
+                }
+                else
+                {
+                    hasBulkOut = true;
+                }
+            }
+            if (descriptor.bInterfaceClass == LIBUSB_CLASS_VENDOR_SPEC && hasBulkIn && hasBulkOut)
+            {
+                interfaceNumber = descriptor.bInterfaceNumber;
+                libusb_free_config_descriptor(config);
+                return interfaceNumber;
+            }
+        }
+    }
+
+    libusb_free_config_descriptor(config);
+    return interfaceNumber;
+}
+
+//===================================================================================
+//===================================================================================
 // Returns the stable menu label for one Android RTL USB adapter slot.
 std::string rawUsbAdapterLabel(size_t index)
 {
@@ -703,18 +753,44 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    if (libusb_kernel_driver_active(adapter->usb_handle, 0) == 1)
+    adapter->usb_interface_number = findRtlWifiInterface(adapter->usb_handle);
+    LOGI("Using RTL USB interface {}", adapter->usb_interface_number);
+
+    if (libusb_kernel_driver_active(adapter->usb_handle, adapter->usb_interface_number) == 1)
     {
-        libusb_detach_kernel_driver(adapter->usb_handle, 0);
+        libusb_detach_kernel_driver(adapter->usb_handle, adapter->usb_interface_number);
     }
 
-    if (libusb_claim_interface(adapter->usb_handle, 0) < 0)
+    if (libusb_claim_interface(adapter->usb_handle, adapter->usb_interface_number) < 0)
     {
-        LOGE("libusb_claim_interface failed on interface 0");
+        LOGE("libusb_claim_interface failed on interface {}", adapter->usb_interface_number);
         libusb_exit(adapter->libusb_context);
         adapter->libusb_context = nullptr;
         adapter->usb_handle = nullptr;
         return false;
+    }
+
+    // Match the Linux rtl88x2bu probe path: reset the adapter after exclusive
+    // ownership is established, then re-claim because reset clears the claim.
+    // A reset returns a warm adapter to its power-on state before firmware
+    // download. Some Android USB stacks reject a userspace reset; retain the
+    // claimed handle in that case so those devices can still use their existing
+    // power-on path.
+    const int reset_result = libusb_reset_device(adapter->usb_handle);
+    if (reset_result == LIBUSB_SUCCESS)
+    {
+        if (libusb_claim_interface(adapter->usb_handle, adapter->usb_interface_number) < 0)
+        {
+            LOGE("libusb_claim_interface failed after adapter reset");
+            libusb_exit(adapter->libusb_context);
+            adapter->libusb_context = nullptr;
+            adapter->usb_handle = nullptr;
+            return false;
+        }
+    }
+    else
+    {
+        LOGW("libusb_reset_device skipped rc={}", reset_result);
     }
 
     devourer::DeviceConfig device_config = {};
@@ -730,7 +806,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     if (!created_device)
     {
         LOGE("CreateRtlDevice failed");
-        libusb_release_interface(adapter->usb_handle, 0);
+        libusb_release_interface(adapter->usb_handle, adapter->usb_interface_number);
         libusb_exit(adapter->libusb_context);
         adapter->libusb_context = nullptr;
         adapter->usb_handle = nullptr;
@@ -864,7 +940,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<Us
     adapter->device.reset();
     if (adapter->usb_handle != nullptr)
     {
-        libusb_release_interface(adapter->usb_handle, 0);
+        libusb_release_interface(adapter->usb_handle, adapter->usb_interface_number);
         adapter->usb_handle = nullptr;
     }
     if (adapter->libusb_context != nullptr)
@@ -1134,13 +1210,9 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
     const uint8_t* transport_packet = data + WLAN_IEEE_HEADER_SIZE;
     size_t transport_size = size - WLAN_IEEE_HEADER_SIZE;
 
-    // The RTL monitor-mode callback includes the 32-bit FCS trailer in Data. The shared
-    // packet filter and session pipeline expect the transport packet without that suffix.
-    if (transport_size <= 4)
-    {
-        return;
-    }
-    transport_size -= 4;
+    // RxPacket::Data ends at the 802.11 payload. Unlike the Linux radiotap path,
+    // it does not include the four-byte FCS trailer; subtracting it makes every
+    // full-MTU air packet fail PacketFilter's payload-size validation.
 
     const PacketFilter::PacketFilterResult filter_result =
         m_packet_filter.filter_packet(transport_packet, transport_size, m_rx_descriptor.mtu);

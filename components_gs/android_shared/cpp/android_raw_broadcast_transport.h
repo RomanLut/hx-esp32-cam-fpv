@@ -75,6 +75,7 @@ private:
         std::unique_ptr<std::thread> rx_thread;
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;
+        int usb_interface_number = 0;
         int fd = -1;
         size_t index = 0;
         Clock::time_point channel_change_ready_time = Clock::time_point::min();

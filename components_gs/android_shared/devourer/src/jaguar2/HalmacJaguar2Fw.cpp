@@ -234,10 +234,10 @@ bool HalmacJaguar2Fw::send_fw_page(uint16_t pg_addr, const uint8_t *chunk,
   uint8_t txq2 = r8(REG_FWHW_TXQ_CTRL + 2);
   w8(REG_FWHW_TXQ_CTRL + 2, static_cast<uint8_t>(txq2 & ~(1u << 6)));
 
-  /* Minimal rsvd-page TX descriptor, matching the vendor rtl88x2bu DLFW golden
-   * (and the in-tree rtw88_8822bu) exactly: TXPKTSIZE + OFFSET + QSEL_BEACON.
-   * The rtl88x2cu path (jaguar3) additionally sets USE_RATE/DATARATE/DISDATAFB/
-   * LS; those are harmless there but are not part of the 8822B download desc. */
+  /* Reserved-page TX descriptor. The Linux rtl88x2bu firmware-download path
+   * marks each chunk as a complete management TX frame, so retain its LS
+   * delimiter even though the direct userspace transport bypasses the Linux
+   * management-frame queue. */
   /* Packet-offset padding, ported verbatim from usb_write_data_not_xmitframe
    * (rtl8822bu_halmac.c): when (desc + payload) is an exact multiple of the USB
    * bulk max-packet size (512 covers both HS 512 and SS 1024), insert
@@ -272,6 +272,7 @@ bool HalmacJaguar2Fw::send_fw_page(uint16_t pg_addr, const uint8_t *chunk,
     SET_TX_DESC_OFFSET_8822B(d, desclen);
   }
   SET_TX_DESC_QSEL_8822B(d, QSEL_BEACON);
+  SET_TX_DESC_LS_8822B(d, 1);
   cal_txdesc_chksum_8822b(d);
 
   /* Submit the rsvd-page bulk. The vendor (usb_write_data_not_xmitframe ->
