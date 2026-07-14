@@ -45,8 +45,10 @@ Open source digital FPV system based on esp32cam https://romanlut.github.io/hx-e
 - [x] JPEG deblocking
 - [x] **Release v0.6.3**
 - [x] dual adapters support for Android and Oculus Quest GS
-- [ ] dedicated GS unit with dual adapters and hardware buttons for Oculus Quest GS
-- [ ] adjust esp32c5 video modes
+- [x] dedicated GS unit with dual adapters and hardware buttons for Oculus Quest GS
+- [x] adjust esp32c5 video modes
+- [x] ov3660 support
+- [x] **Release v0.6.3c**
 - [ ] adjust esp32c5 air unit recording
 - [ ] design esp32c5 air unit PCB
 - [ ] dualboot image for RPI
@@ -271,6 +273,7 @@ The support of untested cards are not mature in devourer. There are bugs. Please
 Untested cards:
 
 | Network card | 2.4GHz | 5.8GHz |
+|--------------|:------:|:------:|
 | RTL8811AU | + | + |
 | RTL8814AU | + | + |
 | RTL8812BU | ? | + |
