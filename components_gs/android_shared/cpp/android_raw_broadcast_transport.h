@@ -71,10 +71,7 @@ private:
         // IRtlDevice has no should_stop getter (only the StopRxLoop() setter), so
         // the adapter tracks its own stop flag alongside calling StopRxLoop(). Once set,
         // this lifecycle flag must never be cleared; recovery creates a new UsbAdapter.
-        // Clearing it from a late RX callback makes usb_event_thread miss teardown and
-        // deadlocks stopUsbAdapter() while it waits to join that thread.
         std::atomic<bool> should_stop = {false};
-        std::unique_ptr<std::thread> usb_event_thread;
         std::unique_ptr<std::thread> rx_thread;
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;

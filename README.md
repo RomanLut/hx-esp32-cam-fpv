@@ -263,6 +263,7 @@ Tested cards:
 |--------------|:------:|:------:|
 | RTL8812AU | + | + |
 | RTL8821AU | + | + |
+| RTL8812EU | ? | + |
 
 The support of untested cards are not mature in devourer. There are bugs. Please use tested cards.
 
@@ -277,7 +278,6 @@ Untested cards:
 | RTL8821CU | ? | + |
 | RTL8812CU | ? | + |
 | RTL8822CU | ? | + |
-| RTL8812EU | ? | + |
 | RTL8822EU | ? | + |
 
 ? The chipset itself (e.g. RTL8822BU, RTL8812BU, RTL8821CU) supports both 2.4 GHz and 5 GHz, but the finished hardware may not implement both bands.

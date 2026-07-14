@@ -21,7 +21,6 @@
 namespace
 {
 
-constexpr size_t kTxRateHz = 26000000;
 constexpr uint32_t kRxRestartBackjumpBlocks = 64;
 constexpr size_t kAndroidRawAdapterCount = 2;
 
@@ -718,8 +717,16 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         return false;
     }
 
+    devourer::DeviceConfig device_config = {};
+    // RTL8812EU needs the TX-oriented bring-up to keep its RX path alive while
+    // the GS also sends control packets.
+    device_config.rx.enable_with_tx = true;
+    device_config.usb.lock_dir = "/data/user/0/com.esp32camfpv.androidgs/files";
     std::unique_ptr<IRtlDevice> created_device =
-        m_wifi_driver->CreateRtlDevice(adapter->usb_handle, adapter->libusb_context);
+        m_wifi_driver->CreateRtlDevice(adapter->usb_handle,
+                                       adapter->libusb_context,
+                                       nullptr,
+                                       device_config);
     if (!created_device)
     {
         LOGE("CreateRtlDevice failed");
@@ -754,25 +761,6 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
          fd,
          s_groundstation_config.wifi_channel);
 
-    adapter->usb_event_thread = std::make_unique<std::thread>([adapter]()
-    {
-        while (true)
-        {
-            if (!adapter->device || adapter->should_stop.load())
-            {
-                break;
-            }
-
-            timeval timeout = {};
-            timeout.tv_usec = 500000;
-            const int rc = libusb_handle_events_timeout(adapter->libusb_context, &timeout);
-            if (rc < 0)
-            {
-                LOGW("libusb_handle_events_timeout adapter={} rc={}", adapter->index, rc);
-            }
-        }
-    });
-
     adapter->rx_thread = std::make_unique<std::thread>([this, adapter]()
     {
         try
@@ -782,7 +770,10 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
                 return;
             }
 
-            adapter->device->Init(
+            // InitWrite performs the RTL8812EU TX+RX/coex bring-up. StartRxLoop
+            // then owns bulk-IN and delivers monitor frames through this callback.
+            adapter->device->InitWrite(makeSelectedChannel(s_groundstation_config.wifi_channel));
+            adapter->device->StartRxLoop(
                 [this, adapter](const Packet& packet)
                 {
                     // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110.
@@ -793,8 +784,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
                     const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
                     const int input_dbm = std::max(dbm0, dbm1);
                     queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
-                },
-                makeSelectedChannel(s_groundstation_config.wifi_channel));
+                });
         }
         catch (const std::exception& ex)
         {
@@ -864,12 +854,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<Us
     {
         adapter->rx_thread->join();
     }
-    if (adapter->usb_event_thread && adapter->usb_event_thread->joinable())
-    {
-        adapter->usb_event_thread->join();
-    }
     adapter->rx_thread.reset();
-    adapter->usb_event_thread.reset();
 
     std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     if (adapter->device)
@@ -1026,7 +1011,7 @@ void AndroidRawBroadcastTransport::buildRadiotapHeaderLocked()
                             IEEE80211_RADIOTAP_MCS_HAVE_BW |
                             IEEE80211_RADIOTAP_MCS_HAVE_GI);
     radiotapAddU8(dst, idx, IEEE80211_RADIOTAP_MCS_BW_20);
-    radiotapAddU8(dst, idx, std::min(static_cast<uint8_t>(kTxRateHz / 13000000), uint8_t(1)));
+    radiotapAddU8(dst, idx, 1); // MCS Index 1 13M
 
     hdr.it_len = static_cast<__le16>(idx);
     m_radiotap_header.resize(idx);

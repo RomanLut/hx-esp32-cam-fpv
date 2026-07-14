@@ -15,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -169,8 +170,19 @@ namespace
 {
 
 constexpr uint64_t kGsSdMinFreeSpaceBytes = 20ull * 1024ull * 1024ull;
+constexpr size_t kMaxQueuedRawTransportPackets = 256;
 
 struct NativeHandle;
+
+//===================================================================================
+//===================================================================================
+// Carries one raw-radio packet from the libusb completion thread to the runtime thread.
+struct QueuedRawTransportPacket
+{
+    std::vector<uint8_t> data;
+    int input_dbm = 0;
+    size_t interface_index = 0;
+};
 
 struct NativeHandle
 {
@@ -249,6 +261,8 @@ struct NativeHandle
     int gs_battery_percent = -1;
     std::atomic<bool> stop_background = false;
     std::unique_ptr<std::thread> background_runtime_thread;
+    std::mutex raw_transport_packet_queue_mutex;
+    std::deque<QueuedRawTransportPacket> raw_transport_packet_queue;
 };
 
 //===================================================================================
@@ -283,6 +297,11 @@ int processTransportPacket(NativeHandle& handle,
                            bool restored_by_fec,
                            int input_dbm,
                            size_t interface_index = 0);
+
+//===================================================================================
+//===================================================================================
+// Processes a bounded batch of packets after libusb has returned its receive transfer.
+void drainQueuedRawTransportPacketsLocked(NativeHandle& handle, size_t maximum_packet_count);
 
 //===================================================================================
 //===================================================================================
@@ -954,6 +973,33 @@ int processTransportPacket(NativeHandle& handle,
     return static_cast<int>(s_runtimeCore.last_event_kind);
 }
 
+//===================================================================================
+//===================================================================================
+// Moves queued USB receive packets into the session decoder without blocking libusb events.
+void drainQueuedRawTransportPacketsLocked(NativeHandle& handle, size_t maximum_packet_count)
+{
+    std::deque<QueuedRawTransportPacket> queued_packets;
+    {
+        std::lock_guard<std::mutex> queue_lock(handle.raw_transport_packet_queue_mutex);
+        const size_t packet_count = std::min(maximum_packet_count, handle.raw_transport_packet_queue.size());
+        for (size_t index = 0; index < packet_count; ++index)
+        {
+            queued_packets.emplace_back(std::move(handle.raw_transport_packet_queue.front()));
+            handle.raw_transport_packet_queue.pop_front();
+        }
+    }
+
+    for (const QueuedRawTransportPacket& packet : queued_packets)
+    {
+        processTransportPacket(handle,
+                               packet.data.data(),
+                               packet.data.size(),
+                               false,
+                               packet.input_dbm,
+                               packet.interface_index);
+    }
+}
+
 std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandle& handle)
 {
     static uint8_t s_last_logged_config_channel = 0;
@@ -1159,8 +1205,20 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                 return;
             }
 
-            std::lock_guard<std::mutex> lock(handle->mutex);
-            processTransportPacket(*handle, data, size, false, input_dbm, interface_index);
+            QueuedRawTransportPacket packet;
+            packet.data.assign(data, data + size);
+            packet.input_dbm = input_dbm;
+            packet.interface_index = interface_index;
+
+            // This callback runs from devourer's libusb completion thread. Never
+            // take handle->mutex here: decoding JPEG/FEC while holding it delays
+            // resubmitting the USB RX transfer and makes RTL8812EU reception stall.
+            std::lock_guard<std::mutex> queue_lock(handle->raw_transport_packet_queue_mutex);
+            if (handle->raw_transport_packet_queue.size() >= kMaxQueuedRawTransportPackets)
+            {
+                handle->raw_transport_packet_queue.pop_front();
+            }
+            handle->raw_transport_packet_queue.emplace_back(std::move(packet));
         });
     handle->background_runtime_thread = std::make_unique<std::thread>(
         [handle]()
@@ -1179,6 +1237,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                         pumpSharedControlPacketLocked(*handle, Clock::now());
                         processPendingRawBroadcastChannelChange(
                             handle->transport_manager.rawBroadcastTransport());
+                        drainQueuedRawTransportPacketsLocked(*handle, 64);
                     }
                     // Drain incoming serial telemetry (USB-UART) and forward to
                     // the air side. Mirrors the Linux GS runtime loop.
