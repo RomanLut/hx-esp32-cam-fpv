@@ -210,10 +210,10 @@ function Find-WslWifiInterfaces {
     $TargetCount = [Math]::Max(1, $TargetCount)
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 $probeCommand = @'
-# RTL8812EU driver names differ between WSL kernels and out-of-tree packages.
-# Try its names first; rtl8xxxu is the stock-kernel fallback before AU modules.
-for module in 8812eu rtl8812eu rtl8xxxu 88XXau_wfb 88XXau rtl88xxau 8812au; do
-    modprobe "$module" >/dev/null 2>&1 && break
+# AU, EU and BU adapters can be attached together, so load every available driver.
+# Stopping after the first module leaves a later adapter without a driver.
+for module in 8812eu rtl8812eu rtl8xxxu 88XXau_wfb 88XXau rtl88xxau 8812au 88x2bu rtl88x2bu; do
+    modprobe "$module" >/dev/null 2>&1 || true
 done
 udevadm settle --timeout=3 >/dev/null 2>&1 || true
 ls /sys/class/net 2>/dev/null | grep -E '^(wlx|wlan)' | sort
