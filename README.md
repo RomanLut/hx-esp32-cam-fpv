@@ -263,6 +263,7 @@ Tested cards:
 |--------------|:------:|:------:|
 | RTL8812AU | + | + |
 | RTL8821AU | + | + |
+| RTL8822BU | ? | + |
 | RTL8812EU | ? | + |
 
 The support of untested cards are not mature in devourer. There are bugs. Please use tested cards.
@@ -273,7 +274,6 @@ Untested cards:
 | RTL8811AU | + | + |
 | RTL8814AU | + | + |
 | RTL8812BU | ? | + |
-| RTL8822BU | ? | + |
 | RTL8811CU | ? | + |
 | RTL8821CU | ? | + |
 | RTL8812CU | ? | + |

@@ -1181,7 +1181,8 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
     static std::atomic<uint32_t> s_rx_seen_count = {0};
     static std::atomic<uint32_t> s_rx_pass_count = {0};
 
-    if (data == nullptr || size < WLAN_IEEE_HEADER_SIZE + sizeof(Packet_Header) + 4)
+    constexpr size_t fcs_length = 4;
+    if (data == nullptr || size < WLAN_IEEE_HEADER_SIZE + sizeof(Packet_Header) + fcs_length)
     {
         return;
     }
@@ -1208,11 +1209,10 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
     }
 
     const uint8_t* transport_packet = data + WLAN_IEEE_HEADER_SIZE;
-    size_t transport_size = size - WLAN_IEEE_HEADER_SIZE;
-
-    // RxPacket::Data ends at the 802.11 payload. Unlike the Linux radiotap path,
-    // it does not include the four-byte FCS trailer; subtracting it makes every
-    // full-MTU air packet fail PacketFilter's payload-size validation.
+    // Devourer returns the complete 802.11 frame for every supported Realtek
+    // generation. Its monitor RCR appends the four-byte FCS, so remove it once
+    // at this WFB boundary before PacketFilter validates the transport payload.
+    const size_t transport_size = size - WLAN_IEEE_HEADER_SIZE - fcs_length;
 
     const PacketFilter::PacketFilterResult filter_result =
         m_packet_filter.filter_packet(transport_packet, transport_size, m_rx_descriptor.mtu);

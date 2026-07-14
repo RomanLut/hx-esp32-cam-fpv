@@ -2298,7 +2298,7 @@ void HalJaguar2::enable_rx() {
    * (rtw88's own default RCR never sets them). Injected canonical-SA beacons
    * passed even WITH the bits set, which is how regress.py stayed green while
    * every real AP's beacons were silently dropped. */
-  uint32_t rcr = 0x7000002Fu;
+  uint32_t rcr = 0xF000002Fu;
   /* 8821C: drop APP_PHYST_RXFF (BIT28). The 8821C appends a 32-byte PHY-status
    * block before each RX frame in the RXFF, but its RX descriptor reports
    * drv_info_size=0 (unlike the 8822B, which counts it) — so the shared parser
