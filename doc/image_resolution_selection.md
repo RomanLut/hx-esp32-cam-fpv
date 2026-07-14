@@ -2,7 +2,7 @@
 
 **OV2640**
 
-**esp32cam** and **esp32s3sence** boards come with the **OV2640** sensor by default. 
+**esp32cam** and **esp32s3sence** boards often come with the **OV2640** sensor by default. 
 
 The sweet spot settings for this camera seems to be 800x600 resolution with JPEG compression level in range 8…63 (lower is better quality). 30 fps is achieved. Additionaly, custom 16:9 modes 640x360 and 800x456 are implemented. Personally I like 800x456 because 16:9 looks more "digital" :)
 
@@ -19,6 +19,14 @@ It is possible to overclock **ov2640** sensor in **Camera Settings** to enable 4
 800x456 30fps MCS3 26Mbps (actual transfer rate ~10Mbps totalwith FEC 6/12) with ov2640 camera 120° M8 lens:
 
 https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/9e3b3920-04c3-46fd-9e62-9f3c5c584a0d
+
+**OV3660**
+
+The **OV3660** has a larger image sensor than the OV2640 and supports higher resolutions and frame rates. However, there do not appear to be any **OV3660** modules on the market with large-lens optics.
+
+In general, upgrading to the **OV5640** is the better choice, as it offers superior overall image quality and performance.
+
+One exception is low-light performance. The **OV3660** image may appear slightly better because the **OV5640** tends to exhibit a fixed vertical line pattern in dark scenes, whereas the **OV3660** produces more uniform noise, which is generally less distracting to the eye.
 
 **OV5640**
 
@@ -40,11 +48,11 @@ https://github.com/RomanLut/hx-esp32-cam-fpv/assets/11955117/cbc4af6c-e31f-45cf-
 
 While **ov5640** can capture 1280x720 30fps,  this mode requires too high bandwidth, so system has to set high compression levels which elliminate detais. There is no sense to use this mode for FPV on 2.4Ghz band.
 
-Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode: video is saved with best possible quality limited by SD card performance only on Air unit, while frames are sent as fast as link allows (usually 5-10 FPS).
+Since release 0.2.1, 1280x720 mode works in "HQ DVR" mode on **esp32/esp32s3**: video is saved with best possible quality limited by SD card performance only on Air unit, while frames are sent as fast as link allows (usually 5-10 FPS).
 
 Mode is usefull for recording video which can be watched on big screen.
 
-An example of DVR recording:
+An example of DVR recording on **esp32s3**:
 
 https://github.com/user-attachments/assets/b0c2f0b5-2106-4702-b434-837e8ce5914b
 

@@ -291,8 +291,9 @@ esp_err_t esp_camera_init(const camera_config_t *config)
     {
         detected_xclk_freq_hz = config->ov2640_xclk_freq_hz;
     }
-    else if (s_state->sensor.id.PID == OV5640_PID && config->ov5640_xclk_hz > 0)
+    else if ((s_state->sensor.id.PID == OV5640_PID || s_state->sensor.id.PID == OV3660_PID) && config->ov5640_xclk_hz > 0)
     {
+        // OV3660 uses the same XCLK as OV5640 (6-27 MHz input range)
         detected_xclk_freq_hz = config->ov5640_xclk_hz;
     }
 

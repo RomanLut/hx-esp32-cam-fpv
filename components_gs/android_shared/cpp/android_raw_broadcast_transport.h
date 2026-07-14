@@ -11,7 +11,7 @@
 
 #include "fec_block_decoder.h"
 #include "core/transport_base.h"
-#include "devourer/src/RtlJaguarDevice.h"
+#include "devourer/src/IRtlDevice.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
 
@@ -21,6 +21,10 @@ struct libusb_device_handle;
 //===================================================================================
 //===================================================================================
 // Implements the Android raw-broadcast transport using up to two RTL USB adapters.
+// Devourer's IRtlDevice interface is chip-family-agnostic: the same code below
+// drives Jaguar1 (RTL8812AU/8811AU/8821AU/8814AU), Jaguar2 (RTL8822BU/8811CU/
+// 8821CU) and Jaguar3 (RTL8812CU/8822CU/8812EU/8822EU) adapters, since the actual
+// chip family is detected from hardware at WiFiDriver::CreateRtlDevice() time.
 class AndroidRawBroadcastTransport final : public gs::core::TransportBase
 {
 public:
@@ -63,29 +67,34 @@ private:
     // Owns the driver, libusb handles, and receive counters for one Android RTL adapter.
     struct UsbAdapter
     {
-        std::shared_ptr<RtlJaguarDevice> device;
-        std::unique_ptr<std::thread> usb_event_thread;
+        std::shared_ptr<IRtlDevice> device;
+        // IRtlDevice has no should_stop getter (only the StopRxLoop() setter), so
+        // the adapter tracks its own stop flag alongside calling StopRxLoop(). Once set,
+        // this lifecycle flag must never be cleared; recovery creates a new UsbAdapter.
+        std::atomic<bool> should_stop = {false};
         std::unique_ptr<std::thread> rx_thread;
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;
+        int usb_interface_number = 0;
         int fd = -1;
         size_t index = 0;
         Clock::time_point channel_change_ready_time = Clock::time_point::min();
         std::atomic<uint32_t> all_frame_count = {0};
         std::atomic<uint32_t> filtered_frame_count = {0};
+        std::atomic<uint64_t> filtered_frame_lifetime_count = {0};
         std::atomic<int> best_input_dbm = {std::numeric_limits<int>::lowest()};
     };
 
     void buildRadiotapHeaderLocked();
     void resetTxAssemblerLocked();
-    bool sendRawPacket(const std::shared_ptr<RtlJaguarDevice>& device, const std::vector<uint8_t>& packet);
+    bool sendRawPacket(const std::shared_ptr<UsbAdapter>& adapter, const std::vector<uint8_t>& packet);
     bool sendRawPacketWithFailover(const std::vector<uint8_t>& packet);
     void queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
                              const uint8_t* data,
                              size_t size,
                              int input_dbm);
     void stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter);
-    std::shared_ptr<RtlJaguarDevice> txDeviceLocked(const RtlJaguarDevice* excluded_device = nullptr) const;
+    std::shared_ptr<UsbAdapter> txAdapterLocked(const UsbAdapter* excluded_adapter = nullptr) const;
 
     mutable std::mutex m_mutex;
     mutable std::mutex m_stop_mutex;

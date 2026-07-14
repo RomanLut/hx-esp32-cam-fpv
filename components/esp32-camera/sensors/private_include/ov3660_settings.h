@@ -31,7 +31,12 @@ static const DRAM_ATTR uint16_t sensor_default_regs[][2] = {
     {0x3017, 0xff},
     {0x3018, 0xff},
     {DRIVE_CAPABILITY, 0xc3},
+#if CONFIG_IDF_TARGET_ESP32C5
+    // ESP32-C5 PARLIO needs PCLK gated to active image data; match OV5640.
+    {CLOCK_POL_CONTROL, 0x2d},
+#else
     {CLOCK_POL_CONTROL, 0x21},
+#endif
 
     {0x3611, 0x01},
     {0x3612, 0x2d},

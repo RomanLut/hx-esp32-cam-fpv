@@ -28,7 +28,11 @@
       "Read(//tmp/openipc-research/**)",
       "Bash(echo \"exit=$?\")",
       "Read(//tmp/**)",
-      "WebFetch(domain:romanlut.github.io)"
+      "WebFetch(domain:romanlut.github.io)",
+      "WebFetch(domain:d1.amobbs.com)",
+      "WebFetch",
+      "WebSearch",
+      "WebFetch(domain:m5stack.oss-cn-shenzhen.aliyuncs.com)"
     ]
   }
 }

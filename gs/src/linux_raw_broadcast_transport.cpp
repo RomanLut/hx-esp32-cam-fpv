@@ -482,7 +482,7 @@ void LinuxRawBroadcastTransport::prepare_radiotap_header(size_t rate_hz)
     {
         radiotap_add_u8(dst, idx, IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW | IEEE80211_RADIOTAP_MCS_HAVE_GI ); // short gI
         radiotap_add_u8(dst, idx, IEEE80211_RADIOTAP_MCS_BW_20 );  //HT20
-        radiotap_add_u8(dst, idx, 1);  //MCS Index 1 13M
+        radiotap_add_u8(dst, idx, 1);  // MCS Index 1 13M
     }
     if (hdr.it_present & (1 << IEEE80211_RADIOTAP_CHANNEL))
     {
@@ -791,16 +791,16 @@ bool LinuxRawBroadcastTransport::prepare_pcap(std::string const& interface, PCap
         LOGW("Warning in pcap_activate: {}", pcap_geterr(pcap.pcap));
     }
 
-    //    if (pcap_setnonblock(pcap.pcap, 1, pcap_error) < 0)
-    //    {
-    //        LOGE("Error setting pcap_set_snaplen: {}", pcap_geterr(pcap.pcap));
-    //        return false;
-    //    }
-    if (pcap_setdirection(pcap.pcap, PCAP_D_IN) < 0)
+    // process_rx_packet drains until libpcap reports no more queued frames.  It must
+    // not block on the final read because TX uses this same pcap mutex for injection.
+    if (pcap_setnonblock(pcap.pcap, 1, pcap.error_buffer) < 0)
     {
-        LOGE("Error setting pcap_setdirection: {}", pcap_geterr(pcap.pcap));
+        LOGE("Error setting {} to nonblocking capture mode: {}", interface, pcap.error_buffer);
         return false;
     }
+    // rtl88x2eu monitor frames can be classified as outgoing by libpcap even
+    // when they arrived over the air. Do not use PCAP_D_IN here: the legacy
+    // air MAC signature and PacketFilter below already discard GS TX frames.
 
     if (!prepareCaptureMetadata(pcap))
         return false;

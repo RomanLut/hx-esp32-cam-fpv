@@ -48,12 +48,12 @@ if /i "%LAUNCH_MODE%"=="mcp-stop" (
   exit /b 0
 )
 
-echo Detecting RTL88XXAU USB adapters...
+echo Detecting RTL8812AU/RTL8812EU/RTL8821AU/RTL8812BU/RTL8822BU USB adapters...
 del /q "%BUSIDS_FILE%" 2>nul
 powershell -NoProfile -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$state = & 'C:\Program Files\usbipd-win\usbipd.exe' state | ConvertFrom-Json;" ^
-  "$devs = @($state.Devices | Where-Object { $_.InstanceId -match 'VID_0BDA&PID_8812' -or $_.Description -match '8812AU|RTL8812AU|88XXAU|RTL88XXAU' } | Select-Object -First 2);" ^
+  "$devs = @($state.Devices | Where-Object { $_.BusId -and ($_.InstanceId -match 'VID_0BDA&PID_(8812|881A|A81A|8811|8821|0821|B812|B82C|B81A|B82E)' -or $_.InstanceId -match 'VID_2357&PID_0120' -or $_.Description -match '8812AU|RTL8812AU|88XXAU|RTL88XXAU|8812EU|RTL8812EU|88XXEU|RTL88XXEU|8821AU|RTL8821AU|8812BU|RTL8812BU|8822BU|RTL8822BU|88XXBU|RTL88XXBU') } | Select-Object -First 2);" ^
   "if ($devs.Count -gt 0) { Set-Content -LiteralPath '%BUSIDS_FILE%' -Value @($devs | ForEach-Object { $_.BusId }) }"
 if exist "%BUSIDS_FILE%" (
   for /f "usebackq delims=" %%B in ("%BUSIDS_FILE%") do (
@@ -67,7 +67,7 @@ if exist "%BUSIDS_FILE%" (
 )
 
 if not defined BUSIDS (
-  echo Could not auto-detect RTL8812AU adapter bus id.
+  echo Could not auto-detect an RTL8812AU, RTL8812EU, RTL8821AU, RTL8812BU, or RTL8822BU adapter bus id.
   exit /b 1
 )
 

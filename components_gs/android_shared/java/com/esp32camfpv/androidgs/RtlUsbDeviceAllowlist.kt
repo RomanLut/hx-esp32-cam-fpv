@@ -77,8 +77,36 @@ object RtlUsbDeviceAllowlist {
         0x7392 to 0xB611
     )
 
+    // Jaguar2: RTL8822BU (2T2R) / RTL8811CU / RTL8821CU (1T1R). Actual chip
+    // family is auto-detected from hardware (SYS_CFG2) by devourer's
+    // WiFiDriver::CreateRtlDevice — this list only gates which USB devices
+    // Android grants the app permission/launch for.
+    val RTL8822B_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
+        0x0BDA to 0xB812,
+        0x0BDA to 0xB82C,
+        0x2357 to 0x012D // TP-Link Archer T3U
+    )
+
+    val RTL8811C_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
+        0x0BDA to 0xC811 // COMFAST CF-811AC (RTL8811CU / RTL8821CU)
+    )
+
+    // Jaguar3: RTL8812CU / RTL8822CU (2T2R) / RTL8812EU / RTL8822EU.
+    val RTL8812C_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
+        0x0BDA to 0xC812, // LB-LINK WDN1300H (RTL8812CU)
+        0x0BDA to 0xC82C,
+        0x0BDA to 0xC82E
+    )
+
+    val RTL8812E_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
+        0x0BDA to 0xA81A, // LB-LINK BL-M8812EU2 (RTL8812EU)
+        0x0BDA to 0xE822,
+        0x0BDA to 0xA82A
+    )
+
     val RTL_WIFI_DEVICE_IDS: Set<Pair<Int, Int>> =
-        RTL8812A_DEVICE_IDS + RTL8811A_DEVICE_IDS + RTL8821A_DEVICE_IDS
+        RTL8812A_DEVICE_IDS + RTL8811A_DEVICE_IDS + RTL8821A_DEVICE_IDS +
+        RTL8822B_DEVICE_IDS + RTL8811C_DEVICE_IDS + RTL8812C_DEVICE_IDS + RTL8812E_DEVICE_IDS
 
     fun isSupported(device: UsbDevice): Boolean =
         (device.vendorId to device.productId) in RTL_WIFI_DEVICE_IDS

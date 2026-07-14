@@ -135,8 +135,8 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         return false;
     }
 
-    std::unique_ptr<RtlJaguarDevice> created_device =
-        m_wifi_driver->CreateRtlDevice(m_usb_handle);
+    std::unique_ptr<IRtlDevice> created_device =
+        m_wifi_driver->CreateRtlDevice(m_usb_handle, m_libusb_context);
     if (!created_device)
     {
         LOGE("CreateRtlDevice failed");
@@ -149,7 +149,8 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_device        = std::shared_ptr<RtlJaguarDevice>(created_device.release());
+        m_device        = std::shared_ptr<IRtlDevice>(created_device.release());
+        m_device_should_stop.store(false);
         m_active_usb_fd = fd;
     }
 
@@ -162,12 +163,12 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     {
         while (true)
         {
-            std::shared_ptr<RtlJaguarDevice> dev;
+            std::shared_ptr<IRtlDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
             }
-            if (!dev || dev->should_stop)
+            if (!dev || m_device_should_stop.load())
             {
                 break;
             }
@@ -184,7 +185,7 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
     // Receive thread: accumulate airtime from every received frame.
     m_rx_thread = std::make_unique<std::thread>([this]()
     {
-        std::shared_ptr<RtlJaguarDevice> dev;
+        std::shared_ptr<IRtlDevice> dev;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             dev = m_device;
@@ -245,11 +246,12 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         {
             LOGE("wifi-scan RX thread stopped: {}", ex.what());
             m_chSwitchStop.store(true);
+            m_device_should_stop.store(true);
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_adapter_transition_time = Clock::now();
             if (m_device)
             {
-                m_device->should_stop = true;
+                m_device->StopRxLoop();
             }
             m_device = nullptr;
             m_active_usb_fd = -1;
@@ -258,11 +260,12 @@ bool AndroidWifiScanTransport::startUsbAdapter(int fd)
         {
             LOGE("wifi-scan RX thread stopped with unknown exception");
             m_chSwitchStop.store(true);
+            m_device_should_stop.store(true);
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_adapter_transition_time = Clock::now();
             if (m_device)
             {
-                m_device->should_stop = true;
+                m_device->StopRxLoop();
             }
             m_device = nullptr;
             m_active_usb_fd = -1;
@@ -301,12 +304,12 @@ void AndroidWifiScanTransport::channelSwitchLoop()
 
         if (wanted != 0 && wanted != appliedChannel)
         {
-            std::shared_ptr<RtlJaguarDevice> dev;
+            std::shared_ptr<IRtlDevice> dev;
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 dev = m_device;
             }
-            if (dev && !dev->should_stop)
+            if (dev && !m_device_should_stop.load())
             {
                 try
                 {
@@ -319,13 +322,15 @@ void AndroidWifiScanTransport::channelSwitchLoop()
                 catch (const std::exception& ex)
                 {
                     LOGW("SetMonitorChannel failed after USB detach: {}", ex.what());
-                    dev->should_stop = true;
+                    m_device_should_stop.store(true);
+                    dev->StopRxLoop();
                     break;
                 }
                 catch (...)
                 {
                     LOGW("SetMonitorChannel failed after USB detach with unknown exception");
-                    dev->should_stop = true;
+                    m_device_should_stop.store(true);
+                    dev->StopRxLoop();
                     break;
                 }
             }
@@ -355,14 +360,15 @@ void AndroidWifiScanTransport::stopUsbAdapter()
         }
     }
 
-    std::shared_ptr<RtlJaguarDevice> dev;
+    std::shared_ptr<IRtlDevice> dev;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         dev = m_device;
         if (dev)
         {
             m_last_adapter_transition_time = Clock::now();
-            dev->should_stop = true;
+            m_device_should_stop.store(true);
+            dev->StopRxLoop();
         }
     }
 
@@ -393,6 +399,10 @@ void AndroidWifiScanTransport::stopUsbAdapter()
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_device)
+        {
+            m_device->Stop();
+        }
         m_device        = nullptr;
         m_active_usb_fd = -1;
     }

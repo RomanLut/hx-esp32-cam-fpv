@@ -204,7 +204,7 @@ static esp_err_t configure_ap_netif()
 
 //===========================================================================================
 //===========================================================================================
-//Applies a manual country configuration that exposes the full supported channel range
+//Applies a manual country configuration that explicitly enables every supported Wi-Fi channel
 static esp_err_t apply_wifi_country_for_channel(uint8_t channel)
 {
     channel = static_cast<uint8_t>(getValidWifiChannel(channel));
@@ -217,7 +217,9 @@ static esp_err_t apply_wifi_country_for_channel(uint8_t channel)
 
 #if CONFIG_IDF_TARGET_ESP32C5
     country_config.nchan = 14;
-    country_config.wifi_5g_channel_mask = 0; // Allow all 5GHz channels on dual-band C5.
+    // A zero mask defers to the restrictive regulatory defaults. Enable bits 1 through 28,
+    // which correspond to every 5 GHz channel defined by wifi_5g_channel_bit_t, including 161.
+    country_config.wifi_5g_channel_mask = 0x1ffffffe;
 #else
     (void)channel;
     country_config.nchan = 13;

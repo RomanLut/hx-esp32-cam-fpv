@@ -41,6 +41,11 @@
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+/* basic_types.h's cpu_to_le / le_to_cpu macros expand to these; define them
+ * here (the typedef home) so any TU that includes basic_types.h has them,
+ * independent of the TX-descriptor headers. */
+typedef uint16_t __u16;
+typedef uint32_t __u32;
 typedef void *PADAPTER;
 #ifndef WIN32
 typedef bool BOOLEAN;

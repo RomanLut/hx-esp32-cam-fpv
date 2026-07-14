@@ -174,6 +174,9 @@ static int write_addr_reg(uint8_t slv_addr, const uint16_t reg, uint16_t x_value
 
 #define write_reg_bits(slv_addr, reg, mask, enable) set_reg_bits(slv_addr, reg, 0, mask, (enable)?(mask):0)
 
+//SYSCLK of the PLL setting last programmed by set_pll(); drives the sensor line time
+static unsigned int s_sysclk = 0;
+
 static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sys_div, int pre_div, bool root_2x, int pclk_root_div, bool pclk_manual, int pclk_div)
 {
     //why this map is needed at all?
@@ -209,7 +212,7 @@ static int set_pll(sensor_t *sensor, bool bypass, uint8_t multiplier, uint8_t sy
     }
     //ESP_LOGI(TAG, "Set PLL: bypass: %u, multiplier: %u, sys_div: %u, pre_div: %u, root_2x: %u, pclk_root_div: %u, pclk_manual: %u, pclk_div: %u", bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
-    calc_sysclk(sensor->xclk_freq_hz, bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
+    s_sysclk = calc_sysclk(sensor->xclk_freq_hz, bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
     ret = write_reg(sensor->slv_addr, 0x3039, bypass?0x80:0x00);
     if (ret == 0) {
@@ -238,6 +241,49 @@ static int set_pll(sensor_t *sensor, bool bypass, uint8_t multiplier, uint8_t sy
     }
     if(ret){
         ESP_LOGE(TAG, "set_sensor_pll FAILED!");
+    }
+    return ret;
+}
+
+//The AEC banding filter steps and the max exposure limits are counted in lines, so they depend on
+//SYSCLK, HTS and VTS. ov5640_settings.h programs constants that only hold for a single mode, which
+//leaves anti-banding mis-calibrated for every other resolution and PLL setting. Recompute them
+//whenever the frame timing or the PLL changes.
+static int set_banding_filter(sensor_t *sensor, unsigned int sysclk, uint16_t hts, uint16_t vts)
+{
+    if (sysclk == 0 || hts == 0 || vts <= 4) {
+        ESP_LOGE(TAG, "Invalid banding filter arguments");
+        return -1;
+    }
+
+    uint16_t max_exposure = vts - 4;
+    unsigned int band_step_50 = sysclk / (hts * 100u); //lines integrated in 1/100 s
+    unsigned int band_step_60 = sysclk / (hts * 120u); //lines integrated in 1/120 s
+    if (band_step_50 == 0 || band_step_60 == 0) {
+        ESP_LOGE(TAG, "Banding filter step underflow");
+        return -1;
+    }
+
+    unsigned int max_band_50 = max_exposure / band_step_50;
+    unsigned int max_band_60 = max_exposure / band_step_60;
+    if (max_band_50 < 1) max_band_50 = 1;
+    if (max_band_60 < 1) max_band_60 = 1;
+    if (max_band_50 > 255) max_band_50 = 255;
+    if (max_band_60 > 255) max_band_60 = 255;
+
+    int ret = write_reg(sensor->slv_addr, 0x3a02, max_exposure >> 8)          //60Hz max exposure
+           || write_reg(sensor->slv_addr, 0x3a03, max_exposure & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a14, max_exposure >> 8)          //50Hz max exposure
+           || write_reg(sensor->slv_addr, 0x3a15, max_exposure & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a08, (band_step_50 >> 8) & 0xff) //50Hz band step
+           || write_reg(sensor->slv_addr, 0x3a09, band_step_50 & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a0a, (band_step_60 >> 8) & 0xff) //60Hz band step
+           || write_reg(sensor->slv_addr, 0x3a0b, band_step_60 & 0xff)
+           || write_reg(sensor->slv_addr, 0x3a0d, max_band_60)
+           || write_reg(sensor->slv_addr, 0x3a0e, max_band_50);
+
+    if (ret) {
+        ESP_LOGE(TAG, "set_banding_filter FAILED!");
     }
     return ret;
 }
@@ -402,15 +448,18 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         goto fail;
     }
 
+    uint16_t hts;
+    uint16_t vts;
+
     if (!sensor->status.binning) {
+        hts = settings.total_x;
+        vts = settings.total_y;
         ret  = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x, settings.total_y)
             || write_addr_reg(sensor->slv_addr, X_OFFSET_H, settings.offset_x, settings.offset_y);
     } else {
-        if (w > 920) {
-            ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, settings.total_x - 200, settings.total_y / 2);
-        } else {
-            ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, 2060, settings.total_y / 2);
-        }
+        hts = (w > 920) ? (settings.total_x - 200) : 2060;
+        vts = settings.total_y / 2;
+        ret = write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, hts, vts);
         if (ret == 0) {
             ret = write_addr_reg(sensor->slv_addr, X_OFFSET_H, settings.offset_x / 2, settings.offset_y / 2);
         }
@@ -449,63 +498,61 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         //for XLCK=20Mhz
         if (framesize == FRAMESIZE_SVGA ) //800x600
         {
-            //ret = set_pll(sensor, false, 30, 1, 1, false, 3, true, 3); //10 mhz pclk
-            ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //50 mhz pclk 36.4 FPS
+            ret = set_pll(sensor, false, 91, 1, 3, false, 2, true, 3); //20.22 mhz pclk 29.9 FPS
         }
         else if (framesize == FRAMESIZE_P_HD) //800x456
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //38.33 mhz pclk  28.4 FPS
+                ret = set_pll(sensor, false, 46, 2, 1, false, 2, true, 3); //15.33 mhz pclk 30.0 FPS
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk  37 FPS
+                ret = set_pll(sensor, false, 77, 1, 2, false, 2, true, 4); //19.25 mhz pclk 50.2 FPS
             }
         }
         else if (framesize == FRAMESIZE_VGA) //640x480
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //50 mhz pclk 72.9 FPS
+                ret = set_pll(sensor, false, 91, 1, 3, false, 2, true, 3); //20.22 mhz pclk 29.9 FPS
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk 72.2 FPS
+                ret = set_pll(sensor, false, 81, 1, 2, false, 2, true, 4); //20.25 mhz pclk 40.0 FPS
             }
         }
         else if (framesize == FRAMESIZE_P_3MP) //640x360
         {
             if (sensor->status.colorbar == 0 )
             {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //38.33 mhz pclk
-                //ret = set_pll(sensor, false, 5, 1, 1, false, 2, true, 3);
+                ret = set_pll(sensor, false, 46, 2, 1, false, 2, true, 3); //15.33 mhz pclk 30.0 FPS
             }
             else
             {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //50 mhz pclk  ~37 FPS
+                ret = set_pll(sensor, false, 77, 1, 2, false, 2, true, 4); //19.25 mhz pclk 50.2 FPS
             }
         }
         else if (framesize == FRAMESIZE_XGA)  //1024x768 
         {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //39 mhz pclk  ~37 FPS
+            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.6 mhz pclk 30.0 FPS
         }
         else if (framesize == FRAMESIZE_P_FHD)  //1024x576 
         {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //48.33 mhz pclk  35.8 FPS
+            ret = set_pll(sensor, false, 59, 1, 2, false, 2, true, 3);  //19.67 mhz pclk 30.0 FPS
         }
         else if (framesize == FRAMESIZE_SXGA)  //1280x960
         {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //39 mhz pclk  42.1 FPS
+            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.6 mhz pclk 30.0 FPS
         }
         else if (framesize == FRAMESIZE_HD)  //1280x720 
         {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //48.33 mhz pclk 35.8 FPS
+            ret = set_pll(sensor, false, 59, 1, 2, false, 2, true, 3);  //19.67 mhz pclk 30.0 FPS
         }
         else 
         {
             //ret = set_pll(sensor, false, 19, 1, 1, false, 3, true, 4); 
-            ret = set_pll(sensor, false, 19, 1, 1, false, 2, true, 3); //31.67 mhz pclk 46.2FPS
+            ret = set_pll(sensor, false, 19, 1, 1, false, 2, true, 3); //12.67 mhz pclk 18.7 FPS (4:3 sizes)
         }
 #else
         //10MHz PCLK
@@ -517,12 +564,70 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
-        sys_mul=160;
-#endif 
+        if (sensor->status.colorbar &&
+            ((framesize == FRAMESIZE_VGA) || (framesize == FRAMESIZE_P_3MP) || (framesize == FRAMESIZE_P_HD)))
+        {
+            //high FPS modes (ov5640HighFPS flag, passed via set_colorbar())
+            const int high_fps_pll_multiplier = (framesize == FRAMESIZE_VGA) ? 101 : 32;
+            const int high_fps_pre_div = (framesize == FRAMESIZE_VGA) ? 3 : 1;
+            ret = set_pll(sensor, false, high_fps_pll_multiplier, 1, high_fps_pre_div, false, 2, true, 4); //640x360/800x456: 19.2 mhz pclk 50.1 FPS; 640x480: 20.2 mhz pclk 40.0 FPS
+        }
+        else
+        {
+            //VCO (= XCLK / pre_div * sys_mul) must stay within 500..1000 mhz.
+            //Scaling pre_div/sys_div together with sys_mul keeps PLL_CLK, and hence SYSCLK/FPS and PCLK, unchanged.
+            uint8_t pre_div = 2;
+            uint8_t sys_div = 4;
+            uint8_t pclk_div = 4;
 
+            if (framesize == FRAMESIZE_P_3MP)             //640x360: VCO 924 mhz, 15.4 mhz pclk, 30.1 FPS
+            {
+                sys_mul = 77;
+                sys_div = 2;
+                pclk_div = 3;
+            }
+            else if (framesize == FRAMESIZE_VGA)          //640x480: VCO 606 mhz, 15.15 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 101;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_SVGA)         //800x600: VCO 606 mhz, 15.15 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 101;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_P_HD)         //800x456: VCO 924 mhz, 11.55 mhz pclk, 30.1 FPS
+            {
+                sys_mul = 77;
+                sys_div = 2;
+            }
+            else if (framesize == FRAMESIZE_P_FHD)        //1024x576: VCO 588 mhz, 14.7 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 98;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else if (framesize == FRAMESIZE_HD)           //1280x720: VCO 588 mhz, 14.7 mhz pclk, 29.9 FPS
+            {
+                sys_mul = 98;
+                pre_div = 4;
+                sys_div = 1;
+            }
+            else                                          //other sizes: VCO 960 mhz, 12.0 mhz pclk
+            {
+                sys_mul = 80;
+                sys_div = 2;
+            }
+
+            ret = set_pll(sensor, false, sys_mul, sys_div, pre_div, false, 2, true, pclk_div);
+        }
+#else
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
         //Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
-#endif        
+#endif
+#endif
     } else {
         //ret = set_pll(sensor, false, 8, 1, 1, false, 1, true, 4);
         if (framesize > FRAMESIZE_HVGA) {
@@ -532,6 +637,19 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         } else {
             ret = set_pll(sensor, false, 20, 1, 1, false, 1, true, 8);
         }
+    }
+
+    if (ret == 0) {
+        ret = set_banding_filter(sensor, s_sysclk, hts, vts);
+    }
+
+    if (ret == 0) {
+        //A high FPS frame is shorter than two 50Hz banding periods, so the anti-banding filter would
+        //quantize the exposure down to a single 10ms band and cost a stop of light. Mains flicker is
+        //not a concern outdoors, so disable the filter (AEC_CTRL00 band enable) in the high FPS modes.
+        bool high_fps = (sensor->status.colorbar != 0)
+            && ((framesize == FRAMESIZE_VGA) || (framesize == FRAMESIZE_P_3MP) || (framesize == FRAMESIZE_P_HD));
+        ret = write_reg_bits(sensor->slv_addr, 0x3a00, 0x20, !high_fps);
     }
 
     if (ret == 0) {

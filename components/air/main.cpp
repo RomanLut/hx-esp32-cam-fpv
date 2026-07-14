@@ -183,10 +183,26 @@ HXMavlinkParser mavlinkParserIn(true);
 
 //===================================================================================
 //===================================================================================
-// Returns whether runtime camera detection identified an OV5640 sensor.
+// Returns whether runtime camera detection identified an exact OV5640 sensor.
 static bool camera_is_ov5640()
 {
     return s_camera_sensor_pid == OV5640_PID;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether runtime camera detection identified an OV3660 sensor.
+static bool camera_is_ov3660()
+{
+    return s_camera_sensor_pid == OV3660_PID;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether the detected sensor uses the OV5640-family timing and control path.
+static bool camera_uses_ov5640_mode_table()
+{
+    return (s_camera_sensor_pid == OV5640_PID) || (s_camera_sensor_pid == OV3660_PID);
 }
 
 //=============================================================================================
@@ -1072,8 +1088,11 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
         }
         
         const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
-        uint8_t fps = camera_is_ov5640()
-            ? (s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640)
+        bool ov5640_family_high_fps = camera_is_ov5640()
+            ? s_ground2air_config_packet2.camera.ov5640HighFPS
+            : s_ground2air_config_packet2.camera.ov2640HighFPS;
+        uint8_t fps = camera_uses_ov5640_mode_table()
+            ? (ov5640_family_high_fps ? (camera_is_ov3660() ? v->highFPS2640 : v->highFPS5640) : v->FPS5640)
             : (s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640);
         uint16_t frameWidth = v->width;
         uint16_t frameHeight = v->height;
@@ -1584,9 +1603,9 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     sensor_t* s = esp_camera_sensor_get();
 #endif
 
-    if (camera_is_ov5640())
+    if (camera_uses_ov5640_mode_table())
     {
-        // On OV5640, AEC2 is a night mode that dynamically reduces frame rate.
+        // On OV5640-family sensors, AEC2 is a night mode that dynamically reduces frame rate.
         src.camera.aec2 = false;
     }
 
@@ -1598,9 +1617,18 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
 
-        if (camera_is_ov5640())
+        if (camera_uses_ov5640_mode_table())
         {
-            s->set_colorbar(s, src.camera.ov5640HighFPS ? 1 : 0);
+            // OV3660 is reported to GS as non-OV5640, so GS controls its high-FPS
+            // toggle through the OV2640 flag while the sensor still uses the
+            // OV5640-family timing path internally. Limit the OV3660 high-FPS
+            // flag to the 16:9 modes; the old 4:3 high-FPS PLL flickers.
+            bool ov3660HighFPSMode = src.camera.resolution == Resolution::VGA16
+                || src.camera.resolution == Resolution::SVGA16;
+            bool highFPS = camera_is_ov5640()
+                ? src.camera.ov5640HighFPS
+                : (src.camera.ov2640HighFPS && ov3660HighFPSMode);
+            s->set_colorbar(s, highFPS ? 1 : 0);
         }
         else
         {
@@ -1626,20 +1654,20 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::VGA: s->set_framesize(s, FRAMESIZE_VGA); break;
 
             case Resolution::VGA16:
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     s->set_framesize(s, FRAMESIZE_P_3MP); //640x360
                 }
                 else
                 {
-                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 800,600-144,false,false);   //800x456x29.5? fps
+                    s->set_res_raw(s, 1/*OV2640_MODE_SVGA*/,0,0,0, 0, 72, 800, 600-144, 640,360,false,false);   //800x456 window scaled by DSP to 640x360, 30 fps
                 }
             break;
 
             case Resolution::SVGA: s->set_framesize(s, FRAMESIZE_SVGA); break;
 
             case Resolution::SVGA16:
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     // Warning: verbose logging in ov5640.c can overflow the camera task stack.
                     s->set_framesize(s, FRAMESIZE_P_HD); //800x456
@@ -1654,7 +1682,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
             case Resolution::XGA: s->set_framesize(s, FRAMESIZE_XGA); break; //1024x768
 
             case Resolution::XGA16:  //1024x576
-                if (camera_is_ov5640())
+                if (camera_uses_ov5640_mode_table())
                 {
                     s->set_framesize(s, FRAMESIZE_P_FHD);
                 }
@@ -1741,9 +1769,9 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
     }
     APPLY(denoise, denoise, int);
 
-    if (camera_is_ov5640())
+    if (camera_uses_ov5640_mode_table())
     {
-        // OV5640 gain ceiling is 0...0x3ff and high values do not cause the severe
+        // OV5640-family gain ceiling is 0...0x3ff and high values do not cause the severe
         // low-light noise seen on OV2640, so leave its full gain range available.
         if (forceCameraSettings || (dst.camera.gainceiling != src.camera.gainceiling))
         {
@@ -2210,7 +2238,7 @@ IRAM_ATTR void send_air2ground_osd_packet()
         packet.stats.RCPeriodMax = s_last_stats.RCPeriodMaxMS / 10 + 101;   
     }
 
-    packet.stats.isOV5640 = (s_camera_sensor_pid == OV5640_PID) ? 1 : 0;
+    packet.stats.isOV5640 = camera_is_ov5640() ? 1 : 0;
 
     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
     packet.stats.inPacketRate = s_last_stats.inPacketCounter;

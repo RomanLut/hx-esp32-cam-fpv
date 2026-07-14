@@ -6,7 +6,8 @@
 #include <thread>
 
 #include "gs_wifi_scan_transport.h"
-#include "devourer/src/RtlJaguarDevice.h"
+#include "devourer/src/IRtlDevice.h"
+#include "devourer/src/RxPacket.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
 
@@ -53,7 +54,10 @@ private:
     Clock::time_point           m_activate_time   = Clock::time_point::min();
     mutable std::mutex          m_mutex;
     std::mutex                  m_stop_mutex;
-    std::shared_ptr<RtlJaguarDevice> m_device;
+    std::shared_ptr<IRtlDevice> m_device;
+    // IRtlDevice has no should_stop getter (only StopRxLoop()), so this transport
+    // tracks its own stop flag alongside calling StopRxLoop() on the device.
+    std::atomic<bool>           m_device_should_stop = {false};
     std::unique_ptr<WiFiDriver> m_wifi_driver;
     Logger_t                    m_devourer_logger;
     Clock::time_point           m_last_adapter_transition_time = Clock::time_point::min();
