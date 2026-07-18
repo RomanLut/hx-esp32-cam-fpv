@@ -610,10 +610,13 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     const bool artifact_pass_enabled = deblocking_enabled || dither_in_artifact_pass;
     const bool full_frame_uv = std::abs(std::abs(quad.u1 - quad.u0) - 1.0f) < 0.0001f &&
                                std::abs(std::abs(quad.v1 - quad.v0) - 1.0f) < 0.0001f;
-    // With no geometric or UV-crop resampling, the artifact shader can write the
-    // final target directly and avoid an intermediate full-frame texture plus a copy pass.
-    // Cropped UVs must keep the source pass so JPEG block coordinates stay full-frame based.
+    // The direct path is valid only for a one-to-one source-to-target draw. Otherwise it
+    // shades the target pixel grid instead of the camera pixel grid, which changes artifact
+    // processing semantics and can miss KMS page-flip deadlines on scaled Mali output.
+    const bool source_matches_target = frame_width == static_cast<int>(std::round(clip_width)) &&
+                                       frame_height == static_cast<int>(std::round(clip_height));
     const bool direct_artifact_pass = artifact_pass_enabled &&
+                                      source_matches_target &&
                                       !lens_enabled &&
                                       !stabilization_enabled &&
                                       full_frame_uv;
