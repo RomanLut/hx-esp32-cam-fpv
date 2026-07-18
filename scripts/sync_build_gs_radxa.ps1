@@ -1,5 +1,5 @@
 param(
-    [string]$RemoteHost = "192.168.3.148",
+    [string]$RemoteHost = "192.168.3.39",
     [string]$User = "radxa",
     [string]$Password = "radxa",
     [string]$RemoteProjectDir = "/home/radxa/esp32-cam-fpv",

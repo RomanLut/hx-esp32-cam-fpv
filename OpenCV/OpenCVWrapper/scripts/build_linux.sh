@@ -26,7 +26,8 @@ OPENCV_TAG=""
 if OPENCV_TAG="$(git -C "${OPENCV_SOURCE}" describe --tags --exact-match 2>/dev/null)"; then
     :
 elif [[ -f "${WRAPPER_ROOT}/OPENCV_VERSION.txt" ]]; then
-    OPENCV_TAG="$(sed -n 's/^OpenCV tag:[[:space:]]*//p' "${WRAPPER_ROOT}/OPENCV_VERSION.txt" | head -n 1)"
+    # Windows checkouts can copy this metadata with CRLF; strip CR before comparing the tag.
+    OPENCV_TAG="$(sed -n 's/^OpenCV tag:[[:space:]]*//p' "${WRAPPER_ROOT}/OPENCV_VERSION.txt" | tr -d '\r' | head -n 1)"
 fi
 if [[ "${OPENCV_TAG}" != "${EXPECTED_OPENCV_TAG}" ]]; then
     echo "OpenCV source must be pinned to tag ${EXPECTED_OPENCV_TAG}, but found '${OPENCV_TAG}'." >&2
