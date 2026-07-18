@@ -25,7 +25,9 @@
 #include "../../components/common/Clock.h"
 #include "../../components_gs/mcp/gs_mcp_server.h"
 #include "gs_runtime_state.h"
+#include "gs_runtime_menu_ui.h"
 #include "gs_shared_state.h"
+#include "core/osd_menu_controller.h"
 #include "gs_stats.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_shader_renderer.h"
@@ -290,6 +292,9 @@ void drawVideoInViewport(int quad_x,
         s_decoder.getRenderStabilizationTransform();
     const gs::render::VideoPostprocessingParams postprocessing_params =
         s_decoder.get_postprocessing_params();
+    const float image_brightness = gs::menu::g_osdMenuController.isVisible()
+        ? kRuntimeMenuImageBrightness
+        : 1.0f;
     g_VideoShaderRenderer.draw(g_VideoTexture,
                                quad,
                                static_cast<float>(clip_x),
@@ -302,7 +307,8 @@ void drawVideoInViewport(int quad_x,
                                frame_height,
                                lens_params,
                                stabilization_transform,
-                               postprocessing_params);
+                               postprocessing_params,
+                               image_brightness);
 }
 
 //===================================================================================

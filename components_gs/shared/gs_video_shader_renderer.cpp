@@ -55,6 +55,7 @@ precision mediump float;
 uniform sampler2D uTexture;
 uniform vec2 uUv0;
 uniform vec2 uUv1;
+uniform float uImageBrightness;
 #if GS_NEEDS_FRAME_SIZE
 uniform vec2 uFrameSize;
 #endif
@@ -245,7 +246,7 @@ void main()
 #if GS_FEATURE_DITHERING
     color = applyDithering(sample_coord, color);
 #endif
-    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor = vec4(color * uImageBrightness, 1.0);
 }
 )glsl";
 
@@ -546,7 +547,8 @@ bool VideoShaderRenderer::draw(unsigned int texture,
                                int frame_height,
                                const LensCorrectionParams& lens_params,
                                const gs::stabilization::StabilizationTransform& stabilization_transform,
-                               const VideoPostprocessingParams& postprocessing_params)
+                               const VideoPostprocessingParams& postprocessing_params,
+                               float image_brightness)
 {
     if (texture == 0 ||
         quad.width <= 0.0f ||
@@ -603,6 +605,7 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     }
 
     const bool lens_enabled = isLensCorrectionEnabled(lens_params);
+    const float final_image_brightness = std::clamp(image_brightness, 0.0f, 1.0f);
     const bool deblocking_enabled = postprocessing_params.deblocking_strength > 0.0f;
     const bool dithering_enabled = postprocessing_params.dithering_strength > 0.0f;
     // Artifact correction is defined on the source JPEG pixel grid on every platform.
@@ -718,6 +721,10 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         glUseProgram(artifact_program);
         glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(glGetUniformLocation(artifact_program, "uTexture"), 0);
+        // An intermediate artifact texture stays at full brightness. Apply menu
+        // dimming only in the stage that writes the final display target.
+        glUniform1f(glGetUniformLocation(artifact_program, "uImageBrightness"),
+                    direct_artifact_pass ? final_image_brightness : 1.0f);
         glUniform2f(glGetUniformLocation(artifact_program, "uUv0"),
                     direct_artifact_pass ? quad.u0 : 0.0f,
                     direct_artifact_pass ? quad.v0 : 1.0f);
@@ -761,6 +768,7 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         glUseProgram(display_program);
         glBindTexture(GL_TEXTURE_2D, display_texture);
         glUniform1i(glGetUniformLocation(display_program, "uTexture"), 0);
+        glUniform1f(glGetUniformLocation(display_program, "uImageBrightness"), final_image_brightness);
         glUniform2f(glGetUniformLocation(display_program, "uUv0"), quad.u0, quad.v0);
         glUniform2f(glGetUniformLocation(display_program, "uUv1"), quad.u1, quad.v1);
         if (stabilization_enabled)

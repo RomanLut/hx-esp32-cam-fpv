@@ -99,7 +99,8 @@ void drawPlaybackProgressOverlay(float overlay_width, float surface_height)
 
 //===================================================================================
 //===================================================================================
-// Draws the dimmed fullscreen menu background behind the runtime menu content.
+// Maintains the transparent fullscreen menu input surface for touch platforms.
+// Video dimming is folded into the final image shader to avoid a fullscreen blend pass.
 void drawRuntimeMenuOverlay(const RuntimeMenuUiState& state)
 {
     if (!state.visible)
@@ -125,11 +126,6 @@ void drawRuntimeMenuOverlay(const RuntimeMenuUiState& state)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
     ImGui::Begin("RUNTIME_MENU_OVERLAY", nullptr, flags);
-
-    ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    draw_list->AddRectFilled(ImVec2(0.0f, 0.0f),
-                             ImVec2(surface_width, surface_height),
-                             ImGui::ColorConvertFloat4ToU32(toImGuiColor(0.0f, 0.0f, 0.0f, 0.40f)));
 
     ImGui::End();
     ImGui::PopStyleVar(2);

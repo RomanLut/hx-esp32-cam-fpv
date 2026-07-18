@@ -50,7 +50,8 @@ public:
               int frame_height,
               const LensCorrectionParams& lens_params,
               const gs::stabilization::StabilizationTransform& stabilization_transform,
-              const VideoPostprocessingParams& postprocessing_params);
+              const VideoPostprocessingParams& postprocessing_params,
+              float image_brightness);
 
 private:
     static constexpr unsigned int kArtifactShaderProgramCount = 4;

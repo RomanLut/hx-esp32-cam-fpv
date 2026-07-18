@@ -1290,6 +1290,7 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
         gs::render::buildLensCorrectionParams(s_lensCorrectionState);
     gs::stabilization::StabilizationTransform stabilization_transform =
         gs::stabilization::getRenderTrajectoryTransform();
+    const float image_brightness = m_menu_visible ? kRuntimeMenuImageBrightness : 1.0f;
     m_video_shader_renderer.draw(m_texture,
                                  quad,
                                  clip_x,
@@ -1302,7 +1303,8 @@ void GsVideoRenderer::drawVideoShaderLocked(float quad_x,
                                  m_frame_height,
                                  lens_params,
                                  stabilization_transform,
-                                 m_locked_frame.postprocessing_params);
+                                 m_locked_frame.postprocessing_params,
+                                 image_brightness);
 }
 
 //===================================================================================

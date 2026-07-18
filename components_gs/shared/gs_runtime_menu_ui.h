@@ -1,5 +1,7 @@
 #pragma once
 
+constexpr float kRuntimeMenuImageBrightness = 0.60f;
+
 struct RuntimeMenuUiState
 {
     bool visible = false;
