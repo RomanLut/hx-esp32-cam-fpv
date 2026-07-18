@@ -45,7 +45,6 @@ constexpr uint8_t kDisplayShaderFeatureMasks[] = {
 };
 
 constexpr char kComposedFragmentShader[] = R"glsl(
-#extension GL_OES_standard_derivatives : enable
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -213,9 +212,22 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
 vec3 applyDithering(vec2 sample_coord, vec3 color)
 {
     float color_luma = luma(color);
+#if GS_HAS_STANDARD_DERIVATIVES
     // The artifact pass always rasterizes one fragment per source pixel. Screen
     // derivatives therefore measure image-space gradients without two texture reads.
     float g = max(abs(dFdx(color_luma)), abs(dFdy(color_luma)));
+#else
+    // GLES 2 drivers without GL_OES_standard_derivatives cannot compile dFdx/dFdy.
+    // Sample adjacent source pixels instead so adaptive dithering remains available.
+    vec2 px = 1.0 / max(uFrameSize, vec2(1.0, 1.0));
+    float right_luma = luma(sampleVideo(clamp(sample_coord + vec2(px.x, 0.0),
+                                              vec2(0.0, 0.0),
+                                              vec2(1.0, 1.0))));
+    float down_luma = luma(sampleVideo(clamp(sample_coord + vec2(0.0, px.y),
+                                             vec2(0.0, 0.0),
+                                             vec2(1.0, 1.0))));
+    float g = max(abs(right_luma - color_luma), abs(down_luma - color_luma));
+#endif
     float flat_area = 1.0 - smoothstep(uDitherParams.y * 0.5, uDitherParams.y, g);
     vec2 max_pixel = max(uFrameSize - vec2(1.0, 1.0), vec2(0.0, 0.0));
     vec2 image_pixel = floor(clamp(sample_coord * uFrameSize, vec2(0.0, 0.0), max_pixel));
@@ -251,14 +263,47 @@ void main()
 
 //===================================================================================
 //===================================================================================
-// Builds a fragment shader by enabling only the fragments needed by this feature mask.
-std::string buildFragmentShader(uint8_t features)
+// Checks one exact extension name in the space-delimited GLES extension list.
+bool hasGlExtension(const char* extensions, const char* required_extension)
+{
+    if (extensions == nullptr || required_extension == nullptr || required_extension[0] == '\0')
+    {
+        return false;
+    }
+
+    const std::string extension_list(extensions);
+    const std::string required(required_extension);
+    size_t position = 0;
+    while ((position = extension_list.find(required, position)) != std::string::npos)
+    {
+        const bool starts_token = position == 0 || extension_list[position - 1] == ' ';
+        const size_t end = position + required.size();
+        const bool ends_token = end == extension_list.size() || extension_list[end] == ' ';
+        if (starts_token && ends_token)
+        {
+            return true;
+        }
+        position = end;
+    }
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Builds a fragment shader with a derivative implementation supported by the active GLES driver.
+std::string buildFragmentShader(uint8_t features, bool has_standard_derivatives)
 {
     const bool needs_frame_size = (features & (kShaderFeatureStabilization |
                                                kShaderFeatureDeblocking |
                                                kShaderFeatureDithering)) != 0;
     std::string source;
     source.reserve(12000);
+    if (has_standard_derivatives)
+    {
+        source += "#extension GL_OES_standard_derivatives : enable\n";
+    }
+    source += "#define GS_HAS_STANDARD_DERIVATIVES ";
+    source += has_standard_derivatives ? "1\n" : "0\n";
     source += "#define GS_FEATURE_LENS ";
     source += (features & kShaderFeatureLens) != 0 ? "1\n" : "0\n";
     source += "#define GS_FEATURE_STABILIZATION ";
@@ -336,11 +381,15 @@ GLuint createProgram(const char* fragment_source)
 //===================================================================================
 //===================================================================================
 // Compiles one shader table from the feature masks used by that render pass.
-bool compileShaderPrograms(GLuint* programs, const uint8_t* feature_masks, uint8_t program_count, const char* pass_name)
+bool compileShaderPrograms(GLuint* programs,
+                           const uint8_t* feature_masks,
+                           uint8_t program_count,
+                           const char* pass_name,
+                           bool has_standard_derivatives)
 {
     for (uint8_t features = 0; features < program_count; ++features)
     {
-        const std::string fragment_shader = buildFragmentShader(feature_masks[features]);
+        const std::string fragment_shader = buildFragmentShader(feature_masks[features], has_standard_derivatives);
         programs[features] = createProgram(fragment_shader.c_str());
         if (programs[features] == 0)
         {
@@ -562,14 +611,22 @@ bool VideoShaderRenderer::draw(unsigned int texture,
 
     if (!m_programs_ready)
     {
+        const char* gl_extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+        const bool has_standard_derivatives = hasGlExtension(gl_extensions, "GL_OES_standard_derivatives");
+        const char* gl_version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+        LOGI("Video shader GLES version={} standard_derivatives={}",
+             gl_version != nullptr ? gl_version : "unknown",
+             has_standard_derivatives ? "supported" : "fallback");
         if (!compileShaderPrograms(m_artifact_programs,
                                    kArtifactShaderFeatureMasks,
                                    kArtifactShaderProgramCount,
-                                   "artifact") ||
+                                   "artifact",
+                                   has_standard_derivatives) ||
             !compileShaderPrograms(m_display_programs,
                                    kDisplayShaderFeatureMasks,
                                    kDisplayShaderProgramCount,
-                                   "display"))
+                                   "display",
+                                   has_standard_derivatives))
         {
             return false;
         }
