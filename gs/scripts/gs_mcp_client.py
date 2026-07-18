@@ -10,7 +10,18 @@ DEFAULT_PORT = 17654
 
 def send_request(sock, request):
     sock.sendall((json.dumps(request) + "\n").encode())
-    response = sock.recv(65535).decode().strip()
+    response_bytes = bytearray()
+    while True:
+        chunk = sock.recv(65535)
+        if not chunk:
+            break
+        response_bytes.extend(chunk)
+        response = bytes(response_bytes).decode().strip()
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            continue
+    response = bytes(response_bytes).decode().strip()
     if not response:
         raise RuntimeError("Empty MCP response")
     return json.loads(response)

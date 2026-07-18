@@ -56,13 +56,13 @@ Save and reboot.
 
 * Install and compile SDL library. We have to build SDL library to run application without desktop environment.
  
-  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
+  ```wget https://www.libsdl.org/release/SDL2-2.32.10.tar.gz```
 
-  ```tar zxf SDL2-2.0.18.tar.gz```
+  ```tar zxf SDL2-2.32.10.tar.gz```
 
-  ```rm SDL2-2.0.18.tar.gz```
+  ```rm SDL2-2.32.10.tar.gz```
 
-  ```cd SDL2-2.0.18```
+  ```cd SDL2-2.32.10```
 
   ```./autogen.sh```
 
@@ -182,13 +182,13 @@ Save and reboot.
 
 * Install and compile SDL library.
  
-  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
+  ```wget https://www.libsdl.org/release/SDL2-2.32.10.tar.gz```
 
-  ```tar zxf SDL2-2.0.18.tar.gz```
+  ```tar zxf SDL2-2.32.10.tar.gz```
 
-  ```rm SDL2-2.0.18.tar.gz```
+  ```rm SDL2-2.32.10.tar.gz```
 
-  ```cd SDL2-2.0.18```
+  ```cd SDL2-2.32.10```
 
   ```./autogen.sh```
 

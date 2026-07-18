@@ -732,6 +732,17 @@ std::string buildSnapshotJson()
         << "\"texture_upload_count\":" << last_gs_stats.textureUploadCount << ','
         << "\"texture_upload_time_min_ms\":" << last_gs_stats.textureUploadTimeMinMS << ','
         << "\"texture_upload_time_max_ms\":" << last_gs_stats.textureUploadTimeMaxMS << ','
+        << "\"gpu_wait_last_frame_ms\":" << last_gs_stats.gpuWaitLastFrameMS << ','
+        << "\"gpu_wait_max_ms\":" << last_gs_stats.gpuWaitMaxMS << ','
+        << "\"render_ui_build_last_us\":" << last_gs_stats.renderUiBuildLastUS << ','
+        << "\"render_ui_build_max_us\":" << last_gs_stats.renderUiBuildMaxUS << ','
+        << "\"render_gl_submit_last_us\":" << last_gs_stats.renderGlSubmitLastUS << ','
+        << "\"render_gl_submit_max_us\":" << last_gs_stats.renderGlSubmitMaxUS << ','
+        << "\"render_gl_finish_last_us\":" << last_gs_stats.renderGlFinishLastUS << ','
+        << "\"render_gl_finish_max_us\":" << last_gs_stats.renderGlFinishMaxUS << ','
+        << "\"render_swap_last_us\":" << last_gs_stats.renderSwapLastUS << ','
+        << "\"render_swap_max_us\":" << last_gs_stats.renderSwapMaxUS << ','
+        << "\"render_timing_gl_finish_enabled\":" << (last_gs_stats.renderTimingGlFinishEnabled != 0 ? "true" : "false") << ','
         << "\"received_completed_frames\":" << last_gs_stats.receivedCompletedFrames << ','
         << "\"restored_completed_frames\":" << last_gs_stats.restoredCompletedFrames
         << "},"

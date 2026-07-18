@@ -68,7 +68,7 @@ cleanup_release_files()
     rm -rf "$HOME/.cache/cmake"
     rm -rf "$HOME/.ccache"
 
-    rm -rf "$HOME/SDL2-2.0.18/build"
+    rm -rf "$HOME/SDL2-2.32.10/build"
     rm -rf "$REPO_ROOT/OpenCV/OpenCV/doc"
     rm -rf "$REPO_ROOT/OpenCV/OpenCV/samples"
     rm -rf "$REPO_ROOT/OpenCV/OpenCV/data"

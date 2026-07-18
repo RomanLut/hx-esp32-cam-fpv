@@ -53,7 +53,7 @@ public:
               const VideoPostprocessingParams& postprocessing_params);
 
 private:
-    static constexpr unsigned int kArtifactShaderProgramCount = 2;
+    static constexpr unsigned int kArtifactShaderProgramCount = 4;
     static constexpr unsigned int kDisplayShaderProgramCount = 8;
 
     bool ensureArtifactTarget(int frame_width, int frame_height);

@@ -34,6 +34,8 @@ enum ShaderFeature : uint8_t
 constexpr uint8_t kArtifactShaderFeatureMasks[] = {
     0,
     kShaderFeatureDeblocking,
+    kShaderFeatureDithering,
+    kShaderFeatureDeblocking | kShaderFeatureDithering,
 };
 constexpr uint8_t kDisplayShaderFeatureMasks[] = {
     0,
@@ -214,10 +216,11 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
 vec3 applyDithering(vec2 sample_coord, vec3 color)
 {
     vec2 px = 1.0 / max(uFrameSize, vec2(1.0, 1.0));
-    float g = max(abs(luma(color) - luma(sampleVideo(min(sample_coord + vec2(px.x, 0.0), vec2(1.0, 1.0))))),
-                  abs(luma(color) - luma(sampleVideo(min(sample_coord + vec2(0.0, px.y), vec2(1.0, 1.0))))));
+    float color_luma = luma(color);
+    float g = max(abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(px.x, 0.0), vec2(1.0, 1.0))))),
+                  abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(0.0, px.y), vec2(1.0, 1.0))))));
     float flat_area = 1.0 - smoothstep(uDitherParams.y * 0.5, uDitherParams.y, g);
-    float n = hashNoise(gl_FragCoord.xy + vec2(luma(color) * 31.0, luma(color) * 17.0)) - 0.5;
+    float n = hashNoise(gl_FragCoord.xy + vec2(color_luma * 31.0, color_luma * 17.0)) - 0.5;
     return clamp(color + vec3(n * uDitherParams.x * flat_area), 0.0, 1.0);
 }
 #endif
@@ -603,11 +606,20 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     const bool lens_enabled = isLensCorrectionEnabled(lens_params);
     const bool deblocking_enabled = postprocessing_params.deblocking_strength > 0.0f;
     const bool dithering_enabled = postprocessing_params.dithering_strength > 0.0f;
-    const bool artifact_pass_enabled = deblocking_enabled;
-    const uint8_t artifact_program_index = deblocking_enabled ? 1u : 0u;
+#if defined(__linux__) && !defined(__ANDROID__)
+    // The RK3566 Mali-G52 runs adaptive dithering at camera resolution so the
+    // unchanged effect does not perform three texture reads for every display pixel.
+    const bool dither_in_artifact_pass = dithering_enabled;
+#else
+    const bool dither_in_artifact_pass = false;
+#endif
+    const bool display_dithering_enabled = dithering_enabled && !dither_in_artifact_pass;
+    const bool artifact_pass_enabled = deblocking_enabled || dither_in_artifact_pass;
+    const uint8_t artifact_program_index = (deblocking_enabled ? 1u : 0u) |
+                                           (dither_in_artifact_pass ? 2u : 0u);
     const uint8_t display_program_index = (lens_enabled ? 1u : 0u) |
                                           (stabilization_enabled ? 2u : 0u) |
-                                          (dithering_enabled ? 4u : 0u);
+                                          (display_dithering_enabled ? 4u : 0u);
     const GLuint artifact_program = m_artifact_programs[artifact_program_index];
     const GLuint display_program = m_display_programs[display_program_index];
     if ((artifact_pass_enabled && artifact_program == 0) || display_program == 0)
@@ -658,11 +670,13 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         if (!s_logged_artifact_pass_active)
         {
             s_logged_artifact_pass_active = true;
-            LOGI("Video artifact shader active deblock=({:.3f},{:.3f},{:.3f},{:.3f})",
+            LOGI("Video artifact shader active deblock=({:.3f},{:.3f},{:.3f},{:.3f}) dither=({:.4f},{:.3f})",
                  postprocessing_params.deblocking_strength,
                  postprocessing_params.deblocking_alpha,
                  postprocessing_params.deblocking_beta,
-                 postprocessing_params.deblocking_tc);
+                 postprocessing_params.deblocking_tc,
+                 postprocessing_params.dithering_strength,
+                 postprocessing_params.dithering_flat_threshold);
         }
 
         const GLfloat artifact_vertices[] = {
@@ -690,6 +704,12 @@ bool VideoShaderRenderer::draw(unsigned int texture,
                         postprocessing_params.deblocking_beta,
                         postprocessing_params.deblocking_tc);
         }
+        if (dither_in_artifact_pass)
+        {
+            glUniform2f(glGetUniformLocation(artifact_program, "uDitherParams"),
+                        postprocessing_params.dithering_strength,
+                        postprocessing_params.dithering_flat_threshold);
+        }
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_vertices);
@@ -707,7 +727,7 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     glUniform1i(glGetUniformLocation(display_program, "uTexture"), 0);
     glUniform2f(glGetUniformLocation(display_program, "uUv0"), quad.u0, quad.v0);
     glUniform2f(glGetUniformLocation(display_program, "uUv1"), quad.u1, quad.v1);
-    if (stabilization_enabled || dithering_enabled)
+    if (stabilization_enabled || display_dithering_enabled)
     {
         glUniform2f(glGetUniformLocation(display_program, "uFrameSize"),
                     static_cast<float>(std::max(frame_width, 1)),
@@ -718,7 +738,7 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv0"), inv00, inv01, inv02);
         glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv1"), inv10, inv11, inv12);
     }
-    if (dithering_enabled)
+    if (display_dithering_enabled)
     {
         static bool s_logged_dithering_active = false;
         if (!s_logged_dithering_active)

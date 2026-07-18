@@ -40,6 +40,15 @@ struct GSStats
     int textureUploadTimeMaxMS = 0;
     int gpuWaitLastFrameMS = 0;
     int gpuWaitMaxMS = 0;
+    int renderUiBuildLastUS = 0;
+    int renderUiBuildMaxUS = 0;
+    int renderGlSubmitLastUS = 0;
+    int renderGlSubmitMaxUS = 0;
+    int renderGlFinishLastUS = 0;
+    int renderGlFinishMaxUS = 0;
+    int renderSwapLastUS = 0;
+    int renderSwapMaxUS = 0;
+    int renderTimingGlFinishEnabled = 0;
     int stabilizationCount = 0;
     int stabilizationFeaturesLastMS = 0;
     int stabilizationFeaturesMaxMS = 0;

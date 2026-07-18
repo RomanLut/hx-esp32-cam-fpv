@@ -89,8 +89,7 @@ struct gs_linux_video_decoder::Impl
 
     std::mutex output_queue_mutex;
     std::condition_variable output_ready_cv;
-    Output_ptr pending_output;
-    bool has_pending_output = false;
+    std::deque<Output_ptr> pending_outputs;
 
     std::deque<Output_ptr> locked_outputs;
     gs::render::VideoPostprocessingParams current_postprocessing_params = {};
@@ -134,6 +133,15 @@ bool gs_linux_video_decoder::init(IHAL& hal)
 
     m_impl->window = (SDL_Window*)hal.get_window();
     assert(m_impl->window != nullptr);
+
+    // Input objects are recycled by Pool. A frame discarded from input_queue must
+    // release its assembler buffer before the object is parked in the pool;
+    // otherwise the three-buffer assembler can remain starved under backpressure.
+    m_impl->input_pool.on_release = [](Input& input)
+    {
+        input.jpeg_buffer.reset();
+        input.frame_id = 0;
+    };
 
     m_impl->output_pool.on_acquire = [this](Output& output)
     {
@@ -261,10 +269,10 @@ void gs_linux_video_decoder::decoder_thread_proc(size_t /* thread_index */)
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-            if (m_impl->has_pending_output &&
-                !shouldReplaceDecodedFrame(input->frame_id, m_impl->pending_output->frame_id))
+            if (!m_impl->pending_outputs.empty() &&
+                !shouldReplaceDecodedFrame(input->frame_id, m_impl->pending_outputs.back()->frame_id))
             {
-                // The display thread has not consumed pending_output yet, and this JPEG is
+                // The display thread already has this or a newer frame queued, and this JPEG is
                 // strictly older than what is already decoded. A full RGB decode would be
                 // discarded immediately, so skip it and return the assembler buffer sooner.
                 input->jpeg_buffer.reset();
@@ -366,24 +374,27 @@ void gs_linux_video_decoder::decoder_thread_proc(size_t /* thread_index */)
 
         {
             std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-            if (m_impl->has_pending_output)
+            if (!m_impl->pending_outputs.empty() &&
+                !shouldReplaceDecodedFrame(output->frame_id, m_impl->pending_outputs.back()->frame_id))
             {
-                if (!shouldReplaceDecodedFrame(output->frame_id, m_impl->pending_output->frame_id))
-                {
-                    std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
-                    s_gs_stats.discardedFramesDecodedOutput++;
-                    //if we skip frame, we also do not prepare features for it, to save CPU time. 
-                    //This means that stabilization features for the next frame will be calculated based on the last actually used frame, 
-                    //which should be fine for stabilization purposes.
-                    continue;
-                }
-
                 std::lock_guard<std::mutex> lg(s_gs_stats_mutex);
                 s_gs_stats.discardedFramesDecodedOutput++;
+                // If we skip a stale frame, feature preparation is skipped too. The next
+                // stabilization estimate will use the last frame actually presented.
+                continue;
             }
 
-            m_impl->pending_output = std::move(output);
-            m_impl->has_pending_output = true;
+            // A small FIFO absorbs the phase difference between a 50 fps camera and
+            // 60 Hz KMSDRM page flips. Keep it bounded so real render overload cannot
+            // accumulate visible latency indefinitely.
+            constexpr size_t kMaxPendingOutputs = 3;
+            if (m_impl->pending_outputs.size() >= kMaxPendingOutputs)
+            {
+                m_impl->pending_outputs.pop_front();
+                std::lock_guard<std::mutex> stats_lg(s_gs_stats_mutex);
+                s_gs_stats.discardedFramesDecodedOutput++;
+            }
+            m_impl->pending_outputs.push_back(std::move(output));
         }
         m_impl->output_ready_cv.notify_one();
 
@@ -410,22 +421,23 @@ size_t gs_linux_video_decoder::lock_output()
     size_t count = 0;
     {
         std::lock_guard<std::mutex> lg(m_impl->output_queue_mutex);
-        if (!m_impl->has_pending_output)
+        if (m_impl->pending_outputs.empty())
             return 0;
+
+        Output_ptr pending_output = std::move(m_impl->pending_outputs.front());
+        m_impl->pending_outputs.pop_front();
 
         // Playback pause can repeatedly decode/publish the same frame_id. Keep one latest
         // copy for that id so debug previous-frame toggle can still reach the last distinct frame.
         if(!m_impl->locked_outputs.empty() &&
-           m_impl->locked_outputs.back()->frame_id == m_impl->pending_output->frame_id)
+           m_impl->locked_outputs.back()->frame_id == pending_output->frame_id)
         {
-            m_impl->locked_outputs.back() = std::move(m_impl->pending_output);
+            m_impl->locked_outputs.back() = std::move(pending_output);
         }
         else
         {
-            m_impl->locked_outputs.push_back(std::move(m_impl->pending_output));
+            m_impl->locked_outputs.push_back(std::move(pending_output));
         }
-        m_impl->pending_output.reset();
-        m_impl->has_pending_output = false;
         count = 1;
     }
 
@@ -452,13 +464,25 @@ size_t gs_linux_video_decoder::lock_output()
 #if defined(IMGUI_IMPL_OPENGL_ES2)
     Clock::time_point upload_t1 = Clock::now();
     GLCHK(glBindTexture(GL_TEXTURE_2D, output.texture));
-    // Raspberry Pi's GLES driver can sample stale texture storage when the same
-    // texture object is repeatedly updated with glTexSubImage2D while frames are
-    // being presented. Re-specifying the image for each displayed frame forces
-    // fresh backing storage and prevents old camera frames from reappearing.
-    GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
-    output.texture_width = output.width;
-    output.texture_height = output.height;
+    const char* renderer_name = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    const bool raspberry_pi_renderer = renderer_name != nullptr &&
+        (std::strstr(renderer_name, "V3D") != nullptr ||
+         std::strstr(renderer_name, "VideoCore") != nullptr ||
+         std::strstr(renderer_name, "Broadcom") != nullptr);
+    const bool texture_size_changed = output.texture_width != output.width || output.texture_height != output.height;
+    if (raspberry_pi_renderer || texture_size_changed)
+    {
+        // Raspberry Pi GLES can sample stale storage after glTexSubImage2D, so it
+        // must re-specify every frame. Mali does not have that quirk; reallocating
+        // there stalls the KMSDRM pipeline enough to miss 50 fps camera frames.
+        GLCHK(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, output.width, output.height, 0, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+        output.texture_width = output.width;
+        output.texture_height = output.height;
+    }
+    else
+    {
+        GLCHK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, output.width, output.height, GL_RGB, GL_UNSIGNED_BYTE, output.rgb_data.data()));
+    }
     Clock::time_point upload_t2 = Clock::now();
 #else
     Clock::time_point upload_t1 = Clock::now();
@@ -519,7 +543,7 @@ size_t gs_linux_video_decoder::lock_output()
 void gs_linux_video_decoder::wait_for_output(std::chrono::milliseconds timeout)
 {
     std::unique_lock<std::mutex> lg(m_impl->output_queue_mutex);
-    if (m_impl->has_pending_output || m_exit)
+    if (!m_impl->pending_outputs.empty() || m_exit)
     {
         return;
     }
@@ -529,7 +553,7 @@ void gs_linux_video_decoder::wait_for_output(std::chrono::milliseconds timeout)
         timeout,
         [this]
         {
-            return m_impl->has_pending_output || m_exit;
+            return !m_impl->pending_outputs.empty() || m_exit;
         });
 }
 
@@ -559,8 +583,7 @@ void gs_linux_video_decoder::invalidate_displayed_frame()
 
     {
         std::lock_guard<std::mutex> output_lock(m_impl->output_queue_mutex);
-        m_impl->pending_output.reset();
-        m_impl->has_pending_output = false;
+        m_impl->pending_outputs.clear();
     }
 
     m_texture = 0;

@@ -80,21 +80,27 @@ sudo apt update
 
 sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake
 
-if [ "$IS_RADXA" = true ]; then
-    echo "Skipping SDL recompilation for Radxa."
-else
-    cd "$HOME_DIRECTORY"
-    wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz
-    tar zxf SDL2-2.0.18.tar.gz
-    rm SDL2-2.0.18.tar.gz
+SDL2_VERSION="2.32.10"
+SDL2_ARCHIVE="SDL2-$SDL2_VERSION.tar.gz"
+SDL2_SOURCE_DIR="$HOME_DIRECTORY/SDL2-$SDL2_VERSION"
 
-    cd SDL2-2.0.18
-    ./autogen.sh
-    ./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl
-    
-    make -j"$MAKE_JOBS"
-    sudo make install
+cd "$HOME_DIRECTORY"
+if [ ! -f "$SDL2_ARCHIVE" ]; then
+    wget "https://www.libsdl.org/release/$SDL2_ARCHIVE"
 fi
+if [ ! -d "$SDL2_SOURCE_DIR" ]; then
+    tar zxf "$SDL2_ARCHIVE"
+fi
+
+cd "$SDL2_SOURCE_DIR"
+./autogen.sh
+./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl
+
+# Radxa's distro SDL 2.0.14 accepts swap interval 0 but still waits roughly two
+# display periods per KMSDRM swap. SDL 2.32.10 uses async DRM page flips when the
+# driver supports them, allowing a 60 Hz mode to present every 50 fps camera frame.
+make -j"$MAKE_JOBS"
+sudo make install
 
 cd "$HOME_DIRECTORY"
 if [ ! -d esp32-cam-fpv/.git ]; then

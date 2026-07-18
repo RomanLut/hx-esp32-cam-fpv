@@ -50,6 +50,24 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
+* Install and compile SDL 2.32.10. The SDL 2.0.14 package included in the Radxa RubyFPV image accepts a disabled swap interval, but its KMSDRM backend can still wait for page flips and limit presentation frame rate. SDL 2.32.10 supports asynchronous DRM page flips when the driver provides them.
+
+  ```cd /home/radxa```
+
+  ```wget https://www.libsdl.org/release/SDL2-2.32.10.tar.gz```
+
+  ```tar zxf SDL2-2.32.10.tar.gz```
+
+  ```cd SDL2-2.32.10```
+
+  ```./autogen.sh```
+
+  ```./configure --disable-video-rpi --enable-video-kmsdrm --enable-video-x11 --disable-video-opengl```
+
+  ```make -j4```
+
+  ```sudo make install```
+
   OpenCVWrapper requires CMake 3.16 or newer. If this image is based on Raspbian/Debian Buster and
   ```apt-get update``` fails with ```raspbian.raspberrypi.org ... buster Release 404 Not Found```,
   switch the Buster source to the legacy Raspbian archive before installing packages:

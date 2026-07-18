@@ -16,6 +16,7 @@
 #include <mutex>
 #include <optional>
 #include <cfloat>
+#include <cstdlib>
 #include <utility>
 #include <vector>
 
@@ -701,7 +702,12 @@ bool PI_HAL::init_display_sdl()
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(m_impl->window);
     SDL_GL_MakeCurrent(m_impl->window, gl_context);
-    SDL_GL_SetSwapInterval(m_impl->vsync ? 1 : 0 ); // Enable vsync
+    const int requested_swap_interval = m_impl->vsync ? 1 : 0;
+    const int swap_interval_result = SDL_GL_SetSwapInterval(requested_swap_interval);
+    LOGI("SDL swap interval request={} result={} error={}",
+         requested_swap_interval,
+         swap_interval_result,
+         swap_interval_result == 0 ? "-" : SDL_GetError());
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -848,6 +854,9 @@ bool PI_HAL::update_display()
     // ImGui's display rectangle and disappears on the right side of the screen.
     refreshSdlWindowSize(m_impl->window, m_impl->width, m_impl->height);
 
+    // Measure UI construction separately from GL submission and presentation.
+    const Clock::time_point ui_build_begin = Clock::now();
+
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
@@ -885,6 +894,8 @@ bool PI_HAL::update_display()
 
     // Rendering
     ImGui::Render();
+    const Clock::time_point ui_build_end = Clock::now();
+    const Clock::time_point gl_submit_begin = ui_build_end;
     glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
     glClearColor(0,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -951,14 +962,46 @@ bool PI_HAL::update_display()
         }
         ImGui_ImplOpenGL3_RenderDrawData(draw_data);
     }
+    const Clock::time_point gl_submit_end = Clock::now();
+
+    // glFinish is diagnostic-only because it changes pipeline synchronization.
+    // Enable it explicitly to separate GPU completion from the KMS swap wait.
+    static const bool force_gpu_finish = []
+    {
+        const char* value = std::getenv("GS_RENDER_TIMING_GL_FINISH");
+        return value != nullptr && value[0] != 0 && value[0] != '0';
+    }();
+    int gl_finish_duration_us = 0;
+    if (force_gpu_finish)
+    {
+        const Clock::time_point gl_finish_begin = Clock::now();
+        glFinish();
+        gl_finish_duration_us = static_cast<int>(
+            std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - gl_finish_begin).count());
+    }
+
     const Clock::time_point swap_begin = Clock::now();
     SDL_GL_SwapWindow(m_impl->window);
-    const int swap_duration_ms = static_cast<int>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - swap_begin).count());
+    const int ui_build_duration_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(ui_build_end - ui_build_begin).count());
+    const int gl_submit_duration_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(gl_submit_end - gl_submit_begin).count());
+    const int swap_duration_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - swap_begin).count());
+    const int swap_duration_ms = swap_duration_us / 1000;
     {
         std::lock_guard<std::mutex> lock(s_gs_stats_mutex);
         s_gs_stats.gpuWaitLastFrameMS = swap_duration_ms;
         s_gs_stats.gpuWaitMaxMS = std::max(s_gs_stats.gpuWaitMaxMS, swap_duration_ms);
+        s_gs_stats.renderUiBuildLastUS = ui_build_duration_us;
+        s_gs_stats.renderUiBuildMaxUS = std::max(s_gs_stats.renderUiBuildMaxUS, ui_build_duration_us);
+        s_gs_stats.renderGlSubmitLastUS = gl_submit_duration_us;
+        s_gs_stats.renderGlSubmitMaxUS = std::max(s_gs_stats.renderGlSubmitMaxUS, gl_submit_duration_us);
+        s_gs_stats.renderGlFinishLastUS = gl_finish_duration_us;
+        s_gs_stats.renderGlFinishMaxUS = std::max(s_gs_stats.renderGlFinishMaxUS, gl_finish_duration_us);
+        s_gs_stats.renderSwapLastUS = swap_duration_us;
+        s_gs_stats.renderSwapMaxUS = std::max(s_gs_stats.renderSwapMaxUS, swap_duration_us);
+        s_gs_stats.renderTimingGlFinishEnabled = force_gpu_finish ? 1 : 0;
     }
     
     return true;
@@ -1183,7 +1226,12 @@ void PI_HAL::set_vsync( bool b, bool apply )
     m_impl->vsync = b;
     if ( apply )
     {
-        SDL_GL_SetSwapInterval(m_impl->vsync ? 1 : 0 ); // Enable vsync
+        const int requested_swap_interval = m_impl->vsync ? 1 : 0;
+        const int swap_interval_result = SDL_GL_SetSwapInterval(requested_swap_interval);
+        LOGI("SDL swap interval request={} result={} error={}",
+             requested_swap_interval,
+             swap_interval_result,
+             swap_interval_result == 0 ? "-" : SDL_GetError());
     }
 
 }

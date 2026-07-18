@@ -49,17 +49,17 @@ See also: Installing fan control service [/doc/installing_fan_control_service.md
 
   ```sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake```
 
-* Install and compile SDL library.
+* Install and compile SDL 2.32.10.
 
   ```cd ~```
  
-  ```wget https://www.libsdl.org/release/SDL2-2.0.18.tar.gz```
+  ```wget https://www.libsdl.org/release/SDL2-2.32.10.tar.gz```
 
-  ```tar zxf SDL2-2.0.18.tar.gz```
+  ```tar zxf SDL2-2.32.10.tar.gz```
 
-  ```rm SDL2-2.0.18.tar.gz```
+  ```rm SDL2-2.32.10.tar.gz```
 
-  ```cd SDL2-2.0.18```
+  ```cd SDL2-2.32.10```
 
   ```./autogen.sh```
 
