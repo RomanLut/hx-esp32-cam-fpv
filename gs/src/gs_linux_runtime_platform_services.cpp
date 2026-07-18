@@ -1,6 +1,7 @@
 #include "gs_linux_runtime_platform_services.h"
 
 #include <arpa/inet.h>
+#include <cstdio>
 #include <cstdlib>
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -97,6 +98,33 @@ std::string LinuxRuntimePlatformServices::getSystemIPv4() const
 
     freeifaddrs(ifaddr);
     return result;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the current output resolution and refresh rate, e.g. "1920x1080 60Hz".
+std::string LinuxRuntimePlatformServices::getDisplayModeSummary() const
+{
+    if (s_hal == nullptr)
+    {
+        return {};
+    }
+
+    const ImVec2 size = s_hal->get_display_size();
+    const int refresh_rate = s_hal->get_refresh_rate();
+
+    char buf[64];
+    if (refresh_rate > 0)
+    {
+        std::snprintf(buf, sizeof(buf), "%dx%d %dHz",
+                      static_cast<int>(size.x), static_cast<int>(size.y), refresh_rate);
+    }
+    else
+    {
+        std::snprintf(buf, sizeof(buf), "%dx%d",
+                      static_cast<int>(size.x), static_cast<int>(size.y));
+    }
+    return buf;
 }
 
 //===================================================================================

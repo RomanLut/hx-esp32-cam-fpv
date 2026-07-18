@@ -14,6 +14,9 @@ public:
 
     virtual float getCpuTemperatureCelsius() const = 0;
     virtual std::string getSystemIPv4() const = 0;
+    // Human-readable current output mode, e.g. "1920x1080 60Hz". Empty when the
+    // platform has no meaningful fixed display mode to report.
+    virtual std::string getDisplayModeSummary() const { return {}; }
     virtual bool supportsCustomScreenAspectModes() const = 0;
     virtual bool supportsPipelineModeSelection() const { return false; }
     virtual void setVsync(bool enabled) = 0;

@@ -20,6 +20,7 @@ public:
     void unlock_main_context() override;
 
     ImVec2 get_display_size() const override;
+    int get_refresh_rate() const override;
     void set_backlight(float brightness) override; //0..1
     void set_video_channel(unsigned int id);
     bool process() override;

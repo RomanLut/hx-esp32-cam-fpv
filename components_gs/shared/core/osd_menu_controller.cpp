@@ -663,6 +663,10 @@ void OSDMenuController::drawLargeGapIfTallScreen()
 // Draws a single menu item and returns true if it was activated this frame.
 bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool clip )
 {
+    // Count every item, even ones clipped out of the visible scroll window below,
+    // so up/down wrapping spans the whole list instead of just the visible page.
+    this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
+
     int d = itemIndex - this->selectedItem;
     const int half_window = kScrollableMenuVisibleItems / 2;
     // Keep the first pages top-aligned until the selection moves past the half-window.
@@ -706,8 +710,6 @@ bool OSDMenuController::drawMenuItem( const char* caption, int itemIndex, bool c
     {
         m_clip_y_end = ImGui::GetCursorScreenPos().y;
     }
-
-    this->itemsCount = std::max(this->itemsCount, itemIndex + 1);
 
     this->keyHandled |= res;
 
@@ -2274,6 +2276,18 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         }
     }
 #endif
+
+    if (s_RuntimePlatformServices != nullptr)
+    {
+        const std::string display_mode = s_RuntimePlatformServices->getDisplayModeSummary();
+        if (!display_mode.empty())
+        {
+            drawLargeGapIfTallScreen();
+            char buf[256];
+            sprintf(buf, "Mode: %s##status_display_mode", display_mode.c_str());
+            this->drawStatus( buf );
+        }
+    }
 
     if (!zoom_handled && this->exitKeyPressed())
     {

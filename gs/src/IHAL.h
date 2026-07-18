@@ -17,6 +17,7 @@ public:
     virtual void unlock_main_context() = 0;
 
     virtual ImVec2 get_display_size() const = 0;
+    virtual int get_refresh_rate() const = 0; //Hz, 0 if unknown
     virtual void set_backlight(float brightness) = 0; //0..1
     virtual void set_video_channel(unsigned int id)=0;
     virtual void add_render_callback(std::function<void()> func)=0;

@@ -352,6 +352,7 @@ struct PI_HAL::Impl
 {
     uint32_t width = 1280;
     uint32_t height = 720;
+    int refresh_rate = 0; //Hz, 0 if unknown
 
     bool fullscreen = true;
     bool vsync = true;
@@ -513,13 +514,18 @@ void PI_HAL::set_video_channel(unsigned int id)
     g_VideoTexture = id;   
 }
 
+//===================================================================================
+//===================================================================================
+// Initializes the SDL display, OpenGL context, and ImGui backends.
 bool PI_HAL::init_display_sdl()
 {
     // Setup SDL
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
     {
         printf("Error: %s\n", SDL_GetError());
-        return -1;
+        // This function returns bool; -1 converts to true and previously allowed
+        // initialization without an ImGui context, causing a segmentation fault.
+        return false;
     }
 
     // Decide GL+GLSL versions
@@ -682,6 +688,16 @@ bool PI_HAL::init_display_sdl()
     }
 
     printf("width:%d height:%d\n",m_impl->width,m_impl->height);
+
+    {
+        // Capture the active display mode refresh rate for both fullscreen and
+        // windowed paths so the GS display menu can report it.
+        SDL_DisplayMode current_mode = {};
+        if (SDL_GetWindowDisplayMode(m_impl->window, &current_mode) == 0)
+        {
+            m_impl->refresh_rate = current_mode.refresh_rate;
+        }
+    }
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(m_impl->window);
     SDL_GL_MakeCurrent(m_impl->window, gl_context);
@@ -1094,6 +1110,13 @@ void PI_HAL::shutdown()
 ImVec2 PI_HAL::get_display_size() const
 {
     return ImVec2(m_impl->width, m_impl->height);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+int PI_HAL::get_refresh_rate() const
+{
+    return m_impl->refresh_rate;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
