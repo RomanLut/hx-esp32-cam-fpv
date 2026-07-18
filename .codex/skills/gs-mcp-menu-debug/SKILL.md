@@ -68,7 +68,10 @@ When testing on Radxa:
 
 Useful facts:
 
-- Radxa target: `radxa@192.168.3.148`
+- Never use a remembered or hard-coded Radxa IP address. Resolve it from `gs/sync_changed_and_run_radxa.bat` before each connection, honoring an existing `RADXA_IP_ADDRESS` environment override first.
+- PowerShell address resolution:
+  `$radxaIp = if ($env:RADXA_IP_ADDRESS) { $env:RADXA_IP_ADDRESS } else { (Select-String -Path "gs/sync_changed_and_run_radxa.bat" -Pattern 'RADXA_IP_ADDRESS=([^\"]+)').Matches[0].Groups[1].Value }`
+- Radxa target: `radxa@$radxaIp`
 - Password: `radxa`
 - Remote project path: `/home/radxa/esp32-cam-fpv`
 - Remote GS path: `/home/radxa/esp32-cam-fpv/gs`
@@ -82,15 +85,15 @@ Radxa commands:
 - For small iterative fixes, prefer changed-file sync:
   `powershell -ExecutionPolicy Bypass -File scripts\sync_changed_gs_target.ps1 -Target radxa -Build`
 - Remote build:
-  `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && make -j4"`
+  `& "C:\Program Files\putty\plink.exe" -ssh -pw radxa "radxa@$radxaIp" "cd /home/radxa/esp32-cam-fpv/gs && make -j4"`
 - Normal launch:
-  `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && ./launch.sh"`
+  `& "C:\Program Files\putty\plink.exe" -ssh -pw radxa "radxa@$radxaIp" "cd /home/radxa/esp32-cam-fpv/gs && ./launch.sh"`
 - Preferred persistent remote launch (run from `gs/` so `tmux` starts `./launch.sh` with the right cwd):
-  `"C:\Program Files\putty\plink.exe" -ssh -t -pw radxa radxa@192.168.3.148 "cd /home/radxa/esp32-cam-fpv/gs && chmod +x ./launch.sh && (tmux kill-session -t gslaunch 2>/dev/null || true) && tmux new-session -d -s gslaunch ./launch.sh && tmux list-sessions"`
+  `& "C:\Program Files\putty\plink.exe" -ssh -t -pw radxa "radxa@$radxaIp" "cd /home/radxa/esp32-cam-fpv/gs && chmod +x ./launch.sh && (tmux kill-session -t gslaunch 2>/dev/null || true) && tmux new-session -d -s gslaunch ./launch.sh && tmux list-sessions"`
 - `tmux` launch verification:
-  `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "tmux list-sessions 2>/dev/null || true; echo ---; pgrep -af './launch.sh|./gs'; echo ---; tmux capture-pane -pt gslaunch 2>/dev/null | tail -n 80"`
+  `& "C:\Program Files\putty\plink.exe" -ssh -pw radxa "radxa@$radxaIp" "tmux list-sessions 2>/dev/null || true; echo ---; pgrep -af './launch.sh|./gs'; echo ---; tmux capture-pane -pt gslaunch 2>/dev/null | tail -n 80"`
 - Background launch verification:
-  `"C:\Program Files\putty\plink.exe" -ssh -pw radxa radxa@192.168.3.148 "ps -eo pid,user,cmd | grep -E './launch.sh|./gs' | grep -v grep || true; echo ---; tail -n 80 /tmp/gs-launch.log || true"`
+  `& "C:\Program Files\putty\plink.exe" -ssh -pw radxa "radxa@$radxaIp" "ps -eo pid,user,cmd | grep -E './launch.sh|./gs' | grep -v grep || true; echo ---; tail -n 80 /tmp/gs-launch.log || true"`
 
 Radxa constraints:
 

@@ -54,7 +54,7 @@ public:
 
 private:
     static constexpr unsigned int kArtifactShaderProgramCount = 4;
-    static constexpr unsigned int kDisplayShaderProgramCount = 8;
+    static constexpr unsigned int kDisplayShaderProgramCount = 4;
 
     bool ensureArtifactTarget(int frame_width, int frame_height);
     void releaseArtifactTarget();

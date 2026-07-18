@@ -42,10 +42,6 @@ constexpr uint8_t kDisplayShaderFeatureMasks[] = {
     kShaderFeatureLens,
     kShaderFeatureStabilization,
     kShaderFeatureLens | kShaderFeatureStabilization,
-    kShaderFeatureDithering,
-    kShaderFeatureLens | kShaderFeatureDithering,
-    kShaderFeatureStabilization | kShaderFeatureDithering,
-    kShaderFeatureLens | kShaderFeatureStabilization | kShaderFeatureDithering,
 };
 
 constexpr char kComposedFragmentShader[] = R"glsl(
@@ -220,7 +216,9 @@ vec3 applyDithering(vec2 sample_coord, vec3 color)
     float g = max(abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(px.x, 0.0), vec2(1.0, 1.0))))),
                   abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(0.0, px.y), vec2(1.0, 1.0))))));
     float flat_area = 1.0 - smoothstep(uDitherParams.y * 0.5, uDitherParams.y, g);
-    float n = hashNoise(gl_FragCoord.xy + vec2(color_luma * 31.0, color_luma * 17.0)) - 0.5;
+    vec2 max_pixel = max(uFrameSize - vec2(1.0, 1.0), vec2(0.0, 0.0));
+    vec2 image_pixel = floor(clamp(sample_coord * uFrameSize, vec2(0.0, 0.0), max_pixel));
+    float n = hashNoise(image_pixel + vec2(color_luma * 31.0, color_luma * 17.0)) - 0.5;
     return clamp(color + vec3(n * uDitherParams.x * flat_area), 0.0, 1.0);
 }
 #endif
@@ -606,23 +604,27 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     const bool lens_enabled = isLensCorrectionEnabled(lens_params);
     const bool deblocking_enabled = postprocessing_params.deblocking_strength > 0.0f;
     const bool dithering_enabled = postprocessing_params.dithering_strength > 0.0f;
-#if defined(__linux__) && !defined(__ANDROID__)
-    // The RK3566 Mali-G52 runs adaptive dithering at camera resolution so the
-    // unchanged effect does not perform three texture reads for every display pixel.
+    // Artifact correction is defined on the source JPEG pixel grid on every platform.
+    // This keeps JPEG block boundaries and the dither pattern stable under display scaling.
     const bool dither_in_artifact_pass = dithering_enabled;
-#else
-    const bool dither_in_artifact_pass = false;
-#endif
-    const bool display_dithering_enabled = dithering_enabled && !dither_in_artifact_pass;
     const bool artifact_pass_enabled = deblocking_enabled || dither_in_artifact_pass;
+    const bool full_frame_uv = std::abs(std::abs(quad.u1 - quad.u0) - 1.0f) < 0.0001f &&
+                               std::abs(std::abs(quad.v1 - quad.v0) - 1.0f) < 0.0001f;
+    // With no geometric or UV-crop resampling, the artifact shader can write the
+    // final target directly and avoid an intermediate full-frame texture plus a copy pass.
+    // Cropped UVs must keep the source pass so JPEG block coordinates stay full-frame based.
+    const bool direct_artifact_pass = artifact_pass_enabled &&
+                                      !lens_enabled &&
+                                      !stabilization_enabled &&
+                                      full_frame_uv;
     const uint8_t artifact_program_index = (deblocking_enabled ? 1u : 0u) |
                                            (dither_in_artifact_pass ? 2u : 0u);
     const uint8_t display_program_index = (lens_enabled ? 1u : 0u) |
-                                          (stabilization_enabled ? 2u : 0u) |
-                                          (display_dithering_enabled ? 4u : 0u);
+                                          (stabilization_enabled ? 2u : 0u);
     const GLuint artifact_program = m_artifact_programs[artifact_program_index];
     const GLuint display_program = m_display_programs[display_program_index];
-    if ((artifact_pass_enabled && artifact_program == 0) || display_program == 0)
+    if ((artifact_pass_enabled && artifact_program == 0) ||
+        (!direct_artifact_pass && display_program == 0))
     {
         return false;
     }
@@ -653,10 +655,19 @@ bool VideoShaderRenderer::draw(unsigned int texture,
     glGetIntegerv(GL_VIEWPORT, previous_viewport);
     glGetIntegerv(GL_SCISSOR_BOX, previous_scissor_box);
 
+    const GLint scissor_x = static_cast<GLint>(std::round(clip_x));
+    const GLint scissor_y = static_cast<GLint>(std::round(surface_height - clip_y - clip_height));
+    const GLsizei scissor_w = static_cast<GLsizei>(std::round(clip_width));
+    const GLsizei scissor_h = static_cast<GLsizei>(std::round(clip_height));
+
     GLuint display_texture = texture;
     if (artifact_pass_enabled)
     {
-        if (!ensureArtifactTarget(frame_width, frame_height))
+        if (direct_artifact_pass && m_artifact_framebuffer != 0)
+        {
+            releaseArtifactTarget();
+        }
+        if (!direct_artifact_pass && !ensureArtifactTarget(frame_width, frame_height))
         {
             glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
             glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
@@ -670,7 +681,8 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         if (!s_logged_artifact_pass_active)
         {
             s_logged_artifact_pass_active = true;
-            LOGI("Video artifact shader active deblock=({:.3f},{:.3f},{:.3f},{:.3f}) dither=({:.4f},{:.3f})",
+            LOGI("Video artifact shader active target={} deblock=({:.3f},{:.3f},{:.3f},{:.3f}) dither=({:.4f},{:.3f})",
+                 direct_artifact_pass ? "final" : "intermediate",
                  postprocessing_params.deblocking_strength,
                  postprocessing_params.deblocking_alpha,
                  postprocessing_params.deblocking_beta,
@@ -685,14 +697,29 @@ bool VideoShaderRenderer::draw(unsigned int texture,
             -1.0f, -1.0f, 0.0f, 0.0f,
              1.0f, -1.0f, 1.0f, 0.0f,
         };
-        glBindFramebuffer(GL_FRAMEBUFFER, m_artifact_framebuffer);
-        glViewport(0, 0, m_artifact_width, m_artifact_height);
-        glDisable(GL_SCISSOR_TEST);
+        const GLfloat* artifact_draw_vertices = direct_artifact_pass ? vertices : artifact_vertices;
+        if (direct_artifact_pass)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
+            glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
+        }
+        else
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, m_artifact_framebuffer);
+            glViewport(0, 0, m_artifact_width, m_artifact_height);
+            glDisable(GL_SCISSOR_TEST);
+        }
         glUseProgram(artifact_program);
         glBindTexture(GL_TEXTURE_2D, texture);
         glUniform1i(glGetUniformLocation(artifact_program, "uTexture"), 0);
-        glUniform2f(glGetUniformLocation(artifact_program, "uUv0"), 0.0f, 1.0f);
-        glUniform2f(glGetUniformLocation(artifact_program, "uUv1"), 1.0f, 0.0f);
+        glUniform2f(glGetUniformLocation(artifact_program, "uUv0"),
+                    direct_artifact_pass ? quad.u0 : 0.0f,
+                    direct_artifact_pass ? quad.v0 : 1.0f);
+        glUniform2f(glGetUniformLocation(artifact_program, "uUv1"),
+                    direct_artifact_pass ? quad.u1 : 1.0f,
+                    direct_artifact_pass ? quad.v1 : 0.0f);
         glUniform2f(glGetUniformLocation(artifact_program, "uFrameSize"),
                     static_cast<float>(std::max(frame_width, 1)),
                     static_cast<float>(std::max(frame_height, 1)));
@@ -712,75 +739,59 @@ bool VideoShaderRenderer::draw(unsigned int texture,
         }
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_vertices);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_vertices + 2);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_draw_vertices);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), artifact_draw_vertices + 2);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glDisableVertexAttribArray(0);
         glDisableVertexAttribArray(1);
-        display_texture = m_artifact_texture;
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
-    glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
-    glUseProgram(display_program);
-    glBindTexture(GL_TEXTURE_2D, display_texture);
-    glUniform1i(glGetUniformLocation(display_program, "uTexture"), 0);
-    glUniform2f(glGetUniformLocation(display_program, "uUv0"), quad.u0, quad.v0);
-    glUniform2f(glGetUniformLocation(display_program, "uUv1"), quad.u1, quad.v1);
-    if (stabilization_enabled || display_dithering_enabled)
-    {
-        glUniform2f(glGetUniformLocation(display_program, "uFrameSize"),
-                    static_cast<float>(std::max(frame_width, 1)),
-                    static_cast<float>(std::max(frame_height, 1)));
-    }
-    if (stabilization_enabled)
-    {
-        glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv0"), inv00, inv01, inv02);
-        glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv1"), inv10, inv11, inv12);
-    }
-    if (display_dithering_enabled)
-    {
-        static bool s_logged_dithering_active = false;
-        if (!s_logged_dithering_active)
+        if (!direct_artifact_pass)
         {
-            s_logged_dithering_active = true;
-            LOGI("Video display shader dithering active dither=({:.4f},{:.3f})",
-                 postprocessing_params.dithering_strength,
-                 postprocessing_params.dithering_flat_threshold);
+            display_texture = m_artifact_texture;
         }
-        glUniform2f(glGetUniformLocation(display_program, "uDitherParams"),
-                    postprocessing_params.dithering_strength,
-                    postprocessing_params.dithering_flat_threshold);
     }
-    if (lens_enabled)
+
+    if (!direct_artifact_pass)
     {
-        const float aspect = frame_height > 0
-            ? static_cast<float>(std::max(frame_width, 1)) / static_cast<float>(frame_height)
-            : 1.0f;
-        glUniform3f(glGetUniformLocation(display_program, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
-        glUniform2f(glGetUniformLocation(display_program, "uTangential"), lens_params.p1, lens_params.p2);
-        const float focal_x = lens_params.has_camera_matrix ? lens_params.fx_norm : 0.5f / std::max(aspect, 0.0001f);
-        const float focal_y = lens_params.has_camera_matrix ? lens_params.fy_norm : 0.5f;
-        const float principal_x = lens_params.has_camera_matrix ? lens_params.cx_norm : 0.5f;
-        const float principal_y = lens_params.has_camera_matrix ? lens_params.cy_norm : 0.5f;
-        glUniform2f(glGetUniformLocation(display_program, "uFocalNorm"), focal_x, focal_y);
-        glUniform2f(glGetUniformLocation(display_program, "uPrincipalNorm"), principal_x, principal_y);
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous_framebuffer));
+        glViewport(previous_viewport[0], previous_viewport[1], previous_viewport[2], previous_viewport[3]);
+        glUseProgram(display_program);
+        glBindTexture(GL_TEXTURE_2D, display_texture);
+        glUniform1i(glGetUniformLocation(display_program, "uTexture"), 0);
+        glUniform2f(glGetUniformLocation(display_program, "uUv0"), quad.u0, quad.v0);
+        glUniform2f(glGetUniformLocation(display_program, "uUv1"), quad.u1, quad.v1);
+        if (stabilization_enabled)
+        {
+            glUniform2f(glGetUniformLocation(display_program, "uFrameSize"),
+                        static_cast<float>(std::max(frame_width, 1)),
+                        static_cast<float>(std::max(frame_height, 1)));
+            glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv0"), inv00, inv01, inv02);
+            glUniform3f(glGetUniformLocation(display_program, "uStabilizationInv1"), inv10, inv11, inv12);
+        }
+        if (lens_enabled)
+        {
+            const float aspect = frame_height > 0
+                ? static_cast<float>(std::max(frame_width, 1)) / static_cast<float>(frame_height)
+                : 1.0f;
+            glUniform3f(glGetUniformLocation(display_program, "uRadial"), lens_params.k1, lens_params.k2, lens_params.k3);
+            glUniform2f(glGetUniformLocation(display_program, "uTangential"), lens_params.p1, lens_params.p2);
+            const float focal_x = lens_params.has_camera_matrix ? lens_params.fx_norm : 0.5f / std::max(aspect, 0.0001f);
+            const float focal_y = lens_params.has_camera_matrix ? lens_params.fy_norm : 0.5f;
+            const float principal_x = lens_params.has_camera_matrix ? lens_params.cx_norm : 0.5f;
+            const float principal_y = lens_params.has_camera_matrix ? lens_params.cy_norm : 0.5f;
+            glUniform2f(glGetUniformLocation(display_program, "uFocalNorm"), focal_x, focal_y);
+            glUniform2f(glGetUniformLocation(display_program, "uPrincipalNorm"), principal_x, principal_y);
+        }
+
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDisableVertexAttribArray(0);
+        glDisableVertexAttribArray(1);
     }
-
-    const GLint scissor_x = static_cast<GLint>(std::round(clip_x));
-    const GLint scissor_y = static_cast<GLint>(std::round(surface_height - clip_y - clip_height));
-    const GLsizei scissor_w = static_cast<GLsizei>(std::round(clip_width));
-    const GLsizei scissor_h = static_cast<GLsizei>(std::round(clip_height));
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(scissor_x, scissor_y, scissor_w, scissor_h);
-
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), vertices + 2);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
 
     if (scissor_was_enabled)
     {
