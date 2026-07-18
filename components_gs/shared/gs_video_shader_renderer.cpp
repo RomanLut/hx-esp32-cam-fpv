@@ -142,6 +142,7 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
     vec2 px = 1.0 / max(uFrameSize, vec2(1.0, 1.0));
     vec2 pixel = floor(sample_coord * uFrameSize);
     vec3 result = color;
+    float color_luma = luma(color);
     float block_x = mod(pixel.x, 8.0);
     if (block_x < 0.5 || block_x > 6.5)
     {
@@ -153,13 +154,13 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
         if (inVideoFrame(p1_coord) && inVideoFrame(q1_coord))
         {
             vec3 p1c = sampleVideo(p1_coord);
-            vec3 p0c = sampleVideo(p0_coord);
-            vec3 q0c = sampleVideo(q0_coord);
+            vec3 across_c = sampleVideo(q_side ? p0_coord : q0_coord);
             vec3 q1c = sampleVideo(q1_coord);
             float p1 = luma(p1c);
-            float p0 = luma(p0c);
-            float q0 = luma(q0c);
+            float across_luma = luma(across_c);
             float q1 = luma(q1c);
+            float p0 = q_side ? across_luma : color_luma;
+            float q0 = q_side ? color_luma : across_luma;
             float edge = abs(q0 - p0);
             float flatness = max(abs(p0 - p1), abs(q1 - q0));
             if (edge < uDeblockParams.y && flatness < uDeblockParams.z)
@@ -167,9 +168,8 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
                 float weight = uDeblockParams.x *
                                (1.0 - smoothstep(uDeblockParams.y * 0.35, uDeblockParams.y, edge)) *
                                (1.0 - smoothstep(uDeblockParams.z * 0.35, uDeblockParams.z, flatness));
-                vec3 across = q_side ? p0c : q0c;
-                vec3 local = (p1c + p0c + q0c + q1c) * 0.25;
-                result = mix(result, mix(across, local, 0.35), clamp(weight, 0.0, uDeblockParams.w));
+                vec3 local = (p1c + color + across_c + q1c) * 0.25;
+                result = mix(result, mix(across_c, local, 0.35), clamp(weight, 0.0, uDeblockParams.w));
             }
         }
     }
@@ -185,13 +185,13 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
         if (inVideoFrame(p1_coord) && inVideoFrame(q1_coord))
         {
             vec3 p1c = sampleVideo(p1_coord);
-            vec3 p0c = sampleVideo(p0_coord);
-            vec3 q0c = sampleVideo(q0_coord);
+            vec3 across_c = sampleVideo(q_side ? p0_coord : q0_coord);
             vec3 q1c = sampleVideo(q1_coord);
             float p1 = luma(p1c);
-            float p0 = luma(p0c);
-            float q0 = luma(q0c);
+            float across_luma = luma(across_c);
             float q1 = luma(q1c);
+            float p0 = q_side ? across_luma : color_luma;
+            float q0 = q_side ? color_luma : across_luma;
             float edge = abs(q0 - p0);
             float flatness = max(abs(p0 - p1), abs(q1 - q0));
             if (edge < uDeblockParams.y && flatness < uDeblockParams.z)
@@ -199,9 +199,8 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
                 float weight = uDeblockParams.x *
                                (1.0 - smoothstep(uDeblockParams.y * 0.35, uDeblockParams.y, edge)) *
                                (1.0 - smoothstep(uDeblockParams.z * 0.35, uDeblockParams.z, flatness));
-                vec3 across = q_side ? p0c : q0c;
-                vec3 local = (p1c + p0c + q0c + q1c) * 0.25;
-                result = mix(result, mix(across, local, 0.35), clamp(weight, 0.0, uDeblockParams.w));
+                vec3 local = (p1c + color + across_c + q1c) * 0.25;
+                result = mix(result, mix(across_c, local, 0.35), clamp(weight, 0.0, uDeblockParams.w));
             }
         }
     }
