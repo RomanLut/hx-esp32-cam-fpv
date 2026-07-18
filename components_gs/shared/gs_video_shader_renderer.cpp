@@ -45,6 +45,7 @@ constexpr uint8_t kDisplayShaderFeatureMasks[] = {
 };
 
 constexpr char kComposedFragmentShader[] = R"glsl(
+#extension GL_OES_standard_derivatives : enable
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -211,10 +212,10 @@ vec3 applyDeblocking(vec2 sample_coord, vec3 color)
 #if GS_FEATURE_DITHERING
 vec3 applyDithering(vec2 sample_coord, vec3 color)
 {
-    vec2 px = 1.0 / max(uFrameSize, vec2(1.0, 1.0));
     float color_luma = luma(color);
-    float g = max(abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(px.x, 0.0), vec2(1.0, 1.0))))),
-                  abs(color_luma - luma(sampleVideo(min(sample_coord + vec2(0.0, px.y), vec2(1.0, 1.0))))));
+    // The artifact pass always rasterizes one fragment per source pixel. Screen
+    // derivatives therefore measure image-space gradients without two texture reads.
+    float g = max(abs(dFdx(color_luma)), abs(dFdy(color_luma)));
     float flat_area = 1.0 - smoothstep(uDitherParams.y * 0.5, uDitherParams.y, g);
     vec2 max_pixel = max(uFrameSize - vec2(1.0, 1.0), vec2(0.0, 0.0));
     vec2 image_pixel = floor(clamp(sample_coord * uFrameSize, vec2(0.0, 0.0), max_pixel));
