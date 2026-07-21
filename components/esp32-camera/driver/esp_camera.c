@@ -291,14 +291,17 @@ esp_err_t esp_camera_init(const camera_config_t *config)
     {
         detected_xclk_freq_hz = config->ov2640_xclk_freq_hz;
     }
-    else if ((s_state->sensor.id.PID == OV5640_PID || s_state->sensor.id.PID == OV3660_PID) && config->ov5640_xclk_hz > 0)
+    else if (s_state->sensor.id.PID == OV3660_PID && config->ov3660_xclk_hz > 0)
     {
-        // OV3660 uses the same XCLK as OV5640 (6-27 MHz input range)
+        detected_xclk_freq_hz = config->ov3660_xclk_hz;
+    }
+    else if (s_state->sensor.id.PID == OV5640_PID && config->ov5640_xclk_hz > 0)
+    {
         detected_xclk_freq_hz = config->ov5640_xclk_hz;
     }
 
     // Sensor probing must use the generic XCLK. Switch only after the PID is known so
-    // one firmware can safely detect both OV2640 and OV5640 before capture starts.
+    // one firmware can safely detect OV2640, OV3660, and OV5640 before capture starts.
     if (detected_xclk_freq_hz != config->xclk_freq_hz)
     {
         err = s_state->sensor.set_xclk(&s_state->sensor, config->ledc_timer, detected_xclk_freq_hz / 1000000);

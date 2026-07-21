@@ -3053,8 +3053,10 @@ static void init_camera()
         .xclk_freq_hz = 12000000,
         .ov2640_xclk_freq_hz = 12000000,
 #if defined(BOARD_ESP32C5)
+        .ov3660_xclk_hz = 24000000,
         .ov5640_xclk_hz = 24000000,
 #else
+        .ov3660_xclk_hz = 20000000,
         .ov5640_xclk_hz = 20000000,
 #endif
         .ledc_timer = LEDC_TIMER_0,

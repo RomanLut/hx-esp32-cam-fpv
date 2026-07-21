@@ -140,6 +140,7 @@ typedef struct {
 
     int xclk_freq_hz;               /*!< Initial detection frequency and fallback XCLK frequency for sensors without a sensor-specific value */
     int ov2640_xclk_freq_hz;        /*!< OV2640 XCLK frequency selected after runtime sensor detection, or 0 to use xclk_freq_hz */
+    int ov3660_xclk_hz;             /*!< OV3660 XCLK frequency selected after runtime sensor detection, or 0 to use xclk_freq_hz */
     int ov5640_xclk_hz;             /*!< OV5640 XCLK frequency selected after runtime sensor detection, or 0 to use xclk_freq_hz */
 
     ledc_timer_t ledc_timer;        /*!< LEDC timer to be used for generating XCLK  */
