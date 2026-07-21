@@ -875,7 +875,6 @@ void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t devi
 		//~30kb + ~65KB PSRAM
         setup_fec(s_ground2air_config_packet.dataChannel.fec_codec_k,
                   s_ground2air_config_packet.dataChannel.fec_codec_n,
-                  s_ground2air_config_packet.dataChannel.fec_codec_mtu,
                   add_to_wlan_outgoing_queue,
                   add_to_wlan_incoming_queue);
 

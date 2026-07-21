@@ -58,7 +58,10 @@ void init_fec_codec(Fec_Codec & codec,uint8_t k,uint8_t n,uint16_t mtu,bool is_e
         codec.unlock();
 }
 
-void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t )){
+//===================================================================================
+//===================================================================================
+// Initializes air and ground FEC codecs and installs their callbacks.
+void setup_fec(uint8_t k,uint8_t n,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t )){
     init_crc8_table();
     init_fec();
 
@@ -71,7 +74,6 @@ void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const voi
     heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
-    s_fec_encoder.switch_mtu( mtu );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,12 +128,6 @@ bool Fec_Codec::init(const Descriptor& descriptor, bool is_encoder)
 void Fec_Codec::switch_n(int n)
 {
     m_descriptor.coding_n = n;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////
-void Fec_Codec::switch_mtu( size_t new_mtu )
-{
-    this->m_encoder.scheduled_mtu = new_mtu;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -232,10 +228,6 @@ bool Fec_Codec::start_tasks()
     stop_tasks();
 
     m_encoder = Encoder();
-
-    this->m_encoder.current_mtu = m_descriptor.mtu;
-    this->m_encoder.scheduled_mtu = m_descriptor.mtu;
-
 
     m_decoder = Decoder();
 
@@ -645,8 +637,9 @@ void Fec_Codec::static_encoder_task_proc(void* params)
 }
 */
 
-////////////////////////////////////////////////////////////////////////////////////////////
-
+//===================================================================================
+//===================================================================================
+// Returns a fixed-size encoder packet buffer using the codec descriptor MTU.
 /*IRAM_ATTR*/ uint8_t* Fec_Codec::get_encode_packet_data(bool block, uint32_t* size)
 {
     if (m_is_encoder == false || !m_encoder.task)
@@ -671,19 +664,7 @@ void Fec_Codec::static_encoder_task_proc(void* params)
 #endif
     }
 
-    if ( m_encoder.current_mtu != m_encoder.scheduled_mtu )
-    {
-        //try to guess if this packet will be the first packet in the fec block.
-        //this may fail, as operation is not atomic at all...
-        //if it fails, we will find it out in the fec encoder task and will not create fec packets at all.
-        int c = m_encoder.cur_block_packets + uxQueueMessagesWaiting(m_encoder.packet_queue);
-        if  ( (c % m_descriptor.coding_k) == 0 )
-        {
-            m_encoder.current_mtu = m_encoder.scheduled_mtu;
-        }
-    }
-
-    crt_packet.size = m_encoder.current_mtu; 
+    crt_packet.size = m_descriptor.mtu;
 
     *size = crt_packet.size;
     return crt_packet.data + sizeof(Packet_Header);

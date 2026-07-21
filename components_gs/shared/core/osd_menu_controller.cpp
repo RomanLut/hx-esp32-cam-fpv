@@ -1165,23 +1165,6 @@ void OSDMenuController::drawCameraSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    {
-        char buf[256];
-        sprintf(buf, "Air to GS MTU: %d", config.dataChannel.fec_codec_mtu);
-        if ( this->drawMenuItem( buf, 6) )
-        {
-            if ( config.dataChannel.fec_codec_mtu == AIR2GROUND_MAX_MTU )
-            {
-                config.dataChannel.fec_codec_mtu = AIR2GROUND_MIN_MTU;
-            }
-            else
-            {
-                config.dataChannel.fec_codec_mtu = AIR2GROUND_MAX_MTU;
-            }
-        }
-    }
-
-
     if ( this->exitKeyPressed())
     {
         this->goBack();

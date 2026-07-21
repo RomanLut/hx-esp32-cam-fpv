@@ -17,7 +17,7 @@ extern int s_fec_spin_count;
 extern int s_fec_wlan_error_count;
 extern int s_encoder_output_ovf_flag;
 
-void setup_fec(uint8_t k,uint8_t n,uint16_t mtu,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
+void setup_fec(uint8_t k,uint8_t n,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
 
 class Fec_Codec
 {
@@ -78,8 +78,6 @@ public:
     bool init(const Descriptor& descriptor, bool is_encoder);
     void switch_n(int n);
 
-    void switch_mtu( size_t new_mtu );
-
 private:
 
     void stop_tasks();
@@ -110,9 +108,6 @@ private:
         TaskHandle_t task = nullptr;
 
         uint32_t last_block_index = 0;
-
-        size_t scheduled_mtu;  //mtu which will be set on the next packet
-        size_t current_mtu;  //mtu of current packe (data size without PacketHeader)
 
         std::vector<Packet> block_packets;
         Packet block_fec_packet;

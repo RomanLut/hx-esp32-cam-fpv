@@ -609,15 +609,17 @@ void syncRxDecoderStatsLocked(NativeHandle& handle)
     s_runtimeCore.gs_stats.FECSuccPacketIndexCounter = stats.fec_success_packet_index_sum;
 }
 
+//===================================================================================
+//===================================================================================
+// Applies negotiated FEC coding parameters
 void ensureRxDecoderConfigLocked(NativeHandle& handle)
 {
     const uint8_t config_k = s_runtimeCore.config_packet.dataChannel.fec_codec_k;
     const uint8_t config_n = s_runtimeCore.config_packet.dataChannel.fec_codec_n;
-    const uint16_t config_mtu = s_runtimeCore.config_packet.dataChannel.fec_codec_mtu;
 
     const uint8_t effective_k = config_k > 0 ? config_k : FEC_K;
     const uint8_t effective_n = config_n > 0 ? config_n : static_cast<uint8_t>(8);
-    const uint16_t effective_mtu = config_mtu > 0 ? config_mtu : static_cast<uint16_t>(AIR2GROUND_MAX_MTU);
+    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
 
     if (s_runtimeCore.rx_decoder_k == effective_k &&
         s_runtimeCore.rx_decoder_n == effective_n &&

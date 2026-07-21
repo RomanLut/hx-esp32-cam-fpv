@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <limits>
 
 #include "gs_asset_loader.h"
 #include "Log.h"
@@ -334,8 +333,6 @@ void GSTestTransport::queueConnectConfigPacket()
     config_packet.airDeviceId = kTestAirDeviceId;
     config_packet.gsDeviceId = currentGsDeviceId();
     config_packet.camera.resolution = Resolution::HD;
-    config_packet.dataChannel.fec_codec_mtu =
-        static_cast<uint16_t>(std::min<size_t>(std::numeric_limits<uint16_t>::max(), m_rx_descriptor.mtu));
     config_packet.misc.apfpv = 0;
     sealFixedHeaderPacket(config_packet);
 
@@ -343,10 +340,9 @@ void GSTestTransport::queueConnectConfigPacket()
     std::memcpy(raw_packet.data(), &config_packet, sizeof(config_packet));
     m_pending_packets.push_back(std::move(raw_packet));
     m_config_pending = false;
-    LOGI("Test transport queued config air={} gs={} mtu={}",
+    LOGI("Test transport queued config air={} gs={}",
          static_cast<unsigned int>(kTestAirDeviceId),
-         static_cast<unsigned int>(config_packet.gsDeviceId),
-         static_cast<unsigned int>(config_packet.dataChannel.fec_codec_mtu));
+         static_cast<unsigned int>(config_packet.gsDeviceId));
 }
 
 //===================================================================================

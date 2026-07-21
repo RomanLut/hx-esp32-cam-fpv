@@ -1537,11 +1537,10 @@ void LinuxApfpvTransport::ensureRxDecoderConfig()
 
     const uint8_t config_k = have_live_config ? s_runtimeCore.config_packet.dataChannel.fec_codec_k : 0;
     const uint8_t config_n = have_live_config ? s_runtimeCore.config_packet.dataChannel.fec_codec_n : 0;
-    const uint16_t config_mtu = have_live_config ? s_runtimeCore.config_packet.dataChannel.fec_codec_mtu : 0;
 
     const uint8_t effective_k = config_k > 0 ? config_k : static_cast<uint8_t>(FEC_K);
     const uint8_t effective_n = config_n > 0 ? config_n : kApfpvDefaultRxCodingN;
-    const uint16_t effective_mtu = config_mtu > 0 ? config_mtu : static_cast<uint16_t>(AIR2GROUND_MAX_MTU);
+    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
 
     const FecBlockDecoder::Stats stats_before = m_rx_decoder.getStats();
     if (s_runtimeCore.rx_decoder_k == effective_k &&

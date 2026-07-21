@@ -136,7 +136,6 @@ struct DataChannelConfig
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
     uint8_t fec_codec_k = FEC_K;
     uint8_t fec_codec_n = FEC_N;
-    uint16_t fec_codec_mtu = AIR2GROUND_MAX_MTU;
 };
 
 //======================================================
