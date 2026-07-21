@@ -1087,13 +1087,21 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
             continue;
         }
         
-        const TVMode* v = &vmodes[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
-        bool ov5640_family_high_fps = camera_is_ov5640()
-            ? s_ground2air_config_packet2.camera.ov5640HighFPS
-            : s_ground2air_config_packet2.camera.ov2640HighFPS;
-        uint8_t fps = camera_uses_ov5640_mode_table()
-            ? (ov5640_family_high_fps ? (camera_is_ov3660() ? v->highFPS2640 : v->highFPS5640) : v->FPS5640)
-            : (s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640);
+#if defined(CONFIG_IDF_TARGET_ESP32)
+        const TVMode* modeTable = getVModeTable(true);
+#else
+        const TVMode* modeTable = getVModeTable(false);
+#endif
+        const TVMode* v = &modeTable[clamp((int)s_ground2air_config_packet2.camera.resolution, 0, (int)(Resolution::COUNT)-1)];
+        uint8_t fps = s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
+        if (camera_is_ov3660())
+        {
+            fps = s_ground2air_config_packet2.camera.ov3660HighFPS ? v->highFPS3660 : v->FPS3660;
+        }
+        else if (camera_is_ov5640())
+        {
+            fps = s_ground2air_config_packet2.camera.ov5640HighFPS ? v->highFPS5640 : v->FPS5640;
+        }
         uint16_t frameWidth = v->width;
         uint16_t frameHeight = v->height;
 
@@ -1606,23 +1614,18 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
     bool resolutionChanged = (dst.camera.resolution != src.camera.resolution);
     bool ov2640HighFPSChanged = (src.camera.ov2640HighFPS != dst.camera.ov2640HighFPS );
+    bool ov3660HighFPSChanged = (src.camera.ov3660HighFPS != dst.camera.ov3660HighFPS );
     bool ov5640HighFPSChanged = (src.camera.ov5640HighFPS != dst.camera.ov5640HighFPS );
-    if ( forceCameraSettings || resolutionChanged || ov2640HighFPSChanged || ov5640HighFPSChanged )
+    if ( forceCameraSettings || resolutionChanged || ov2640HighFPSChanged || ov3660HighFPSChanged || ov5640HighFPSChanged )
     {
         s_shouldRestartRecording =  esp_timer_get_time() + 1000000;
         LOG("Camera resolution changed from %d to %d\n", (int)dst.camera.resolution, (int)src.camera.resolution);
 
         if (camera_uses_ov5640_mode_table())
         {
-            // OV3660 is reported to GS as non-OV5640, so GS controls its high-FPS
-            // toggle through the OV2640 flag while the sensor still uses the
-            // OV5640-family timing path internally. Limit the OV3660 high-FPS
-            // flag to the 16:9 modes; the old 4:3 high-FPS PLL flickers.
-            bool ov3660HighFPSMode = src.camera.resolution == Resolution::VGA16
-                || src.camera.resolution == Resolution::SVGA16;
             bool highFPS = camera_is_ov5640()
                 ? src.camera.ov5640HighFPS
-                : (src.camera.ov2640HighFPS && ov3660HighFPSMode);
+                : src.camera.ov3660HighFPS;
             s->set_colorbar(s, highFPS ? 1 : 0);
         }
         else
@@ -1702,6 +1705,10 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
         if ( ov2640HighFPSChanged)
         {
             nvs_args_set( "ov2640hfps", src.camera.ov2640HighFPS?1:0 );
+        }
+        if ( ov3660HighFPSChanged)
+        {
+            nvs_args_set( "ov3660hfps", src.camera.ov3660HighFPS?1:0 );
         }
         if ( ov5640HighFPSChanged)
         {
@@ -2234,6 +2241,12 @@ IRAM_ATTR void send_air2ground_osd_packet()
     }
 
     packet.stats.isOV5640 = camera_is_ov5640() ? 1 : 0;
+    packet.stats.isOV3660 = camera_is_ov3660() ? 1 : 0;
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    packet.stats.isEsp32 = 1;
+#else
+    packet.stats.isEsp32 = 0;
+#endif
 
     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
     packet.stats.inPacketRate = s_last_stats.inPacketCounter;
@@ -3238,6 +3251,7 @@ void readConfig()
 
     s_ground2air_config_packet.camera.vflip = nvs_args_read( "vflip", 0 ) == 1;
     s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
+    s_ground2air_config_packet.camera.ov3660HighFPS = nvs_args_read( "ov3660hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
 
     s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );

@@ -133,10 +133,102 @@ const char* kResolutionName5640HiAspect[] =
     "1600x1200"
 };
 
+const char* kResolutionName3660ESP32[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 25fps",
+    "640x360 30fps",
+    "800x600 25fps",
+    "800x456 30fps",
+    "1024x768",
+    "1024x576 22fps",
+    "1280x960",
+    "1280x720 18fps",
+    "1600x1200"
+};
+
+const char* kResolutionName3660ESP32Hi[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 25fps",
+    "640x360 35fps",
+    "800x600 25fps",
+    "800x456 35fps",
+    "1024x768",
+    "1024x576 22fps",
+    "1280x960",
+    "1280x720 18fps",
+    "1600x1200"
+};
+
+const char* kResolutionName3660ESP32Aspect[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 25fps (4:3)",
+    "640x360 30fps (16:9)",
+    "800x600 25fps (4:3)",
+    "800x456 30fps (16:9)",
+    "1024x768",
+    "1024x576 22fps (16:9)",
+    "1280x960",
+    "1280x720 18fps (16:9)",
+    "1600x1200"
+};
+
+const char* kResolutionName3660ESP32HiAspect[] =
+{
+    "320x240",
+    "400x296",
+    "480x320",
+    "640x480 25fps (4:3)",
+    "640x360 35fps (16:9)",
+    "800x600 25fps (4:3)",
+    "800x456 35fps (16:9)",
+    "1024x768",
+    "1024x576 22fps (16:9)",
+    "1280x960",
+    "1280x720 18fps (16:9)",
+    "1600x1200"
+};
+
+const char* kResolutionName3660S3C5[] =
+{
+    "320x240", "400x296", "480x320", "640x480 30fps",
+    "640x360 30fps", "800x600 30fps", "800x456 30fps", "1024x768",
+    "1024x576 30fps", "1280x960", "1280x720 29fps", "1600x1200"
+};
+
+const char* kResolutionName3660S3C5Hi[] =
+{
+    "320x240", "400x296", "480x320", "640x480 40fps",
+    "640x360 50fps", "800x600 40fps", "800x456 50fps", "1024x768",
+    "1024x576 30fps", "1280x960", "1280x720 29fps", "1600x1200"
+};
+
+const char* kResolutionName3660S3C5Aspect[] =
+{
+    "320x240", "400x296", "480x320", "640x480 30fps (4:3)",
+    "640x360 30fps (16:9)", "800x600 30fps (4:3)", "800x456 30fps (16:9)", "1024x768",
+    "1024x576 30fps (16:9)", "1280x960", "1280x720 29fps (16:9)", "1600x1200"
+};
+
+const char* kResolutionName3660S3C5HiAspect[] =
+{
+    "320x240", "400x296", "480x320", "640x480 40fps (4:3)",
+    "640x360 50fps (16:9)", "800x600 40fps (4:3)", "800x456 50fps (16:9)", "1024x768",
+    "1024x576 30fps (16:9)", "1280x960", "1280x720 29fps (16:9)", "1600x1200"
+};
+
 //===================================================================================
 //===================================================================================
-// Returns the appropriate resolution name table for the given sensor and fps variant.
-const char* const* getResolutionNames(bool is_ov5640, bool high_fps, bool aspect_variant)
+// Returns the appropriate resolution name table for the negotiated sensor and FPS variant.
+const char* const* getResolutionNames(bool is_ov5640, bool is_ov3660, bool is_esp32, bool high_fps, bool aspect_variant)
 {
     if (is_ov5640)
     {
@@ -145,6 +237,23 @@ const char* const* getResolutionNames(bool is_ov5640, bool high_fps, bool aspect
             return high_fps ? kResolutionName5640HiAspect : kResolutionName5640Aspect;
         }
         return high_fps ? kResolutionName5640Hi : kResolutionName5640;
+    }
+
+    if (is_ov3660)
+    {
+        if (aspect_variant)
+        {
+            if (is_esp32)
+            {
+                return high_fps ? kResolutionName3660ESP32HiAspect : kResolutionName3660ESP32Aspect;
+            }
+            return high_fps ? kResolutionName3660S3C5HiAspect : kResolutionName3660S3C5Aspect;
+        }
+        if (is_esp32)
+        {
+            return high_fps ? kResolutionName3660ESP32Hi : kResolutionName3660ESP32;
+        }
+        return high_fps ? kResolutionName3660S3C5Hi : kResolutionName3660S3C5;
     }
 
     if (aspect_variant)
@@ -209,10 +318,12 @@ namespace gs::menu
 //===================================================================================
 //===================================================================================
 // Returns a short human-readable string describing the currently configured resolution.
-std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640)
+std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640, bool is_ov3660, bool is_esp32)
 {
-    const bool high_fps = is_ov5640 ? config.camera.ov5640HighFPS : config.camera.ov2640HighFPS;
-    const char* const* names = getResolutionNames(is_ov5640, high_fps, false);
+    const bool high_fps = is_ov5640
+        ? config.camera.ov5640HighFPS
+        : (is_ov3660 ? config.camera.ov3660HighFPS : config.camera.ov2640HighFPS);
+    const char* const* names = getResolutionNames(is_ov5640, is_ov3660, is_esp32, high_fps, false);
     const int index = std::clamp(static_cast<int>(config.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1);
     return names[index];
 }
@@ -220,10 +331,12 @@ std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is
 //===================================================================================
 //===================================================================================
 // Returns the display label for a resolution menu option at the given index.
-const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, int menu_index, bool aspect_variant)
+const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, bool is_ov3660, bool is_esp32, int menu_index, bool aspect_variant)
 {
-    const bool high_fps = is_ov5640 ? config.camera.ov5640HighFPS : config.camera.ov2640HighFPS;
-    const char* const* names = getResolutionNames(is_ov5640, high_fps, aspect_variant);
+    const bool high_fps = is_ov5640
+        ? config.camera.ov5640HighFPS
+        : (is_ov3660 ? config.camera.ov3660HighFPS : config.camera.ov2640HighFPS);
+    const char* const* names = getResolutionNames(is_ov5640, is_ov3660, is_esp32, high_fps, aspect_variant);
     switch (menu_index)
     {
     case 0: return names[static_cast<int>(Resolution::VGA16)];
@@ -234,6 +347,22 @@ const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, boo
     case 5: return names[static_cast<int>(Resolution::HD)];
     default: return names[static_cast<int>(Resolution::VGA16)];
     }
+}
+
+//===================================================================================
+//===================================================================================
+// Returns the camera sensor name selected by the negotiated air-unit flags.
+const char* getCameraName(bool is_ov5640, bool is_ov3660)
+{
+    if (is_ov5640)
+    {
+        return "OV5640";
+    }
+    if (is_ov3660)
+    {
+        return "OV3660";
+    }
+    return "OV2640";
 }
 
 //===================================================================================

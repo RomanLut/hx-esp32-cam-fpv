@@ -921,7 +921,12 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     const auto& gs_config = s_groundstation_config;
     {
         char buf[256];
-        sprintf( buf, "ESP32-CAM-FPV v%s.%d %s%s##title0", FW_VERSION, PACKET_VERSION, s_isDual ? "D " : "", s_isOV5640 ? "OV5640" : "OV2640");
+        sprintf(buf,
+                "ESP32-CAM-FPV v%s.%d %s%s##title0",
+                FW_VERSION,
+                PACKET_VERSION,
+                s_isDual ? "D " : "",
+                gs::menu::getCameraName(s_isOV5640, s_isOV3660));
         this->drawMenuTitle( buf );
     }
 
@@ -934,7 +939,9 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "Resolution: %s##0", gs::menu::getResolutionSummary(config, s_isOV5640).c_str());
+        sprintf(buf,
+                "Resolution: %s##0",
+                gs::menu::getResolutionSummary(config, s_isOV5640, s_isOV3660, s_isEsp32).c_str());
         if ( this->drawMenuItem( buf, 1) )
         {
             int item = gs::menu::getResolutionMenuIndex(config.camera.resolution);
@@ -1070,7 +1077,7 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
-    if (!s_isOV5640)  //vertical flip drops framerate by half, useless
+    if (!s_isOV5640)  // OV5640 vertical flip drops frame rate by half, so do not expose it.
     {
         if ( this->drawMenuItem( config.camera.vflip ? "Vertical Flip: Enabled##5" : "Vertical Flip: Disabled##5", 5) )
         {
@@ -1078,18 +1085,30 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
             config.camera.hmirror = config.camera.vflip;
             commitGround2AirConfig(config);
         }
+    }
 
-        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
+    if (s_isOV5640)
+    {
+        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
         {
-            config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
+            config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
+            commitGround2AirConfig(config);
+        }
+    }
+    else if (s_isOV3660)
+    {
+        // ESP32 applies OV3660 high-FPS timing only to 16:9 modes; S3/C5 support 4:3 too.
+        if ( this->drawMenuItem( config.camera.ov3660HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 6) )
+        {
+            config.camera.ov3660HighFPS = !config.camera.ov3660HighFPS;
             commitGround2AirConfig(config);
         }
     }
     else
     {
-        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
+        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
         {
-            config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
+            config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
             commitGround2AirConfig(config);
         }
     }
@@ -1266,38 +1285,38 @@ void OSDMenuController::drawResolutionMenu(Ground2Air_Config_Packet& config)
 
     bool saveAndExit = false;
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 0, true), 0) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 0, true), 0) )
     {
         config.camera.resolution = Resolution::VGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 1, true), 1) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 1, true), 1) )
     {
         config.camera.resolution = Resolution::VGA;
         saveAndExit = true;
     }
 
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 2, true), 2) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 2, true), 2) )
     {
         config.camera.resolution = Resolution::SVGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 3, true), 3) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 3, true), 3) )
     {
         config.camera.resolution = Resolution::SVGA;
         saveAndExit = true;
     }
 
-    if (this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 4, true), 4) )
+    if (this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 4, true), 4) )
     {
         config.camera.resolution = Resolution::XGA16;
         saveAndExit = true;
     }
 
-    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, 5, true), 5) )
+    if ( this->drawMenuItem( gs::menu::getResolutionOptionLabel(config, s_isOV5640, s_isOV3660, s_isEsp32, 5, true), 5) )
     {
         config.camera.resolution = Resolution::HD;
         saveAndExit = true;

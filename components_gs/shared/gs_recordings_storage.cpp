@@ -37,6 +37,22 @@ uint32_t countMissingFramesToRepeat(uint32_t current_frame_index, uint32_t previ
     return std::min(skipped_frames, kMaxRepeatedMissingFrames);
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the configured FPS from the explicitly negotiated hardware and sensor mode.
+uint8_t getRecordingFps(const Ground2Air_Config_Packet& config, const TVMode& mode)
+{
+    if (s_isOV5640)
+    {
+        return config.camera.ov5640HighFPS ? mode.highFPS5640 : mode.FPS5640;
+    }
+    if (s_isOV3660)
+    {
+        return config.camera.ov3660HighFPS ? mode.highFPS3660 : mode.FPS3660;
+    }
+    return config.camera.ov2640HighFPS ? mode.highFPS2640 : mode.FPS2640;
+}
+
 }
 
 //===================================================================================
@@ -218,31 +234,26 @@ bool RecordingsStorage::startRecordingLocked(int width, int height, const char* 
     prepAviIndex();
     m_avi_frame_count = 0;
 
-    const TVMode* mode = &vmodes[std::clamp(static_cast<int>(config_snapshot.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1)];
+    const TVMode* mode_table = getVModeTable(s_isEsp32);
+    const TVMode* mode = &mode_table[std::clamp(static_cast<int>(config_snapshot.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1)];
     if (width != 0 && height != 0)
     {
         for (size_t index = 0; index < static_cast<size_t>(Resolution::COUNT); ++index)
         {
-            if (vmodes[index].width == width && vmodes[index].height == height)
+            if (mode_table[index].width == width && mode_table[index].height == height)
             {
-                mode = &vmodes[index];
+                mode = &mode_table[index];
                 break;
             }
         }
     }
 
-    if (s_isOV5640)
-    {
-        m_avi_fps = config_snapshot.camera.ov5640HighFPS ? mode->highFPS5640 : mode->FPS5640;
-    }
-    else
-    {
-        m_avi_fps = config_snapshot.camera.ov2640HighFPS ? mode->highFPS2640 : mode->FPS2640;
-    }
+    m_avi_fps = getRecordingFps(config_snapshot, *mode);
 
     m_avi_frame_width = static_cast<uint16_t>(width);
     m_avi_frame_height = static_cast<uint16_t>(height);
     m_avi_ov2640_high_fps = config_snapshot.camera.ov2640HighFPS;
+    m_avi_ov3660_high_fps = config_snapshot.camera.ov3660HighFPS;
     m_avi_ov5640_high_fps = config_snapshot.camera.ov5640HighFPS;
 #endif
 
@@ -338,6 +349,7 @@ bool RecordingsStorage::updateRecordingModeLocked(int width, int height, const G
     if ((width == m_avi_frame_width) &&
         (height == m_avi_frame_height) &&
         (m_avi_ov2640_high_fps == config_snapshot.camera.ov2640HighFPS) &&
+        (m_avi_ov3660_high_fps == config_snapshot.camera.ov3660HighFPS) &&
         (m_avi_ov5640_high_fps == config_snapshot.camera.ov5640HighFPS))
     {
         return true;
@@ -345,24 +357,18 @@ bool RecordingsStorage::updateRecordingModeLocked(int width, int height, const G
 
     if (m_avi_frame_count == 0 && (m_avi_frame_width == 0 || m_avi_frame_height == 0))
     {
-        const TVMode* mode = &vmodes[std::clamp(static_cast<int>(config_snapshot.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1)];
+        const TVMode* mode_table = getVModeTable(s_isEsp32);
+        const TVMode* mode = &mode_table[std::clamp(static_cast<int>(config_snapshot.camera.resolution), 0, static_cast<int>(Resolution::COUNT) - 1)];
         for (size_t index = 0; index < static_cast<size_t>(Resolution::COUNT); ++index)
         {
-            if (vmodes[index].width == width && vmodes[index].height == height)
+            if (mode_table[index].width == width && mode_table[index].height == height)
             {
-                mode = &vmodes[index];
+                mode = &mode_table[index];
                 break;
             }
         }
 
-        if (s_isOV5640)
-        {
-            m_avi_fps = config_snapshot.camera.ov5640HighFPS ? mode->highFPS5640 : mode->FPS5640;
-        }
-        else
-        {
-            m_avi_fps = config_snapshot.camera.ov2640HighFPS ? mode->highFPS2640 : mode->FPS2640;
-        }
+        m_avi_fps = getRecordingFps(config_snapshot, *mode);
 
         // Manual recording can start before the first JPEG has revealed dimensions.
         // Keep the header-only file open and finalize its real dimensions later
@@ -370,6 +376,7 @@ bool RecordingsStorage::updateRecordingModeLocked(int width, int height, const G
         m_avi_frame_width = static_cast<uint16_t>(width);
         m_avi_frame_height = static_cast<uint16_t>(height);
         m_avi_ov2640_high_fps = config_snapshot.camera.ov2640HighFPS;
+        m_avi_ov3660_high_fps = config_snapshot.camera.ov3660HighFPS;
         m_avi_ov5640_high_fps = config_snapshot.camera.ov5640HighFPS;
         return true;
     }

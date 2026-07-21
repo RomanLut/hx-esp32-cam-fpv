@@ -458,7 +458,11 @@ std::string describeHandleString(const NativeHandle& handle)
     appendAirDebugField(out,
                         "resolution",
                         air_stats_valid,
-                        gs::menu::getResolutionSummary(s_runtimeCore.config_packet, air_stats.isOV5640 != 0));
+                        gs::menu::getResolutionSummary(
+                            s_runtimeCore.config_packet,
+                            air_stats.isOV5640 != 0,
+                            air_stats.isOV3660 != 0,
+                            air_stats.isEsp32 != 0));
     return out.str();
 }
 

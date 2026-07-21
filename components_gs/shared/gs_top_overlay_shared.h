@@ -23,6 +23,8 @@ struct TopOverlayData
     int8_t gs_rssi_dbm0 = 0;
     int8_t gs_rssi_dbm1 = 0;
     bool is_ov5640 = false;
+    bool is_ov3660 = false;
+    bool is_esp32 = false;
     bool is_dual = false;
     int wifi_queue_percent = 0;
     bool wifi_queue_alert = false;

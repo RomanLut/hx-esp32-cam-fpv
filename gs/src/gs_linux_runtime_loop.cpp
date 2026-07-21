@@ -513,6 +513,8 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.gs_rssi_dbm0 = air_stats_valid ? s_last_gs_stats.rssiDbm[0] : 0;
             input.gs_rssi_dbm1 = air_stats_valid ? s_last_gs_stats.rssiDbm[1] : 0;
             input.is_ov5640 = air_stats_valid && s_isOV5640;
+            input.is_ov3660 = air_stats_valid && s_isOV3660;
+            input.is_esp32 = air_stats_valid && s_isEsp32;
             input.is_dual = s_isDual;
             input.wifi_queue_percent = air_stats_valid ? s_wifi_queue_max : -1;
             input.wifi_queue_alert = air_stats_valid && s_wifi_ovf;

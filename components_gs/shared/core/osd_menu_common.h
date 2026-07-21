@@ -59,8 +59,9 @@ constexpr int kMinTxPower = 5;
 constexpr int kDefaultTxPower = 45;
 constexpr int kMaxTxPower = 63;
 
-std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640);
-const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, int menu_index, bool aspect_variant);
+std::string getResolutionSummary(const Ground2Air_Config_Packet& config, bool is_ov5640, bool is_ov3660, bool is_esp32);
+const char* getResolutionOptionLabel(const Ground2Air_Config_Packet& config, bool is_ov5640, bool is_ov3660, bool is_esp32, int menu_index, bool aspect_variant);
+const char* getCameraName(bool is_ov5640, bool is_ov3660);
 int getResolutionMenuIndex(Resolution resolution);
 Resolution getResolutionForMenuIndex(int menu_index);
 

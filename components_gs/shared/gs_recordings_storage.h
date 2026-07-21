@@ -74,6 +74,7 @@ private:
     int m_previous_video_frame_height = 0;
     std::vector<uint8_t> m_previous_video_frame;
     bool m_avi_ov2640_high_fps = false;
+    bool m_avi_ov3660_high_fps = false;
     bool m_avi_ov5640_high_fps = false;
 };
 

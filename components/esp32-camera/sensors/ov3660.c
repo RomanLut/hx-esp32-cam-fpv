@@ -402,7 +402,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
         //FPS = SYSCLK / (HTS * VTS); binned VTS = total_y/2+1 (see tools/ov3660_pclk_calculator)
-        //high FPS variants are selected by the ov5640HighFPS flag passed via set_colorbar()
+        // High-FPS variants are selected by the OV3660 flag passed via set_colorbar().
         bool highFPS = sensor->status.colorbar != 0;
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         //24 MHz XCLK (ESP32-C5)
@@ -524,7 +524,7 @@ static int set_colorbar(sensor_t *sensor, int enable)
 {
     // NOTE: like the OV5640 driver in this project, the colorbar flag is
     // repurposed as the "high FPS" mode selector (main.cpp passes the
-    // ov5640HighFPS flag via set_colorbar) and does not enable the actual
+    // ov3660HighFPS flag via set_colorbar) and does not enable the actual
     // test pattern.
     //write_reg_bits(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR, enable);
     sensor->status.colorbar = enable;

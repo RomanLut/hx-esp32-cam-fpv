@@ -83,12 +83,17 @@ typedef struct
     uint16_t width;
     uint16_t height;
     uint8_t FPS2640;
+    uint8_t FPS3660;
     uint8_t FPS5640;
     uint8_t highFPS2640;
+    uint8_t highFPS3660;
     uint8_t highFPS5640;
 } TVMode;
 
-extern TVMode vmodes[];
+extern const TVMode vmodesESP32[];
+extern const TVMode vmodesS3C5[];
+
+const TVMode* getVModeTable(bool isEsp32);
 
 //======================================================
 //======================================================
@@ -123,6 +128,7 @@ struct CameraConfig
     bool vflip = false;
     bool dcw = true;
     bool ov2640HighFPS = false;
+    bool ov3660HighFPS = false;
     bool ov5640HighFPS = false;
     bool ov5640NightMode = false;
 };
@@ -295,7 +301,7 @@ struct AirStats
     uint32_t SDTotalSpaceGB16 : 12;
     uint32_t curr_quality : 6;
     uint32_t wifi_ovf : 1;
-    uint32_t isOV5640 : 1;
+    uint32_t isOV5640 : 1; //runtime sensor detection identified OV5640
 //7
     uint16_t outPacketRate;
     uint16_t inPacketRate;
@@ -317,7 +323,9 @@ struct AirStats
     uint8_t temperature : 7;  //degree C. 0 - does not have temp sensor.
     uint8_t overheatTrottling : 1;
 //28
-    uint8_t reserved : 7; 
+    uint8_t reserved : 5;
+    uint8_t isEsp32 : 1; //air unit is esp32, otherwise s3 or c5
+    uint8_t isOV3660 : 1; //runtime sensor detection identified OV3660
     uint8_t suspended : 1;  //camera stopped as requested by RC channel
 //29
     uint8_t fec_codec_k : 4;

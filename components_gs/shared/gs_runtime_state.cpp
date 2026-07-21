@@ -10,6 +10,8 @@
 #include "gs_shared_state.h"
 
 bool s_isOV5640 = false;
+bool s_isOV3660 = false;
+bool s_isEsp32 = false;
 bool s_isDual = false;
 uint16_t s_SDTotalSpaceGB16 = 0;
 uint16_t s_SDFreeSpaceGB16 = 0;
@@ -356,6 +358,8 @@ void syncAirStatusGlobals()
     s_SDSlow = air_stats.SDSlow != 0;
     s_SDError = air_stats.SDError != 0;
     s_isOV5640 = air_stats.isOV5640 != 0;
+    s_isOV3660 = air_stats.isOV3660 != 0;
+    s_isEsp32 = air_stats.isEsp32 != 0;
 }
 
 //===================================================================================

@@ -12,6 +12,8 @@
 #include "stats.h"
 
 extern bool s_isOV5640;
+extern bool s_isOV3660;
+extern bool s_isEsp32;
 extern bool s_isDual;
 extern uint16_t s_SDTotalSpaceGB16;
 extern uint16_t s_SDFreeSpaceGB16;

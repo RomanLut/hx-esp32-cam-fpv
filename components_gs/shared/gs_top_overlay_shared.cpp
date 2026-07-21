@@ -172,7 +172,11 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
     chips.push_back({buf, input.wifi_queue_alert, 55.0f});
 
     if (!throughput_text.empty()) chips.push_back({throughput_text, false, 90.0f});
-    const std::string resolution_text = gs::menu::getResolutionSummary(input.config, input.is_ov5640);
+    const std::string resolution_text = gs::menu::getResolutionSummary(
+        input.config,
+        input.is_ov5640,
+        input.is_ov3660,
+        input.is_esp32);
     if (!resolution_text.empty()) chips.push_back({resolution_text, false, 0.0f});
 
     std::snprintf(buf, sizeof(buf), "%02d", input.video_fps);

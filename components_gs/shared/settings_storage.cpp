@@ -453,6 +453,11 @@ void SettingsStorage::loadGround2AirConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["ov3660_high_fps"];
+        if (!temp.empty()) config.camera.ov3660HighFPS = std::atoi(temp.c_str()) != 0;
+    }
+
+    {
         std::string& temp = (*this)["gs"]["ov5640_high_fps"];
         if (!temp.empty()) config.camera.ov5640HighFPS = std::atoi(temp.c_str()) != 0;
     }
@@ -533,6 +538,7 @@ void SettingsStorage::saveGround2AirConfig()
     (*this)["gs"]["wifi_rate"] = std::to_string((int)config.dataChannel.wifi_rate);
     (*this)["gs"]["fec_n"] = std::to_string((int)config.dataChannel.fec_codec_n);
     (*this)["gs"]["ov2640_high_fps"] = std::to_string((int)config.camera.ov2640HighFPS ? 1 : 0);
+    (*this)["gs"]["ov3660_high_fps"] = std::to_string((int)config.camera.ov3660HighFPS ? 1 : 0);
     (*this)["gs"]["ov5640_high_fps"] = std::to_string((int)config.camera.ov5640HighFPS ? 1 : 0);
     save();
 }

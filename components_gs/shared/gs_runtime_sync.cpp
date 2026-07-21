@@ -122,6 +122,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     }
 
     s_isOV5640 = air_stats_valid && display_air_stats.isOV5640 != 0;
+    s_isOV3660 = air_stats_valid && display_air_stats.isOV3660 != 0;
+    s_isEsp32 = air_stats_valid && display_air_stats.isEsp32 != 0;
     s_isDual = params.is_dual;
     overlay_input.config = core.config_packet;
     overlay_input.air_stats_valid = air_stats_valid;
@@ -133,6 +135,8 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.gs_rssi_dbm0 = air_stats_valid ? core.last_ground_stats.rssiDbm[0] : 0;
     overlay_input.gs_rssi_dbm1 = air_stats_valid ? core.last_ground_stats.rssiDbm[1] : 0;
     overlay_input.is_ov5640 = air_stats_valid && display_air_stats.isOV5640 != 0;
+    overlay_input.is_ov3660 = air_stats_valid && display_air_stats.isOV3660 != 0;
+    overlay_input.is_esp32 = air_stats_valid && display_air_stats.isEsp32 != 0;
     overlay_input.is_dual = params.is_dual;
     overlay_input.wifi_queue_percent = air_stats_valid ? display_air_stats.wifi_queue_max : -1;
     overlay_input.wifi_queue_alert = air_stats_valid && display_air_stats.wifi_ovf != 0;
