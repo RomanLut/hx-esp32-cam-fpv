@@ -1,6 +1,6 @@
 # Oculus Quest Ground Station
 
-[Native OpenXR Oculus Quest 2/3 GS application](https://romanlut.github.io/hx-esp32-cam-fpv/#downloads) supports both **RAW Broadcast mode** with an **RTL8812AU/RTL8821AU** adapter, and **APFPV mode** using the built-in **Oculus Quest** Wi-Fi.
+[Native OpenXR Oculus Quest 2/3 GS application](https://romanlut.github.io/hx-esp32-cam-fpv/#downloads) supports both **RAW Broadcast mode** with an **RTL8812AU/RTL8821AU/RTL8822BU/RTL8812EU** adapter, and **APFPV mode** using the built-in **Oculus Quest** Wi-Fi.
 
 Dual adapters are supported.
 
@@ -11,7 +11,7 @@ The main downside of the **Oculus Quest** is the need to carry VR controller, si
 **USB Serial** in **OTG USB port** can be used to transfer Mavlink stream.
 
 > [!NOTE]
-> **Raw Broadcast** mode works only with **RTL8812AU/RTL8821AU** adapter.
+> **Raw Broadcast** mode works only with **RTL8812AU/RTL8821AU/RTL8822BU/RTL8812EU** USB adapter.
 
 ![oculus gs](/doc/images/oculus_gs.jpg "oculus gs")
 
