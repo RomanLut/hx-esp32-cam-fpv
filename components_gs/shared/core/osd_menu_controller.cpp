@@ -933,7 +933,15 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     {
         if ( this->drawMenuItem( "Search & Connect...", 0) )
         {
-            this->goForward( OSDMenuId::Search, 0);
+            const gs::core::TransportKind transport_kind = currentTransportKind();
+            // RAW Broadcast and APFPV both expose Search as the second row, so focus
+            // the action users normally enter this menu to run instead of Mode.
+            const int initial_item =
+                transport_kind == gs::core::TransportKind::RawBroadcast ||
+                transport_kind == gs::core::TransportKind::APFPV
+                    ? 1
+                    : 0;
+            this->goForward(OSDMenuId::Search, initial_item);
         }
     }
 
