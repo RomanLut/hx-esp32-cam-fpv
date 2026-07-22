@@ -692,7 +692,7 @@ std::string AndroidRawBroadcastTransport::getTransportMessage() const
         }
         else
         {
-            return "RTL88XXAU USB ADAPTER NOT FOUND!";
+            return "Compatible USB Wifi adapter not found!";
         }
     }
     return {};
