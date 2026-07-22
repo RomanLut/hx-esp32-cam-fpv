@@ -1549,6 +1549,16 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 
     processSetting( "osdFontCRC32",  dst.misc.osdFontCRC32, src.misc.osdFontCRC32, "osdFontCRC32" );
 
+    if (memcmp(&dst.camera.lens_correction,
+               &src.camera.lens_correction,
+               sizeof(src.camera.lens_correction)) != 0)
+    {
+        LOG("Lens correction settings changed\n");
+        ESP_ERROR_CHECK(nvs_args_set_blob("lens_corr",
+                                          &src.camera.lens_correction,
+                                          sizeof(src.camera.lens_correction)));
+    }
+
     if ( s_restart_time == 0 )
     {
         if ( dst.misc.air_record_btn != src.misc.air_record_btn )
@@ -3260,6 +3270,12 @@ void readConfig()
     s_ground2air_config_packet.camera.ov2640HighFPS = nvs_args_read( "ov2640hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov3660HighFPS = nvs_args_read( "ov3660hfps", 0 ) == 1;
     s_ground2air_config_packet.camera.ov5640HighFPS = nvs_args_read( "ov5640hfps", 0 ) == 1;
+
+    LensCorrectionConfig lens_correction;
+    if (nvs_args_read_blob("lens_corr", &lens_correction, sizeof(lens_correction)) == ESP_OK)
+    {
+        s_ground2air_config_packet.camera.lens_correction = lens_correction;
+    }
 
     s_ground2air_config_packet.misc.autostartRecord = nvs_args_read( "autostartRecord", 1 );
     uint32_t mavlink_baudrate = nvs_args_read( NVS_KEY_MAVLINK_BAUDRATE, DEFAULT_MAVLINK_BAUDRATE );

@@ -7,6 +7,7 @@
 #include "gs_runtime_state.h"
 #include "gs_shared_state.h"
 #include "gs_stats.h"
+#include "gs_lens_correction_shared.h"
 #include "gs_video_stabilization_shared.h"
 
 namespace gs::core
@@ -14,7 +15,7 @@ namespace gs::core
 
 //===================================================================================
 //===================================================================================
-// Resets session state and reconfigures the transport packet filter for a fresh pairing.
+// Resets session/lens state and reconfigures the transport filter for a fresh pairing.
 void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, Clock::time_point now)
 {
     {
@@ -33,6 +34,10 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
     transport.getPacketFilter().set_packet_header_data(gs_device_id, 0);
     transport.getPacketFilter().set_packet_filtering(0, gs_device_id);
     transport.reset_rx_state();
+
+    // Lens settings belong to the paired air camera, so a fresh pairing must not
+    // render with coefficients retained from the previously connected camera.
+    gs::lens::applyConfigToState(LensCorrectionConfig{}, s_lensCorrectionState);
 
     (void)now;
 }
@@ -239,7 +244,7 @@ bool GsSessionCore::tryParseOsdPacket(const uint8_t* packet_data,
 
 //===================================================================================
 //===================================================================================
-// Atomically promotes a pending accepted config to the active session config.
+// Atomically promotes a pending accepted config and applies its air-owned lens settings.
 // Returns true and writes the config out if promotion occurred.
 bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
 {
@@ -254,6 +259,7 @@ bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
 
     std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
     config_out = m_config_packet;
+    gs::lens::applyConfigToState(config_out.camera.lens_correction, s_lensCorrectionState);
     return true;
 }
 

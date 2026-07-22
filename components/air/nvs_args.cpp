@@ -50,3 +50,40 @@ esp_err_t nvs_args_set(const char *key,uint32_t value)
     xSemaphoreGive(s_nvs_mux);
     return ret;
 }
+
+//===================================================================================
+//===================================================================================
+// Reads an NVS blob only when its stored size exactly matches the destination.
+esp_err_t nvs_args_read_blob(const char* key, void* value, size_t size)
+{
+    xSemaphoreTake(s_nvs_mux, portMAX_DELAY);
+
+    size_t stored_size = 0;
+    esp_err_t ret = nvs_get_blob(nvs_handler, key, nullptr, &stored_size);
+    if (ret == ESP_OK && stored_size == size)
+    {
+        ret = nvs_get_blob(nvs_handler, key, value, &stored_size);
+    }
+    else if (ret == ESP_OK)
+    {
+        ret = ESP_ERR_NVS_INVALID_LENGTH;
+    }
+
+    xSemaphoreGive(s_nvs_mux);
+    return ret;
+}
+
+//===================================================================================
+//===================================================================================
+// Writes and atomically commits a complete blob to NVS.
+esp_err_t nvs_args_set_blob(const char* key, const void* value, size_t size)
+{
+    xSemaphoreTake(s_nvs_mux, portMAX_DELAY);
+    esp_err_t ret = nvs_set_blob(nvs_handler, key, value, size);
+    if (ret == ESP_OK)
+    {
+        ret = nvs_commit(nvs_handler);
+    }
+    xSemaphoreGive(s_nvs_mux);
+    return ret;
+}

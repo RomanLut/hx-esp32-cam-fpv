@@ -12,7 +12,7 @@
 constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 4) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
 
-constexpr size_t GROUND2AIR_MAX_MTU = 64; //max size of data without Packet_Header
+constexpr size_t GROUND2AIR_MAX_MTU = 128; //max size of data without Packet_Header
 //variable mtu is not supported for Ground2Air
 
 #pragma pack(push, 1) // exact fit - no padding
@@ -95,10 +95,32 @@ extern const TVMode vmodesS3C5[];
 
 const TVMode* getVModeTable(bool isEsp32);
 
+//===================================================================================
+//===================================================================================
+// Stores air-owned lens correction controls using six-decimal fixed-point values.
+struct LensCorrectionConfig
+{
+    uint8_t enabled = 0;
+    uint8_t reserved[3] = {};
+
+    int32_t fx_norm_u6 = 500000;
+    int32_t fy_norm_u6 = 500000;
+    int32_t cx_norm_u6 = 500000;
+    int32_t cy_norm_u6 = 500000;
+
+    int32_t k1_u6 = 0;
+    int32_t k2_u6 = 0;
+    int32_t k3_u6 = 0;
+    int32_t p1_u6 = 0;
+    int32_t p2_u6 = 0;
+};
+static_assert(sizeof(LensCorrectionConfig) == 40, "Unexpected lens correction packet layout");
+
 //======================================================
 //======================================================
-//Description of some settings:
-//https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
+// Description of some settings:
+// https://heyrick.eu/blog/index.php?diary=20210418&keitai=0
+// Stores camera sensor settings and the calibration owned by this air camera.
 struct CameraConfig
 {
     Resolution resolution = Resolution::SVGA;
@@ -131,6 +153,7 @@ struct CameraConfig
     bool ov3660HighFPS = false;
     bool ov5640HighFPS = false;
     bool ov5640NightMode = false;
+    LensCorrectionConfig lens_correction;
 };
 
 //======================================================

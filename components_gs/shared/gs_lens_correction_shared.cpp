@@ -2,14 +2,71 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 
 #include "gs_camera_calibration_shared.h"
+
+namespace gs::lens
+{
+constexpr double kLensCorrectionFixedPointScale = 1000000.0;
+
+//===================================================================================
+//===================================================================================
+// Expands the air-owned fixed-point configuration into the GS preview/render state.
+void applyConfigToState(const LensCorrectionConfig& config, LensCorrectionState& state)
+{
+    state.enabled = config.enabled != 0;
+    state.image_width = 1;
+    state.image_height = 1;
+    state.fx = static_cast<double>(config.fx_norm_u6) / kLensCorrectionFixedPointScale;
+    state.fy = static_cast<double>(config.fy_norm_u6) / kLensCorrectionFixedPointScale;
+    state.cx = static_cast<double>(config.cx_norm_u6) / kLensCorrectionFixedPointScale;
+    state.cy = static_cast<double>(config.cy_norm_u6) / kLensCorrectionFixedPointScale;
+    state.k1 = static_cast<double>(config.k1_u6) / kLensCorrectionFixedPointScale;
+    state.k2 = static_cast<double>(config.k2_u6) / kLensCorrectionFixedPointScale;
+    state.k3 = static_cast<double>(config.k3_u6) / kLensCorrectionFixedPointScale;
+    state.p1 = static_cast<double>(config.p1_u6) / kLensCorrectionFixedPointScale;
+    state.p2 = static_cast<double>(config.p2_u6) / kLensCorrectionFixedPointScale;
+}
+
+//===================================================================================
+//===================================================================================
+// Collapses the GS preview state into the fixed-point configuration sent to air.
+LensCorrectionConfig makeConfigFromState(const LensCorrectionState& state)
+{
+    const auto to_fixed = [](double value)
+    {
+        const double scaled = std::round(value * kLensCorrectionFixedPointScale);
+        return static_cast<int32_t>(std::clamp(
+            scaled,
+            static_cast<double>(std::numeric_limits<int32_t>::min()),
+            static_cast<double>(std::numeric_limits<int32_t>::max())));
+    };
+
+    const double image_width = static_cast<double>(std::max(state.image_width, 1));
+    const double image_height = static_cast<double>(std::max(state.image_height, 1));
+
+    LensCorrectionConfig config;
+    config.enabled = state.enabled ? 1 : 0;
+    config.fx_norm_u6 = to_fixed(state.fx / image_width);
+    config.fy_norm_u6 = to_fixed(state.fy / image_height);
+    config.cx_norm_u6 = to_fixed(state.cx / image_width);
+    config.cy_norm_u6 = to_fixed(state.cy / image_height);
+    config.k1_u6 = to_fixed(state.k1);
+    config.k2_u6 = to_fixed(state.k2);
+    config.k3_u6 = to_fixed(state.k3);
+    config.p1_u6 = to_fixed(state.p1);
+    config.p2_u6 = to_fixed(state.p2);
+    return config;
+}
+}
 
 namespace gs::render
 {
 //===================================================================================
 //===================================================================================
-// Converts the persisted double-precision lens state to render-time parameters.
+// Converts the air-synchronized double-precision lens state to render-time parameters.
 LensCorrectionParams buildLensCorrectionParams(const LensCorrectionState& state)
 {
     LensCorrectionParams params;

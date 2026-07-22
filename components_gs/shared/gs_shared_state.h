@@ -19,7 +19,7 @@ enum class ScreenAspectRatio : int
 
 //===================================================================================
 //===================================================================================
-// Holds reusable GS lens correction intrinsics, coefficients, and enable state.
+// Holds the air-synchronized lens correction state used for GS preview and rendering.
 struct LensCorrectionState
 {
     bool enabled = false;

@@ -21,6 +21,7 @@
 #include "gs_runtime_core.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_runtime_state.h"
+#include "gs_lens_correction_shared.h"
 #include "gs_video_stabilization_shared.h"
 
 #define SEARCH_TIME_STEP_MS 1000
@@ -799,7 +800,8 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
             if (gs::calibration::applyCapturedCalibrationToLensCorrection(s_lensCorrectionState))
             {
                 this->m_lens_correction_original = s_lensCorrectionState;
-                s_settingsStorage.saveGroundStationConfig();
+                config.camera.lens_correction = gs::lens::makeConfigFromState(s_lensCorrectionState);
+                commitGround2AirConfig(config);
             }
             else
             {
@@ -2747,8 +2749,6 @@ void OSDMenuController::drawGSImageStabilizationParametersMenu(Ground2Air_Config
 // Draws GS lens correction controls with live preview until Apply or Back.
 void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& config)
 {
-    (void)config;
-
     this->drawMenuTitle( "Camera Settings -> Lens Correction" );
     drawSpacing();
 
@@ -2758,7 +2758,8 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
         if ( this->drawMenuItem( buf, 0) )
         {
             s_lensCorrectionState.enabled = !s_lensCorrectionState.enabled;
-            s_settingsStorage.saveGroundStationConfig();
+            config.camera.lens_correction = gs::lens::makeConfigFromState(s_lensCorrectionState);
+            commitGround2AirConfig(config);
         }
     }
 
@@ -2791,8 +2792,6 @@ void OSDMenuController::drawGSLensCorrectionMenu(Ground2Air_Config_Packet& confi
 // Draws GS lens correction normalized intrinsics and coefficient controls with live preview.
 void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_Packet& config)
 {
-    (void)config;
-
     if (!this->m_lens_correction_draft_active)
     {
         this->m_lens_correction_draft = s_lensCorrectionState;
@@ -2862,7 +2861,8 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
     if ( this->drawMenuItem( "Apply##apply", 9, true) )
     {
         s_lensCorrectionState = this->m_lens_correction_draft;
-        s_settingsStorage.saveGroundStationConfig();
+        config.camera.lens_correction = gs::lens::makeConfigFromState(s_lensCorrectionState);
+        commitGround2AirConfig(config);
         this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();
@@ -2872,11 +2872,9 @@ void OSDMenuController::drawGSLensCorrectionCoefficientsMenu(Ground2Air_Config_P
 
     if ( this->drawMenuItem( "Reset to Defaults##reset", 10, true) )
     {
-        LensCorrectionState defaults{};
-        defaults.image_width = this->m_lens_correction_draft.image_width;
-        defaults.image_height = this->m_lens_correction_draft.image_height;
-        s_lensCorrectionState = defaults;
-        s_settingsStorage.saveGroundStationConfig();
+        config.camera.lens_correction = LensCorrectionConfig{};
+        gs::lens::applyConfigToState(config.camera.lens_correction, s_lensCorrectionState);
+        commitGround2AirConfig(config);
         this->m_lens_correction_draft_active = false;
         this->resetLensCorrectionStepMultiplier();
         this->goBack();

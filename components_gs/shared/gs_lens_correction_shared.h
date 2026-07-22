@@ -2,6 +2,12 @@
 
 #include "gs_shared_state.h"
 
+namespace gs::lens
+{
+void applyConfigToState(const LensCorrectionConfig& config, LensCorrectionState& state);
+LensCorrectionConfig makeConfigFromState(const LensCorrectionState& state);
+}
+
 namespace gs::render
 {
 //===================================================================================

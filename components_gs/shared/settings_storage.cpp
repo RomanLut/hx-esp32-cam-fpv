@@ -269,97 +269,6 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
-        std::string& temp = (*this)["gs"]["lens_correction_enabled"];
-        if (!temp.empty()) s_lensCorrectionState.enabled = std::atoi(temp.c_str()) != 0;
-    }
-
-    bool lens_fx_loaded = false;
-    bool lens_fy_loaded = false;
-    bool lens_cx_loaded = false;
-    bool lens_cy_loaded = false;
-
-    s_lensCorrectionState.image_width = 1;
-    s_lensCorrectionState.image_height = 1;
-
-    {
-        std::string temp = (*this)["gs"].get("lens_correction_fxnorm");
-        if (!temp.empty())
-        {
-            s_lensCorrectionState.fx = std::atof(temp.c_str());
-            lens_fx_loaded = true;
-        }
-    }
-
-    {
-        std::string temp = (*this)["gs"].get("lens_correction_fynorm");
-        if (!temp.empty())
-        {
-            s_lensCorrectionState.fy = std::atof(temp.c_str());
-            lens_fy_loaded = true;
-        }
-    }
-
-    {
-        std::string temp = (*this)["gs"].get("lens_correction_cxnorm");
-        if (!temp.empty())
-        {
-            s_lensCorrectionState.cx = std::atof(temp.c_str());
-            lens_cx_loaded = true;
-        }
-    }
-
-    {
-        std::string temp = (*this)["gs"].get("lens_correction_cynorm");
-        if (!temp.empty())
-        {
-            s_lensCorrectionState.cy = std::atof(temp.c_str());
-            lens_cy_loaded = true;
-        }
-    }
-
-    if (!lens_fx_loaded)
-    {
-        s_lensCorrectionState.fx = 0.5;
-    }
-    if (!lens_fy_loaded)
-    {
-        s_lensCorrectionState.fy = 0.5;
-    }
-    if (!lens_cx_loaded)
-    {
-        s_lensCorrectionState.cx = 0.5;
-    }
-    if (!lens_cy_loaded)
-    {
-        s_lensCorrectionState.cy = 0.5;
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["lens_correction_k1"];
-        if (!temp.empty()) s_lensCorrectionState.k1 = std::atof(temp.c_str());
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["lens_correction_k2"];
-        if (!temp.empty()) s_lensCorrectionState.k2 = std::atof(temp.c_str());
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["lens_correction_k3"];
-        if (!temp.empty()) s_lensCorrectionState.k3 = std::atof(temp.c_str());
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["lens_correction_p1"];
-        if (!temp.empty()) s_lensCorrectionState.p1 = std::atof(temp.c_str());
-    }
-
-    {
-        std::string& temp = (*this)["gs"]["lens_correction_p2"];
-        if (!temp.empty()) s_lensCorrectionState.p2 = std::atof(temp.c_str());
-    }
-
-    {
         std::string& temp = (*this)["gs"]["image_stabilization_enabled"];
         if (!temp.empty()) s_imageStabilizationState.enabled = std::atoi(temp.c_str()) != 0;
     }
@@ -495,26 +404,6 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["apfpv_camera_id"] = std::to_string(s_groundstation_config.apfpvPreferredCameraId);
     (*this)["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
     (*this)["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
-    (*this)["gs"]["lens_correction_enabled"] = std::to_string(s_lensCorrectionState.enabled ? 1 : 0);
-    (*this)["gs"].remove("lens_correction_image_width");
-    (*this)["gs"].remove("lens_correction_image_height");
-    (*this)["gs"].remove("lens_correction_fx");
-    (*this)["gs"].remove("lens_correction_fy");
-    (*this)["gs"].remove("lens_correction_cx");
-    (*this)["gs"].remove("lens_correction_cy");
-    (*this)["gs"]["lens_correction_fxnorm"] =
-        std::to_string(s_lensCorrectionState.fx / static_cast<double>(std::max(s_lensCorrectionState.image_width, 1)));
-    (*this)["gs"]["lens_correction_fynorm"] =
-        std::to_string(s_lensCorrectionState.fy / static_cast<double>(std::max(s_lensCorrectionState.image_height, 1)));
-    (*this)["gs"]["lens_correction_cxnorm"] =
-        std::to_string(s_lensCorrectionState.cx / static_cast<double>(std::max(s_lensCorrectionState.image_width, 1)));
-    (*this)["gs"]["lens_correction_cynorm"] =
-        std::to_string(s_lensCorrectionState.cy / static_cast<double>(std::max(s_lensCorrectionState.image_height, 1)));
-    (*this)["gs"]["lens_correction_k1"] = std::to_string(s_lensCorrectionState.k1);
-    (*this)["gs"]["lens_correction_k2"] = std::to_string(s_lensCorrectionState.k2);
-    (*this)["gs"]["lens_correction_k3"] = std::to_string(s_lensCorrectionState.k3);
-    (*this)["gs"]["lens_correction_p1"] = std::to_string(s_lensCorrectionState.p1);
-    (*this)["gs"]["lens_correction_p2"] = std::to_string(s_lensCorrectionState.p2);
     (*this)["gs"]["image_stabilization_enabled"] = std::to_string(s_imageStabilizationState.enabled ? 1 : 0);
     (*this)["gs"]["image_stabilization_debug"] = std::to_string(s_imageStabilizationState.debug ? 1 : 0);
     (*this)["gs"]["image_stabilization_channel"] = std::to_string(s_imageStabilizationState.rc_channel);
