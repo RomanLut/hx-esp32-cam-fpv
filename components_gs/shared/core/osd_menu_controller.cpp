@@ -2297,7 +2297,7 @@ void OSDMenuController::drawGSScreenMenu(Ground2Air_Config_Packet& config)
         {
             drawLargeGapIfTallScreen();
             char buf[256];
-            sprintf(buf, "Mode: %s##status_display_mode", display_mode.c_str());
+            sprintf(buf, "Display: %s##status_display_mode", display_mode.c_str());
             this->drawStatus( buf );
         }
     }
