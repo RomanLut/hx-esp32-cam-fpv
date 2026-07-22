@@ -48,6 +48,10 @@ uint8_t getRecordingFps(const Ground2Air_Config_Packet& config, const TVMode& mo
     }
     if (s_isOV3660)
     {
+        if (s_isEsp32)
+        {
+            return mode.FPS3660;
+        }
         return config.camera.ov3660HighFPS ? mode.highFPS3660 : mode.FPS3660;
     }
     return config.camera.ov2640HighFPS ? mode.highFPS2640 : mode.FPS2640;

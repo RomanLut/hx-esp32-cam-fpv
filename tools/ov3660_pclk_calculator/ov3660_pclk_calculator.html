@@ -318,7 +318,7 @@
 <body>
     <div class="container">
         <h1>OV3660 Frequency Calculator</h1>
-        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.1</div>
+        <div style="text-align:center; font-size:13px; color:#6c757d; margin-bottom: 2rem;">Version 1.3</div>
 
         <div class="input-group" style="margin-bottom: 2rem;">
             <label for="configPreset">Apply preset:</label>
@@ -422,11 +422,11 @@ PLLCLK  = pll_bypass ? XVCLK : (VCO * 2 / pll_sys_div / seld5_2x);  // seld5: /1
 SYSCLK  = PLLCLK / 4;
 PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
 </pre></li>
-                <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). In binning mode the driver programs VTS = total_y/2 + 1.</li>
+                <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). Binned modes normally use VTS = total_y/2 + 1; ESP32 VGA/SVGA deliberately override VTS to 783.</li>
                 <li><strong>VCO range is not published</strong> for the OV3660 PLLS; stock configs run 160-200 MHz, project presets up to ~293 MHz. Values above 400 MHz are flagged.</li>
-                <li><strong>ESP32 OV3660 high-FPS mode applies only to binned 16:9 modes</strong>; S3/C5 also support binned 4:3 high-FPS modes.
+                <li><strong>Classic ESP32 has no OV3660 high-FPS mode</strong> because the experimental timing corrupts frames; S3/C5 support high-FPS binned modes.
                 <li><strong>1024x576 uses a dedicated 16:9 timing:</strong> HTS=1920, VTS=1040, active source 1728x972. <strong>1280x720 uses the aligned 16:9 timing:</strong> HTS=2172, VTS=1128, active source 1920x1080. Both avoid binning.</li>
-                <li><strong>ESP32 (esp32cam) quirks:</strong> VCO 200 MHz is the current high-FPS test point, root_2x does not double cleanly, and shortening HTS breaks the image. Current ESP32 OV3660 modes are: 16:9 binned 30 FPS normal / 34.8 FPS high-FPS, 4:3 VGA/SVGA 25 FPS, 1024x576 22.5 FPS, 1280x720 18.4 FPS. 1024x768 currently falls through to the 30.5 FPS 4:3 fallback.</li>
+                <li><strong>ESP32 (esp32cam) quirks:</strong> VGA/SVGA use a centered 1920x1440 source, HTS=2172, VTS=783 and a 51.67 MHz SYSCLK for 30.38 FPS. The stock full-array 2048x1536 source produces unstable VSYNC cadence. Other modes follow the same binning, special-mode and PLL branches as <code>ov3660.c</code>.</li>
                 <li><strong>All frequencies in Hz</strong></li>
             </ul>
         </div>
@@ -491,6 +491,9 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
         ];
 
         const specialModes = {
+            // Stable classic-ESP32 4:3 source for VGA/SVGA. Firmware keeps VTS
+            // at 783 after binning instead of deriving it from total_y.
+            'esp32Stable4x3': { max_w: 1920, max_h: 1440, start_x: 64, start_y: 48, end_x: 2015, end_y: 1499, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1516 },
             // Moderate 16:9 path for 1024x576. The scanned area includes the
             // 16x6 ISP offset border, so the active source image is 1728x972.
             'wide1024': { max_w: 1728, max_h: 972, start_x: 160, start_y: 282, end_x: 1919, end_y: 1265, offset_x: 16, offset_y: 6, total_x: 1920, total_y: 1040 },
@@ -505,9 +508,10 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
         const presets = {
             'qvga': { name: 'QVGA 320x240 4:3', ratio: 0, width: 320, height: 240 },
             'cif': { name: 'CIF 400x296 4:3', ratio: 0, width: 400, height: 296 },
-            'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480 },
+            'hvga': { name: 'HVGA 480x320 3:2', ratio: 1, width: 480, height: 320 },
+            'vga': { name: 'VGA 640x480 4:3', ratio: 0, width: 640, height: 480, esp32SpecialMode: 'esp32Stable4x3' },
             'portrait3mp': { name: '640x360 16:9', ratio: 4, width: 640, height: 360 },
-            'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600 },
+            'svga': { name: 'SVGA 800x600 4:3', ratio: 0, width: 800, height: 600, esp32SpecialMode: 'esp32Stable4x3' },
             'portraithd': { name: '800x456 16:9', ratio: 4, width: 800, height: 456 },
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
             '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576, specialMode: 'wide1024' },
@@ -520,6 +524,9 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
 
         let currentPreset = presets['vga'];
 
+        //===================================================================================
+        //===================================================================================
+        // Calculates the clocks and the exact platform-specific timing programmed by the driver.
         function calculateFrequencies() {
             const platformKey = document.getElementById('capturePlatform').value;
             const platform = CAPTURE_PLATFORMS[platformKey] || CAPTURE_PLATFORMS.esp32s3;
@@ -543,13 +550,29 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             const sysClk = pllClk / 4;
             const pclk = pllClk / 2 / (pclkManual ? pclkDiv : 1);
 
-            // timing from the active ratio, binning like the driver
-            const settings = currentPreset.specialMode ? specialModes[currentPreset.specialMode] : ratioTable[currentPreset.ratio];
-            const binning = currentPreset.specialMode ? false : (currentPreset.width <= settings.max_w / 2) && (currentPreset.height <= settings.max_h / 2);
+            // Select platform-specific sensor windows before evaluating binning,
+            // matching the ordering in ov3660.c set_framesize().
+            const specialModeKey = platformKey === 'esp32' && currentPreset.esp32SpecialMode
+                ? currentPreset.esp32SpecialMode
+                : currentPreset.specialMode;
+            const baseSettings = specialModeKey ? specialModes[specialModeKey] : ratioTable[currentPreset.ratio];
+            const forceNoBinning = specialModeKey && specialModeKey !== 'esp32Stable4x3';
+            const binning = forceNoBinning ? false
+                : (currentPreset.width <= baseSettings.max_w / 2) && (currentPreset.height <= baseSettings.max_h / 2);
+            // Binned modes program the reduced 8x2 ISP offsets; the ratio table's
+            // 16x6 offsets are used only by non-binned and dedicated modes.
+            const settings = {
+                ...baseSettings,
+                offset_x: binning ? 8 : baseSettings.offset_x,
+                offset_y: binning ? 2 : baseSettings.offset_y
+            };
             const scale = !((currentPreset.width == settings.max_w && currentPreset.height == settings.max_h)
                 || (currentPreset.width == settings.max_w / 2 && currentPreset.height == settings.max_h / 2));
             const hts = settings.total_x;
-            const vts = binning ? (Math.floor(settings.total_y / 2) + 1) : settings.total_y;
+            const vtsOverridden = specialModeKey === 'esp32Stable4x3';
+            const vts = vtsOverridden
+                ? 783
+                : (binning ? (Math.floor(settings.total_y / 2) + 1) : settings.total_y);
             const fps = sysClk / (hts * vts);
 
             const ranges = {
@@ -570,7 +593,7 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             return {
                 xvclk, refIn, vco, pllClk, sysClk, pclk, fps,
                 preDiv, preDivCode, multiplier, root2x, bypass, sysDiv, seld5, seld5Code,
-                pclkManual, pclkDiv, hts, vts, binning, scale, settings, ranges, isValid
+                pclkManual, pclkDiv, hts, vts, vtsOverridden, binning, scale, settings, ranges, isValid
             };
         }
 
@@ -653,7 +676,7 @@ SCCB_Write(0x3811, ${toHex(f.settings.offset_x & 0xFF)});
 SCCB_Write(0x3812, ${toHex(f.settings.offset_y >> 8)});
 SCCB_Write(0x3813, ${toHex(f.settings.offset_y & 0xFF)});
 
-// Timing (HTS/VTS${f.binning ? ', binning: VTS = total_y/2+1' : ''})
+// Timing (HTS/VTS${f.vtsOverridden ? ', ESP32 VGA/SVGA VTS override' : (f.binning ? ', binning: VTS = total_y/2+1' : '')})
 SCCB_Write(0x380c, ${toHex(f.hts >> 8)});
 SCCB_Write(0x380d, ${toHex(f.hts & 0xFF)});
 SCCB_Write(0x380e, ${toHex(f.vts >> 8)});
@@ -773,16 +796,14 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
 
         // --------- Project configuration presets ---------
         // Values match ov3660.c set_framesize() JPEG configs for this project.
-        // The "high FPS" variants are selected in firmware through set_colorbar.
-        // ESP32 uses the high-FPS flag only for binned 16:9 modes; S3/C5 also
-        // enable it for binned 4:3. XVCLK: 20 MHz (ESP32/S3), 24 MHz (C5).
+        // S3/C5 high-FPS variants are selected in firmware through set_colorbar.
+        // Classic ESP32 exposes only the validated normal modes.
+        // XVCLK: 20 MHz (ESP32/S3), 24 MHz (C5).
         const configPresets = [
             { name: 'ESP32 640x360 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'portrait3mp' },
-            { name: 'ESP32 640x360 35fps',  platform: 'esp32', xvclk: 20000000, multiplier: 15, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 10, resolution: 'portrait3mp' },
-            { name: 'ESP32 640x480 25fps',  platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'vga' },
+            { name: 'ESP32 640x480 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 31, sysDiv: 1, preDiv: 3, root2x: false, seld5: 0, pclkDiv: 11, resolution: 'vga' },
             { name: 'ESP32 800x456 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'portraithd' },
-            { name: 'ESP32 800x456 35fps',  platform: 'esp32', xvclk: 20000000, multiplier: 15, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 10, resolution: 'portraithd' },
-            { name: 'ESP32 800x600 25fps',  platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'svga' },
+            { name: 'ESP32 800x600 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 31, sysDiv: 1, preDiv: 3, root2x: false, seld5: 0, pclkDiv: 11, resolution: 'svga' },
             { name: 'ESP32 1024x576 22fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: '1024x576' },
             { name: 'ESP32 1280x720 18fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'hd' },
             { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },

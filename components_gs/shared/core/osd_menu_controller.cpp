@@ -1089,7 +1089,7 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
 
     if (s_isOV5640)
     {
-        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 5) )
+        if ( this->drawMenuItem( config.camera.ov5640HighFPS ? "Higher FPS Modes: Enabled##5" : "Higher FPS Modes: Disabled##5", 5) )
         {
             config.camera.ov5640HighFPS = !config.camera.ov5640HighFPS;
             commitGround2AirConfig(config);
@@ -1097,8 +1097,9 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
     }
     else if (s_isOV3660)
     {
-        // ESP32 applies OV3660 high-FPS timing only to 16:9 modes; S3/C5 support 4:3 too.
-        if ( this->drawMenuItem( config.camera.ov3660HighFPS ? "50fps Modes: Enabled##6" : "50fps Modes: Disabled##5", 6) )
+        // Classic ESP32 OV3660 high-FPS timing corrupts frames, so only expose
+        // this setting for the ESP32-S3/C5 implementations.
+        if (!s_isEsp32 && this->drawMenuItem( config.camera.ov3660HighFPS ? "Higher FPS Modes: Enabled##6" : "Higher FPS Modes: Disabled##6", 6) )
         {
             config.camera.ov3660HighFPS = !config.camera.ov3660HighFPS;
             commitGround2AirConfig(config);
@@ -1106,7 +1107,7 @@ void OSDMenuController::drawImageSettingsMenu(Ground2Air_Config_Packet& config)
     }
     else
     {
-        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "40fps (overclock): Enabled##6" : "40FPS (overclock): Disabled##5", 6) )
+        if ( this->drawMenuItem( config.camera.ov2640HighFPS ? "Higher FPS (overclock): Enabled##6" : "Higher FPS (overclock): Disabled##6", 6) )
         {
             config.camera.ov2640HighFPS = !config.camera.ov2640HighFPS;
             commitGround2AirConfig(config);

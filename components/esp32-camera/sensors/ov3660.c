@@ -329,6 +329,16 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     bool is_1024x576_timing = (framesize == FRAMESIZE_P_FHD);
     bool is_1280x720_timing = (framesize == FRAMESIZE_HD);
 
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    if (framesize == FRAMESIZE_VGA || framesize == FRAMESIZE_SVGA)
+    {
+        // Full-array 2048x1536 readout makes OV3660 VSYNC cadence wander on
+        // classic ESP32 even though no frames are rejected by the receiver.
+        // A centered 1920x1440 crop preserves 4:3 geometry and stable cadence.
+        settings = (ratio_settings_t){1920, 1440, 64, 48, 2015, 1499, 16, 6, 2172, 1516};
+    }
+#endif
+
     if (is_1024x576_timing) {
         // Use a moderate 1728x972 source for 1024x576. The wider 1920x1080 ->
         // 1024x576 scaler ratio can produce unstable frame pacing on OV3660,
@@ -374,9 +384,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
                 && (framesize == FRAMESIZE_VGA || framesize == FRAMESIZE_SVGA);
             if (esp32_normal_4x3_vga_svga)
             {
-                // OV3660 breaks frames on ESP32-CAM at the low VCO 140 setting.
-                // Keep the PLL in the stable VCO 180 range and use the normal
-                // binned VTS for a 25 FPS test cadence.
+                // OV3660 breaks frames on ESP32-CAM when the stock full-array
+                // timing is used. Keep the validated fixed VTS used by the
+                // tuned 30 FPS VGA/SVGA PLL configuration.
                 total_y = 783;
             }
 #endif
@@ -402,8 +412,10 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
         //FPS = SYSCLK / (HTS * VTS); binned VTS = total_y/2+1 (see tools/ov3660_pclk_calculator)
-        // High-FPS variants are selected by the OV3660 flag passed via set_colorbar().
+        // High-FPS variants on ESP32-S3/C5 are selected by the OV3660 flag passed via set_colorbar().
+#if defined(CONFIG_IDF_TARGET_ESP32C5) || defined(CONFIG_IDF_TARGET_ESP32S3)
         bool highFPS = sensor->status.colorbar != 0;
+#endif
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         //24 MHz XCLK (ESP32-C5)
         if (is_1024x576_timing) {
@@ -431,8 +443,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
             ret = set_pll(sensor, false, 11, 1, 0, false, 0, true, 4); //SYSCLK 55 MHz: 4:3 binned 30.5 FPS, QXGA 15.3 FPS, 16:9 full 20.9 FPS, 27.5 mhz pclk
         }
 #elif defined(CONFIG_IDF_TARGET_ESP32)
-        //20 MHz XCLK (ESP32): keep VGA/SVGA normal 4:3 near 25 FPS using
-        //stable VCO 180 timing; VCO 140 produced broken frames on ESP32-CAM.
+        //20 MHz XCLK (ESP32): VGA/SVGA use the validated 30 FPS 4:3 timing.
         if (is_1024x576_timing)
         {
             ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1024x576 22.5 FPS, 10 mhz pclk
@@ -441,10 +452,6 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         {
             ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1280x720 18.4 FPS, 10 mhz pclk
         }
-        else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9 && highFPS)
-        {
-            ret = set_pll(sensor, false, 15, 1, 1, false, 0, true, 10); //VCO 200, SYSCLK 50.0 MHz: 16:9 binned 34.8 FPS, 10 mhz pclk
-        }
         else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9)
         {
             ret = set_pll(sensor, false, 13, 1, 1, false, 0, true, 9); //VCO 173, SYSCLK 43.3 MHz: 30.1 FPS, 9.6 mhz pclk
@@ -452,7 +459,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         else if (sensor->status.binning && ratio == ASPECT_RATIO_4X3
             && (framesize == FRAMESIZE_VGA || framesize == FRAMESIZE_SVGA))
         {
-            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 4:3 binned 25.0 FPS with VTS=783, 10 mhz pclk
+            // HTS 2172 and VTS 783 yield 30.4 FPS with this stable 1920x1440 crop.
+            ret = set_pll(sensor, false, 31, 1, 3, false, 0, true, 11); //VCO 206.7 MHz, SYSCLK 51.7 MHz, 9.4 MHz PCLK
         }
         else
         {

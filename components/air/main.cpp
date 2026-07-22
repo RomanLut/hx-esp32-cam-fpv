@@ -1096,7 +1096,12 @@ static void sd_write_proc(void*) //s_sd_write_task AVI
         uint8_t fps = s_ground2air_config_packet2.camera.ov2640HighFPS ? v->highFPS2640 : v->FPS2640;
         if (camera_is_ov3660())
         {
+#if defined(CONFIG_IDF_TARGET_ESP32)
+            // Classic ESP32 always uses the validated OV3660 frame rate.
+            fps = v->FPS3660;
+#else
             fps = s_ground2air_config_packet2.camera.ov3660HighFPS ? v->highFPS3660 : v->FPS3660;
+#endif
         }
         else if (camera_is_ov5640())
         {

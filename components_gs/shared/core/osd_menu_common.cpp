@@ -138,26 +138,10 @@ const char* kResolutionName3660ESP32[] =
     "320x240",
     "400x296",
     "480x320",
-    "640x480 25fps",
+    "640x480 30fps",
     "640x360 30fps",
-    "800x600 25fps",
+    "800x600 30fps",
     "800x456 30fps",
-    "1024x768",
-    "1024x576 22fps",
-    "1280x960",
-    "1280x720 18fps",
-    "1600x1200"
-};
-
-const char* kResolutionName3660ESP32Hi[] =
-{
-    "320x240",
-    "400x296",
-    "480x320",
-    "640x480 25fps",
-    "640x360 35fps",
-    "800x600 25fps",
-    "800x456 35fps",
     "1024x768",
     "1024x576 22fps",
     "1280x960",
@@ -170,26 +154,10 @@ const char* kResolutionName3660ESP32Aspect[] =
     "320x240",
     "400x296",
     "480x320",
-    "640x480 25fps (4:3)",
+    "640x480 30fps (4:3)",
     "640x360 30fps (16:9)",
-    "800x600 25fps (4:3)",
+    "800x600 30fps (4:3)",
     "800x456 30fps (16:9)",
-    "1024x768",
-    "1024x576 22fps (16:9)",
-    "1280x960",
-    "1280x720 18fps (16:9)",
-    "1600x1200"
-};
-
-const char* kResolutionName3660ESP32HiAspect[] =
-{
-    "320x240",
-    "400x296",
-    "480x320",
-    "640x480 25fps (4:3)",
-    "640x360 35fps (16:9)",
-    "800x600 25fps (4:3)",
-    "800x456 35fps (16:9)",
     "1024x768",
     "1024x576 22fps (16:9)",
     "1280x960",
@@ -245,13 +213,13 @@ const char* const* getResolutionNames(bool is_ov5640, bool is_ov3660, bool is_es
         {
             if (is_esp32)
             {
-                return high_fps ? kResolutionName3660ESP32HiAspect : kResolutionName3660ESP32Aspect;
+                return kResolutionName3660ESP32Aspect;
             }
             return high_fps ? kResolutionName3660S3C5HiAspect : kResolutionName3660S3C5Aspect;
         }
         if (is_esp32)
         {
-            return high_fps ? kResolutionName3660ESP32Hi : kResolutionName3660ESP32;
+            return kResolutionName3660ESP32;
         }
         return high_fps ? kResolutionName3660S3C5Hi : kResolutionName3660S3C5;
     }
