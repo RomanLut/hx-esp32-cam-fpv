@@ -121,6 +121,12 @@ To update groundstation software, pull updates from '''release''' branch:
   ```cd /home/radxa/```
   
   ```cd esp32-cam-fpv```
+
+  ```git fetch origin```
+
+  ```git reset --hard origin/release```
+
+  ```git clean -fd```
  
   ```git pull```
 
