@@ -57,7 +57,7 @@ https://github.com/user-attachments/assets/3dfc3725-5c03-43d9-bf62-a5a76a4a5fef
 
 Current consumption: 540mA @ 5V.
 
-## esp32c5-airunit-nano (current) (recommended)
+## esp32c5-airunit-nano (recommended)
 
 c5-air is designed by **us3r-d0e5nt-3x1st** and is maintained in repository:
 
