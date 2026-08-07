@@ -144,6 +144,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.video_fps = core.last_ground_stats.receivedCompletedFrames +
         core.last_ground_stats.restoredCompletedFrames;
     overlay_input.video_fps_alert = core.last_had_frame_loss;
+    overlay_input.rc_period_warning = core.session.shouldShowRCWarning(now);
     overlay_input.image_stabilization_enabled = s_imageStabilizationState.enabled;
     overlay_input.air_record = air_stats_valid && display_air_stats.air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();

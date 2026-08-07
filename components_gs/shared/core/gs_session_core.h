@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 
 #include "../../../components/common/Clock.h"
@@ -165,6 +166,7 @@ public:
                                   ITransport& transport,
                                   std::mutex& gs_stats_mutex,
                                   GSStats& gs_stats);
+    bool shouldShowRCWarning(Clock::time_point now);
     void flushTelemetryIfNeeded(bool got_rc_packet,
                                Clock::time_point now,
                                uint16_t gs_device_id,
@@ -224,7 +226,12 @@ private:
     Clock::time_point m_last_ping_sent_tp = Clock::now();
     Clock::time_point m_last_frame_completed_tp = Clock::now();
     Clock::time_point m_last_data_sent_tp = Clock::now();
+    Clock::time_point m_last_rc_command_tp = {};
+    Clock::time_point m_first_rc_command_tp = {};
+    Clock::time_point m_rc_warning_until = {};
+    std::deque<Clock::time_point> m_rc_packet_times;
     uint16_t m_connected_air_device_id = 0;
+    bool m_has_received_rc_packet = false;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;
     HXMavlinkParser m_mavlink_parser_in = HXMavlinkParser(true);
