@@ -20,7 +20,7 @@ struct HXMAVLinkMsgHeader
     // MAVLink v2 framing byte 0xFD
     uint8_t stx; 
 
-    // Payload length (fixed at 38 bytes for RC_CHANNELS_OVERRIDE with 18 channels)
+    // Payload length; MAVLink 2 removes trailing zero bytes from the 38-byte maximum.
     uint8_t payload_length;
 
     // Incompatibility flags (typically 0x00)
@@ -50,7 +50,7 @@ struct HXMAVLinkRCChannelsOverride
     // MAVLink v2 framing byte 0xFD
     uint8_t stx; 
 
-    // Payload length (fixed at 38 bytes for RC_CHANNELS_OVERRIDE with 18 channels)
+    // Payload length; MAVLink 2 removes trailing zero bytes from the 38-byte maximum.
     uint8_t payload_length;
 
     // Incompatibility flags (typically 0x00)
@@ -98,7 +98,7 @@ struct HXMAVLinkRCChannelsOverride
     // Checksum (calculated over the message starting from payload_length)
     uint16_t checksum;
 
-    //index == 1...18
+    // Returns one decoded RC channel, neutralizing absent and non-PWM MAVLink values.
     uint16_t getChannelValue(int channelIndex) const
     {
         if ( ( channelIndex < 1 ) || ( channelIndex > 18 ) ) 
@@ -106,8 +106,30 @@ struct HXMAVLinkRCChannelsOverride
             return 1500;
         }
 
-        const uint16_t*  p = &chan1_raw;
-        return p[channelIndex-1 + (channelIndex >= 9 ? 1 : 0)];   //account for target_XXX for channels 9...
+        const int payloadOffset = channelIndex <= 8
+            ? (channelIndex - 1) * 2
+            : 18 + (channelIndex - 9) * 2;
+        const uint8_t* payload = reinterpret_cast<const uint8_t*>(this) + HX_MAVLINK_NUM_HEADER_BYTES;
+
+        // MAVLink 2 may trim either or both trailing bytes of an extension field.
+        // Missing bytes decode as zero; never read the following checksum as RC data.
+        uint16_t value = 0;
+        if ( payloadOffset < payload_length )
+        {
+            value = payload[payloadOffset];
+        }
+        if ( payloadOffset + 1 < payload_length )
+        {
+            value |= static_cast<uint16_t>(payload[payloadOffset + 1]) << 8;
+        }
+
+        // handle zero and ignore/release representation and expects
+        if ( value == 0 || value == UINT16_MAX || value == UINT16_MAX - 1 )
+        {
+            return 1500;
+        }
+
+        return value;
     }
 };
 

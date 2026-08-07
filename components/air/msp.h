@@ -23,7 +23,8 @@
 
 #define MSP_SET_RAW_RC    200
 
-#define MSP_RC_CHANNELS_COUNT  18
+// This bridge forwards channels 1-16 only; MAVLink extension channels 17-18 are ignored
+#define MSP_RC_CHANNELS_COUNT  16
 
 
 #define MAX_MSP_MESSAGE 1024
