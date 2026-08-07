@@ -43,13 +43,10 @@ void setMonitorChannelIw(const std::string& interface, int channel)
 
 //===================================================================================
 //===================================================================================
+// Stops capture and releases the pcap handle during object destruction.
 LinuxWifiScanTransport::~LinuxWifiScanTransport()
 {
-    m_captureStop = true;
-    if (m_captureThread.joinable())
-    {
-        m_captureThread.join();
-    }
+    stopCaptureThread();
     closeMonitorPcap();
 }
 
@@ -86,7 +83,7 @@ bool LinuxWifiScanTransport::openMonitorPcap(const std::string& interface)
     // via 'iw dev set type monitor' above.  Asking pcap to enable RFMON itself fails
     // on some WSL / out-of-tree drivers even though the interface is already in
     // monitor mode (pcap_activate returns PCAP_ERROR_RFMON_NOTSUP = -6).
-    pcap_set_timeout(m_pcap, 100);       // 100 ms so the capture thread wakes to check stop flag
+    pcap_set_timeout(m_pcap, 100);       // limits packet-buffer latency while traffic is arriving
     pcap_set_buffer_size(m_pcap, 4000000);
 
     const int activate_ret = pcap_activate(m_pcap);
@@ -145,15 +142,32 @@ bool LinuxWifiScanTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
+// Stops packet capture and releases its handle when this transport is deselected.
 void LinuxWifiScanTransport::deactivate()
 {
+    stopCaptureThread();
+    closeMonitorPcap();
+    GSWifiScanTransport::deactivate();
+}
+
+//===================================================================================
+//===================================================================================
+// Wakes and joins the pcap capture thread before its handle is closed.
+void LinuxWifiScanTransport::stopCaptureThread()
+{
     m_captureStop = true;
+
+    // A pcap packet-buffer timeout is not guaranteed to expire while an interface is
+    // idle. Wake pcap_dispatch explicitly or a transport switch can block forever in join().
+    if (m_pcap != nullptr)
+    {
+        pcap_breakloop(m_pcap);
+    }
+
     if (m_captureThread.joinable())
     {
         m_captureThread.join();
     }
-    closeMonitorPcap();
-    GSWifiScanTransport::deactivate();
 }
 
 //===================================================================================
@@ -167,12 +181,17 @@ void LinuxWifiScanTransport::captureThreadFunc()
 
     while (!m_captureStop)
     {
-        // pcap_dispatch with cnt=-1 returns after one buffer-worth of packets or
-        // the read timeout.  We use a 100 ms timeout so the stop flag is checked
-        // frequently without spinning.
+        // pcap_dispatch with cnt=-1 returns after one buffer-worth of packets. The
+        // stop path uses pcap_breakloop because an idle Linux capture need not honor
+        // the packet-buffer timeout until at least one packet arrives.
         const int n = pcap_dispatch(m_pcap, -1,
                                     &LinuxWifiScanTransport::packetCallback,
                                     reinterpret_cast<u_char*>(this));
+
+        if (n == PCAP_ERROR_BREAK && m_captureStop)
+        {
+            break;
+        }
 
         if (n < 0)
         {
