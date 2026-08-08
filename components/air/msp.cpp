@@ -295,8 +295,9 @@ uint8_t MSP::crc8_dvb_s2(uint8_t crc, unsigned char a)
   return crc;
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Builds and queues one complete MSPv2 command, reporting confirmed UART writes only.
 bool MSP::sendCommand(uint16_t messageID, void * payload, uint16_t size)
 {
   size_t freeSize = 0;
@@ -304,39 +305,34 @@ bool MSP::sendCommand(uint16_t messageID, void * payload, uint16_t size)
 
   if ( freeSize < (9 + size) ) return false;
 
-  uint8_t flag = 0;
-  int msg_size = 9;
+  const uint8_t flag = 0;
   uint8_t crc = 0;
-  uint8_t tmp_buf[2];
-
-  msg_size += (int)size;
-
-  uart_write_bytes( UART_MSP_OSD, (unsigned char*)"$", 1);
-  uart_write_bytes( UART_MSP_OSD, (unsigned char*)"X", 1);
-  uart_write_bytes( UART_MSP_OSD, (unsigned char*)"<", 1);
-
-  crc = MSP::crc8_dvb_s2(crc, flag);
-  uart_write_bytes( UART_MSP_OSD, &flag,1);
-
-  memcpy(tmp_buf, &messageID, 2);
-  crc = MSP::crc8_dvb_s2(crc, tmp_buf[0]);
-  crc = MSP::crc8_dvb_s2(crc, tmp_buf[1]);
-  uart_write_bytes( UART_MSP_OSD, tmp_buf, 2);
-
-  memcpy(tmp_buf, &size, 2);
-  crc = MSP::crc8_dvb_s2(crc, tmp_buf[0]);
-  crc = MSP::crc8_dvb_s2(crc, tmp_buf[1]);
-  uart_write_bytes( UART_MSP_OSD,tmp_buf, 2);
-
-  uint8_t * payloadPtr = (uint8_t*)payload;
-  for (uint8_t i = 0; i < size; ++i)
+  uint8_t header[8] =
   {
-    uint8_t b = *(payloadPtr++);
-    crc = MSP::crc8_dvb_s2(crc, b);
-    uart_write_bytes( UART_MSP_OSD,&b, 1);
+    '$',
+    'X',
+    '<',
+    flag,
+    static_cast<uint8_t>(messageID),
+    static_cast<uint8_t>(messageID >> 8),
+    static_cast<uint8_t>(size),
+    static_cast<uint8_t>(size >> 8)
+  };
+
+  for (size_t i = 3; i < sizeof(header); i++)
+  {
+    crc = MSP::crc8_dvb_s2(crc, header[i]);
   }
 
-  uart_write_bytes( UART_MSP_OSD, &crc,1);
+  uint8_t * payloadPtr = (uint8_t*)payload;
+  for (uint16_t i = 0; i < size; ++i)
+  {
+    crc = MSP::crc8_dvb_s2(crc, payloadPtr[i]);
+  }
+
+  if (uart_write_bytes(UART_MSP_OSD, header, sizeof(header)) != sizeof(header)) return false;
+  if (size > 0 && uart_write_bytes(UART_MSP_OSD, payload, size) != size) return false;
+  if (uart_write_bytes(UART_MSP_OSD, &crc, 1) != 1) return false;
 
   return true;
 }
@@ -442,15 +438,20 @@ void MSP::loop(bool mavlink2mspRCEnabled)
     //int64_t delta2 = now - this->lastRealRC;
     //if ((delta2> 100000) && (delta2 < 500000)) LOG("RC Delta=%d\n", (int)delta2);
 
-    if ( this->gotRCChannels )
+    const bool isNewRcCommand = this->gotRCChannels;
+    if (this->sendCommand(MSP_SET_RAW_RC, this->rcChannels, MSP_RC_CHANNELS_COUNT * 2))
     {
-      this->gotRCChannels = false;
-      this->lastRealRC = now;
-    }
+      if (isNewRcCommand)
+      {
+        // Keep a new command pending until its first successful UART enqueue.
+        this->gotRCChannels = false;
+        this->lastRealRC = now;
+        recordAirRcCommandSent();
+      }
 
-    this->sendCommand(MSP_SET_RAW_RC, this->rcChannels, MSP_RC_CHANNELS_COUNT * 2);
-    this->lastPing = now + MSP_PING_TIMEOUT_US;
-    this->lastRC = now;
+      this->lastPing = now + MSP_PING_TIMEOUT_US;
+      this->lastRC = now;
+    }
   }
 
   // INAV expects RSSI dBm as a positive magnitude in this MSP link-statistics packet.

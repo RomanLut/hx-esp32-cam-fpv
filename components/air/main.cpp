@@ -144,7 +144,21 @@ uint16_t s_framesCounter = 0;
 static bool s_initialized = false;
 static uint16_t s_camera_sensor_pid = OV2640_PID;
 
-static uint32_t s_last_rc_packet_tp = 0;
+static uint32_t s_last_sent_rc_command_tp = 0;
+
+//===================================================================================
+//===================================================================================
+// Records the interval between RC commands successfully queued for the flight controller.
+IRAM_ATTR void recordAirRcCommandSent()
+{
+    const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    if (s_last_sent_rc_command_tp != 0)
+    {
+        const int period = static_cast<int>(now - s_last_sent_rc_command_tp);
+        s_stats.RCPeriodMaxMS = std::max(s_stats.RCPeriodMaxMS, period);
+    }
+    s_last_sent_rc_command_tp = now;
+}
 
 #if defined(DVR_SUPPORT) && defined(BOARD_ESP32C5)
 static uint8_t s_sd_record_frame_selector = 0;
@@ -1940,11 +1954,12 @@ static bool send_mavlink_radio_status(size_t uart_free_size)
 
 //===================================================================================
 //===================================================================================
-// Sends a due RADIO_STATUS without a boundary after three seconds of input silence.
+// Sends a due RADIO_STATUS after input silence only when MAVLink is forwarded unchanged.
 static void send_mavlink_radio_status_if_idle()
 {
     uint32_t now = millis();
-    if (static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) < 0 ||
+    if (s_ground2air_config_packet2.misc.mavlink2mspRC != 0 ||
+        static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) < 0 ||
         now - s_mavlink_last_input_ms < MAVLINK_RADIO_STATUS_IDLE_MS)
     {
         return;
@@ -1955,7 +1970,8 @@ static void send_mavlink_radio_status_if_idle()
     // Input processing uses the same mutex and may have sent the pending status
     // while this task was waiting, so recheck both deadlines under the lock.
     now = millis();
-    if (static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) >= 0 &&
+    if (s_ground2air_config_packet2.misc.mavlink2mspRC == 0 &&
+        static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) >= 0 &&
         now - s_mavlink_last_input_ms >= MAVLINK_RADIO_STATUS_IDLE_MS)
     {
         size_t free_size = 0;
@@ -1983,10 +1999,13 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;
     s_mavlink_last_input_ms = millis();
+    const bool mavlink2MspRcEnabled = s_ground2air_config_packet2.misc.mavlink2mspRC != 0;
 
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
     int radio_status_insert_offset = -1;
+    int rc_packet_count = 0;
     const bool radio_status_due =
+        !mavlink2MspRcEnabled &&
         static_cast<int32_t>(s_mavlink_last_input_ms - s_mavlink_radio_status_next_send_ms) >= 0;
     for ( int i = 0; i < s; i++ )
     {
@@ -2000,16 +2019,10 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
-                uint32_t t = (uint32_t)millis();
-                int d = t - s_last_rc_packet_tp;
-                s_last_rc_packet_tp = t;
-                if ( d > s_stats.RCPeriodMaxMS ) 
-                {
-                    s_stats.RCPeriodMaxMS = d;
-                }
+                rc_packet_count++;
 
 #ifdef UART_MSP_OSD
-                if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
+                if (mavlink2MspRcEnabled)
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
@@ -2042,17 +2055,29 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
 
     uint8_t* payload = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+    bool mavlink_payload_queued = false;
     if ( radio_status_insert_offset >= 0 && freeSize >= s + MAVLINK_RADIO_STATUS_FRAME_SIZE )
     {
-        uart_write_bytes(UART_MAVLINK, payload, radio_status_insert_offset);
+        const int first_part_written = uart_write_bytes(UART_MAVLINK, payload, radio_status_insert_offset);
         send_mavlink_radio_status(freeSize - s);
-        uart_write_bytes(UART_MAVLINK,
+        const int second_part_size = s - radio_status_insert_offset;
+        const int second_part_written = uart_write_bytes(UART_MAVLINK,
             payload + radio_status_insert_offset,
-            s - radio_status_insert_offset);
+            second_part_size);
+        mavlink_payload_queued = first_part_written == radio_status_insert_offset &&
+            second_part_written == second_part_size;
     }
     else if ( freeSize >= s )
     {
-        uart_write_bytes(UART_MAVLINK, payload, s);
+        mavlink_payload_queued = uart_write_bytes(UART_MAVLINK, payload, s) == s;
+    }
+
+    if (!mavlink2MspRcEnabled && mavlink_payload_queued)
+    {
+        for (int i = 0; i < rc_packet_count; i++)
+        {
+            recordAirRcCommandSent();
+        }
     }
 
     xSemaphoreGive(s_serial_mux);

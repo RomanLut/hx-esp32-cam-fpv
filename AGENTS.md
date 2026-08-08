@@ -32,3 +32,13 @@ Radxa deployment rule:
 Linux script copy rule:
 - whenever a script is copied from Windows workspace to any Linux target (Raspberry Pi, Radxa, WSL, or other), convert it to LF on target before execution (for example `sed -i 's/\r$//' <script>`), then restore executable flags (`chmod +x`) as needed
 
+ESP32 PlatformIO build rule:
+- never run ESP32 PlatformIO builds or clean commands concurrently; all firmware targets share PlatformIO packages and tools, and concurrent runs cause package-manager collisions and locked build files
+- build `air_firmware_esp32cam`, `air_firmware_esp32s3sense`, and `air_firmware_esp32c5` strictly one at a time, including when using orchestration tools; do not use `Promise.all`, parallel jobs, or overlapping shells for these targets
+- use `C:\Users\roman\.platformio\penv\Scripts\pio.exe` instead of the global `pio` command or `python -m platformio`
+- do not clean a target unless regeneration is actually required; a clean ESP-IDF build is much slower than an incremental build
+- allow at least 15 minutes for a clean ESP32 build command so the tool wrapper does not time out while the compiler is still working
+- if any PlatformIO command times out, assume its child processes may still be running; inspect PlatformIO, Python, CMake, Ninja, and Xtensa/RISC-V compiler processes and wait for the original build to finish before starting another build or clean command
+- never start a retry while any prior PlatformIO or compiler process for this workspace is alive, because the overlapping process can lock archives, linker scripts, and generated files
+- after a timed-out wrapper finishes in the background, verify its result from the completed process/artifacts and, if needed, run only one incremental confirmation after all prior processes have exited
+
