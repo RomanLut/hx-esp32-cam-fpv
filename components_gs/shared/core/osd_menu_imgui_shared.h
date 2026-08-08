@@ -2,6 +2,8 @@
 
 #include "imgui.h"
 #include <algorithm>
+#include <array>
+#include <cstdint>
 
 namespace gs::menu::imgui
 {
@@ -52,6 +54,7 @@ void drawMenuStatusError(const char* caption, const MenuFrameLayout& layout);
 void drawMenuFooterRight(const char* caption, const MenuFrameLayout& layout);
 void drawLargeGap(const MenuFrameLayout& layout);
 void drawSmallGap(const MenuFrameLayout& layout);
+void drawImageHistogram(const std::array<uint32_t, 256>& bins, const MenuFrameLayout& layout);
 void drawScrollbar(float x, float y_start, float track_height, int selected_item, int total_items, int visible_items, float width, bool force_show = false);
 
 } // namespace gs::menu::imgui

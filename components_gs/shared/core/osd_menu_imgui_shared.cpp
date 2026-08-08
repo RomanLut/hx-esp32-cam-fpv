@@ -200,6 +200,48 @@ void drawSmallGap(const MenuFrameLayout& layout)
 
 //===================================================================================
 //===================================================================================
+// Draws a 256-pixel white luma histogram in imaginary menu-item slots 9 through 12.
+void drawImageHistogram(const std::array<uint32_t, 256>& bins, const MenuFrameLayout& layout)
+{
+    constexpr float kHistogramWidth = 256.0f;
+    // Seven real items plus the intentionally empty imaginary item 8 place the
+    // histogram at item 9 instead of directly after (or over) item 7.
+    constexpr int kMenuRowsBeforeHistogram = 8;
+
+    const ImVec2 window_pos = ImGui::GetWindowPos();
+    const ImVec2 window_padding = ImGui::GetStyle().WindowPadding;
+    const float row_step = layout.button_height + layout.item_gap_y;
+    const float histogram_height = 4.0f * layout.button_height + 3.0f * layout.item_gap_y;
+    const float x = window_pos.x + window_padding.x + layout.item_indent +
+                    (layout.item_width - kHistogramWidth) * 0.5f;
+    const float y = window_pos.y + window_padding.y + layout.button_height + layout.item_gap_y +
+                    static_cast<float>(kMenuRowsBeforeHistogram) * row_step;
+    const float bottom = y + histogram_height;
+    const uint32_t peak = *std::max_element(bins.begin(), bins.end());
+
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    draw_list->AddRect(ImVec2(x - 1.0f, y - 1.0f),
+                       ImVec2(x + kHistogramWidth, bottom),
+                       white);
+
+    if (peak == 0)
+    {
+        return;
+    }
+
+    for (std::size_t bin = 0; bin < bins.size(); ++bin)
+    {
+        const float bar_height = histogram_height *
+                                 static_cast<float>(bins[bin]) /
+                                 static_cast<float>(peak);
+        const float bar_x = x + static_cast<float>(bin);
+        draw_list->AddLine(ImVec2(bar_x, bottom), ImVec2(bar_x, bottom - bar_height), white);
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Draws an 8px-wide vertical scrollbar to the right of the clipped menu item list.
 // Track uses the navy menu background color; thumb uses the blue active-item color.
 void drawScrollbar(float x, float y_start, float track_height,

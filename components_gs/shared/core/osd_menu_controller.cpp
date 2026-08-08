@@ -23,6 +23,7 @@
 #include "gs_runtime_state.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_stabilization_shared.h"
+#include "gs_image_histogram.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -64,6 +65,19 @@ constexpr float kImageStabilizationRoiDivisorStep = 0.1f;
 constexpr float kImageStabilizationZoomStep = 0.01f;
 constexpr float kImageStabilizationDecayStep = 0.01f;
 constexpr float kImageStabilizationLimitReleaseBoostStep = 0.1f;
+
+//===================================================================================
+//===================================================================================
+// Returns true for Image Settings and each direct image-adjustment child menu.
+bool isImageHistogramMenu(OSDMenuId menu_id)
+{
+    return menu_id == OSDMenuId::Image ||
+           menu_id == OSDMenuId::Brightness ||
+           menu_id == OSDMenuId::Contrast ||
+           menu_id == OSDMenuId::Exposure ||
+           menu_id == OSDMenuId::Saturation ||
+           menu_id == OSDMenuId::Sharpness;
+}
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -516,6 +530,7 @@ void OSDMenuController::openPlaybackDeleteMenuForActivePlayback()
 void OSDMenuController::close()
 {
     this->visible = false;
+    gs::image_histogram::setCollectionEnabled(false);
     this->m_close_menu_requested = false;
     this->m_lens_correction_draft_active = false;
     resetCapturedMenuBuffer();
@@ -782,9 +797,13 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 // Main draw entry point; handles menu open/close logic and draws one canonical UI copy.
 void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
+    const bool image_histogram_visible = this->visible && isImageHistogramMenu(this->menuId);
+    gs::image_histogram::setCollectionEnabled(image_histogram_visible);
+
     if (gs::calibration::isActive())
     {
         this->visible = false;
+        gs::image_histogram::setCollectionEnabled(false);
         resetCapturedMenuBuffer();
         return;
     }
@@ -869,6 +888,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 // Dispatches rendering to the appropriate menu page based on the current menu ID.
 void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
 {
+    const OSDMenuId drawn_menu_id = this->menuId;
     switch (this->menuId)
     {
         case OSDMenuId::Main: this->drawMainMenu(config); break;
@@ -912,6 +932,11 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
         case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
         case OSDMenuId::PlaybackDelete: this->drawPlaybackDeleteMenu(config); break;
+    }
+
+    if (isImageHistogramMenu(drawn_menu_id))
+    {
+        gs::menu::imgui::drawImageHistogram(gs::image_histogram::copyLatest(), m_imgui_layout);
     }
 }
 
