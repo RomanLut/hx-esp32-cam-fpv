@@ -27,6 +27,11 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
         m_last_sent_ping = 0;
         m_last_ping_sent_tp = now;
         m_last_data_sent_tp = now;
+        m_last_rc_command_tp = {};
+        m_first_rc_command_tp = {};
+        m_rc_warning_until = {};
+        m_rc_packet_times.clear();
+        m_has_received_rc_packet = false;
         m_ping_snapshot = {};
         m_ping_snapshot.last_received_tp = now;
     }
@@ -408,12 +413,34 @@ void GsSessionCore::processIncomingTelemetry(uint16_t gs_device_id,
                     }
                 }
 
-                static Clock::time_point s_last_rc_command = Clock::now();
-                Clock::time_point t = Clock::now();
-                int dt = std::chrono::duration_cast<std::chrono::milliseconds>(t - s_last_rc_command).count();
-                s_last_rc_command = t;
-                std::lock_guard<std::mutex> lg(gs_stats_mutex);
-                gs_stats.RCPeriodMax = std::max(gs_stats.RCPeriodMax, dt);
+                const Clock::time_point now = Clock::now();
+                int rc_period_ms = -1;
+                {
+                    std::lock_guard<std::mutex> state_lock(m_state_mutex);
+                    if (m_has_received_rc_packet)
+                    {
+                        rc_period_ms = static_cast<int>(
+                            std::chrono::duration_cast<std::chrono::milliseconds>(
+                                now - m_last_rc_command_tp).count());
+                    }
+                    else
+                    {
+                        m_first_rc_command_tp = now;
+                    }
+                    m_last_rc_command_tp = now;
+                    m_has_received_rc_packet = true;
+                    m_rc_packet_times.push_back(now);
+                    const Clock::time_point oldest_allowed = now - std::chrono::seconds(1);
+                    while (!m_rc_packet_times.empty() && m_rc_packet_times.front() <= oldest_allowed)
+                    {
+                        m_rc_packet_times.pop_front();
+                    }
+                }
+                if (rc_period_ms >= 0)
+                {
+                    std::lock_guard<std::mutex> stats_lock(gs_stats_mutex);
+                    gs_stats.RCPeriodMax = std::max(gs_stats.RCPeriodMax, rc_period_ms);
+                }
             }
         }
 
@@ -421,6 +448,35 @@ void GsSessionCore::processIncomingTelemetry(uint16_t gs_device_id,
     }
 
     flushTelemetryIfNeeded(gotRCPacket, Clock::now(), gs_device_id, transport);
+}
+
+//===================================================================================
+//===================================================================================
+// Updates and returns the warning latch from the trailing one-second RC packet rate.
+bool GsSessionCore::shouldShowRCWarning(Clock::time_point now)
+{
+    std::lock_guard<std::mutex> state_lock(m_state_mutex);
+    if (!m_has_received_rc_packet)
+    {
+        return false;
+    }
+
+    const Clock::time_point oldest_allowed = now - std::chrono::seconds(1);
+    while (!m_rc_packet_times.empty() && m_rc_packet_times.front() <= oldest_allowed)
+    {
+        m_rc_packet_times.pop_front();
+    }
+
+    // Wait for the first complete measurement window so a healthy stream does not
+    // briefly warn while its initial one-second packet count is still filling.
+    const bool has_complete_rate_window = now - m_first_rc_command_tp >= std::chrono::seconds(1);
+    const bool rc_rate_below_threshold = has_complete_rate_window && m_rc_packet_times.size() < 10;
+    if (rc_rate_below_threshold)
+    {
+        m_rc_warning_until = now + std::chrono::seconds(3);
+    }
+
+    return now < m_rc_warning_until;
 }
 
 //===================================================================================
