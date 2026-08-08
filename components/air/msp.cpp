@@ -10,6 +10,7 @@
 
 #define MSP_PING_TIMEOUT_US           125000
 #define MSP_RADIO_RSSI_INTERVAL_US   1000000
+#define MSP_RC_LINK_TIMEOUT_US       1000000
 
 #define MSP_PROTOCOL_LOG_ERRORS
 #define JUMBO_FRAME_MIN_SIZE  255
@@ -32,6 +33,7 @@ MSP::MSP()
   this->lastLoop = 0;
   this->lastRC = 0;
   this->lastRealRC = 0;
+  this->lastReceivedRC = 0;
   this->gotRCChannels = false;
   this->nextRadioRssi = 0;
   this->gotRadioRssi = false;
@@ -412,7 +414,7 @@ void MSP::sendPing()
 
 //===================================================================================
 //===================================================================================
-// Processes MSP traffic and periodically publishes cached Wi-Fi link statistics.
+// Processes MSP traffic and publishes Wi-Fi link statistics only in MAVLink-to-MSP mode.
 void MSP::loop(bool mavlink2mspRCEnabled)
 {
   int64_t now = esp_timer_get_time(); 
@@ -454,18 +456,22 @@ void MSP::loop(bool mavlink2mspRCEnabled)
     }
   }
 
-  // INAV expects RSSI dBm as a positive magnitude in this MSP link-statistics packet.
-  // Keep this schedule independent of RC reception so link data continues without RC packets.
+  // Keep MSP link statistics exclusive to MAVLink-to-MSP mode. In native
+  // MAVLink mode, RADIO_STATUS carries the same Wi-Fi link information.
   if (mavlink2mspRCEnabled && this->gotRadioRssi && (now >= this->nextRadioRssi))
   {
+    const bool rcLinkActive = this->lastReceivedRC &&
+      (now - this->lastReceivedRC <= MSP_RC_LINK_TIMEOUT_US);
+    const uint8_t linkQuality = rcLinkActive ? this->radioRssi : 0;
+    const uint8_t rssiDbmMagnitude = rcLinkActive ? this->radioRssiMagnitudeDbm : 100;
     uint8_t linkStats[7] =
     {
       0,
       1,
-      this->radioRssi,
-      this->radioRssiMagnitudeDbm,
+      linkQuality,
+      rssiDbmMagnitude,
       0,
-      0,
+      linkQuality,
       0
     };
 
@@ -476,7 +482,7 @@ void MSP::loop(bool mavlink2mspRCEnabled)
   }
   else if (!mavlink2mspRCEnabled)
   {
-    // Send immediately after the feature is enabled again.
+    // Send immediately after MAVLink-to-MSP mode is enabled again.
     this->nextRadioRssi = 0;
   }
 
@@ -494,6 +500,7 @@ void MSP::setRCChannels(const uint16_t* data)
 {
   memcpy( this->rcChannels, data, MSP_RC_CHANNELS_COUNT*2);
   this->gotRCChannels = true;
+  this->lastReceivedRC = esp_timer_get_time();
 }
 
 //===================================================================================

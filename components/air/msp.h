@@ -60,6 +60,7 @@ public:
   int64_t lastLoop;
   int64_t lastRC;
   int64_t lastRealRC;
+  int64_t lastReceivedRC;
 
   bool gotRCChannels;
   uint16_t rcChannels[MSP_RC_CHANNELS_COUNT];

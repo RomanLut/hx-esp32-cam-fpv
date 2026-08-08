@@ -177,10 +177,14 @@ static int s_mavlinkOutBufferCount = 0;
 
 static constexpr uint32_t MAVLINK_RADIO_STATUS_INTERVAL_MS = 1000;
 static constexpr uint32_t MAVLINK_RADIO_STATUS_IDLE_MS = 3000;
+static constexpr uint32_t MAVLINK_RC_LINK_TIMEOUT_MS = 1000;
 static uint32_t s_mavlink_radio_status_next_send_ms = 0;
 static uint32_t s_mavlink_last_input_ms = 0;
+static uint32_t s_mavlink_last_rc_received_ms = 0;
+static bool s_mavlink_rc_received = false;
 static uint8_t s_mavlink_radio_status_sequence = 0;
-static uint8_t s_mavlink_radio_status_rssi = 0;
+static uint8_t s_mavlink_radio_status_link_quality = 0;
+static uint8_t s_mavlink_radio_status_rssi_dbm_magnitude = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
@@ -1463,9 +1467,11 @@ IRAM_ATTR void transport_packet_received_cb(const uint8_t* data, size_t size, in
     s_stats.noiseFloorDbm = noise_floor_dbm;
 
 #ifdef UART_MAVLINK
-    // Wi-Fi supplies the magnitude of the negative dBm value here. MAVLink
-    // RADIO_STATUS uses 0..100, so -70 dBm is published as 30.
-    s_mavlink_radio_status_rssi = static_cast<uint8_t>(std::clamp(100 - static_cast<int>(rssi_dbm), 0, 100));
+    // Wi-Fi supplies the magnitude of the negative dBm value here.
+    const int rssiMagnitudeDbm = std::clamp(static_cast<int>(rssi_dbm), 0, 127);
+    s_mavlink_radio_status_rssi_dbm_magnitude = static_cast<uint8_t>(rssiMagnitudeDbm);
+    s_mavlink_radio_status_link_quality = static_cast<uint8_t>(
+        std::clamp(100 - rssiMagnitudeDbm, 0, 100));
 #endif
 
 #ifdef UART_MSP_OSD
@@ -1933,14 +1939,30 @@ static void init_camera();
 static bool send_mavlink_radio_status(size_t uart_free_size)
 {
     uint8_t frame[MAVLINK_RADIO_STATUS_FRAME_SIZE];
+    const uint32_t now = millis();
+    const bool rcLinkActive = s_mavlink_rc_received &&
+        now - s_mavlink_last_rc_received_ms <= MAVLINK_RC_LINK_TIMEOUT_MS;
     const uint8_t txBuffer = static_cast<uint8_t>(
         std::min<size_t>(100, uart_free_size * 100 / UART_TX_BUFFER_SIZE_MAVLINK));
+
+    // INAV 9 ELRS mode reads RSSI dBm magnitude from remrssi and scales rssi
+    // from 0..255 to link quality 0..100. Rounding up preserves the requested
+    // 100 + dBm percentage after INAV's integer down-scaling. Report -100 dBm
+    // and zero LQ after one second without a real MAVLink RC packet.
+    const uint8_t linkQuality = rcLinkActive ? s_mavlink_radio_status_link_quality : 0;
+    const uint8_t rssiDbmMagnitude = rcLinkActive ?
+        s_mavlink_radio_status_rssi_dbm_magnitude : 100;
+    const uint8_t encodedLinkQuality = static_cast<uint8_t>(
+        std::min<int>(UINT8_MAX,
+            (linkQuality * UINT8_MAX + 99) / 100));
     const size_t frameSize = HXMavlinkRCEncoder::buildRadioStatus(
         frame,
         sizeof(frame),
         s_mavlink_radio_status_sequence,
-        s_mavlink_radio_status_rssi,
-        txBuffer);
+        encodedLinkQuality,
+        txBuffer,
+        rssiDbmMagnitude,
+        0);
 
     if (frameSize == 0 || uart_write_bytes(UART_MAVLINK, frame, frameSize) != frameSize)
     {
@@ -2020,6 +2042,8 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
                 rc_packet_count++;
+                s_mavlink_last_rc_received_ms = s_mavlink_last_input_ms;
+                s_mavlink_rc_received = true;
 
 #ifdef UART_MSP_OSD
                 if (mavlink2MspRcEnabled)
