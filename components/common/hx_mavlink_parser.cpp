@@ -54,6 +54,10 @@ void HXMavlinkParser::crc_accumulate(uint8_t data, uint16_t *crcAccum)
 //=====================================================================
 void HXMavlinkParser::processByte(uint8_t byte)
 {
+    // Completion is a one-byte event. Keeping it latched would make bytes after
+    // a packet look like additional boundaries to stream filters and injectors.
+    this->bGotPacket = false;
+
     switch ( this->state )
     {
         case MPS_IDLE:
@@ -79,9 +83,19 @@ void HXMavlinkParser::processByte(uint8_t byte)
             this->sbuf[this->sbufIndex++] = byte;
             this->expectedLength--;
 
+            // The signed flag is the first MAVLink 2 body byte. Its 13-byte
+            // signature follows the checksum and is part of the frame boundary.
+            if ( this->v2 && this->sbufIndex == 3 && (byte & 0x01) != 0 )
+            {
+                this->expectedLength += HX_MAVLINK_SIGNATURE_BLOCK_LEN;
+            }
+
             if ( this->expectedLength == 0 )
             {
-                int crc1 = (this->sbuf[this->sbufIndex-1] << 8) | this->sbuf[this->sbufIndex-2];
+                const int signatureLength =
+                    this->v2 && (this->sbuf[2] & 0x01) != 0 ? HX_MAVLINK_SIGNATURE_BLOCK_LEN : 0;
+                const int crcOffset = this->sbufIndex - signatureLength - HX_MAVLINK_NUM_CHECKSUM_BYTES;
+                int crc1 = (this->sbuf[crcOffset + 1] << 8) | this->sbuf[crcOffset];
 
                 int msgId;
                 int header_len;

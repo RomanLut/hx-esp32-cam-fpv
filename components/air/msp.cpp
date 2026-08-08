@@ -1,5 +1,7 @@
 #include "msp.h"
 
+#include <algorithm>
+
 #include "driver/uart.h"
 #include "esp_timer.h"
 #include "osd.h"
@@ -7,6 +9,7 @@
 #ifdef UART_MSP_OSD
 
 #define MSP_PING_TIMEOUT_US           125000
+#define MSP_RADIO_RSSI_INTERVAL_US   1000000
 
 #define MSP_PROTOCOL_LOG_ERRORS
 #define JUMBO_FRAME_MIN_SIZE  255
@@ -20,8 +23,9 @@
 
 MSP g_msp;
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Initializes MSP parsing and periodic transmission state.
 MSP::MSP()
 {
   this->lastPing = 0;
@@ -29,6 +33,10 @@ MSP::MSP()
   this->lastRC = 0;
   this->lastRealRC = 0;
   this->gotRCChannels = false;
+  this->nextRadioRssi = 0;
+  this->gotRadioRssi = false;
+  this->radioRssi = 0;
+  this->radioRssiMagnitudeDbm = 0;
 }
 
 //======================================================
@@ -406,9 +414,10 @@ void MSP::sendPing()
     this->sendCommand(MSP_FC_VARIANT, NULL, 0 );
 }
 
-//======================================================
-//======================================================
-void MSP::loop()
+//===================================================================================
+//===================================================================================
+// Processes MSP traffic and periodically publishes cached Wi-Fi link statistics.
+void MSP::loop(bool mavlink2mspRCEnabled)
 {
   int64_t now = esp_timer_get_time(); 
   
@@ -442,7 +451,32 @@ void MSP::loop()
     this->sendCommand(MSP_SET_RAW_RC, this->rcChannels, MSP_RC_CHANNELS_COUNT * 2);
     this->lastPing = now + MSP_PING_TIMEOUT_US;
     this->lastRC = now;
-    return;
+  }
+
+  // INAV expects RSSI dBm as a positive magnitude in this MSP link-statistics packet.
+  // Keep this schedule independent of RC reception so link data continues without RC packets.
+  if (mavlink2mspRCEnabled && this->gotRadioRssi && (now >= this->nextRadioRssi))
+  {
+    uint8_t linkStats[7] =
+    {
+      0,
+      1,
+      this->radioRssi,
+      this->radioRssiMagnitudeDbm,
+      0,
+      0,
+      0
+    };
+
+    if (this->sendCommand(MSP2_COMMON_SET_MSP_RC_LINK_STATS, linkStats, sizeof(linkStats)))
+    {
+      this->nextRadioRssi = now + MSP_RADIO_RSSI_INTERVAL_US;
+    }
+  }
+  else if (!mavlink2mspRCEnabled)
+  {
+    // Send immediately after the feature is enabled again.
+    this->nextRadioRssi = 0;
   }
 
   if ( now > this->lastPing )
@@ -452,12 +486,24 @@ void MSP::loop()
   }
 }
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
+// Stores the latest MAVLink RC channel values for immediate MSP forwarding.
 void MSP::setRCChannels(const uint16_t* data)
 {
   memcpy( this->rcChannels, data, MSP_RC_CHANNELS_COUNT*2);
   this->gotRCChannels = true;
+}
+
+//===================================================================================
+//===================================================================================
+// Converts the Wi-Fi RSSI magnitude to both MSP dBm magnitude and 0..100 RSSI.
+void MSP::setRadioRssi(int8_t wifiRssiMagnitudeDbm)
+{
+  const int magnitudeDbm = std::clamp(static_cast<int>(wifiRssiMagnitudeDbm), 0, 127);
+  this->radioRssiMagnitudeDbm = static_cast<uint8_t>(magnitudeDbm);
+  this->radioRssi = static_cast<uint8_t>(std::clamp(100 - magnitudeDbm, 0, 100));
+  this->gotRadioRssi = true;
 }
 
 #endif // UART_MSP_OSD

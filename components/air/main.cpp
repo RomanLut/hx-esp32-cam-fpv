@@ -63,6 +63,7 @@
 #include "util.h"
 
 #include "hx_mavlink_parser.h"
+#include "hx_mavlink_rc_encoder.h"
 
 #include "temperature_sensor.h"
 
@@ -159,6 +160,13 @@ static int64_t s_accept_connection_timeout_ms = 0;
 
 static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
 static int s_mavlinkOutBufferCount = 0;
+
+static constexpr uint32_t MAVLINK_RADIO_STATUS_INTERVAL_MS = 1000;
+static constexpr uint32_t MAVLINK_RADIO_STATUS_IDLE_MS = 3000;
+static uint32_t s_mavlink_radio_status_next_send_ms = 0;
+static uint32_t s_mavlink_last_input_ms = 0;
+static uint8_t s_mavlink_radio_status_sequence = 0;
+static uint8_t s_mavlink_radio_status_rssi = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
@@ -1440,6 +1448,16 @@ IRAM_ATTR void transport_packet_received_cb(const uint8_t* data, size_t size, in
     s_stats.rssiDbm = rssi_dbm;
     s_stats.noiseFloorDbm = noise_floor_dbm;
 
+#ifdef UART_MAVLINK
+    // Wi-Fi supplies the magnitude of the negative dBm value here. MAVLink
+    // RADIO_STATUS uses 0..100, so -70 dBm is published as 30.
+    s_mavlink_radio_status_rssi = static_cast<uint8_t>(std::clamp(100 - static_cast<int>(rssi_dbm), 0, 100));
+#endif
+
+#ifdef UART_MSP_OSD
+    g_msp.setRadioRssi(rssi_dbm);
+#endif
+
     s_fec_decoder.lock();
     if (!s_fec_decoder.decode_data(data, size, false))
     {
@@ -1894,6 +1912,64 @@ IRAM_ATTR static void handle_ground2air_connect_packet(Ground2Air_Config_Packet&
 
 static void init_camera();
 
+#ifdef UART_MAVLINK
+//===================================================================================
+//===================================================================================
+// Writes one RADIO_STATUS frame and schedules the next event after a successful send.
+static bool send_mavlink_radio_status(size_t uart_free_size)
+{
+    uint8_t frame[MAVLINK_RADIO_STATUS_FRAME_SIZE];
+    const uint8_t txBuffer = static_cast<uint8_t>(
+        std::min<size_t>(100, uart_free_size * 100 / UART_TX_BUFFER_SIZE_MAVLINK));
+    const size_t frameSize = HXMavlinkRCEncoder::buildRadioStatus(
+        frame,
+        sizeof(frame),
+        s_mavlink_radio_status_sequence,
+        s_mavlink_radio_status_rssi,
+        txBuffer);
+
+    if (frameSize == 0 || uart_write_bytes(UART_MAVLINK, frame, frameSize) != frameSize)
+    {
+        return false;
+    }
+
+    s_mavlink_radio_status_sequence++;
+    s_mavlink_radio_status_next_send_ms = millis() + MAVLINK_RADIO_STATUS_INTERVAL_MS;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Sends a due RADIO_STATUS without a boundary after three seconds of input silence.
+static void send_mavlink_radio_status_if_idle()
+{
+    uint32_t now = millis();
+    if (static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) < 0 ||
+        now - s_mavlink_last_input_ms < MAVLINK_RADIO_STATUS_IDLE_MS)
+    {
+        return;
+    }
+
+    xSemaphoreTake(s_serial_mux, portMAX_DELAY);
+
+    // Input processing uses the same mutex and may have sent the pending status
+    // while this task was waiting, so recheck both deadlines under the lock.
+    now = millis();
+    if (static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) >= 0 &&
+        now - s_mavlink_last_input_ms >= MAVLINK_RADIO_STATUS_IDLE_MS)
+    {
+        size_t free_size = 0;
+        ESP_ERROR_CHECK(uart_get_tx_buffer_free_size(UART_MAVLINK, &free_size));
+        if (free_size >= MAVLINK_RADIO_STATUS_FRAME_SIZE)
+        {
+            send_mavlink_radio_status(free_size);
+        }
+    }
+
+    xSemaphoreGive(s_serial_mux);
+}
+#endif
+
 //===========================================================================================
 //===========================================================================================
 __attribute__((optimize("Os")))
@@ -1906,13 +1982,22 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;
+    s_mavlink_last_input_ms = millis();
 
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+    int radio_status_insert_offset = -1;
+    const bool radio_status_due =
+        static_cast<int32_t>(s_mavlink_last_input_ms - s_mavlink_radio_status_next_send_ms) >= 0;
     for ( int i = 0; i < s; i++ )
     {
         mavlinkParserIn.processByte(*dPtr++);
         if ( mavlinkParserIn.gotPacket())
         {
+            if ( radio_status_due && radio_status_insert_offset < 0 )
+            {
+                radio_status_insert_offset = i + 1;
+            }
+
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
                 uint32_t t = (uint32_t)millis();
@@ -1956,9 +2041,18 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
 
-    if ( freeSize >= s )
+    uint8_t* payload = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+    if ( radio_status_insert_offset >= 0 && freeSize >= s + MAVLINK_RADIO_STATUS_FRAME_SIZE )
     {
-        uart_write_bytes(UART_MAVLINK, ((uint8_t*)&src) + sizeof(Ground2Air_Header), s);
+        uart_write_bytes(UART_MAVLINK, payload, radio_status_insert_offset);
+        send_mavlink_radio_status(freeSize - s);
+        uart_write_bytes(UART_MAVLINK,
+            payload + radio_status_insert_offset,
+            s - radio_status_insert_offset);
+    }
+    else if ( freeSize >= s )
+    {
+        uart_write_bytes(UART_MAVLINK, payload, s);
     }
 
     xSemaphoreGive(s_serial_mux);
@@ -3826,7 +3920,11 @@ extern "C" void app_main()
         //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
         //with UART RX buffer of 512 we are safe with periods 10...40ms
-        g_msp.loop();
+        g_msp.loop(s_ground2air_config_packet2.misc.mavlink2mspRC != 0);
+#endif
+
+#ifdef UART_MAVLINK
+        send_mavlink_radio_status_if_idle();
 #endif
 
         if ((s_restart_time!=0) && ( esp_timer_get_time()>s_restart_time))
