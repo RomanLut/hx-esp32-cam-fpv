@@ -28,8 +28,13 @@ fi
 echo "IS_RADXA=$IS_RADXA"
 
 GETTY_TTY1_WAS_ACTIVE=false
+GETTY_TTY1_OWNS_LAUNCH=false
 
-stop_console_getty_while_gs_runs() {
+#===================================================================================
+#===================================================================================
+# Prevents a separate tty1 login shell from receiving GS menu key presses.
+stop_console_getty_while_gs_runs()
+{
     if ! $IS_RADXA || ! command -v systemctl >/dev/null 2>&1; then
         return
     fi
@@ -41,6 +46,7 @@ stop_console_getty_while_gs_runs() {
     # by /root/.profile on tty1, stopping getty@tty1 would kill the launch
     # shell itself, so only stop tty1 for SSH/other launch contexts.
     if [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then
+        GETTY_TTY1_OWNS_LAUNCH=true
         return
     fi
 
@@ -50,13 +56,24 @@ stop_console_getty_while_gs_runs() {
     fi
 }
 
-restore_console_getty_after_gs() {
+#===================================================================================
+#===================================================================================
+# Restarts tty1 after GS exits so agetty restores text and keyboard console modes.
+restore_console_getty_after_gs()
+{
     if $GETTY_TTY1_WAS_ACTIVE; then
         # Starting tty1 getty again triggers a fresh autologin; /root/.profile then runs
         # boot_selection.sh, which would immediately relaunch GS. One-shot skip flag on
         # tmpfs (cleared on reboot) lets that login drop to a shell instead.
         sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
         sudo systemctl start getty@tty1.service 2>/dev/null || true
+    elif $GETTY_TTY1_OWNS_LAUNCH; then
+        # Exit To Shell currently terminates GS with _Exit, so SDL cannot restore the
+        # KMS/DRM virtual terminal. Restarting agetty resets tty1 and discards menu key
+        # input queued for the shell. --no-block lets systemd accept the restart before
+        # it terminates this login session.
+        sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
+        sudo systemctl restart --no-block getty@tty1.service 2>/dev/null || true
     fi
 }
 

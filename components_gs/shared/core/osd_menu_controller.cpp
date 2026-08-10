@@ -31,6 +31,7 @@ namespace
 {
 
 constexpr int kScrollableMenuVisibleItems = 7;
+constexpr uint32_t kMavlinkBaudrates[] = {115200, 57600, 38400, 19200, 9600, 4800};
 constexpr float kScreenZoomStep = 0.01f;
 constexpr float kScreenZoomStepScale = 100.0f;
 constexpr float kScreenVrSeparationMin = -0.30f;
@@ -928,6 +929,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::CameraRC: this->drawCameraRCMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::ImageStabilizationCH: this->drawImageStabilizationCHMenu(config); break;
+        case OSDMenuId::MavlinkBaudrate: this->drawMavlinkBaudrateMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
         case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
@@ -1252,17 +1254,17 @@ void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        if ( s_imageStabilizationState.rc_channel == 0 )
+        if ( config.misc.stabilizationChannel == 0 )
         {
             sprintf(buf, "Image Stabiliz. RC Ch.: None" );
         }
         else
         {
-            sprintf(buf, "Image Stabiliz. RC Ch.: %d", (int)s_imageStabilizationState.rc_channel );
+            sprintf(buf, "Image Stabiliz. RC Ch.: %d", (int)config.misc.stabilizationChannel );
         }
         if ( this->drawMenuItem( buf, 1) )
         {
-            this->goForward( OSDMenuId::ImageStabilizationCH, (int)s_imageStabilizationState.rc_channel );
+            this->goForward(OSDMenuId::ImageStabilizationCH, (int)config.misc.stabilizationChannel);
         }
     }
 
@@ -1272,6 +1274,39 @@ void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 2) )
         {
             config.misc.mavlink2mspRC ^= 1;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf,
+                "Inject Mav2 Radio Status: %s",
+                config.misc.mavlinkInjectRadioStatus == 1 ? "On" : "Off");
+        if (this->drawMenuItem(buf, 3))
+        {
+            config.misc.mavlinkInjectRadioStatus ^= 1;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf,
+                "Inject Mav2 RSSI to CH16: %s",
+                config.misc.mavlinkInjectRssiCh16 == 1 ? "On" : "Off");
+        if (this->drawMenuItem(buf, 4))
+        {
+            config.misc.mavlinkInjectRssiCh16 ^= 1;
+        }
+    }
+
+    {
+        const uint8_t setting = config.misc.mavlinkBaudrate <= 5 ?
+            config.misc.mavlinkBaudrate : 0;
+        char buf[256];
+        sprintf(buf, "Mavlink Port Baudrate: %u", (unsigned int)kMavlinkBaudrates[setting]);
+        if (this->drawMenuItem(buf, 5))
+        {
+            this->goForward(OSDMenuId::MavlinkBaudrate, setting);
         }
     }
 
@@ -1892,7 +1927,7 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the GS image stabilization RC channel selection menu.
+// Draws the camera-owned image stabilization RC channel selection menu.
 void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Image Stabilization Channel" );
@@ -1913,8 +1948,8 @@ void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& c
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
+            config.misc.stabilizationChannel = i;
             s_imageStabilizationState.rc_channel = static_cast<uint8_t>(i);
-            s_settingsStorage.saveGroundStationConfig();
             bExit = true;
         }
     }
@@ -1924,7 +1959,32 @@ void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& c
         this->goBack();
     }
 
-    (void)config;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the camera MAVLink UART baudrate selection menu.
+void OSDMenuController::drawMavlinkBaudrateMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle("Menu -> Mavlink Port Baudrate");
+    drawSpacing();
+
+    bool exit = false;
+    for (int i = 0; i < static_cast<int>(sizeof(kMavlinkBaudrates) / sizeof(kMavlinkBaudrates[0])); i++)
+    {
+        char buf[16];
+        sprintf(buf, "%u", (unsigned int)kMavlinkBaudrates[i]);
+        if (this->drawMenuItem(buf, i, true))
+        {
+            config.misc.mavlinkBaudrate = i;
+            exit = true;
+        }
+    }
+
+    if (exit || this->exitKeyPressed())
+    {
+        this->goBack();
+    }
 }
 
 //===================================================================================

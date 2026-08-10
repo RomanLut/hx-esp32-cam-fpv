@@ -182,7 +182,7 @@ public:
 
     uint8_t currentPingToken() const;
     void onPingSent(Clock::time_point now);
-    void onVideoPong(uint8_t pong, Clock::time_point now);
+    void onAirPong(uint8_t pong, Clock::time_point now);
     PingSnapshot consumePingSnapshot();
     LinkStatusSnapshot consumeLinkStatus(Clock::time_point now);
     void addSentPackets(size_t count);

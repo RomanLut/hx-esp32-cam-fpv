@@ -127,6 +127,7 @@ uint32_t getValidMavlinkBaudrate(uint32_t baudrate)
 {
     switch (baudrate)
     {
+        case 4800:
         case 9600:
         case 19200:
         case 38400:
@@ -135,6 +136,32 @@ uint32_t getValidMavlinkBaudrate(uint32_t baudrate)
             return baudrate;
         default:
             return DEFAULT_MAVLINK_BAUDRATE;
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Converts the compact camera configuration value to a UART baudrate.
+uint32_t getMavlinkBaudrateFromSetting(uint8_t setting)
+{
+    static constexpr uint32_t baudrates[] = {115200, 57600, 38400, 19200, 9600, 4800};
+    return setting < sizeof(baudrates) / sizeof(baudrates[0]) ?
+        baudrates[setting] : DEFAULT_MAVLINK_BAUDRATE;
+}
+
+//===================================================================================
+//===================================================================================
+// Converts a UART baudrate to its compact camera configuration value.
+uint8_t getMavlinkBaudrateSetting(uint32_t baudrate)
+{
+    switch (getValidMavlinkBaudrate(baudrate))
+    {
+        case 57600: return 1;
+        case 38400: return 2;
+        case 19200: return 3;
+        case 9600: return 4;
+        case 4800: return 5;
+        default: return 0;
     }
 }
 
@@ -202,6 +229,7 @@ volatile bool s_air_record = false;
 
 static bool s_camera_stopped = false;
 static bool s_camera_stopped_requested = false;
+static volatile bool s_force_camera_settings_requested = false;
 
 volatile uint64_t s_shouldRestartRecording = 0;
 
@@ -1583,6 +1611,44 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 
     processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );
 
+    if (src.misc.stabilizationChannel > 18)
+    {
+        src.misc.stabilizationChannel = 0;
+    }
+    processSetting("StabilizationChannel",
+                   dst.misc.stabilizationChannel,
+                   src.misc.stabilizationChannel,
+                   "stabilizationCH");
+
+    if (src.misc.mavlinkBaudrate > 5)
+    {
+        src.misc.mavlinkBaudrate = 0;
+    }
+    if (processSetting("MavlinkBaudrate",
+                       dst.misc.mavlinkBaudrate,
+                       src.misc.mavlinkBaudrate,
+                       nullptr))
+    {
+        const uint32_t baudrate = getMavlinkBaudrateFromSetting(src.misc.mavlinkBaudrate);
+        xSemaphoreTake(s_serial_mux, portMAX_DELAY);
+#ifdef UART_MAVLINK
+        ESP_ERROR_CHECK(uart_set_baudrate(UART_MAVLINK, baudrate));
+#endif
+        s_mavlink_baudrate = baudrate;
+        xSemaphoreGive(s_serial_mux);
+        nvs_args_set(NVS_KEY_MAVLINK_BAUDRATE, baudrate);
+    }
+
+    processSetting("MavlinkInjectRadioStatus",
+                   dst.misc.mavlinkInjectRadioStatus,
+                   src.misc.mavlinkInjectRadioStatus,
+                   "mavInjectStat");
+    processSetting("MavlinkInjectRssiCh16",
+                   dst.misc.mavlinkInjectRssiCh16,
+                   src.misc.mavlinkInjectRssiCh16,
+                   "mavRssiCh16");
+    src.misc.reserved = 0;
+
     processSetting( "mavlink2mspRC",  dst.misc.mavlink2mspRC, src.misc.mavlink2mspRC, "mavlink2mspRC" );
 
     processSetting( "osdFontCRC32",  dst.misc.osdFontCRC32, src.misc.osdFontCRC32, "osdFontCRC32" );
@@ -1976,11 +2042,12 @@ static bool send_mavlink_radio_status(size_t uart_free_size)
 
 //===================================================================================
 //===================================================================================
-// Sends a due RADIO_STATUS after input silence only when MAVLink is forwarded unchanged.
+// Sends a due RADIO_STATUS after input silence when injection is enabled and MAVLink is forwarded unchanged.
 static void send_mavlink_radio_status_if_idle()
 {
     uint32_t now = millis();
-    if (s_ground2air_config_packet2.misc.mavlink2mspRC != 0 ||
+    if (s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus == 0 ||
+        s_ground2air_config_packet2.misc.mavlink2mspRC != 0 ||
         static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) < 0 ||
         now - s_mavlink_last_input_ms < MAVLINK_RADIO_STATUS_IDLE_MS)
     {
@@ -1992,7 +2059,8 @@ static void send_mavlink_radio_status_if_idle()
     // Input processing uses the same mutex and may have sent the pending status
     // while this task was waiting, so recheck both deadlines under the lock.
     now = millis();
-    if (s_ground2air_config_packet2.misc.mavlink2mspRC == 0 &&
+    if (s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus != 0 &&
+        s_ground2air_config_packet2.misc.mavlink2mspRC == 0 &&
         static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) >= 0 &&
         now - s_mavlink_last_input_ms >= MAVLINK_RADIO_STATUS_IDLE_MS)
     {
@@ -2010,40 +2078,64 @@ static void send_mavlink_radio_status_if_idle()
 
 //===========================================================================================
 //===========================================================================================
+// Parses ground-to-air MAVLink for local RC actions and forwards it to UART when available.
 __attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
-#ifdef UART_MAVLINK
     if ( ( s_connected_gs_device_id == 0 ) || ( src.gsDeviceId != s_connected_gs_device_id ) ) return;
 
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;
+#ifdef UART_MAVLINK
     s_mavlink_last_input_ms = millis();
+#endif
     const bool mavlink2MspRcEnabled = s_ground2air_config_packet2.misc.mavlink2mspRC != 0;
 
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+#ifdef UART_MAVLINK
     int radio_status_insert_offset = -1;
     int rc_packet_count = 0;
     const bool radio_status_due =
+        s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus != 0 &&
         !mavlink2MspRcEnabled &&
         static_cast<int32_t>(s_mavlink_last_input_ms - s_mavlink_radio_status_next_send_ms) >= 0;
+#endif
     for ( int i = 0; i < s; i++ )
     {
         mavlinkParserIn.processByte(*dPtr++);
         if ( mavlinkParserIn.gotPacket())
         {
+#ifdef UART_MAVLINK
             if ( radio_status_due && radio_status_insert_offset < 0 )
             {
                 radio_status_insert_offset = i + 1;
             }
+#endif
 
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
+#ifdef UART_MAVLINK
                 rc_packet_count++;
                 s_mavlink_last_rc_received_ms = s_mavlink_last_input_ms;
                 s_mavlink_rc_received = true;
+
+                if (s_ground2air_config_packet2.misc.mavlinkInjectRssiCh16 != 0)
+                {
+                    const uint16_t rssiChannelValue = static_cast<uint16_t>(
+                        1000 + static_cast<uint16_t>(s_mavlink_radio_status_link_quality) * 10);
+                    const int mavlinkPacketLength = mavlinkParserIn.getPacketLength();
+                    const int mavlinkPacketOffset = i + 1 - mavlinkPacketLength;
+                    if (mavlinkPacketOffset >= 0 &&
+                        mavlinkParserIn.setRCChannelValue(16, rssiChannelValue))
+                    {
+                        memcpy(((uint8_t*)&src) + sizeof(Ground2Air_Header) + mavlinkPacketOffset,
+                               mavlinkParserIn.getPacketBuffer(),
+                               mavlinkPacketLength);
+                    }
+                }
+#endif
 
 #ifdef UART_MSP_OSD
                 if (mavlink2MspRcEnabled)
@@ -2075,6 +2167,7 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
         }
     }
 
+#ifdef UART_MAVLINK
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
 
@@ -2103,9 +2196,9 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
             recordAirRcCommandSent();
         }
     }
+#endif
 
     xSemaphoreGive(s_serial_mux);
-#endif
 }
 
 //=============================================================================================
@@ -3067,7 +3160,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef PROFILE_CAMERA_DATA    
                     s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
 #endif
-                    handle_ground2air_config_packetEx2(false);
+                    const bool forceCameraSettings = s_force_camera_settings_requested;
+                    s_force_camera_settings_requested = false;
+                    handle_ground2air_config_packetEx2(forceCameraSettings);
 
                     if ( !g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15)) )
                     {
@@ -3433,6 +3528,17 @@ void readConfig()
     {
         s_ground2air_config_packet.misc.cameraStopChannel = 0;
     }
+
+    s_ground2air_config_packet.misc.stabilizationChannel = nvs_args_read("stabilizationCH", 0);
+    if (s_ground2air_config_packet.misc.stabilizationChannel > 18)
+    {
+        s_ground2air_config_packet.misc.stabilizationChannel = 0;
+    }
+
+    s_ground2air_config_packet.misc.mavlinkBaudrate = getMavlinkBaudrateSetting(s_mavlink_baudrate);
+    s_ground2air_config_packet.misc.mavlinkInjectRadioStatus = nvs_args_read("mavInjectStat", 1) != 0;
+    s_ground2air_config_packet.misc.mavlinkInjectRssiCh16 = nvs_args_read("mavRssiCh16", 0) != 0;
+    s_ground2air_config_packet.misc.reserved = 0;
 
     s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
 
@@ -3883,6 +3989,10 @@ extern "C" void app_main()
                     LOG("Camera started\n");
 #if !defined(USE_MOCK_CAMERA)
                     init_camera();
+                    // Reinitialization restores the driver's default SVGA mode. Apply every
+                    // configured sensor setting at the next completed frame, where camera
+                    // settings are normally changed, to restore custom OV5640 modes safely.
+                    s_force_camera_settings_requested = true;
 #endif                    
                 }
             }
@@ -3897,7 +4007,9 @@ extern "C" void app_main()
             {
                 s_fec_encoder.lock();
 
-                if ( !g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15)) )
+                // With no video frames, OSD packets are the air unit's only pong carrier.
+                // Send one on every stopped-camera tick so GS does not report a false link loss.
+                if ( !g_osd.isLocked() )
                 {
                     send_air2ground_osd_packet();
                     s_osdUpdateCounter = 0;

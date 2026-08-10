@@ -182,6 +182,12 @@ struct MiscConfig
     uint8_t apfpv : 1;// = 0;
 
     uint32_t osdFontCRC32;
+
+    uint32_t stabilizationChannel : 5;// = 0;  //0 - none
+    uint32_t mavlinkBaudrate : 3;// = 0, 0 = 115200, 1 = 57600, 2 = 38400, 3 = 19200, 4 = 9600, 5 = 4800
+    uint32_t mavlinkInjectRadioStatus : 1;// = 1;
+    uint32_t mavlinkInjectRssiCh16 : 1;// = 0;
+    uint32_t reserved: 22; //= 0
 };
 
 //======================================================

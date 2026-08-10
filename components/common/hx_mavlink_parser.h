@@ -170,6 +170,7 @@ public:
     int getPacketLength();
 
     int getMessageId();
+    bool setRCChannelValue(uint8_t channelIndex, uint16_t value);
 
     template<typename t>
     const t* getMsg()

@@ -265,6 +265,8 @@ bool GsSessionCore::promoteAcceptedConfig(Ground2Air_Config_Packet& config_out)
     std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
     config_out = m_config_packet;
     gs::lens::applyConfigToState(config_out.camera.lens_correction, s_lensCorrectionState);
+    s_imageStabilizationState.rc_channel = static_cast<uint8_t>(
+        std::min<uint32_t>(static_cast<uint32_t>(config_out.misc.stabilizationChannel), 18));
     return true;
 }
 
@@ -569,7 +571,7 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
             result.kind = SessionEventKind::InvalidVideoPacket;
             return result;
         }
-        onVideoPong(result.video.packet->pong, now);
+        onAirPong(result.video.packet->pong, now);
         addReceivedBytes(transport_packet_size);
         result.kind = SessionEventKind::VideoPacket;
         return result;
@@ -583,6 +585,7 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
             result.kind = SessionEventKind::InvalidTelemetryPacket;
             return result;
         }
+        onAirPong(result.telemetry.packet->pong, now);
         addReceivedBytes(transport_packet_size);
         {
             const uint8_t* payload = reinterpret_cast<const uint8_t*>(result.telemetry.packet) + sizeof(Air2Ground_Data_Packet);
@@ -605,6 +608,9 @@ SessionEvent GsSessionCore::processReceivedPacket(const uint8_t* packet_data,
             result.kind = SessionEventKind::InvalidOsdPacket;
             return result;
         }
+        // Suspended cameras have no video packets, so their periodic OSD packet
+        // must advance the same ping exchange to distinguish OFF from link loss.
+        onAirPong(result.osd.packet->pong, now);
         addReceivedBytes(transport_packet_size);
         syncAirStatusGlobals();
         if (!g_framePacketsDebug.isOn())
@@ -661,7 +667,7 @@ void GsSessionCore::onPingSent(Clock::time_point now)
 //===================================================================================
 // Processes a pong token received from the air unit, updates the ping snapshot
 // with the round-trip time, and advances the ping token.
-void GsSessionCore::onVideoPong(uint8_t pong, Clock::time_point now)
+void GsSessionCore::onAirPong(uint8_t pong, Clock::time_point now)
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     if (pong != m_last_sent_ping)

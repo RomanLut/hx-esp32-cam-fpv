@@ -46,6 +46,7 @@ enum class OSDMenuId
     CameraRC,
     CameraStopCH,
     ImageStabilizationCH,
+    MavlinkBaudrate,
     Debug,
     Playback,
     PlaybackRun,
