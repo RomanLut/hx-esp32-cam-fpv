@@ -12,7 +12,7 @@
   * **Advanced options -> GL Driver -> Fake KMS**
   * **Advanced options -> Compositor -> disable compositor**
 
-- check that credentialsare not used:
+- check that credentials are not used:
 
     ```cd ~/esp32-cam-fpv/```
 
@@ -55,6 +55,11 @@ _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 ```sudo pishrink.sh -z -a /mnt/usb1/espvrx_rpi.img```
 
 ```sudo umount /mnt/usb1```
+
+# Using script
+
+ ```tools\make_release_img_from_sd_rpi.sh``` will do everything automatically starting from "Actualise time".
+
 
 # References
 

@@ -75,3 +75,7 @@
   ```sudo umount /mnt/usb1```
 
   Compress .img file on PC.
+
+# Using script
+
+ ```tools\make_release_img_from_sd_radxa.sh``` will do everything automatically starting from "Actualise time".
