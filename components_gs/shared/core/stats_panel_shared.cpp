@@ -69,6 +69,20 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
     const bool air_stats_valid = snapshot.air_stats_valid;
     const AirStats& air_stats = snapshot.air_stats;
     const GSStats& ground_stats = snapshot.ground_stats;
+    int expected_fec_packets = 0;
+    if (fec_codec_n > 0 && ground_stats.lastPacketIndex >= ground_stats.statsPacketIndex)
+    {
+        const uint32_t first_block_index = ground_stats.statsPacketIndex /
+            static_cast<uint32_t>(fec_codec_n);
+        const uint32_t last_block_index = ground_stats.lastPacketIndex /
+            static_cast<uint32_t>(fec_codec_n);
+        expected_fec_packets = static_cast<int>(
+            (last_block_index - first_block_index) * static_cast<uint32_t>(fec_codec_n));
+    }
+    // The FEC decoder exposes a cumulative 16-bit view of its unique counter.
+    // Unsigned subtraction gives the current-period count and also handles wraparound.
+    const int unique_packets_this_period = static_cast<uint16_t>(
+        ground_stats.inUniquePacketCounter - ground_stats.statsUniquePacketCounter);
     const Stats& frame_stats = snapshot.frame_stats;
     const Stats& frame_parts_stats = snapshot.frame_parts_stats;
     const Stats& frame_time_stats = snapshot.frame_time_stats;
@@ -162,15 +176,13 @@ void drawFullscreenStatsPanel(const FullscreenStatsSnapshot& snapshot)
         row("GSInPacketRate", [&] { ImGui::Text("%d+%d", ground_stats.inPacketCounter[0], ground_stats.inPacketCounter[1]); });
         row("GSPacketLossRatio1", [&]
         {
-            const int n = static_cast<int>((ground_stats.lastPacketIndex - ground_stats.statsPacketIndex) / 12 * fec_codec_n);
             ImGui::Text("%.1f,%.1f%%",
-                        calcLossRatio(n, ground_stats.inPacketCounter[0]),
-                        calcLossRatio(n, ground_stats.inPacketCounter[1]));
+                        calcLossRatio(expected_fec_packets, ground_stats.inPacketCounter[0]),
+                        calcLossRatio(expected_fec_packets, ground_stats.inPacketCounter[1]));
         });
         row("GSPacketLossRatio2", [&]
         {
-            const int n = static_cast<int>((ground_stats.lastPacketIndex - ground_stats.statsPacketIndex) / 12 * fec_codec_n);
-            ImGui::Text("%.1f%%", calcLossRatio(n, ground_stats.inUniquePacketCounter));
+            ImGui::Text("%.1f%%", calcLossRatio(expected_fec_packets, unique_packets_this_period));
         });
         row("Air RSSI", [&] { textAirValue(air_stats_valid, "%d dbm", -air_stats.rssiDbm); });
         row("Air Noise Floor", [&] { textAirValue(air_stats_valid, "%d dbm", -air_stats.noiseFloorDbm); });

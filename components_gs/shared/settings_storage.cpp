@@ -136,6 +136,38 @@ void SettingsStorage::loadGroundStationConfig()
     }
 
     {
+        std::string& temp = (*this)["gs"]["osd_top_status_line"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.osdTopStatusLine = std::atoi(temp.c_str()) != 0;
+        }
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["osd_rc_lq_gauge"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.osdRcLqGauge = std::atoi(temp.c_str()) != 0;
+        }
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["osd_video_lq_gauge"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.osdVideoLqGauge = std::atoi(temp.c_str()) != 0;
+        }
+    }
+
+    {
+        std::string& temp = (*this)["gs"]["osd_margin"];
+        if (!temp.empty())
+        {
+            s_groundstation_config.osdMargin = static_cast<uint8_t>(std::clamp(std::atoi(temp.c_str()), 0, 32));
+        }
+    }
+
+    {
         std::string& temp = (*this)["gs"]["screen_flip_v"];
         if (!temp.empty())
         {
@@ -375,6 +407,10 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["wifi_band"] = std::to_string((int)s_groundstation_config.wifiBand);
     (*this)["gs"]["screen_aspect_ratio"] = std::to_string((int)s_groundstation_config.screenAspectRatio);
     (*this)["gs"]["vr_mode"] = std::to_string(s_groundstation_config.vrMode ? 1 : 0);
+    (*this)["gs"]["osd_top_status_line"] = std::to_string(s_groundstation_config.osdTopStatusLine ? 1 : 0);
+    (*this)["gs"]["osd_rc_lq_gauge"] = std::to_string(s_groundstation_config.osdRcLqGauge ? 1 : 0);
+    (*this)["gs"]["osd_video_lq_gauge"] = std::to_string(s_groundstation_config.osdVideoLqGauge ? 1 : 0);
+    (*this)["gs"]["osd_margin"] = std::to_string(static_cast<int>(s_groundstation_config.osdMargin));
     (*this)["gs"]["vsync"] = std::to_string(s_groundstation_config.vsync ? 1 : 0);
     (*this)["gs"]["screen_flip_v"] = std::to_string(s_groundstation_config.screenFlipV ? 1 : 0);
     (*this)["gs"]["screen_zoom"] = std::to_string(s_groundstation_config.screenZoom);

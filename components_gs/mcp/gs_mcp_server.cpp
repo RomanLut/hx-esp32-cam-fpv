@@ -716,6 +716,10 @@ std::string buildSnapshotJson()
         << "\"transport_packets_passed_filter\":" << s_runtimeCore.transport_packets_passed_filter << ','
         << "\"transport_packets_filtered\":" << s_runtimeCore.transport_packets_filtered << ','
         << "\"decoded_packets_seen\":" << s_runtimeCore.decoded_packets_seen << ','
+        << "\"last_decoded_type\":" << s_runtimeCore.last_decoded_type << ','
+        << "\"last_decoded_size\":" << s_runtimeCore.last_decoded_size << ','
+        << "\"last_decoded_air\":" << s_runtimeCore.last_decoded_air << ','
+        << "\"last_decoded_gs\":" << s_runtimeCore.last_decoded_gs << ','
         << "\"last_transport_block\":" << s_runtimeCore.last_transport_block << ','
         << "\"last_transport_packet_index\":" << s_runtimeCore.last_transport_packet_index << ','
         << "\"last_transport_payload_size\":" << s_runtimeCore.last_transport_payload_size << ','
@@ -723,6 +727,13 @@ std::string buildSnapshotJson()
         << "\"last_transport_to\":" << s_runtimeCore.last_transport_to
         << "},"
         << "\"ground_stats\":{"
+        << "\"rx_packets_interface_0\":" << last_gs_stats.inPacketCounter[0] << ','
+        << "\"rx_packets_interface_1\":" << last_gs_stats.inPacketCounter[1] << ','
+        << "\"unique_packets\":" << last_gs_stats.inUniquePacketCounter << ','
+        << "\"duplicate_packets\":" << last_gs_stats.inDublicatedPacketCounter << ','
+        << "\"fec_blocks\":" << last_gs_stats.FECBlocksCounter << ','
+        << "\"fec_success_packet_index_sum\":" << last_gs_stats.FECSuccPacketIndexCounter << ','
+        << "\"last_packet_order_index\":" << last_gs_stats.lastPacketIndex << ','
         << "\"discarded_frames_assembler_pool_overflow\":" << last_gs_stats.discardedFramesAssemblerPoolOverflow << ','
         << "\"discarded_frames_decoder_input\":" << last_gs_stats.discardedFramesDecoderInput << ','
         << "\"discarded_frames_decoded_output\":" << last_gs_stats.discardedFramesDecodedOutput << ','

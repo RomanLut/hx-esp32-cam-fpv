@@ -16,8 +16,9 @@ typedef struct pcap pcap_t;
 // Opens a pcap handle on the first RX interface in monitor mode.  A dedicated
 // background thread drains the pcap handle continuously so that every 802.11 packet
 // on the current channel is counted regardless of the receive() call cadence. The
-// shutdown path explicitly breaks a blocked pcap dispatch before joining the thread.
-// Channel switching uses the same iw-based helper used by LinuxRawBroadcastTransport.
+// shutdown path explicitly breaks pcap dispatch before joining the thread. Monitor
+// mode and pcap are configured once per Scan activation; channel hops only retune the
+// live interface because repeated link resets wedge rtl88x2eu reception.
 class LinuxWifiScanTransport final : public GSWifiScanTransport
 {
 public:

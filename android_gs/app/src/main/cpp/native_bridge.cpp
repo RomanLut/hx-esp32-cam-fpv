@@ -623,7 +623,10 @@ void ensureRxDecoderConfigLocked(NativeHandle& handle)
 
     const uint8_t effective_k = config_k > 0 ? config_k : FEC_K;
     const uint8_t effective_n = config_n > 0 ? config_n : static_cast<uint8_t>(8);
-    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
+    const uint16_t effective_mtu =
+        handle.transport_manager.activeKind() == gs::core::TransportKind::APFPV
+            ? APFPV_AIR2GROUND_MAX_MTU
+            : AIR2GROUND_MAX_MTU;
 
     if (s_runtimeCore.rx_decoder_k == effective_k &&
         s_runtimeCore.rx_decoder_n == effective_n &&

@@ -8,7 +8,6 @@
 #include <map>
 #include <netinet/in.h>
 #include <optional>
-#include <random>
 #include <set>
 #include <sys/socket.h>
 #include <tuple>
@@ -105,6 +104,18 @@ std::vector<std::string> selectApfpvConnectInterfaces(const std::vector<std::str
         s_groundstation_config.apfpvInterface != "auto")
     {
         const auto it = std::find(interfaces.begin(), interfaces.end(), s_groundstation_config.apfpvInterface);
+        if (it != interfaces.end())
+        {
+            return {*it};
+        }
+    }
+
+    // In auto mode APFPV still requires the configured bidirectional TX adapter. Scanning
+    // every RX adapter serially can add one full 10-second timeout per RX-only RunCam path
+    // before each mode transition, and a candidate found there cannot carry the uplink.
+    if (!s_groundstation_config.txInterface.empty())
+    {
+        const auto it = std::find(interfaces.begin(), interfaces.end(), s_groundstation_config.txInterface);
         if (it != interfaces.end())
         {
             return {*it};
@@ -416,7 +427,7 @@ LinuxApfpvTransport::LinuxApfpvTransport()
     FecBlockDecoder::Descriptor decoder_descriptor = {};
     decoder_descriptor.coding_k = FEC_K;
     decoder_descriptor.coding_n = kApfpvDefaultRxCodingN;
-    decoder_descriptor.mtu = AIR2GROUND_MAX_MTU;
+    decoder_descriptor.mtu = APFPV_AIR2GROUND_MAX_MTU;
     decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
     decoder_descriptor.restart_backjump_blocks = 64;
     decoder_descriptor.max_block_queue_size = 3;
@@ -682,13 +693,12 @@ std::optional<std::string> LinuxApfpvTransport::currentCameraSsid(const std::str
 
 //===================================================================================
 //===================================================================================
-// Builds a random APFPV local IPv4 address inside 192.168.4.50..250 for this connect attempt.
-std::string buildRandomApfpvLocalIp()
+// Builds a stable APFPV local IPv4 address from the persistent GS device identifier.
+std::string buildStableApfpvLocalIp()
 {
-    static std::random_device random_device;
-    static std::mt19937 generator(random_device());
-    static std::uniform_int_distribution<int> distribution(kApfpvStaticIpHostMin, kApfpvStaticIpHostMax);
-    return fmt::format("192.168.4.{}/24", distribution(generator));
+    constexpr int host_count = kApfpvStaticIpHostMax - kApfpvStaticIpHostMin + 1;
+    const int host = kApfpvStaticIpHostMin + (s_groundstation_config.deviceId % host_count);
+    return fmt::format("192.168.4.{}/24", host);
 }
 
 //===================================================================================
@@ -707,12 +717,14 @@ bool hasApfpvLocalAddress(const std::string& interface)
 
 //===================================================================================
 //===================================================================================
-// Configures a random static APFPV subnet address immediately after association.
+// Configures a stable static APFPV subnet address immediately after association.
 bool configureStaticApfpvAddress(const std::string& interface)
 {
     const std::string quoted_interface = shellQuote(interface);
     const std::string quoted_ip_tool = shellQuote(ipTool());
-    const std::string local_ip = buildRandomApfpvLocalIp();
+    // The air unit caches the UDP peer address. Reusing the same address prevents a GS restart
+    // from leaving the active camera stream aimed at a stale random address until ARP recovers.
+    const std::string local_ip = buildStableApfpvLocalIp();
     const std::string local_ip_src = local_ip.substr(0, local_ip.find('/'));
     LOGI("Linux APFPV assigning static local address {} on {}", local_ip_src, interface);
     return runShellCommand(
@@ -730,7 +742,7 @@ bool configureStaticApfpvAddress(const std::string& interface)
 
 //===================================================================================
 //===================================================================================
-// Assigns a random static APFPV subnet address immediately after a successful association.
+// Assigns a stable static APFPV subnet address immediately after a successful association.
 bool LinuxApfpvTransport::configureApfpvLocalAddress(const std::string& interface, const std::string& ssid)
 {
     setMessage(buildApfpvProgressText(ssid, "Configuring IP..."));
@@ -1346,15 +1358,30 @@ std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::runSearch
 
 //===================================================================================
 //===================================================================================
-// Sorts and deduplicates APFPV search candidates by device id for stable menu output.
+// Sorts and deduplicates APFPV candidates, preferring the configured TX-capable interface.
 std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::normalizeCandidates(
     std::vector<SearchCandidate> candidates) const
 {
+    const std::string preferred_interface = s_groundstation_config.txInterface;
     std::sort(candidates.begin(),
               candidates.end(),
-              [](const SearchCandidate& lhs, const SearchCandidate& rhs)
+              [&preferred_interface](const SearchCandidate& lhs, const SearchCandidate& rhs)
               {
-                  return lhs.camera.device_id < rhs.camera.device_id;
+                  if (lhs.camera.device_id != rhs.camera.device_id)
+                  {
+                      return lhs.camera.device_id < rhs.camera.device_id;
+                  }
+
+                  // APFPV association needs bidirectional Wi-Fi. RunCam receiver sets can
+                  // contain RX-only adapters, so retain the interface already chosen for TX.
+                  const bool lhs_is_preferred = lhs.interface == preferred_interface;
+                  const bool rhs_is_preferred = rhs.interface == preferred_interface;
+                  if (lhs_is_preferred != rhs_is_preferred)
+                  {
+                      return lhs_is_preferred;
+                  }
+
+                  return lhs.interface < rhs.interface;
               });
     candidates.erase(
         std::unique(candidates.begin(),
@@ -1540,7 +1567,7 @@ void LinuxApfpvTransport::ensureRxDecoderConfig()
 
     const uint8_t effective_k = config_k > 0 ? config_k : static_cast<uint8_t>(FEC_K);
     const uint8_t effective_n = config_n > 0 ? config_n : kApfpvDefaultRxCodingN;
-    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
+    const uint16_t effective_mtu = APFPV_AIR2GROUND_MAX_MTU;
 
     const FecBlockDecoder::Stats stats_before = m_rx_decoder.getStats();
     if (s_runtimeCore.rx_decoder_k == effective_k &&

@@ -908,6 +908,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Restart: this->drawRestartMenu(config); break;
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
+        case OSDMenuId::GSOSD: this->drawGSOSDMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::GSPostprocessing: this->drawGSPostprocessingMenu(config); break;
@@ -988,11 +989,16 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
+        const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
         int channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
+        if (apfpv && !isWifiChannelSupportedForApfpv(channel))
+        {
+            channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+        }
         sprintf(buf, "Wifi Channel: %d##1", channel);
         if ( this->drawMenuItem( buf, 2) )
         {
-            int channelIndex = getBandAwareWifiChannelMenuIndex(channel, gs_config.wifiBand);
+            int channelIndex = getBandAwareWifiChannelMenuIndex(channel, gs_config.wifiBand, apfpv);
             this->goForward( OSDMenuId::WifiChannel, channelIndex);
         }
     }
@@ -1835,6 +1841,7 @@ void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
+    const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
     this->drawMenuTitle( "Menu -> Wifi Channel" );
     drawSpacing();
 
@@ -1844,7 +1851,8 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     for ( int i = 0; i < WIFI_CHANNELS_COUNT; i++ )
     {
         int channel = WIFI_CHANNELS_BY_INDEX[i];
-        if ( !isWifiChannelAllowedByBand(channel, gs_config.wifiBand) )
+        if ( !isWifiChannelAllowedByBand(channel, gs_config.wifiBand) ||
+             (apfpv && !isWifiChannelSupportedForApfpv(channel)) )
         {
             continue;
         }
@@ -2222,21 +2230,26 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    if ( this->drawMenuItem( "GS OSD...", 2) )
+    {
+        this->goForward( OSDMenuId::GSOSD, 0 );
+    }
+
     {
         char buf[256];
-        sprintf(buf, "Wifi and UART Settings...##2");
-        if ( this->drawMenuItem( buf, 2) )
+        sprintf(buf, "Wifi and UART Settings...##3");
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::GSWifiSettings, 0 );
         }
     }
 
-    if ( this->drawMenuItem( "Debuging...", 3) )
+    if ( this->drawMenuItem( "Debuging...", 4) )
     {
         this->goForward( OSDMenuId::Debug, 0 );
     }
 
-    int next_item_index = 4;
+    int next_item_index = 5;
     if (s_RuntimePlatformServices->supportsGPIOKeys())
     {
         char buf[256];
@@ -2266,6 +2279,73 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     }
 
     if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws ground station OSD visibility settings.
+void OSDMenuController::drawGSOSDMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "GS Settings -> GS OSD" );
+    drawSpacing();
+
+    char buf[256];
+    snprintf(buf,
+             sizeof(buf),
+             "Top Status line: %s##top_status_line",
+             gs_config.osdTopStatusLine ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 0) )
+    {
+        gs_config.osdTopStatusLine = !gs_config.osdTopStatusLine;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    snprintf(buf,
+             sizeof(buf),
+             "Video Link Quality Gauge: %s##video_lq_gauge",
+             gs_config.osdVideoLqGauge ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 1) )
+    {
+        gs_config.osdVideoLqGauge = !gs_config.osdVideoLqGauge;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    snprintf(buf,
+             sizeof(buf),
+             "RC Link Quality Gauge: %s##rc_lq_gauge",
+             gs_config.osdRcLqGauge ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 2) )
+    {
+        gs_config.osdRcLqGauge = !gs_config.osdRcLqGauge;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    bool adjust_handled = false;
+    if (m_draw_mode == DrawMode::Interactive && selectedItem == 3 && !keyHandled)
+    {
+        if (isMenuAdjustIncreasePressed())
+        {
+            gs_config.osdMargin = static_cast<uint8_t>(std::min<int>(32, gs_config.osdMargin + 1));
+            s_settingsStorage.saveGroundStationConfig();
+            keyHandled = true;
+            adjust_handled = true;
+        }
+        else if (isMenuAdjustDecreasePressed())
+        {
+            gs_config.osdMargin = static_cast<uint8_t>(std::max<int>(0, gs_config.osdMargin - 1));
+            s_settingsStorage.saveGroundStationConfig();
+            keyHandled = true;
+            adjust_handled = true;
+        }
+    }
+    snprintf(buf, sizeof(buf), "<>Margin: %u##osd_margin", static_cast<unsigned>(gs_config.osdMargin));
+    this->drawMenuItem(buf, 3);
+
+    if (!adjust_handled && this->exitKeyPressed())
     {
         this->goBack();
     }

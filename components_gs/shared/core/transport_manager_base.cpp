@@ -19,7 +19,7 @@ void advanceSearchWifiChannel(Ground2Air_Config_Packet& config,
                               Clock::time_point& search_tp)
 {
     auto& gs_config = s_groundstation_config;
-    search_tp = Clock::now() + std::chrono::milliseconds(kSearchTimeStepMs);
+    search_tp = Clock::now();
 
     gs_config.wifi_channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
     int channel_index = getWifiChannelIndex(gs_config.wifi_channel);
@@ -101,6 +101,14 @@ bool TransportManagerBase::init(TransportKind initial_kind,
 bool TransportManagerBase::switchTransport(TransportKind kind)
 {
     ITransport& transport = resolveTransport(kind);
+    if (m_active_transport == &transport)
+    {
+        // Selecting the already-active mode is a logical no-op. Re-activating RAW
+        // tears down pcap and reapplies the same Realtek monitor channel, which can
+        // wedge reception when the Search menu only intends to reset pairing state.
+        return true;
+    }
+
     const bool switching_transport = m_active_transport != nullptr && m_active_transport != &transport;
     if (m_active_transport != nullptr && m_active_transport != &transport)
     {
@@ -108,6 +116,14 @@ bool TransportManagerBase::switchTransport(TransportKind kind)
     }
     if (switching_transport)
     {
+        if (!prepareTransportSwitch(m_active_kind, kind))
+        {
+            // A platform may defer destination initialization to a scheduled process
+            // restart. Keep the deactivated source object valid until that restart runs.
+            m_active_kind = kind;
+            return true;
+        }
+
         // Linux transport switches can leave backend-specific device state behind, especially
         // when the same Wi-Fi adapter changes mode between managed APFPV and monitor raw-broadcast.
         // Reinitializing the destination transport on every real switch matches a fresh process
@@ -124,6 +140,14 @@ bool TransportManagerBase::switchTransport(TransportKind kind)
     m_active_transport = &transport;
     m_active_kind = kind;
     s_transport = m_active_transport;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Allows platform managers to recover device state and optionally defer destination initialization.
+bool TransportManagerBase::prepareTransportSwitch(TransportKind /* from */, TransportKind /* to */)
+{
     return true;
 }
 
@@ -153,7 +177,14 @@ void TransportManagerBase::beginSearchOrConnect(Ground2Air_Config_Packet& config
 
     if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
     {
-        advanceSearchWifiChannel(config, *m_active_transport, search_tp);
+        // Search must dwell on the configured channel first without rewriting the
+        // already-active radio channel. Some Realtek monitor drivers wedge reception
+        // when the same channel is redundantly applied through iwconfig.
+        s_groundstation_config.wifi_channel = getBandAwareWifiChannel(
+            s_groundstation_config.wifi_channel,
+            s_groundstation_config.wifiBand);
+        applyWifiChannelToSession(config);
+        search_tp = Clock::now();
         performAirUnpair(s_groundstation_config.deviceId, *m_active_transport);
         return;
     }

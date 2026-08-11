@@ -11,6 +11,10 @@
 
 constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 4) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
+// APFPV adds IPv4 and UDP headers, so its datagram must be four bytes smaller than the
+// raw 802.11 payload to stay within a 1500-byte IP MTU without fragmentation.
+constexpr size_t APFPV_AIR2GROUND_MAX_MTU = 1500 - 20 - 8 - PACKET_HEADER_SIZE;
+static_assert(APFPV_AIR2GROUND_MAX_MTU <= AIR2GROUND_MAX_MTU, "APFPV MTU must fit the raw transport MTU");
 
 constexpr size_t GROUND2AIR_MAX_MTU = 128; //max size of data without Packet_Header
 //variable mtu is not supported for Ground2Air

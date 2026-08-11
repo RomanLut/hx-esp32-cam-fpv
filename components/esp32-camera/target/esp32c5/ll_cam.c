@@ -32,7 +32,10 @@
 #define MIN_FRAME_ALLOC_SIZE 160
 
 //parlio buffer
-#define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 16384
+// Keep enough internal DMA heap available for 5 GHz SoftAP management frames.
+// A 16 KiB PARLIO payload leaves the C5 heap effectively empty after camera startup,
+// causing authentication to succeed while the larger association response is dropped.
+#define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 8192
 
 // IDF 5.5.2 inverted this setting on ESP32-C5, so the old pioarduino
 // platform needed NEG to sample the camera on the rising PCLK edge.

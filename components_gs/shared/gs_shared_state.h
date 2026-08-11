@@ -77,6 +77,10 @@ struct TGroundstationConfig
     ScreenAspectRatio screenAspectRatio;
     int txPower; //MIN_TX_POWER...MAX_TX_POWER
     bool stats;
+    bool osdTopStatusLine = true;
+    bool osdRcLqGauge = true;
+    bool osdVideoLqGauge = true;
+    uint8_t osdMargin = 0;
     bool vrMode = false;
     bool vsync = true;
     bool screenFlipV = false;

@@ -210,17 +210,20 @@ static esp_err_t apply_wifi_country_for_channel(uint8_t channel)
     channel = static_cast<uint8_t>(getValidWifiChannel(channel));
     wifi_country_t country_config = {};
 
-    memcpy(country_config.cc, "01", sizeof(country_config.cc));
     country_config.schan = 1;
     country_config.max_tx_power = 20;
     country_config.policy = WIFI_COUNTRY_POLICY_MANUAL;
 
-#if CONFIG_IDF_TARGET_ESP32C5
-    country_config.nchan = 14;
-    // A zero mask defers to the restrictive regulatory defaults. Enable bits 1 through 28,
-    // which correspond to every 5 GHz channel defined by wifi_5g_channel_bit_t, including 161.
+#if SOC_WIFI_SUPPORT_5G
+    // ESP-IDF's AU domain permits every non-DFS channel in the project table:
+    // 1-13, 36-48, and 149-165. The world-safe "01" domain rejects 149-165 for SoftAP.
+    memcpy(country_config.cc, "AU", sizeof(country_config.cc));
+    country_config.nchan = 13;
+    // Enable every C5 5 GHz channel in the mask; the AU regulatory rules still mark
+    // 52-144 as DFS, and APFPV validation excludes those channels from SoftAP use.
     country_config.wifi_5g_channel_mask = 0x1ffffffe;
 #else
+    memcpy(country_config.cc, "01", sizeof(country_config.cc));
     (void)channel;
     country_config.nchan = 13;
 #endif
@@ -386,6 +389,7 @@ IRAM_ATTR bool add_to_wlan_outgoing_queue(const void* data, size_t size)
 
 //===========================================================================================
 //===========================================================================================
+// Allocates the transport ring buffers with the requested capacities in internal RAM.
 inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_queue_size)
 {
   //SPI RAM is too slow, can not handle more then 2Mb/s bandwidth
@@ -396,6 +400,14 @@ inline bool init_queues(size_t wlan_incoming_queue_size, size_t wlan_outgoing_qu
   s_wlan_incoming_queue.init(new uint8_t[wlan_incoming_queue_size], wlan_incoming_queue_size);
 
   return true;
+}
+
+//===========================================================================================
+//===========================================================================================
+// Returns the actual outgoing queue capacity selected for the active transport.
+size_t getWlanOutgoingQueueCapacity()
+{
+    return s_wlan_outgoing_queue.capacity();
 }
 
 //===========================================================================================
@@ -522,6 +534,12 @@ static esp_err_t start_raw_transport(WIFI_Rate wifi_rate, uint8_t chn, float pow
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
+#if SOC_WIFI_SUPPORT_5G
+    // SoftAP selects a fixed band below, and that setting survives esp_wifi_stop(). Restore
+    // AUTO before RAW chooses a channel so transport transitions can cross Wi-Fi bands.
+    ESP_ERROR_CHECK(esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO));
+#endif
+
 #ifdef TX_COMPLETION_CB
     //this reduces throughput for some reason
     //update: do not see any bad effect. Contrary, without completion cb, wifi_tx() tends to completely fail with ESP_ERR_NO_MEM error in crowded wifi environment
@@ -558,6 +576,17 @@ static esp_err_t start_raw_transport(WIFI_Rate wifi_rate, uint8_t chn, float pow
 
 static esp_err_t start_ap_udp_transport(uint8_t chn, float power_dbm)
 {
+#if CONFIG_IDF_TARGET_ESP32C5
+    // Defense in depth: never ask the C5 to host APFPV on a DFS channel. The normal
+    // config paths also sanitize and persist this value so subsequent boots stay safe.
+    if (!isWifiChannelSupportedForApfpv(chn))
+    {
+        LOG("APFPV cannot start SoftAP on DFS channel %d; using channel %d\n",
+            chn,
+            DEFAULT_WIFI_CHANNEL_5_8_GHZ);
+        chn = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+    }
+#endif
     chn = static_cast<uint8_t>(getValidWifiChannel(chn));
     ESP_ERROR_CHECK(ensure_wifi_init());
     ESP_ERROR_CHECK(configure_ap_netif());
@@ -578,11 +607,32 @@ static esp_err_t start_ap_udp_transport(uint8_t chn, float power_dbm)
     wifi_config.ap.beacon_interval = 100;
     wifi_config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_NONE;
 
+#if SOC_WIFI_SUPPORT_5G
+    // ESP32-C5 accepts band selection only while the driver is started. Pin the band with
+    // no active interface, then recreate SoftAP so transitions can cross 2.4/5 GHz safely.
+    const bool use_2g = chn <= 14;
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_NULL));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_band_mode(
+        use_2g ? WIFI_BAND_MODE_2G_ONLY : WIFI_BAND_MODE_5G_ONLY));
+    ESP_ERROR_CHECK(esp_wifi_stop());
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(
+        WIFI_IF_AP,
+        use_2g
+            ? WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N
+            : WIFI_PROTOCOL_11A | WIFI_PROTOCOL_11N));
+    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
+#else
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+#endif
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     ESP_ERROR_CHECK(set_wlan_power_dBm(power_dbm));
+
     ESP_ERROR_CHECK(start_udp_socket());
 
     LOG("APFPV AP transport started on channel %d\n", chn);
@@ -869,12 +919,15 @@ void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t devi
         xSemaphoreGive(s_wlan_incoming_mux);
         xSemaphoreGive(s_wlan_outgoing_mux);
 
-		//allocates WLAN_INCOMING_BUFFER_SIZE(1kb) + WLAN_OUTGOING_BUFFER_SIZE(65kb) RAM
-        init_queues(WLAN_INCOMING_BUFFER_SIZE, WLAN_OUTGOING_BUFFER_SIZE);
+		// APFPV needs internal heap for lwIP pbufs and Wi-Fi TX buffers after camera startup.
+        // A large queue leaves too little and sendto() then fails with ENOMEM.
+        init_queues(WLAN_INCOMING_BUFFER_SIZE,
+                    apfpv ? APFPV_WLAN_OUTGOING_BUFFER_SIZE : WLAN_OUTGOING_BUFFER_SIZE);
 
 		//~30kb + ~65KB PSRAM
         setup_fec(s_ground2air_config_packet.dataChannel.fec_codec_k,
                   s_ground2air_config_packet.dataChannel.fec_codec_n,
+                  apfpv ? APFPV_AIR2GROUND_MAX_MTU : AIR2GROUND_MAX_MTU,
                   add_to_wlan_outgoing_queue,
                   add_to_wlan_incoming_queue);
 

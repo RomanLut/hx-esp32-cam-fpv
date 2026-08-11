@@ -25,6 +25,7 @@ enum class OSDMenuId
     Restart,
     FEC,
     GSSettings,
+    GSOSD,
     GSWifiSettings,
     GSScreen,
     GSPostprocessing,

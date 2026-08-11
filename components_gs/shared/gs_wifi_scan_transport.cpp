@@ -227,9 +227,6 @@ bool GSWifiScanTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 // an OSD packet with the updated bar graph.
 void GSWifiScanTransport::queueStatsOsdPacket(Clock::time_point now)
 {
-    // Called every 300 ms (m_next_stats_tp is set below, aligned with m_target_frame_period).
-    m_next_stats_tp = now + std::chrono::milliseconds(300);
-
     // --- rebuild channel list if the configured band has changed ---
     const uint8_t currentBand = s_groundstation_config.wifiBand;
     if (currentBand != m_lastBand)
@@ -256,6 +253,10 @@ void GSWifiScanTransport::queueStatsOsdPacket(Clock::time_point now)
         m_currentIndex = (m_currentIndex + 1) % static_cast<int>(m_channels.size());
         setMonitorChannel(m_channels[m_currentIndex]);
     }
+
+    // Start the dwell after channel reconfiguration finishes. The Realtek setup
+    // path is synchronous and must not consume most of the channel's sample time.
+    m_next_stats_tp = Clock::now() + std::chrono::milliseconds(300);
 
     // --- build and queue the OSD packet ---
     // Maximum encoded OSD payload size

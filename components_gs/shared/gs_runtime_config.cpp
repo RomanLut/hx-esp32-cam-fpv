@@ -153,6 +153,10 @@ void initializeGroundStationConfigDefaults(uint16_t gs_device_id)
     s_groundstation_config.transportKind = gs::core::TransportKind::RawBroadcast;
     s_groundstation_config.GPIOKeysLayout = 0;
     s_groundstation_config.stats = false;
+    s_groundstation_config.osdTopStatusLine = true;
+    s_groundstation_config.osdRcLqGauge = true;
+    s_groundstation_config.osdVideoLqGauge = true;
+    s_groundstation_config.osdMargin = 0;
     s_groundstation_config.vrMode = false;
     s_groundstation_config.deviceId = gs_device_id;
     setApfpvPreferredCameraId(s_groundstation_config.apfpvPreferredCameraId);

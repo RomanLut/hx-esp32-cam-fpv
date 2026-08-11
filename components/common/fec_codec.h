@@ -17,7 +17,9 @@ extern int s_fec_spin_count;
 extern int s_fec_wlan_error_count;
 extern int s_encoder_output_ovf_flag;
 
-void setup_fec(uint8_t k,uint8_t n,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t ));
+void setup_fec(uint8_t k, uint8_t n, uint16_t encoder_mtu,
+               bool (*fec_encoded_cb)(const void*, size_t),
+               void (*fec_decoded_cb)(const void*, size_t));
 
 class Fec_Codec
 {

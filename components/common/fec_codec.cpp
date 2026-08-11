@@ -60,12 +60,15 @@ void init_fec_codec(Fec_Codec & codec,uint8_t k,uint8_t n,uint16_t mtu,bool is_e
 
 //===================================================================================
 //===================================================================================
-// Initializes air and ground FEC codecs and installs their callbacks.
-void setup_fec(uint8_t k,uint8_t n,bool (*fec_encoded_cb)(const void *, size_t ), void (*fec_decoded_cb)(const void *, size_t )){
+// Initializes air and ground FEC codecs with the selected transport MTU and callbacks.
+void setup_fec(uint8_t k, uint8_t n, uint16_t encoder_mtu,
+               bool (*fec_encoded_cb)(const void*, size_t),
+               void (*fec_decoded_cb)(const void*, size_t))
+{
     init_crc8_table();
     init_fec();
 
-    init_fec_codec(s_fec_encoder,k,n,AIR2GROUND_MAX_MTU,true);
+    init_fec_codec(s_fec_encoder, k, n, encoder_mtu, true);
     init_fec_codec(s_fec_decoder,2,3,GROUND2AIR_MAX_MTU,false);
     s_fec_encoder.set_data_encoded_cb(fec_encoded_cb);
     s_fec_decoder.set_data_decoded_cb(fec_decoded_cb);

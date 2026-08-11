@@ -32,6 +32,7 @@ public:
     const ITransport& activeTransport() const override;
 
 protected:
+    virtual bool prepareTransportSwitch(TransportKind from, TransportKind to);
     virtual ITransport& resolveTransport(TransportKind kind) = 0;
     virtual const ITransport& resolveTransport(TransportKind kind) const = 0;
     virtual bool isTransportInitialized(TransportKind kind) const = 0;

@@ -20,6 +20,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_stub_transport.cpp \
 	../components_gs/shared/gs_test_transport.cpp \
 	../components_gs/shared/gs_wifi_scan_transport.cpp \
+	../components_gs/shared/gs_link_quality_sampler.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_camera_calibration_shared.cpp \
 	../components_gs/shared/gs_video_stabilization_shared.cpp \

@@ -1547,6 +1547,18 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
 
+#if CONFIG_IDF_TARGET_ESP32C5
+    // ESP32-C5 cannot perform the active radar detection required for a DFS SoftAP.
+    // Sanitize before processSetting() persists the requested channel to NVS.
+    if (src.misc.apfpv != 0 && !isWifiChannelSupportedForApfpv(src.dataChannel.wifi_channel))
+    {
+        LOG("APFPV channel %d requires DFS; using safe default channel %d\n",
+            src.dataChannel.wifi_channel,
+            DEFAULT_WIFI_CHANNEL_5_8_GHZ);
+        src.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+    }
+#endif
+
     bool transport_changed = processSetting( "apfpv",  dst.misc.apfpv, src.misc.apfpv, "apfpv" );
     if (transport_changed)
     {
@@ -1581,6 +1593,16 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
         // APFPV mode must rebuild the AP on the new channel so GS can reassociate to the moved SSID.
         if (src.misc.apfpv != 0)
         {
+#if CONFIG_IDF_TARGET_ESP32C5
+            // Rebuilding the active C5 SoftAP while camera DMA and UDP tasks are running can
+            // abort inside the Wi-Fi driver. The channel is already persisted above, so use a
+            // deliberate reboot and let startup construct the radio stack on the new channel.
+            LOG("APFPV channel %d saved; intentionally rebooting to apply it\n", channel);
+            if (s_restart_time == 0)
+            {
+                s_restart_time = esp_timer_get_time() + 100000; // 100 ms
+            }
+#else
             LOG("APFPV applying channel change: requested=%d validated=%d rate=%d power=%d\n",
                 src.dataChannel.wifi_channel,
                 channel,
@@ -1590,6 +1612,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                                                  src.dataChannel.wifi_rate,
                                                  channel,
                                                  src.dataChannel.wifi_power));
+#endif
         }
         else
         {
@@ -2702,7 +2725,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     //k2 - max frame size which do not overload wifi output queue
     //wifi output queue should have space to hold frame data and fec data
-    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
+    int safe_frame_size = getWlanOutgoingQueueCapacity() * s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
     //queue is emptied by tx thread constantly so we can assume virtually "larger buffer"
     safe_frame_size += FECbandwidth / fps; 
     safe_frame_size = safe_frame_size * 7 / 10;  //assume next frame can suddenly increase is size by 30%
@@ -3431,10 +3454,15 @@ void readConfig()
     }
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL_2_4GHZ );
+#ifdef BOARD_ESP32C5
+    constexpr uint16_t default_wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+#else
+    constexpr uint16_t default_wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+#endif
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read("channel", default_wifi_channel);
     if  ( (s_ground2air_config_packet.dataChannel.wifi_channel < MIN_WIFI_CHANNEL) || (s_ground2air_config_packet.dataChannel.wifi_channel >= MAX_WIFI_CHANNEL))
     {
-        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+        s_ground2air_config_packet.dataChannel.wifi_channel = default_wifi_channel;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
@@ -3546,6 +3574,16 @@ void readConfig()
     s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 1 );
 #else
     s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 0 );
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    // Recover automatically if an older GS persisted a DFS channel that cannot host APFPV.
+    if (s_ground2air_config_packet.misc.apfpv != 0 &&
+        !isWifiChannelSupportedForApfpv(s_ground2air_config_packet.dataChannel.wifi_channel))
+    {
+        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+        nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
+    }
 #endif
 
     s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osdFontCRC32", 0 );

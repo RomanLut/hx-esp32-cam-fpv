@@ -10,7 +10,7 @@ namespace gs::imgui
 {
 //===================================================================================
 //===================================================================================
-// Carries top overlay data used only for drawing the status chips.
+// Carries runtime data used for drawing the top status chips and link gauges.
 struct TopOverlayData
 {
     Ground2Air_Config_Packet config = {};
@@ -44,9 +44,16 @@ struct TopOverlayData
     float gs_temp_celsius = 0.0f;
     int battery_percent = -1;   // -1 = unknown (Android-only)
     bool osd_font_error = false;
+    uint16_t video_received_packet_count = 0;
+    uint32_t video_last_packet_index = 0;
+    uint8_t video_fec_k = FEC_K;
+    uint8_t video_fec_n = FEC_N;
+    uint16_t gs_out_packet_rate = 0;
+    uint16_t air_in_packet_rate = 0;
     Clock::time_point incompatible_firmware_time = Clock::time_point{};
     Clock::time_point now = Clock::time_point::max();
 };
 
 void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width);
+void drawLinkQualityGauges(const TopOverlayData& input, float overlay_width, float overlay_height);
 }

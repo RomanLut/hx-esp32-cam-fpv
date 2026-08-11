@@ -11,8 +11,9 @@ struct GSStats
     uint16_t inPacketCounterAll[2] = {0,0};  //all received radio packets per interface for the last second
     uint16_t inPacketCounter[2] = {0,0};  //keep stack of max 2 interfaces max
 
-    uint32_t lastPacketIndex = 0;           //gs_stats: last recevied packet index, last_gs_stats: last packet index received for the period of last_gs_stats
-    uint32_t statsPacketIndex = 0;          //packets index when inUniquePacketCounter is stated counting
+    uint32_t lastPacketIndex = 0;           //gs_stats: last received packet index, last_gs_stats: last packet index received for the period of last_gs_stats
+    uint32_t statsPacketIndex = 0;          //packet-order index at the start of this stats period
+    uint16_t statsUniquePacketCounter = 0;  //cumulative unique-packet counter at the start of this stats period
     uint16_t inDublicatedPacketCounter = 0;
     uint16_t inUniquePacketCounter = 0;
 

@@ -152,6 +152,7 @@ private:
     void drawRestartMenu(Ground2Air_Config_Packet& config);
     void drawFECMenu(Ground2Air_Config_Packet& config);
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawGSOSDMenu(Ground2Air_Config_Packet& config);
     void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
     void drawGSPostprocessingMenu(Ground2Air_Config_Packet& config);

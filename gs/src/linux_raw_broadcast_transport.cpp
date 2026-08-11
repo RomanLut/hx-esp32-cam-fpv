@@ -21,7 +21,9 @@
 #include "utils.h"
 #include <fstream>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <sstream>
 
 //#define DEBUG_PCAP
 
@@ -38,6 +40,76 @@ namespace
 
 //===================================================================================
 //===================================================================================
+// Reports whether Linux currently exposes the requested channel for one monitor interface.
+bool monitorChannelMatches(const std::string& interface, int expected_channel)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        int reported_channel = 0;
+        if (std::sscanf(line.c_str(), " channel %d", &reported_channel) == 1)
+        {
+            return reported_channel == expected_channel;
+        }
+    }
+
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Linux currently exposes one interface in monitor mode.
+bool monitorModeMatches(const std::string& interface)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    return output.find("type monitor") != std::string::npos;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Linux already exposes one interface in monitor mode on the requested channel.
+bool monitorInterfaceReady(const std::string& interface, int expected_channel)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    const bool monitor_mode = output.find("type monitor") != std::string::npos;
+    if (!monitor_mode)
+    {
+        return false;
+    }
+
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        int reported_channel = 0;
+        if (std::sscanf(line.c_str(), " channel %d", &reported_channel) == 1)
+        {
+            return reported_channel == expected_channel;
+        }
+    }
+
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
 // Forces one monitor-mode interface onto the configured raw-broadcast channel with HT20 width.
 void setMonitorChannel(const std::string& interface, int channel)
 {
@@ -46,22 +118,32 @@ void setMonitorChannel(const std::string& interface, int channel)
         return;
     }
 
-    if (!runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel)))
+    const bool iw_succeeded = runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel));
+    if (iw_succeeded && monitorChannelMatches(interface, channel))
     {
-        LOGW("Failed to set monitor channel {} HT20 on {} via iw; falling back to iwconfig",
-             channel,
-             interface);
-        runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel));
+        return;
+    }
+
+    // Some out-of-tree Realtek drivers return success from nl80211 without applying
+    // the channel. Verify the reported radio state before deciding whether to fall back.
+    LOGW("Failed to apply monitor channel {} on {} via iw; falling back to iwconfig",
+         channel,
+         interface);
+    if (!runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel)) ||
+        !monitorChannelMatches(interface, channel))
+    {
+        LOGE("Failed to apply monitor channel {} on {}", channel, interface);
     }
 }
 
 //===================================================================================
 //===================================================================================
-// Waits until the Linux network interface reports an operational up state.
+// Waits until the Linux network interface is administratively ready for monitor capture.
 bool waitForInterfaceUp(const std::string& interface)
 {
     const std::string operstate_path = fmt::format("/sys/class/net/{}/operstate", interface);
     const std::string carrier_path = fmt::format("/sys/class/net/{}/carrier", interface);
+    const std::string flags_path = fmt::format("/sys/class/net/{}/flags", interface);
 
     for (int attempt = 0; attempt < 20; ++attempt)
     {
@@ -74,6 +156,29 @@ bool waitForInterfaceUp(const std::string& interface)
                 if (operstate == "up" || operstate == "unknown")
                 {
                     return true;
+                }
+            }
+        }
+
+        {
+            // Monitor interfaces have no association or carrier. rtl88x2eu therefore
+            // reports operstate=down even when `ip link set up` succeeded; IFF_UP is
+            // the authoritative readiness condition for carrierless packet capture.
+            std::ifstream flags_file(flags_path);
+            std::string flags;
+            if (flags_file.is_open())
+            {
+                std::getline(flags_file, flags);
+                try
+                {
+                    if ((std::stoul(flags, nullptr, 0) & 0x1UL) != 0)
+                    {
+                        return true;
+                    }
+                }
+                catch (const std::exception&)
+                {
+                    // Keep polling through a transient or malformed sysfs read.
                 }
             }
         }
@@ -166,8 +271,7 @@ void LinuxRawBroadcastTransport::cancelMenuSearchOrConnect()
 
 //===================================================================================
 //===================================================================================
-// Activates raw-broadcast mode by switching the configured RX interfaces to monitor mode
-// and reopening the pcap backend on the freshly reconfigured interface handles.
+// Activates raw-broadcast mode and reopens pcap without disturbing radios already configured for RAW.
 void LinuxRawBroadcastTransport::activate()
 {
     // Reopen the backend on every activation because switching the same adapter through
@@ -176,8 +280,39 @@ void LinuxRawBroadcastTransport::activate()
     setLinkState(LinkState::LookingForWifiNetwork);
     setLinkStateDetailText("Setting monitor mode...");
     stopBackend();
-    setMonitorMode(m_rx_descriptor.interfaces);
-    setChannel(s_groundstation_config.wifi_channel);
+
+    const bool radios_already_ready = std::all_of(
+        m_rx_descriptor.interfaces.begin(),
+        m_rx_descriptor.interfaces.end(),
+        [](const std::string& interface)
+        {
+            return monitorInterfaceReady(interface, s_groundstation_config.wifi_channel);
+        });
+    if (radios_already_ready)
+    {
+        // Test mode does not own or reconfigure Wi-Fi. Reapplying monitor mode or
+        // the same channel to rtl88x2eu can leave RX silent even though iw reports
+        // the requested state, so Test -> RAW must only reopen pcap here.
+        LOGI("RAW interfaces already use monitor channel {}; reopening pcap without radio reconfiguration",
+             s_groundstation_config.wifi_channel);
+    }
+    else
+    {
+        std::vector<std::string> interfaces_needing_monitor_mode;
+        for (const std::string& interface : m_rx_descriptor.interfaces)
+        {
+            if (!monitorModeMatches(interface))
+            {
+                interfaces_needing_monitor_mode.push_back(interface);
+            }
+        }
+
+        // Wi-Fi Scan keeps its capture adapter in monitor mode and only changes its
+        // channel. Do not bounce either interface through link-down/up on return;
+        // only restore mode where another transport actually changed it.
+        setMonitorMode(interfaces_needing_monitor_mode);
+        setChannel(s_groundstation_config.wifi_channel);
+    }
     if (!startBackend())
     {
         LOGE("Failed to restart raw-broadcast backend after switching to monitor mode");
@@ -1437,6 +1572,13 @@ void LinuxRawBroadcastTransport::setChannel(int ch)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)  //the list contains both RX and TX interfaces
     {
+        // Startup and menu flows can request the already-active channel after RAW
+        // activation. Avoid sending that redundant command to rtl88x2eu because it
+        // can silence RX while continuing to report the requested channel via iw.
+        if (monitorChannelMatches(itf, ch))
+        {
+            continue;
+        }
         setMonitorChannel(itf, ch);
     }
 }

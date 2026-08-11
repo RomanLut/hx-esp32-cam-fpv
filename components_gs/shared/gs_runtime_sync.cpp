@@ -112,6 +112,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_had_frame_loss = core.session.consumeLostFrameCount() != 0;
         GSStats next_stats = {};
         next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;
+        next_stats.statsUniquePacketCounter = core.last_ground_stats.inUniquePacketCounter;
         next_stats.rssiDbm[0] = gs_rssi0;
         next_stats.rssiDbm[1] = gs_rssi1;
         next_stats.noiseFloorDbm = gs_noise_floor;
@@ -145,6 +146,12 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_ground_stats.restoredCompletedFrames;
     overlay_input.video_fps_alert = core.last_had_frame_loss;
     overlay_input.rc_period_warning = core.session.shouldShowRCWarning(now);
+    overlay_input.video_received_packet_count = core.gs_stats.inUniquePacketCounter;
+    overlay_input.video_last_packet_index = core.gs_stats.lastPacketIndex;
+    overlay_input.video_fec_k = core.rx_decoder_k;
+    overlay_input.video_fec_n = core.rx_decoder_n;
+    overlay_input.gs_out_packet_rate = core.last_ground_stats.outPacketCounter;
+    overlay_input.air_in_packet_rate = display_air_stats.inPacketRate;
     overlay_input.image_stabilization_enabled = s_imageStabilizationState.enabled;
     overlay_input.air_record = air_stats_valid && display_air_stats.air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();

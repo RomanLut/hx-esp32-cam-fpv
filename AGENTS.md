@@ -42,3 +42,11 @@ ESP32 PlatformIO build rule:
 - never start a retry while any prior PlatformIO or compiler process for this workspace is alive, because the overlapping process can lock archives, linker scripts, and generated files
 - after a timed-out wrapper finishes in the background, verify its result from the completed process/artifacts and, if needed, run only one incremental confirmation after all prior processes have exited
 
+ESP32-C5 USB reset rule:
+- after flashing an ESP32-C5 over USB Serial/JTAG, a normal esptool hard reset or manual RTS pulse can leave the chip in the ROM loader with `boot:0xf (DOWNLOAD(UART0/USB))`; do not conclude that the application or flash is broken from this state
+- the C5 application reassigns the native USB pins to UART, so the COM port disappearing immediately after reset normally means the application booted successfully; use the watchdog-reset recovery only when the COM port remains present in ROM download mode
+- to start the flashed application without using the external reset/boot lines, connect to the existing ROM loader without a stub and request the C5 watchdog reset:
+  `C:\Users\roman\.platformio\penv\Scripts\python.exe -m esptool --chip esp32c5 --port <PORT> --no-stub --before no-reset --after watchdog-reset chip-id`
+- `--no-stub` is required because esptool's watchdog reset does not work through the flasher stub; `--before no-reset` is required so esptool does not first reassert the external download/reset sequence
+- verify success from serial output showing `boot:0x19 (SPI_FAST_FLASH_BOOT)` followed by the ESP-IDF bootloader and application logs
+

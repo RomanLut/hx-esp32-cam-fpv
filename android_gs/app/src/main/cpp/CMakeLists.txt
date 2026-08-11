@@ -37,6 +37,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp
+    ../../../../../components_gs/shared/gs_link_quality_sampler.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_camera_calibration_shared.cpp
     ../../../../../components_gs/shared/gs_video_stabilization_shared.cpp
