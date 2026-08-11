@@ -90,23 +90,32 @@ sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
 sudo sh -c "echo $QABUTTON2 > /sys/class/gpio/unexport"
 sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/unexport"
 
-# launch.sh restarts getty@tty1 after GS releases the console. The new autologin re-runs
-# this script from /root/.profile, so consume the one-shot flag before either boot target
-# can start and leave the user at a clean shell.
-GS_SKIP_NEXT_FPV_AUTOSTART_FLAG=/run/esp32camfpv-skip-fpv-autostart-once
-if [ -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG" ]; then
-    echo "Skipping automatic startup once (after GS released the console)."
-    rm -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG"
-    exit 0
-fi
-
 # Check bootSelection.txt and execute appropriate script
 if [ -f "$BOOT_SELECTION_FILE" ] && grep -q "ruby" "$BOOT_SELECTION_FILE"; then
     echo "Launching Ruby..."
     cd ${HOME_DIRECTORY}/ruby
     ./ruby_start
 else
+    # launch.sh only creates this flag after a GS instance started outside tty1
+    # restores the console. Never apply it to the RubyFPV boot-selection path.
+    GS_SKIP_NEXT_FPV_AUTOSTART_FLAG=/run/esp32camfpv-skip-fpv-autostart-once
+    if [ -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG" ]; then
+        echo "Skipping esp32-cam-fpv autostart once (after GS released the console)."
+        rm -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG"
+        exit 0
+    fi
     echo "Launching esp32-cam-fpv..."
-    cd ${HOME_DIRECTORY}/esp32-cam-fpv/gs
-    ./launch.sh
+    GS_DIRECTORY="${HOME_DIRECTORY}/esp32-cam-fpv/gs"
+    if [ "$(tty 2>/dev/null)" = "/dev/tty1" ] && command -v systemd-run >/dev/null 2>&1; then
+        # KMS takes ownership of tty1. Run the selected GS outside getty's cgroup so
+        # launch.sh can stop getty without killing itself or starting duplicate GS copies.
+        : > /tmp/esp32camfpv-gs.log
+        systemd-run --quiet --collect --unit=esp32camfpv-gs-session \
+            --property=Restart=on-failure --property=RestartSec=2s \
+            /usr/bin/env ESP32CAMFPV_RESTART_ON_FAILURE=1 \
+            /bin/bash -c "cd '$GS_DIRECTORY' && exec ./launch.sh >>/tmp/esp32camfpv-gs.log 2>&1"
+    else
+        cd "$GS_DIRECTORY"
+        ./launch.sh
+    fi
 fi

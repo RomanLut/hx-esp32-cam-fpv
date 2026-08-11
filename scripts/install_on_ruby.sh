@@ -135,6 +135,7 @@ PROFILE_FILE="/root/.profile"
 sudo sed -i \
     -e 's|^\./ruby_start|#&|' \
     -e 's|^echo "Launch done."|#&|' \
+    -e '\|/esp32-cam-fpv/scripts/boot_selection\.sh|d' \
     "$PROFILE_FILE"
 
 echo "$HOME_DIRECTORY/esp32-cam-fpv/scripts/boot_selection.sh" | sudo tee -a "$PROFILE_FILE"

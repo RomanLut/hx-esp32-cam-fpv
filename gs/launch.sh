@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# ESP32-CAM-FPV / RubyFPV launch contract. Keep all four invariants intact:
+# 1. boot_selection.sh reads the boot GPIO buttons and chooses RubyFPV or this GS.
+# 2. While this GS runs, tty1 getty must be stopped so buttons cannot execute shell commands.
+# 3. A GS crash or other nonzero exit must restart GS without exposing the console.
+# 4. Exit To Shell returns zero, must not restart GS, and must restore a usable tty1 console.
+
 # Variable to store detection result
 IS_RADXA=false
 
@@ -28,7 +34,8 @@ fi
 echo "IS_RADXA=$IS_RADXA"
 
 GETTY_TTY1_WAS_ACTIVE=false
-GETTY_TTY1_OWNS_LAUNCH=false
+GS_EXIT_STATUS=1
+GS_RESTART_MANAGED="${ESP32CAMFPV_RESTART_ON_FAILURE:-0}"
 
 #===================================================================================
 #===================================================================================
@@ -39,6 +46,16 @@ stop_console_getty_while_gs_runs()
         return
     fi
 
+    # The boot selector starts GS in a restart-managed transient unit. Preserve
+    # console ownership across service restarts even after getty is already stopped.
+    if [ "$GS_RESTART_MANAGED" = "1" ]; then
+        GETTY_TTY1_WAS_ACTIVE=true
+        if systemctl is-active --quiet getty@tty1.service; then
+            sudo systemctl stop getty@tty1.service 2>/dev/null || true
+        fi
+        return
+    fi
+
     # Radxa images autologin root on tty1. GS can be launched from SSH while
     # that physical console shell is still active; GPIO/uinput and keyboard
     # navigation keys then reach both GS and the shell, so Up/Down/Enter can
@@ -46,7 +63,6 @@ stop_console_getty_while_gs_runs()
     # by /root/.profile on tty1, stopping getty@tty1 would kill the launch
     # shell itself, so only stop tty1 for SSH/other launch contexts.
     if [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then
-        GETTY_TTY1_OWNS_LAUNCH=true
         return
     fi
 
@@ -62,18 +78,16 @@ stop_console_getty_while_gs_runs()
 restore_console_getty_after_gs()
 {
     if $GETTY_TTY1_WAS_ACTIVE; then
-        # Starting tty1 getty again triggers a fresh autologin; /root/.profile then runs
-        # boot_selection.sh, which would immediately relaunch GS. One-shot skip flag on
-        # tmpfs (cleared on reboot) lets that login drop to a shell instead.
-        sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
-        sudo systemctl start getty@tty1.service 2>/dev/null || true
-    elif $GETTY_TTY1_OWNS_LAUNCH; then
-        # Exit To Shell currently terminates GS with _Exit, so SDL cannot restore the
-        # KMS/DRM virtual terminal. Restarting agetty resets tty1 and discards menu key
-        # input queued for the shell. --no-block lets systemd accept the restart before
-        # it terminates this login session.
-        sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
-        sudo systemctl restart --no-block getty@tty1.service 2>/dev/null || true
+        if [ "$GS_EXIT_STATUS" -eq 0 ]; then
+            # Exit To Shell is the only path that arms the skip flag. The replacement
+            # tty1 login consumes it and stays at a usable console prompt.
+            sudo touch /run/esp32camfpv-skip-fpv-autostart-once 2>/dev/null || true
+            sudo systemctl start getty@tty1.service 2>/dev/null || true
+        elif [ "$GS_RESTART_MANAGED" != "1" ]; then
+            # A manually launched GS has no service supervisor. Restore tty1 without
+            # the skip flag so boot_selection.sh starts a managed replacement GS.
+            sudo systemctl start getty@tty1.service 2>/dev/null || true
+        fi
     fi
 }
 
@@ -106,8 +120,10 @@ run_gs() {
 
 if is_desktop_running; then
     DISPLAY=:0 run_gs
+    GS_EXIT_STATUS=$?
 else
     run_gs
+    GS_EXIT_STATUS=$?
 fi
 
 #let LAN card get ip address (required if dhcpcd service is disabled)
@@ -115,3 +131,7 @@ sudo systemctl start dhcpcd &
 
 #reconnect wlan0 to access point
 sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+
+# Preserve the GS result so the transient unit restarts crashes but considers
+# Exit To Shell successful after the console has been restored by the EXIT trap.
+exit "$GS_EXIT_STATUS"
