@@ -26,10 +26,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+//===================================================================================
+//===================================================================================
+// Discovers APFPV cameras and manages the Quest Wi-Fi connection and streaming lock.
 class ApfpvWifiController(
     private val activity: ComponentActivity,
-    private val currentNativeHandle: () -> Long
-) {
+    private val currentNativeHandle: () -> Long,
+    private val requestVrFocusRecovery: (String) -> Unit
+)
+{
     private data class CameraNetwork(
         val ssid: String,
         val deviceId: Int,
@@ -48,6 +53,7 @@ class ApfpvWifiController(
     private val permissionLauncher =
         activity.registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             permissionRequestInFlight = false
+            recoverVrFocus("wifiPermissionResult")
             if (hasRequiredPermissions()) {
                 activity.lifecycleScope.launch(Dispatchers.Main) {
                     syncNow()
@@ -63,6 +69,7 @@ class ApfpvWifiController(
     private var boundNetwork: Network? = null
     private var permissionRequestInFlight = false
     private var lastAirApfpvModeEnabled: Boolean? = null
+    private var awaitingMenuCameraSelection = false
 
     fun start() {
         if (syncJob != null) {
@@ -81,6 +88,7 @@ class ApfpvWifiController(
         syncJob?.cancel()
         syncJob = null
         lastAirApfpvModeEnabled = null
+        awaitingMenuCameraSelection = false
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         releaseWifiStreamingLock()
@@ -101,6 +109,7 @@ class ApfpvWifiController(
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
             lastAirApfpvModeEnabled = null
+            awaitingMenuCameraSelection = false
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             releaseWifiStreamingLock()
@@ -115,18 +124,22 @@ class ApfpvWifiController(
         lastAirApfpvModeEnabled = airApfpvModeEnabled
         if (apfpvModeChanged) {
             // Android scanResults is a platform cache. Clear the published camera list first so
-            // the menu does not keep stale APFPV SSIDs after the air unit switches mode.
+            // the menu does not keep stale APFPV SSIDs after the air unit switches mode. Quest 2
+            // cannot scan while its low-latency Wi-Fi lock is held, so leave it released until a
+            // camera connection is active again.
             syncCameraState(emptyList(), null)
+            awaitingMenuCameraSelection = false
+            releaseWifiStreamingLock()
             requestWifiScan("apfpvModeChanged", force = true)
+            return
         }
-
-        acquireWifiStreamingLock()
 
         val explicitPromptRequested = withContext(Dispatchers.Default) {
             NativeCore.consumeApfpvWifiScanPermissionPromptRequest(handle)
         }
 
         if (!hasRequiredPermissions()) {
+            releaseWifiStreamingLock()
             syncScanPermissionError(handle, true)
             requestRequiredPermissions(force = explicitPromptRequested)
             return
@@ -151,13 +164,23 @@ class ApfpvWifiController(
         val reconnectRequested = nativeState[2] != 0
 
         if (searchActive) {
+            // Explicit Search must leave the headset disconnected until the user chooses a
+            // rendered Connect-to row. Otherwise the retained preferred ID immediately opens
+            // another Horizon approval dialog and hides the search results.
+            awaitingMenuCameraSelection = true
+            releaseWifiStreamingLock()
             handleMenuSearch(handle, cameraNetworks, currentSsid)
             return
+        }
+
+        if (reconnectRequested) {
+            awaitingMenuCameraSelection = false
         }
 
         val preferredNetwork = cameraNetworks.firstOrNull { it.deviceId == preferredCameraId }
         if (currentSsid != null) {
             if (reconnectRequested) {
+                releaseWifiStreamingLock()
                 if (preferredNetwork != null && preferredNetwork.ssid != currentSsid) {
                     connectToCameraNetwork(handle, preferredNetwork.ssid)
                     return
@@ -169,12 +192,19 @@ class ApfpvWifiController(
                     requestWifiScan("preferredMismatch")
                     return
                 }
+            } else {
+                acquireWifiStreamingLock()
             }
 
             syncCameraState(cameraNetworks, currentSsid)
             return
         }
 
+        releaseWifiStreamingLock()
+        if (awaitingMenuCameraSelection) {
+            syncCameraState(cameraNetworks, null)
+            return
+        }
         if (preferredNetwork != null) {
             connectToCameraNetwork(handle, preferredNetwork.ssid)
             return
@@ -231,6 +261,10 @@ class ApfpvWifiController(
             return
         }
 
+        // Always request a fresh scan for an explicit menu search. Cached Android results can
+        // describe cameras that have moved channel or are no longer powered on.
+        requestWifiScan("menuSearch")
+
         if (cameraNetworks.size >= 2) {
             syncCameraState(cameraNetworks, null)
             return
@@ -249,6 +283,7 @@ class ApfpvWifiController(
     }
 
     private suspend fun disconnectFromCurrentCamera(handle: Long) {
+        releaseWifiStreamingLock()
         releaseRequestedNetwork()
         bindToNetwork(null)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -275,6 +310,7 @@ class ApfpvWifiController(
             return
         }
 
+        releaseWifiStreamingLock()
         releaseRequestedNetwork()
 
         val specifier = WifiNetworkSpecifier.Builder()
@@ -288,7 +324,9 @@ class ApfpvWifiController(
             override fun onAvailable(network: Network) {
                 Log.i(LOG_TAG, "APFPV Wi-Fi network available: $ssid")
                 bindToNetwork(network)
+                acquireWifiStreamingLock()
                 syncCameraState(findCameraNetworks(), ssid)
+                recoverVrFocus("apfpvNetworkAvailable")
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
@@ -297,6 +335,7 @@ class ApfpvWifiController(
 
             override fun onLost(network: Network) {
                 Log.w(LOG_TAG, "APFPV Wi-Fi network lost: $ssid")
+                releaseWifiStreamingLock()
                 if (boundNetwork == network) {
                     bindToNetwork(null)
                 }
@@ -312,10 +351,15 @@ class ApfpvWifiController(
 
             override fun onUnavailable() {
                 Log.w(LOG_TAG, "APFPV Wi-Fi network unavailable: $ssid")
+                releaseWifiStreamingLock()
                 if (requestedSsid == ssid) {
                     releaseRequestedNetwork()
                 }
+                // A rejected or stale Horizon approval must not immediately open the same
+                // system dialog again. Leave reconnection to an explicit menu selection.
+                awaitingMenuCameraSelection = true
                 syncCameraState(findCameraNetworks(), null)
+                recoverVrFocus("apfpvNetworkUnavailable")
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
@@ -325,7 +369,9 @@ class ApfpvWifiController(
 
         requestedSsid = ssid
         requestedNetworkCallback = callback
-        connectivityManager.requestNetwork(request, callback)
+        // Quest can dismiss a stale Horizon approval activity without delivering a result.
+        // The bounded request guarantees onUnavailable() eventually restores VR focus.
+        connectivityManager.requestNetwork(request, callback, NETWORK_REQUEST_TIMEOUT_MS)
         Log.i(LOG_TAG, "Requested APFPV Wi-Fi network: $ssid")
     }
 
@@ -368,6 +414,8 @@ class ApfpvWifiController(
             return
         }
 
+        // Quest 2 Horizon OS 14/QCA6390 aborts every off-channel Wi-Fi scan while this
+        // low-latency lock is held. Do not acquire it before APFPV discovery completes.
         wifiStreamingLock.acquire()
         Log.i(LOG_TAG, "Acquired APFPV Wi-Fi streaming lock")
     }
@@ -411,6 +459,10 @@ class ApfpvWifiController(
     }
 
     private fun requestWifiScan(reason: String, force: Boolean = false): Boolean {
+        // Quest 2/QCA6390 reports NL80211 scan-aborted while this lock is held. Release it even
+        // when Android throttles this particular request so the next framework scan can run.
+        releaseWifiStreamingLock()
+
         val now = SystemClock.elapsedRealtime()
         if (!force && lastScanRequestElapsedMs != 0L &&
             (now - lastScanRequestElapsedMs) < SCAN_REQUEST_MIN_INTERVAL_MS) {
@@ -507,6 +559,13 @@ class ApfpvWifiController(
         }
     }
 
+    private fun recoverVrFocus(reason: String)
+    {
+        activity.runOnUiThread {
+            requestVrFocusRecovery(reason)
+        }
+    }
+
     private fun currentConnectedCameraSsid(): String? {
         val currentSsid = wifiManager.connectionInfo?.ssid?.trim('"') ?: return null
         return if (currentSsid.startsWith(CAMERA_SSID_PREFIX)) currentSsid else null
@@ -539,6 +598,7 @@ class ApfpvWifiController(
         const val SCAN_INTERVAL_MS = 3_000L
         const val SCAN_REQUEST_MIN_INTERVAL_MS = 30_000L
         const val PERMISSION_PROMPT_MIN_INTERVAL_MS = 30_000L
+        const val NETWORK_REQUEST_TIMEOUT_MS = 120_000
     }
 
     private fun getWifiStreamingLockMode(): Int {

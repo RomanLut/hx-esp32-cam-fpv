@@ -73,6 +73,12 @@ private:
         // this lifecycle flag must never be cleared; recovery creates a new UsbAdapter.
         std::atomic<bool> should_stop = {false};
         std::unique_ptr<std::thread> rx_thread;
+        std::mutex device_io_mutex;
+        std::atomic<bool> channel_worker_stop = {false};
+        std::atomic<bool> channel_worker_running = {false};
+        std::atomic<bool> channel_change_in_progress = {false};
+        std::atomic<int> requested_channel = {0};
+        std::atomic<int> applied_channel = {0};
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;
         int usb_interface_number = 0;
@@ -98,7 +104,6 @@ private:
 
     mutable std::mutex m_mutex;
     mutable std::mutex m_stop_mutex;
-    mutable std::mutex m_device_io_mutex;
     std::atomic<bool> m_active = {false};
     Clock::time_point m_activate_time = Clock::time_point::min();
     std::vector<uint8_t> m_radiotap_header;

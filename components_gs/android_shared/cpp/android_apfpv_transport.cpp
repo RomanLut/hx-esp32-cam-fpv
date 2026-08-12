@@ -460,7 +460,9 @@ void AndroidAPFPVTransport::syncCameraState(size_t discovered_camera_count, bool
 
     if (has_active_camera)
     {
-        m_reconnect_requested.store(false);
+        // Android publishes the current Wi-Fi camera before polling consumeReconnectRequest().
+        // Clearing here would erase a menu-driven switch while the old camera is still active.
+        // Only consumeReconnectRequest() may acknowledge and clear the pending command.
         if (m_menu_search_active.exchange(false))
         {
             m_menu_search_done.store(true);

@@ -17,6 +17,7 @@
 #include "openxr_video_bridge.h"
 #include "imgui.h"
 #include "gs_shared_state.h"
+#include "../../../../../components_gs/mcp/gs_mcp_server.h"
 #define XR_USE_PLATFORM_ANDROID
 #define XR_USE_GRAPHICS_API_OPENGL_ES
 #define XR_NO_PROTOTYPES
@@ -62,6 +63,9 @@ public:
         }
 
         m_stop_requested.store(false);
+        m_session_state.store(XR_SESSION_STATE_UNKNOWN);
+        // Quest controller input is unavailable until OpenXR explicitly reports FOCUSED.
+        gs::mcp::setInjectedInputEnabled(false);
         LOGI("OpenXR: start requested");
         m_thread = std::thread(&QuestOpenXrRuntime::threadMain, this);
         return true;
@@ -71,6 +75,8 @@ public:
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stop_requested.store(true);
+        m_session_state.store(XR_SESSION_STATE_UNKNOWN);
+        gs::mcp::setInjectedInputEnabled(false);
         LOGI("OpenXR: stop requested");
         if (m_thread.joinable())
         {
@@ -82,6 +88,11 @@ public:
             m_activity_global = nullptr;
         }
         m_running.store(false);
+    }
+
+    bool isFocused() const
+    {
+        return m_session_state.load() == XR_SESSION_STATE_FOCUSED;
     }
 
 private:
@@ -100,6 +111,7 @@ private:
         m_running.store(true);
 
         initOpenXr(env);
+        gs::mcp::setInjectedInputEnabled(false);
         shutdownOpenXr();
 
         vm->DetachCurrentThread();
@@ -515,6 +527,7 @@ private:
     {
         bool session_running = false;
         XrSessionState session_state = XR_SESSION_STATE_UNKNOWN;
+        m_session_state.store(session_state);
 
         while (!m_stop_requested.load())
         {
@@ -525,6 +538,10 @@ private:
                 {
                     auto* changed = reinterpret_cast<XrEventDataSessionStateChanged*>(&event);
                     session_state = changed->state;
+                    m_session_state.store(session_state);
+                    // Horizon overlays and system dialogs move OpenXR out of FOCUSED.
+                    // Reject MCP keys too, so automation cannot do what the user cannot.
+                    gs::mcp::setInjectedInputEnabled(session_state == XR_SESSION_STATE_FOCUSED);
                     LOGI("OpenXR: session state={}", static_cast<int>(session_state));
                     if (session_state == XR_SESSION_STATE_READY && !session_running)
                     {
@@ -670,6 +687,8 @@ private:
                 m_xrEndFrame(m_session, &end_info);
             }
         }
+
+        m_session_state.store(XR_SESSION_STATE_UNKNOWN);
     }
 
     //===================================================================================
@@ -1142,6 +1161,7 @@ void main() { frag = texture(u_tex, v_uv); }
     std::thread m_thread;
     std::atomic<bool> m_running = false;
     std::atomic<bool> m_stop_requested = false;
+    std::atomic<int> m_session_state = XR_SESSION_STATE_UNKNOWN;
     jobject m_activity_global = nullptr;
 
     void* m_loader_handle = nullptr;
@@ -1261,4 +1281,13 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_esp32camfpv_questgs_NativeCore_stopOpenXr(JNIEnv* env, jobject /*thiz*/)
 {
     g_runtime.stop(env);
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Quest currently grants controller-input focus to this OpenXR session.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_questgs_NativeCore_isOpenXrFocused(JNIEnv* /*env*/, jobject /*thiz*/)
+{
+    return g_runtime.isFocused() ? JNI_TRUE : JNI_FALSE;
 }

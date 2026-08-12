@@ -10,6 +10,7 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,10 +22,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+//===================================================================================
+//===================================================================================
+// Discovers APFPV cameras and owns the Android Wi-Fi connection lifecycle.
 class ApfpvWifiController(
     private val activity: ComponentActivity,
     private val currentNativeHandle: () -> Long
-) {
+)
+{
     private data class CameraNetwork(
         val ssid: String,
         val deviceId: Int,
@@ -53,9 +58,12 @@ class ApfpvWifiController(
     private var syncJob: Job? = null
     private var requestedSsid: String? = null
     private var requestedNetworkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastScanRequestElapsedMs: Long = 0L
+    private var lastPermissionPromptElapsedMs: Long = 0L
     private var boundNetwork: Network? = null
     private var permissionRequestInFlight = false
     private var lastAirApfpvModeEnabled: Boolean? = null
+    private var awaitingMenuCameraSelection = false
 
     fun start() {
         if (syncJob != null) {
@@ -74,6 +82,7 @@ class ApfpvWifiController(
         syncJob?.cancel()
         syncJob = null
         lastAirApfpvModeEnabled = null
+        awaitingMenuCameraSelection = false
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         releaseWifiStreamingLock()
@@ -94,6 +103,7 @@ class ApfpvWifiController(
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
             lastAirApfpvModeEnabled = null
+            awaitingMenuCameraSelection = false
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             releaseWifiStreamingLock()
@@ -108,17 +118,26 @@ class ApfpvWifiController(
         lastAirApfpvModeEnabled = airApfpvModeEnabled
         if (apfpvModeChanged) {
             // Android scanResults is a platform cache. Clear the published camera list first so
-            // the menu does not keep stale APFPV SSIDs after the air unit switches mode.
+            // the menu does not keep stale APFPV SSIDs after the air unit switches mode. A
+            // low-latency Wi-Fi lock can abort off-channel scans, so keep it released here.
             syncCameraState(emptyList(), null)
-            wifiManager.startScan()
-        }
-
-        acquireWifiStreamingLock()
-
-        if (!hasRequiredPermissions()) {
-            requestRequiredPermissions()
+            awaitingMenuCameraSelection = false
+            releaseWifiStreamingLock()
+            requestWifiScan("apfpvModeChanged", force = true)
             return
         }
+
+        val explicitPromptRequested = withContext(Dispatchers.Default) {
+            NativeCore.consumeApfpvWifiScanPermissionPromptRequest(handle)
+        }
+
+        if (!hasRequiredPermissions()) {
+            releaseWifiStreamingLock()
+            NativeCore.setApfpvWifiScanPermissionError(handle, true)
+            requestRequiredPermissions(force = explicitPromptRequested)
+            return
+        }
+        NativeCore.setApfpvWifiScanPermissionError(handle, false)
 
         val currentSsid = currentConnectedCameraSsid()
         val cameraNetworks = withContext(Dispatchers.Default) {
@@ -138,13 +157,22 @@ class ApfpvWifiController(
         val reconnectRequested = nativeState[2] != 0
 
         if (searchActive) {
+            // Search displays fresh results and waits for an explicit Connect-to selection.
+            // Retaining the old preferred ID must not immediately open a system dialog.
+            awaitingMenuCameraSelection = true
+            releaseWifiStreamingLock()
             handleMenuSearch(handle, cameraNetworks, currentSsid)
             return
+        }
+
+        if (reconnectRequested) {
+            awaitingMenuCameraSelection = false
         }
 
         val preferredNetwork = cameraNetworks.firstOrNull { it.deviceId == preferredCameraId }
         if (currentSsid != null) {
             if (reconnectRequested) {
+                releaseWifiStreamingLock()
                 if (preferredNetwork != null && preferredNetwork.ssid != currentSsid) {
                     connectToCameraNetwork(handle, preferredNetwork.ssid)
                     return
@@ -153,22 +181,29 @@ class ApfpvWifiController(
                 val currentCameraId = parseCameraId(currentSsid)
                 if (preferredCameraId != 0 && currentCameraId != preferredCameraId) {
                     disconnectFromCurrentCamera(handle)
-                    wifiManager.startScan()
+                    requestWifiScan("preferredMismatch")
                     return
                 }
+            } else {
+                acquireWifiStreamingLock()
             }
 
             syncCameraState(cameraNetworks, currentSsid)
             return
         }
 
+        releaseWifiStreamingLock()
+        if (awaitingMenuCameraSelection) {
+            syncCameraState(cameraNetworks, null)
+            return
+        }
         if (preferredNetwork != null) {
             connectToCameraNetwork(handle, preferredNetwork.ssid)
             return
         }
 
         if (preferredCameraId != 0 || reconnectRequested) {
-            wifiManager.startScan()
+            requestWifiScan("preferredOrReconnect")
             return
         }
 
@@ -176,7 +211,12 @@ class ApfpvWifiController(
     }
 
     private fun findCameraNetworks(): List<CameraNetwork> {
-        val scanResults = wifiManager.scanResults ?: return emptyList()
+        val scanResults = try {
+            wifiManager.scanResults
+        } catch (securityException: SecurityException) {
+            Log.w(LOG_TAG, "Wi-Fi scan permission error while reading results", securityException)
+            return emptyList()
+        } ?: return emptyList()
         val bestResults = scanResults
             .asSequence()
             .filter { !it.SSID.isNullOrBlank() }
@@ -205,28 +245,25 @@ class ApfpvWifiController(
         if (currentSsid != null) {
             disconnectFromCurrentCamera(handle)
             syncCameraState(cameraNetworks, null)
-            wifiManager.startScan()
+            requestWifiScan("menuSearchDisconnect", force = true)
             return
         }
+
+        // Never trust only Android's retained scan cache for an explicit user search.
+        requestWifiScan("menuSearch", force = true)
 
         if (cameraNetworks.size >= 2) {
             syncCameraState(cameraNetworks, null)
             return
         }
 
-        if (cameraNetworks.size == 1) {
-            val target = cameraNetworks.first()
-            withContext(Dispatchers.Default) {
-                NativeCore.setPreferredApfpvCameraId(handle, target.deviceId)
-            }
-            connectToCameraNetwork(handle, target.ssid)
-            return
-        }
-
-        wifiManager.startScan()
+        // One camera is still rendered as a Connect-to row; connection begins only when the
+        // user selects it. Zero results remain in search while later scan callbacks republish.
+        syncCameraState(cameraNetworks, null)
     }
 
     private suspend fun disconnectFromCurrentCamera(handle: Long) {
+        releaseWifiStreamingLock()
         releaseRequestedNetwork()
         bindToNetwork(null)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -253,6 +290,7 @@ class ApfpvWifiController(
             return
         }
 
+        releaseWifiStreamingLock()
         releaseRequestedNetwork()
 
         val specifier = WifiNetworkSpecifier.Builder()
@@ -266,6 +304,7 @@ class ApfpvWifiController(
             override fun onAvailable(network: Network) {
                 Log.i(LOG_TAG, "APFPV Wi-Fi network available: $ssid")
                 bindToNetwork(network)
+                acquireWifiStreamingLock()
                 syncCameraState(findCameraNetworks(), ssid)
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
@@ -275,6 +314,7 @@ class ApfpvWifiController(
 
             override fun onLost(network: Network) {
                 Log.w(LOG_TAG, "APFPV Wi-Fi network lost: $ssid")
+                releaseWifiStreamingLock()
                 if (boundNetwork == network) {
                     bindToNetwork(null)
                 }
@@ -290,9 +330,11 @@ class ApfpvWifiController(
 
             override fun onUnavailable() {
                 Log.w(LOG_TAG, "APFPV Wi-Fi network unavailable: $ssid")
+                releaseWifiStreamingLock()
                 if (requestedSsid == ssid) {
                     releaseRequestedNetwork()
                 }
+                awaitingMenuCameraSelection = true
                 syncCameraState(findCameraNetworks(), null)
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
@@ -303,7 +345,7 @@ class ApfpvWifiController(
 
         requestedSsid = ssid
         requestedNetworkCallback = callback
-        connectivityManager.requestNetwork(request, callback)
+        connectivityManager.requestNetwork(request, callback, NETWORK_REQUEST_TIMEOUT_MS)
         Log.i(LOG_TAG, "Requested APFPV Wi-Fi network: $ssid")
     }
 
@@ -382,7 +424,40 @@ class ApfpvWifiController(
         }
     }
 
-    private fun requestRequiredPermissions() {
+    private fun requestWifiScan(reason: String, force: Boolean = false): Boolean {
+        releaseWifiStreamingLock()
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastScanRequestElapsedMs != 0L &&
+            now - lastScanRequestElapsedMs < SCAN_REQUEST_MIN_INTERVAL_MS
+        ) {
+            return false
+        }
+        if (!hasRequiredPermissions()) {
+            return false
+        }
+        return try {
+            val started = wifiManager.startScan()
+            lastScanRequestElapsedMs = now
+            if (!started) {
+                Log.w(LOG_TAG, "Wi-Fi scan request rejected, reason=$reason")
+            }
+            started
+        } catch (securityException: SecurityException) {
+            Log.w(LOG_TAG, "Wi-Fi scan permission error, reason=$reason", securityException)
+            false
+        }
+    }
+
+    private fun requestRequiredPermissions(force: Boolean = false) {
+        if (!force) {
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (lastPermissionPromptElapsedMs != 0L &&
+            now - lastPermissionPromptElapsedMs < PERMISSION_PROMPT_MIN_INTERVAL_MS
+        ) {
+            return
+        }
         if (permissionRequestInFlight) {
             return
         }
@@ -394,6 +469,7 @@ class ApfpvWifiController(
                 add(Manifest.permission.NEARBY_WIFI_DEVICES)
             }
         }
+        lastPermissionPromptElapsedMs = now
         permissionLauncher.launch(permissions.toTypedArray())
     }
 
@@ -441,6 +517,9 @@ class ApfpvWifiController(
         const val LOG_TAG = "ApfpvWifiController"
         const val CAMERA_SSID_PREFIX = "esp32cam-fpv-"
         const val SCAN_INTERVAL_MS = 3_000L
+        const val SCAN_REQUEST_MIN_INTERVAL_MS = 30_000L
+        const val PERMISSION_PROMPT_MIN_INTERVAL_MS = 30_000L
+        const val NETWORK_REQUEST_TIMEOUT_MS = 120_000
     }
 
     private fun getWifiStreamingLockMode(): Int {

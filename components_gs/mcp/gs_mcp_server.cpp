@@ -63,6 +63,7 @@ struct GsMcpServerImpl
 
 InputQueueState g_input_queue;
 GsMcpServerImpl g_server_impl;
+std::atomic<bool> g_injected_input_enabled = true;
 
 void closeSocketFd(int& fd);
 bool setFdCloseOnExec(int fd);
@@ -198,20 +199,56 @@ uint16_t GsMcpServer::port() const
     return g_server_impl.port;
 }
 
-void queueInjectedKeyPress(ImGuiKey key)
+//===================================================================================
+//===================================================================================
+// Enables synthetic input or clears pending transitions when platform focus is lost.
+void setInjectedInputEnabled(bool enabled)
+{
+    g_injected_input_enabled.store(enabled);
+    if (!enabled)
+    {
+        std::lock_guard<std::mutex> lock(g_input_queue.mutex);
+        g_input_queue.pending.clear();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether synthetic input currently matches an input state available to the user.
+bool isInjectedInputEnabled()
+{
+    return g_injected_input_enabled.load();
+}
+
+//===================================================================================
+//===================================================================================
+// Queues one key press only while the platform permits synthetic user input.
+bool queueInjectedKeyPress(ImGuiKey key)
 {
     if (key == ImGuiKey_None)
     {
-        return;
+        return false;
     }
 
     std::lock_guard<std::mutex> lock(g_input_queue.mutex);
+    if (!isInjectedInputEnabled())
+    {
+        return false;
+    }
     g_input_queue.pending.push_back({key});
+    return true;
 }
 
-void queueInjectedKeyPresses(const std::vector<ImGuiKey>& keys)
+//===================================================================================
+//===================================================================================
+// Queues a key sequence atomically with respect to the current input-focus gate.
+bool queueInjectedKeyPresses(const std::vector<ImGuiKey>& keys)
 {
     std::lock_guard<std::mutex> lock(g_input_queue.mutex);
+    if (!isInjectedInputEnabled())
+    {
+        return false;
+    }
     for (const ImGuiKey key : keys)
     {
         if (key == ImGuiKey_None)
@@ -220,6 +257,7 @@ void queueInjectedKeyPresses(const std::vector<ImGuiKey>& keys)
         }
         g_input_queue.pending.push_back({key});
     }
+    return true;
 }
 
 void drainInjectedKeysToImGui()
@@ -234,10 +272,13 @@ void drainInjectedKeysToImGui()
     io.AddKeyEvent(transition.key, transition.down);
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the next queued transition only while synthetic input remains enabled.
 bool popInjectedKeyTransition(InjectedKeyTransition& transition)
 {
     std::lock_guard<std::mutex> lock(g_input_queue.mutex);
-    if (g_input_queue.pending.empty())
+    if (!isInjectedInputEnabled() || g_input_queue.pending.empty())
     {
         return false;
     }
@@ -667,6 +708,9 @@ std::string buildMenuBufferJson()
     return out.str();
 }
 
+//===================================================================================
+//===================================================================================
+// Builds a read-only runtime snapshot including whether synthetic input is safe.
 std::string buildSnapshotJson()
 {
     const ApfpvCameraStateSnapshot apfpv_state = copyApfpvCameraState();
@@ -698,6 +742,7 @@ std::string buildSnapshotJson()
         << "\"link_state\":\"" << linkStateLabel(getLinkState()) << "\","
         << "\"transport_kind\":\"" << jsonEscape(transportKindLabel(currentTransportKind())) << "\","
         << "\"menu\":" << buildMenuBufferJson() << ','
+        << "\"synthetic_input_enabled\":" << (isInjectedInputEnabled() ? "true" : "false") << ','
         << "\"apfpv\":{"
         << "\"preferred_camera_id\":" << apfpv_state.preferred_camera_id << ','
         << "\"preferred_camera_hex\":\"" << jsonEscape(formatApfpvCameraId(apfpv_state.preferred_camera_id)) << "\","
@@ -826,6 +871,9 @@ bool sendAll(int fd, const std::string& response)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Handles MCP tools and rejects key operations before parsing when focus is absent.
 std::string handleToolCall(const std::string& id_raw, const std::string& params_raw)
 {
     const std::string tool_name = parseJsonStringLiteral(extractTopLevelJsonValue(params_raw, "name"));
@@ -841,17 +889,28 @@ std::string handleToolCall(const std::string& id_raw, const std::string& params_
     }
     if (tool_name == "gs_press_key")
     {
+        if (!isInjectedInputEnabled())
+        {
+            return makeJsonRpcError(id_raw, -32001, "Synthetic input rejected because the app does not have user input focus");
+        }
         const std::string key_name = parseJsonStringLiteral(extractTopLevelJsonValue(arguments_raw, "key"));
         const ImGuiKey key = parseInjectedKeyName(key_name);
         if (key == ImGuiKey_None)
         {
             return makeJsonRpcError(id_raw, -32602, "Unknown key name");
         }
-        queueInjectedKeyPress(key);
+        if (!queueInjectedKeyPress(key))
+        {
+            return makeJsonRpcError(id_raw, -32001, "Synthetic input rejected because the app lost user input focus");
+        }
         return makeJsonRpcResult(id_raw, makeToolCallSuccess(std::string("{\"queued\":true,\"count\":1,\"key\":\"") + jsonEscape(key_name) + "\"}"));
     }
     if (tool_name == "gs_press_keys")
     {
+        if (!isInjectedInputEnabled())
+        {
+            return makeJsonRpcError(id_raw, -32001, "Synthetic input rejected because the app does not have user input focus");
+        }
         const std::vector<std::string> key_names = parseJsonStringArray(extractTopLevelJsonValue(arguments_raw, "keys"));
         std::vector<ImGuiKey> keys;
         keys.reserve(key_names.size());
@@ -864,7 +923,10 @@ std::string handleToolCall(const std::string& id_raw, const std::string& params_
             }
             keys.push_back(key);
         }
-        queueInjectedKeyPresses(keys);
+        if (!queueInjectedKeyPresses(keys))
+        {
+            return makeJsonRpcError(id_raw, -32001, "Synthetic input rejected because the app lost user input focus");
+        }
         return makeJsonRpcResult(id_raw, makeToolCallSuccess(std::string("{\"queued\":true,\"count\":") + std::to_string(keys.size()) + "}"));
     }
 

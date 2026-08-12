@@ -175,6 +175,7 @@ object NativeCore {
     external fun clearRenderSurface(handle: Long)
     external fun startOpenXr(activity: Activity): Boolean
     external fun stopOpenXr()
+    external fun isOpenXrFocused(): Boolean
     external fun consumeExitRequested(handle: Long): Boolean
 
     @JvmStatic external fun serialTelemetryOnOpen()

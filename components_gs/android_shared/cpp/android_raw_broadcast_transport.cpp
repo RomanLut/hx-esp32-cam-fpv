@@ -522,7 +522,9 @@ bool AndroidRawBroadcastTransport::receive(void* data, size_t& size, bool& resto
 
 //===================================================================================
 //===================================================================================
-// Retunes every active RTL adapter to the requested monitor-mode channel when running.
+// Queues a coalesced retune for every active RTL adapter without blocking the GS thread.
+// Realtek register I/O can wedge after a USB fault; keeping it off the render/search
+// thread lets the other adapter find the camera and keeps cancel/mode UI responsive.
 void AndroidRawBroadcastTransport::setChannel(int ch)
 {
     std::vector<std::shared_ptr<UsbAdapter>> adapters;
@@ -539,41 +541,9 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
 
     for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
     {
-        try
+        if (adapter->device && !adapter->should_stop.load())
         {
-            if (!adapter->device || adapter->should_stop.load())
-            {
-                continue;
-            }
-
-            const Clock::time_point now = Clock::now();
-            if (now < adapter->channel_change_ready_time)
-            {
-                // Devourer Init() applies the initial channel internally before
-                // entering its blocking RX loop. A menu retune during that bring-up
-                // window can race the driver and leave the adapter on the old
-                // channel, so delay only this immediate manual retune.
-                std::this_thread::sleep_until(adapter->channel_change_ready_time);
-            }
-
-            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-            if (!adapter->device || adapter->should_stop.load())
-            {
-                continue;
-            }
-
-            LOGI("Setting monitor channel to {} on adapter {}", ch, adapter->index);
-            adapter->device->SetMonitorChannel(makeSelectedChannel(ch));
-        }
-        catch (const std::exception& e)
-        {
-            LOGW("SetMonitorChannel failed after USB detach on adapter {}: {}", adapter->index, e.what());
-            adapter->should_stop = true;
-        }
-        catch (...)
-        {
-            LOGW("SetMonitorChannel failed after USB detach on adapter {} with unknown exception", adapter->index);
-            adapter->should_stop = true;
+            adapter->requested_channel.store(ch);
         }
     }
 }
@@ -592,7 +562,6 @@ void AndroidRawBroadcastTransport::setTxPower(int txPower)
 
     if (!adapters.empty())
     {
-        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
         for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
         {
             try
@@ -602,6 +571,7 @@ void AndroidRawBroadcastTransport::setTxPower(int txPower)
                     continue;
                 }
 
+                std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
                 LOGI("Setting TX power to {} on adapter {}", m_tx_power, adapter->index);
                 applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
             }
@@ -826,7 +796,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         }
         if (m_tx_power > 0)
         {
-            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+            std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
             applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
         }
         m_usb_adapters.push_back(adapter);
@@ -878,6 +848,58 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         }
     });
 
+    adapter->requested_channel.store(s_groundstation_config.wifi_channel);
+    adapter->applied_channel.store(s_groundstation_config.wifi_channel);
+    adapter->channel_worker_running.store(true);
+    std::thread([adapter]()
+    {
+        while (!adapter->channel_worker_stop.load())
+        {
+            if (Clock::now() < adapter->channel_change_ready_time)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            const int requested_channel = adapter->requested_channel.load();
+            if (requested_channel == 0 || requested_channel == adapter->applied_channel.load())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            try
+            {
+                std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
+                if (!adapter->device || adapter->should_stop.load())
+                {
+                    break;
+                }
+
+                adapter->channel_change_in_progress.store(true);
+                LOGI("Setting monitor channel to {} on adapter {}", requested_channel, adapter->index);
+                adapter->device->SetMonitorChannel(makeSelectedChannel(requested_channel));
+                adapter->applied_channel.store(requested_channel);
+                adapter->channel_change_in_progress.store(false);
+            }
+            catch (const std::exception& e)
+            {
+                LOGW("SetMonitorChannel failed after USB detach on adapter {}: {}", adapter->index, e.what());
+                adapter->channel_change_in_progress.store(false);
+                adapter->should_stop.store(true);
+                break;
+            }
+            catch (...)
+            {
+                LOGW("SetMonitorChannel failed after USB detach on adapter {} with unknown exception", adapter->index);
+                adapter->channel_change_in_progress.store(false);
+                adapter->should_stop.store(true);
+                break;
+            }
+        }
+        adapter->channel_worker_running.store(false);
+    }).detach();
+
     return true;
 }
 
@@ -903,10 +925,6 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
         stopUsbAdapterLocked(adapter);
     }
 
-    // Hot-unplug can leave queued TX work still trying to touch libusb while Java is stopping
-    // the transport. Hold the device I/O gate while clearing TX assembly so no send path
-    // can retain work for an adapter that is no longer active.
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         resetTxAssemblerLocked();
@@ -922,6 +940,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
 void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter)
 {
     adapter->should_stop = true;
+    adapter->channel_worker_stop.store(true);
     if (adapter->device)
     {
         adapter->device->StopRxLoop();
@@ -932,7 +951,21 @@ void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<Us
     }
     adapter->rx_thread.reset();
 
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    const Clock::time_point worker_deadline = Clock::now() + std::chrono::seconds(2);
+    while (adapter->channel_worker_running.load() && Clock::now() < worker_deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (adapter->channel_worker_running.load())
+    {
+        // A dead USB device can trap devourer's synchronous register I/O indefinitely.
+        // The detached worker owns this adapter object, so leave its stale native resources
+        // quarantined instead of freezing mode changes or app shutdown while joining it.
+        LOGW("Quarantining adapter {} after channel worker failed to stop", adapter->index);
+        return;
+    }
+
+    std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
     if (adapter->device)
     {
         adapter->device->Stop();
@@ -1104,7 +1137,15 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<UsbAdapte
         return false;
     }
 
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    // Search retunes run in per-adapter workers because Realtek register I/O may
+    // never return after a USB/firmware fault. Never let the GS processing thread
+    // wait behind that operation; fail over to the other adapter or skip this
+    // control packet while RX/search/menu processing remains responsive.
+    std::unique_lock<std::mutex> io_lock(adapter->device_io_mutex, std::try_to_lock);
+    if (!io_lock.owns_lock())
+    {
+        return false;
+    }
     if (adapter->should_stop.load())
     {
         return false;

@@ -77,24 +77,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <activity
-            android:name=".UsbAttachActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:finishOnTaskLaunch="true"
-            android:noHistory="true"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.AndroidGs.Starting">
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
-            <meta-data
-                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/usb_device_filter" />
-        </activity>
     </application>
 
 </manifest>

@@ -21,10 +21,15 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
+//===================================================================================
+//===================================================================================
+// Owns Quest RTL raw-broadcast adapters and their serialized USB permission flow.
 class RawBroadcastUsbController(
     private val activity: ComponentActivity,
-    private val currentNativeHandle: () -> Long
-) {
+    private val currentNativeHandle: () -> Long,
+    private val requestVrFocusRecovery: (String) -> Unit
+)
+{
     private enum class ControllerState {
         IDLE,
         NO_HANDLE,
@@ -43,6 +48,8 @@ class RawBroadcastUsbController(
     private var activeConnections: List<UsbDeviceConnection> = emptyList()
     private var lastState: ControllerState? = null
     private var usbTopologyChanged = false
+    private var usbDetachGeneration = 0L
+    private var reconciledUsbDetachGeneration = 0L
     private var permissionRequestPendingDeviceName: String? = null
     private val permissionDeniedDeviceNames = mutableSetOf<String>()
     private val syncMutex = Mutex()
@@ -53,6 +60,7 @@ class RawBroadcastUsbController(
                 ACTION_USB_PERMISSION -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
+                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                             permissionRequestPendingDeviceName = null
                             val permissionDevice =
                                 intent.getUsbDevice() ?: findSupportedAdapters().firstOrNull()
@@ -63,14 +71,28 @@ class RawBroadcastUsbController(
                             }
                             usbTopologyChanged = true
                         }
+                        requestVrFocusRecovery("rawBroadcastUsbPermissionResult")
                         syncNowSafely()
                     }
                 }
 
-                UsbManager.ACTION_USB_DEVICE_DETACHED,
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                            permissionRequestPendingDeviceName = null
+                            permissionDeniedDeviceNames.clear()
+                            usbTopologyChanged = true
+                            usbDetachGeneration++
+                        }
+                        syncNowSafely()
+                    }
+                }
+
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
+                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                             permissionRequestPendingDeviceName = null
                             permissionDeniedDeviceNames.clear()
                             usbTopologyChanged = true
@@ -111,6 +133,8 @@ class RawBroadcastUsbController(
     }
 
     fun stop() {
+        UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+        permissionRequestPendingDeviceName = null
         syncJob?.cancel()
         syncJob = null
         activity.lifecycleScope.launch(Dispatchers.Main) {
@@ -159,6 +183,8 @@ class RawBroadcastUsbController(
                 NativeCore.getActiveTransportKind(handle)
             }
             if (activeTransportKind != NativeCore.TRANSPORT_RAW_BROADCAST) {
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
                 updateState(ControllerState.NOT_RAW_TRANSPORT, "Active transport is not RawBroadcast")
                 stopCurrentAdapterSync(handle)
                 return
@@ -173,11 +199,26 @@ class RawBroadcastUsbController(
                     " pending=$permissionRequestPendingDeviceName topologyChanged=$usbTopologyChanged"
             )
             if (targetDevices.isEmpty()) {
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
                 permissionRequestPendingDeviceName = null
                 permissionDeniedDeviceNames.clear()
                 stopCurrentAdapterSync(handle)
+                reconciledUsbDetachGeneration = usbDetachGeneration
                 return
+            }
+
+            val pendingPermissionDevice = permissionRequestPendingDeviceName?.let { pendingName ->
+                targetDevices.firstOrNull { device -> device.deviceName == pendingName }
+            }
+            if (pendingPermissionDevice != null && usbManager.hasPermission(pendingPermissionDevice)) {
+                // Horizon can grant UsbManager permission without delivering our dynamic
+                // permission-result broadcast. The periodic observation is authoritative;
+                // otherwise the first RTL request remains pending forever and blocks the
+                // second adapter from requesting permission after a hub replug.
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
+                permissionDeniedDeviceNames.remove(pendingPermissionDevice.deviceName)
             }
 
             val permissionTarget = targetDevices.firstOrNull { device ->
@@ -185,21 +226,40 @@ class RawBroadcastUsbController(
                     device.deviceName !in permissionDeniedDeviceNames
             }
             if (permissionTarget != null) {
+                if (reconciledUsbDetachGeneration != usbDetachGeneration &&
+                    activeDeviceNames.isNotEmpty()
+                ) {
+                    // A fast hub replug can reuse every device name before this pass runs.
+                    // Release native objects backed by the detached generation before waiting
+                    // for permission on the replacement hardware.
+                    stopCurrentAdapterSync(handle)
+                }
                 updateState(
                     ControllerState.WAITING_PERMISSION,
                     "Waiting for USB permission for ${permissionTarget.deviceName}"
                 )
-                if (permissionRequestPendingDeviceName == null) {
+                if (permissionRequestPendingDeviceName == null &&
+                    UsbPermissionRequestCoordinator.tryAcquire(
+                        PERMISSION_OWNER,
+                        permissionTarget.deviceName
+                    )
+                ) {
                     permissionRequestPendingDeviceName = permissionTarget.deviceName
                     requestPermission(permissionTarget)
                 }
                 return
             }
             if (targetDevices.any { device -> !usbManager.hasPermission(device) }) {
+                if (reconciledUsbDetachGeneration != usbDetachGeneration &&
+                    activeDeviceNames.isNotEmpty()
+                ) {
+                    stopCurrentAdapterSync(handle)
+                }
                 updateState(ControllerState.WAITING_PERMISSION, "USB permission denied")
                 return
             }
             permissionRequestPendingDeviceName = null
+            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
             permissionDeniedDeviceNames.clear()
 
             val targetDeviceNames = targetDevices.map { device -> device.deviceName }.toSet()
@@ -208,7 +268,9 @@ class RawBroadcastUsbController(
                     NativeCore.getRawBroadcastUsbAdapterCount(handle)
                 }
                 val nativeRunning = nativeAdapterCount == targetDeviceNames.size
-                if (nativeRunning) {
+                val currentDetachGeneration =
+                    reconciledUsbDetachGeneration == usbDetachGeneration
+                if (nativeRunning && currentDetachGeneration) {
                     // Attach broadcasts can arrive after the periodic pass already reconciled
                     // this exact device set. Matching Java names plus matching native count is
                     // authoritative; restarting solely because a late topology flag is set can
@@ -264,6 +326,7 @@ class RawBroadcastUsbController(
 
             activeConnections = startedConnections
             activeDeviceNames = startedDeviceNames
+            reconciledUsbDetachGeneration = usbDetachGeneration
             updateState(ControllerState.RUNNING, "Started raw-broadcast adapters $startedDeviceNames")
         }
     }
@@ -316,6 +379,7 @@ class RawBroadcastUsbController(
 
     private companion object {
         const val LOG_TAG = "RawBroadcastUsb"
+        const val PERMISSION_OWNER = "raw-broadcast"
         // This action must not match SerialTelemetryUsbController. Android identifies the
         // permission PendingIntent by action/request code, and sharing it lets the serial and
         // raw controllers receive or reuse each other's hot-plug permission result. On a hub

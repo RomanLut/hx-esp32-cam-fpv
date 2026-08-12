@@ -16,6 +16,7 @@ import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,18 +24,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-// Bridges a USB-UART adapter (CP210x / CH34x / FTDI / Prolific / CDC-ACM) to the
-// native ISerialTelemetry channel used by gs_session_core. Mirrors the
-// permission/attach-broadcast pattern used by RawBroadcastUsbController so all
-// USB transports behave consistently.
+//===================================================================================
+//===================================================================================
+// Bridges one USB-UART device to native telemetry with single-flight permission handling.
 class SerialTelemetryUsbController(
-    private val activity: ComponentActivity
-) {
+    private val activity: ComponentActivity,
+    private val requestVrFocusRecovery: (String) -> Unit
+)
+{
     private val usbManager =
         activity.applicationContext.getSystemService(Context.USB_SERVICE) as UsbManager
 
     private var syncJob: Job? = null
     private var receiverRegistered = false
+    private var permissionRequestPendingDeviceName: String? = null
+    private val permissionDeniedDeviceNames = mutableSetOf<String>()
+    private var lastPermissionSelection: String? = null
+    private var usbDetachGeneration = 0L
+    private var reconciledUsbDetachGeneration = 0L
     private val syncMutex = Mutex()
 
     private var activeDeviceName: String? = null
@@ -46,10 +53,40 @@ class SerialTelemetryUsbController(
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_USB_PERMISSION,
-                UsbManager.ACTION_USB_DEVICE_DETACHED,
+                ACTION_USB_PERMISSION -> {
+                    val permissionDevice = intent.getUsbDevice() ?: findSupportedDevice("auto")
+                    UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                    permissionRequestPendingDeviceName = null
+                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        permissionDevice?.deviceName?.let { permissionDeniedDeviceNames.remove(it) }
+                    } else {
+                        permissionDevice?.deviceName?.let { permissionDeniedDeviceNames.add(it) }
+                    }
+                    requestVrFocusRecovery("serialUsbPermissionResult")
+                    activity.lifecycleScope.launch(Dispatchers.Main) { syncNowSafely() }
+                }
+
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                    activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                            permissionRequestPendingDeviceName = null
+                            permissionDeniedDeviceNames.clear()
+                            usbDetachGeneration++
+                        }
+                        syncNowSafely()
+                    }
+                }
+
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                    activity.lifecycleScope.launch(Dispatchers.Main) { syncNow() }
+                    activity.lifecycleScope.launch(Dispatchers.Main) {
+                        syncMutex.withLock {
+                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                            permissionRequestPendingDeviceName = null
+                            permissionDeniedDeviceNames.clear()
+                        }
+                        syncNowSafely()
+                    }
                 }
             }
         }
@@ -76,13 +113,15 @@ class SerialTelemetryUsbController(
         if (syncJob != null) return
         syncJob = activity.lifecycleScope.launch(Dispatchers.Main) {
             while (true) {
-                syncNow()
+                syncNowSafely()
                 delay(3_000L)
             }
         }
     }
 
     fun stop() {
+        UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+        permissionRequestPendingDeviceName = null
         syncJob?.cancel()
         syncJob = null
         activity.lifecycleScope.launch(Dispatchers.Main) {
@@ -95,6 +134,24 @@ class SerialTelemetryUsbController(
         NativeCore.setSerialTelemetryWriter(null)
     }
 
+    private suspend fun syncNowSafely()
+    {
+        try
+        {
+            syncNow()
+        }
+        catch (cancelled: CancellationException)
+        {
+            throw cancelled
+        }
+        catch (error: Throwable)
+        {
+            // A detach can invalidate UsbDevice/UsbSerialPort between discovery and open.
+            // Keep periodic reconciliation alive so reappearing hardware recovers automatically.
+            Log.e(LOG_TAG, "Serial USB reconciliation failed; polling will continue", error)
+        }
+    }
+
     private suspend fun syncNow() {
         syncMutex.withLock {
             // Publish the current set of attached UART devices first so the OSD
@@ -102,7 +159,16 @@ class SerialTelemetryUsbController(
             publishUartList()
 
             val selection = try { NativeCore.getTelemetryUartSelection() } catch (_: Throwable) { "auto" }
+            if (selection != lastPermissionSelection) {
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
+                permissionDeniedDeviceNames.clear()
+                lastPermissionSelection = selection
+            }
             if (selection == "none") {
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
+                permissionDeniedDeviceNames.clear()
                 if (activeDeviceName != null) {
                     Log.i(LOG_TAG, "Adapter closed (telemetry UART set to None)")
                     teardownActive()
@@ -112,21 +178,47 @@ class SerialTelemetryUsbController(
 
             val target = findSupportedDevice(selection)
             if (target == null) {
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
+                permissionDeniedDeviceNames.clear()
                 if (activeDeviceName != null) {
                     Log.i(LOG_TAG, "Adapter detached or no longer matches selection")
                     teardownActive()
                 }
+                reconciledUsbDetachGeneration = usbDetachGeneration
                 return
             }
 
-            if (activeDeviceName == target.deviceName) {
+            if (activeDeviceName == target.deviceName &&
+                reconciledUsbDetachGeneration == usbDetachGeneration
+            ) {
                 return
+            }
+
+            if (activeDeviceName != null &&
+                reconciledUsbDetachGeneration != usbDetachGeneration
+            ) {
+                // Android can reuse the same /dev/bus/usb path after a fast hub replug.
+                // A detach generation proves the old file descriptor is stale even when
+                // the replacement has the same name, so rebuild it without restarting GS.
+                teardownActive()
             }
 
             if (!usbManager.hasPermission(target)) {
-                requestPermission(target)
+                // Quest does not coalesce repeated UsbManager requests. Keep one dialog in
+                // flight and remember denial until the topology changes or selection changes.
+                if (permissionRequestPendingDeviceName == null &&
+                    target.deviceName !in permissionDeniedDeviceNames &&
+                    UsbPermissionRequestCoordinator.tryAcquire(PERMISSION_OWNER, target.deviceName)
+                ) {
+                    permissionRequestPendingDeviceName = target.deviceName
+                    requestPermission(target)
+                }
                 return
             }
+            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+            permissionRequestPendingDeviceName = null
+            permissionDeniedDeviceNames.remove(target.deviceName)
 
             // Different device than the one we had open — tear down first.
             teardownActive()
@@ -194,6 +286,7 @@ class SerialTelemetryUsbController(
             activeDeviceName = target.deviceName
             activeSerialPort = port
             activeIoManager = ioManager
+            reconciledUsbDetachGeneration = usbDetachGeneration
             NativeCore.serialTelemetryOnOpen()
             Log.i(LOG_TAG, "Opened UART ${target.deviceName} VID=0x${target.vendorId.toString(16)} @ 115200")
         }
@@ -258,6 +351,15 @@ class SerialTelemetryUsbController(
         usbManager.requestPermission(device, pendingIntent)
     }
 
+    private fun Intent.getUsbDevice(): UsbDevice? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        }
+    }
+
     // Called from NativeCore (JNI thread) to push outbound telemetry bytes.
     private fun writeBytesFromNative(data: ByteArray) {
         val port = activeSerialPort ?: return
@@ -270,6 +372,7 @@ class SerialTelemetryUsbController(
 
     private companion object {
         const val LOG_TAG = "SerialTelemetryUsb"
+        const val PERMISSION_OWNER = "serial-telemetry"
         const val ACTION_USB_PERMISSION = "com.esp32camfpv.questgs.USB_PERMISSION"
         const val WRITE_TIMEOUT_MS = 100
     }
