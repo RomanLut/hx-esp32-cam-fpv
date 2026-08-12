@@ -173,7 +173,6 @@ private:
     std::string m_target_interface;
     std::string m_target_ssid;
     int m_target_frequency_mhz = 0;
-    uint8_t m_associate_failure_count = 0;
     Clock::time_point m_next_retry_tp = Clock::now();
     Clock::time_point m_wait_for_link_deadline_tp = Clock::now();
     Clock::time_point m_stream_connect_deadline_tp = Clock::now();

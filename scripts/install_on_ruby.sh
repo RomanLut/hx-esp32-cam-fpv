@@ -108,6 +108,10 @@ if [ ! -d esp32-cam-fpv/.git ]; then
 fi
 cd esp32-cam-fpv
 
+if [ "$IS_RADXA" = true ]; then
+    MAKE_JOBS="$MAKE_JOBS" bash scripts/install_ruby_rtl8812au_driver.sh
+fi
+
 if [ -f OpenCV/OpenCVWrapper/scripts/build_linux.sh ]; then
     BUILD_WRAPPER_SCRIPT="OpenCV/OpenCVWrapper/scripts/build_linux.sh"
 elif [ -f OpenCVWrapper/scripts/build_linux.sh ]; then

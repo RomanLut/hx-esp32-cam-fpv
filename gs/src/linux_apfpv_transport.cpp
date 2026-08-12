@@ -4,7 +4,6 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
-#include <filesystem>
 #include <map>
 #include <netinet/in.h>
 #include <optional>
@@ -37,7 +36,6 @@ constexpr auto kApfpvSearchScanInterval = std::chrono::seconds(2);
 constexpr auto kApfpvSearchDuration = std::chrono::seconds(10);
 constexpr auto kApfpvWifiRetryInterval = std::chrono::seconds(3);
 constexpr auto kApfpvWifiConnectTimeout = std::chrono::seconds(8);
-constexpr uint8_t kApfpvAssociateFailuresBeforeUsbReset = 2;
 constexpr auto kApfpvStreamConnectTimeout = std::chrono::seconds(20);
 constexpr int kApfpvStaticIpHostMin = 50;
 constexpr int kApfpvStaticIpHostMax = 250;
@@ -229,14 +227,6 @@ const std::string& iwTool()
 
 //===================================================================================
 //===================================================================================
-// Returns the resolved Linux ifconfig command path when available.
-std::optional<std::string> ifconfigTool()
-{
-    return findExecutablePath("ifconfig");
-}
-
-//===================================================================================
-//===================================================================================
 // Switches Linux Wi-Fi interfaces back to managed mode for APFPV camera connections.
 void setManagedMode(const std::vector<std::string>& interfaces)
 {
@@ -326,65 +316,6 @@ std::string LinuxApfpvTransport::getTransportMessage() const
 {
     std::lock_guard<std::mutex> lock(m_message_mutex);
     return m_transport_message;
-}
-
-//===================================================================================
-//===================================================================================
-// Resets the same USB Wi-Fi adapter in place and brings the managed interface back up.
-static bool resetUsbBackedWifiInterface(const std::string& interface)
-{
-    std::error_code ec;
-    const std::filesystem::path interface_device_path =
-        std::filesystem::read_symlink(std::filesystem::path("/sys/class/net") / interface / "device", ec);
-    if (ec)
-    {
-        LOGW("Linux APFPV could not resolve device symlink for {}: {}", interface, ec.message());
-        return false;
-    }
-
-    std::string usb_device = interface_device_path.filename().string();
-    const size_t interface_suffix = usb_device.find(':');
-    if (interface_suffix != std::string::npos)
-    {
-        usb_device = usb_device.substr(0, interface_suffix);
-    }
-    if (usb_device.empty())
-    {
-        LOGW("Linux APFPV could not resolve/reset USB device for {} from {}",
-             interface,
-             interface_device_path.string());
-        return false;
-    }
-
-    const std::optional<std::string> ifconfig = ifconfigTool();
-    const std::string up_down_command = ifconfig.has_value()
-                                            ? fmt::format("{0} {1}", shellQuote(*ifconfig), shellQuote(interface))
-                                            : fmt::format("{0} link set dev {1}",
-                                                          shellQuote(ipTool()),
-                                                          shellQuote(interface));
-
-    LOGW("Linux APFPV resetting USB adapter {} for {}", usb_device, interface);
-    if (!runShellCommand(
-            fmt::format("sh -lc \""
-                        "{0} dev {1} disconnect >/dev/null 2>&1 || true; "
-                        "{2} down >/dev/null 2>&1 || true; "
-                        "sleep 2; "
-                        "echo {3} > /sys/bus/usb/drivers/usb/unbind; "
-                        "sleep 4; "
-                        "echo {3} > /sys/bus/usb/drivers/usb/bind; "
-                        "sleep 10; "
-                        "{2} up >/dev/null 2>&1 || true; "
-                        "sleep 4"
-                        "\"",
-                        shellQuote(iwTool()),
-                        shellQuote(interface),
-                        up_down_command,
-                        shellQuote(usb_device))))
-    {
-        LOGW("Linux APFPV USB reset command failed for {} via {}", interface, usb_device);
-        return false;
-    }
-    return true;
 }
 
 //===================================================================================
@@ -628,7 +559,6 @@ void LinuxApfpvTransport::handleCameraWifiDisconnect()
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     clearApfpvActiveCamera();
     s_runtimeCore.resetTransportRuntimePreserveApfpvState(*this, Clock::now());
     if (m_menu_search_active.load())
@@ -652,7 +582,6 @@ void LinuxApfpvTransport::resetWifiAutoconnectState()
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_discovered_candidates.clear();
     m_waiting_for_search_selection = false;
     m_next_retry_tp = Clock::now();
@@ -762,7 +691,7 @@ bool LinuxApfpvTransport::configureApfpvLocalAddress(const std::string& interfac
 
 //===================================================================================
 //===================================================================================
-// Connects the interface to the selected open APFPV camera SSID and resets USB after repeated association failures.
+// Connects the interface to the selected open APFPV camera SSID without resetting driver-owned USB state.
 bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
                                                  const std::string& ssid,
                                                  int frequency_mhz)
@@ -788,7 +717,6 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             LOGW("Linux APFPV continuing after connect command failure because {} is already linked to {}",
                  interface,
                  ssid);
-            m_associate_failure_count = 0;
             if (!configureApfpvLocalAddress(interface, ssid))
             {
                 runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
@@ -797,52 +725,19 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             return true;
         }
 
-        m_associate_failure_count++;
-
         if (m_menu_search_request_pending.load())
         {
             LOGI("Linux APFPV skipping reconnect fallback for {} because menu search is pending", ssid);
             return false;
         }
 
-        if (m_associate_failure_count < kApfpvAssociateFailuresBeforeUsbReset)
-        {
-            LOGI("Linux APFPV deferring USB reset for {} after associate failure {}/{}",
-                 ssid,
-                 static_cast<int>(m_associate_failure_count),
-                 static_cast<int>(kApfpvAssociateFailuresBeforeUsbReset));
-            return false;
-        }
-
-        setMessage("Resetting USB interface...");
-        if (resetUsbBackedWifiInterface(interface))
-        {
-            // Reset the consecutive-failure counter once the USB adapter reset has run.
-            m_associate_failure_count = 0;
-            connect_output.clear();
-            setMessage(buildApfpvProgressText(ssid, "Associating..."));
-            if (attemptApfpvWifiConnect(interface, ssid, frequency_mhz, &connect_output))
-            {
-                m_associate_failure_count = 0;
-                if (!configureApfpvLocalAddress(interface, ssid))
-                {
-                    runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
-                    return false;
-                }
-                return true;
-            }
-
-            LOGW("Failed to connect {} to APFPV SSID {} after USB reset retry: {}",
-                 interface,
-                 ssid,
-                 trimAsciiWhitespace(connect_output));
-            m_associate_failure_count++;
-        }
-
+        // USB unbind/bind does not reset rtl8812au module-global or MLME state and
+        // can leave the re-probed adapter unable to scan. Let the normal retry state
+        // machine make another cfg80211 attempt; Ruby's explicit driver reset remains
+        // the operator-controlled recovery path.
         return false;
     }
 
-    m_associate_failure_count = 0;
     if (m_menu_search_request_pending.load())
     {
         LOGI("Linux APFPV aborting successful connect to {} because menu search is pending", ssid);
@@ -987,7 +882,6 @@ void LinuxApfpvTransport::waitForPreferredCameraVisibility(Clock::time_point now
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_discovered_candidates.clear();
     m_next_retry_tp = now;
     m_next_search_scan_tp = now;
@@ -1206,7 +1100,6 @@ void LinuxApfpvTransport::transitionToIdle(Clock::time_point now, bool preserve_
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     clearApfpvActiveCamera();
     if (preserve_apfpv_state)
     {
@@ -1252,7 +1145,6 @@ void LinuxApfpvTransport::latchConnectedCamera(const std::string& interface,
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_wifi_state = WifiState::Connected;
     m_next_link_poll_tp = Clock::now() + kApfpvWifiNoPacketsBeforeHealthPoll;
     setApfpvActiveCamera(ssid);

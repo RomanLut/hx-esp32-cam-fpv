@@ -1,0 +1,102 @@
+diff --git a/core/rtw_br_ext.c b/core/rtw_br_ext.c
+index 63ef2bb..1fd8bb8 100644
+--- a/core/rtw_br_ext.c
++++ b/core/rtw_br_ext.c
+@@ -15,6 +15,7 @@
+ #define _RTW_BR_EXT_C_
+ 
+ #ifdef __KERNEL__
++	#include <linux/version.h>
+ 	#include <linux/if_arp.h>
+ 	#include <net/ip.h>
+ 	#include <linux/atalk.h>
+diff --git a/core/rtw_cmd.c b/core/rtw_cmd.c
+index 2e84216..6005bed 100644
+--- a/core/rtw_cmd.c
++++ b/core/rtw_cmd.c
+@@ -923,7 +923,8 @@ u8 rtw_sitesurvey_cmd(_adapter  *padapter, NDIS_802_11_SSID *ssid, int ssid_num,
+ 	if (res == _SUCCESS) {
+ 
+ 		pmlmepriv->scan_start_time = rtw_get_current_time();
+-#if 0 /*fariouche: looking at other wlan drivers, they do not handle timeout. It is conflicting with long scans */
++		/* Userspace timing out does not clear _FW_UNDER_SURVEY. Keep the
++		 * driver timer armed so a failed firmware survey cannot wedge scans. */
+ #ifdef CONFIG_SCAN_BACKOP
+ 		if (rtw_mi_buddy_check_mlmeinfo_state(padapter, WIFI_FW_AP_STATE)) {
+ 			if (is_supported_5g(padapter->registrypriv.wireless_mode)
+@@ -934,7 +936,6 @@ u8 rtw_sitesurvey_cmd(_adapter  *padapter, NDIS_802_11_SSID *ssid, int ssid_num,
+ 		} else
+ #endif /* CONFIG_SCAN_BACKOP */
+ 			mlme_set_scan_to_timer(pmlmepriv, SCANNING_TIMEOUT);
+-#endif
+ 		rtw_led_control(padapter, LED_CTL_SITE_SURVEY);
+ 	} else
+ 		_clr_fwstate_(pmlmepriv, _FW_UNDER_SURVEY);
+diff --git a/hal/rtl8812a/rtl8812a_hal_init.c b/hal/rtl8812a/rtl8812a_hal_init.c
+index a19546f..d80da6d 100644
+--- a/hal/rtl8812a/rtl8812a_hal_init.c
++++ b/hal/rtl8812a/rtl8812a_hal_init.c
+@@ -4259,19 +4259,20 @@ static void hw_var_set_opmode(PADAPTER Adapter, u8 variable, u8 *val)
+ {
+ 	u8	val8;
+ 	u8	mode = *((u8 *)val);
+-	static u8 isMonitor = _FALSE;
+ 
+ 	HAL_DATA_TYPE			*pHalData = GET_HAL_DATA(Adapter);
+ 
+-	if (isMonitor == _TRUE) {
++	/* Monitor state is adapter-local. A module-global flag restores another
++	 * adapter's uninitialized RCR backup when two radios enter monitor mode. */
++	if (pHalData->monitor_mode_active == _TRUE) {
+ 		/* reset RCR from backup */
+ 		rtw_hal_set_hwreg(Adapter, HW_VAR_RCR, (u8 *)&pHalData->rcr_backup);
+ 		rtw_hal_rcr_set_chk_bssid(Adapter, MLME_ACTION_NONE);
+-		isMonitor = _FALSE;
++		pHalData->monitor_mode_active = _FALSE;
+ 	}
+ 
+ 	if (mode == _HW_STATE_MONITOR_) {
+-		isMonitor = _TRUE;
++		pHalData->monitor_mode_active = _TRUE;
+ 		/* set net_type */
+ 		Set_MSR(Adapter, _HW_STATE_NOLINK_);
+ 
+diff --git a/include/hal_data.h b/include/hal_data.h
+index fd5a1a0..ef8570e 100644
+--- a/include/hal_data.h
++++ b/include/hal_data.h
+@@ -371,6 +371,7 @@ typedef struct hal_com_data {
+ 	u16				BasicRateSet;
+ 	u32				ReceiveConfig;
+ 	u32				rcr_backup; /* used for switching back from monitor mode */
++	u8				monitor_mode_active; /* RCR backup belongs to this adapter */
+ 	u8				rx_tsf_addr_filter_config; /* for 8822B/8821C USE */
+ 	BOOLEAN			bSwChnl;
+ 	BOOLEAN			bSetChnlBW;
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index c86ff17..162d48b 100644
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -3632,10 +3632,10 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
+ 
+ 	RTW_INFO(FUNC_NDEV_FMT" - Start to Disconnect\n", FUNC_NDEV_ARG(ndev));
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0))
+ 	if (!wiphy->dev.power.is_prepared)
+-#endif
+ 		rtw_wdev_set_not_indic_disco(pwdev_priv, 1);
++#endif
+ 
+ 	rtw_set_to_roam(padapter, 0);
+ 
+@@ -3655,7 +3655,9 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
+ 		rtw_pwr_wakeup(padapter);
+ 	}
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0))
+ 	rtw_wdev_set_not_indic_disco(pwdev_priv, 0);
++#endif
+ 
+ 	RTW_INFO(FUNC_NDEV_FMT" return 0\n", FUNC_NDEV_ARG(ndev));
+ 	return 0;
