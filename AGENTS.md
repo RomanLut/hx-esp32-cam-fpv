@@ -7,6 +7,11 @@ file reference formatting:
 - do not use `file://`
 - do not use plain inline code for clickable file references
 
+root-cause fixes:
+- do not implement recovery, restart, replug, retry, timeout, or state-reset workarounds as substitutes for a requested root-cause fix
+- trace the failure to the owning layer, fix the causal defect there, and verify the complete user-visible workflow
+- if the root cause is not yet proven, continue diagnosis or report the remaining evidence gap instead of presenting an ad hoc mitigation as a fix
+
 code style and comments:
 - brackets `{}` are always placed on the next line
 - every out-of-class function or method definition, and every class or struct definition, should start with:

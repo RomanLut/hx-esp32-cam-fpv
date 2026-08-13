@@ -64,6 +64,14 @@ public:
 private:
     //===================================================================================
     //===================================================================================
+    // Owns the shared control-plane lock used by every adapter on one Android USB hub.
+    struct ChannelChangeCoordinator
+    {
+        std::mutex mutex;
+    };
+
+    //===================================================================================
+    //===================================================================================
     // Owns the driver, libusb handles, and receive counters for one Android RTL adapter.
     struct UsbAdapter
     {
@@ -79,12 +87,15 @@ private:
         std::atomic<bool> channel_change_in_progress = {false};
         std::atomic<int> requested_channel = {0};
         std::atomic<int> applied_channel = {0};
+        std::atomic<int> requested_tx_power = {-1};
+        std::atomic<int> applied_tx_power = {-1};
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;
         int usb_interface_number = 0;
         int fd = -1;
         size_t index = 0;
         Clock::time_point channel_change_ready_time = Clock::time_point::min();
+        std::shared_ptr<ChannelChangeCoordinator> channel_change_coordinator;
         std::atomic<uint32_t> all_frame_count = {0};
         std::atomic<uint32_t> filtered_frame_count = {0};
         std::atomic<uint64_t> filtered_frame_lifetime_count = {0};
@@ -103,6 +114,8 @@ private:
     std::shared_ptr<UsbAdapter> txAdapterLocked(const UsbAdapter* excluded_adapter = nullptr) const;
 
     mutable std::mutex m_mutex;
+    std::shared_ptr<ChannelChangeCoordinator> m_channel_change_coordinator =
+        std::make_shared<ChannelChangeCoordinator>();
     mutable std::mutex m_stop_mutex;
     std::atomic<bool> m_active = {false};
     Clock::time_point m_activate_time = Clock::time_point::min();

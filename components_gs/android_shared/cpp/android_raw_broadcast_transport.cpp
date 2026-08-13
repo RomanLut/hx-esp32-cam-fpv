@@ -138,49 +138,6 @@ SelectedChannel makeSelectedChannel(int channel)
 
 //===================================================================================
 //===================================================================================
-// Returns a different allowed channel so devourer cannot optimize retune as no-op.
-int chooseForcedTxPowerRetuneChannel(int current_channel)
-{
-    current_channel = getBandAwareWifiChannel(current_channel, s_groundstation_config.wifiBand);
-    int current_index = getWifiChannelIndex(current_channel);
-    if (current_index < 0)
-    {
-        current_index = getFirstWifiChannelIndexForBand(s_groundstation_config.wifiBand);
-    }
-
-    for (int offset = 1; offset < WIFI_CHANNELS_COUNT; offset++)
-    {
-        const int candidate_index = (current_index + offset) % WIFI_CHANNELS_COUNT;
-        const int candidate_channel = WIFI_CHANNELS_BY_INDEX[candidate_index];
-        if (candidate_channel != current_channel &&
-            isWifiChannelAllowedByBand(candidate_channel, s_groundstation_config.wifiBand))
-        {
-            return candidate_channel;
-        }
-    }
-
-    return current_channel;
-}
-
-//===================================================================================
-//===================================================================================
-// Stores TX power in devourer, then forces channel programming so TXAGC is rewritten.
-void applyTxPowerWithForcedChannelProgram(const std::shared_ptr<IRtlDevice>& device, uint8_t tx_power)
-{
-    const int current_channel =
-        getBandAwareWifiChannel(s_groundstation_config.wifi_channel, s_groundstation_config.wifiBand);
-    const int retune_channel = chooseForcedTxPowerRetuneChannel(current_channel);
-
-    device->SetTxPower(tx_power);
-    if (retune_channel != current_channel)
-    {
-        device->SetMonitorChannel(makeSelectedChannel(retune_channel));
-    }
-    device->SetMonitorChannel(makeSelectedChannel(current_channel));
-}
-
-//===================================================================================
-//===================================================================================
 // Fills the transport header fields for one fixed-size raw-broadcast packet.
 void sealPacket(PacketFilter& packet_filter,
                 std::vector<uint8_t>& packet,
@@ -550,40 +507,22 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
 
 //===================================================================================
 //===================================================================================
-// Sets the TX power level on active RTL adapters (0 = driver default, 1..63 = dBm scale).
+// Queues TX power on each adapter control worker without blocking the GS menu thread.
 void AndroidRawBroadcastTransport::setTxPower(int txPower)
 {
-    std::vector<std::shared_ptr<UsbAdapter>> adapters;
+    const int requested_power = std::clamp(txPower, 0, 63);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
-        adapters = m_usb_adapters;
-    }
-
-    if (!adapters.empty())
-    {
-        for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
+        m_tx_power = static_cast<uint8_t>(requested_power);
+        for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
-            try
+            if (adapter->device && !adapter->should_stop.load())
             {
-                if (!adapter->device || adapter->should_stop.load())
-                {
-                    continue;
-                }
-
-                std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
-                LOGI("Setting TX power to {} on adapter {}", m_tx_power, adapter->index);
-                applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
-            }
-            catch (const std::exception& e)
-            {
-                LOGW("SetTxPower failed after USB detach on adapter {}: {}", adapter->index, e.what());
-                adapter->should_stop = true;
-            }
-            catch (...)
-            {
-                LOGW("SetTxPower failed after USB detach on adapter {} with unknown exception", adapter->index);
-                adapter->should_stop = true;
+                // The menu update holds the native GS mutex. A synchronous libusb
+                // control transfer here deadlocks when the libusb event thread is in
+                // an RX callback waiting for that mutex. The adapter worker runs after
+                // the menu update releases it and owns all live control-plane I/O.
+                adapter->requested_tx_power.store(requested_power);
             }
         }
     }
@@ -681,6 +620,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     }
 
     std::shared_ptr<UsbAdapter> adapter = std::make_shared<UsbAdapter>();
+    adapter->channel_change_coordinator = m_channel_change_coordinator;
     // Devourer Init() runs on the RX thread and has no externally visible readiness state.
     // Establish the bring-up barrier before publishing the adapter so neither TX nor a
     // menu-triggered retune can race the initial monitor/channel setup.
@@ -796,9 +736,13 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         }
         if (m_tx_power > 0)
         {
+            std::lock_guard<std::mutex> channel_change_lock(
+                adapter->channel_change_coordinator->mutex);
             std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
-            applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
+            adapter->device->SetTxPower(m_tx_power);
         }
+        adapter->requested_tx_power.store(m_tx_power);
+        adapter->applied_tx_power.store(m_tx_power);
         m_usb_adapters.push_back(adapter);
     }
 
@@ -862,7 +806,12 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
             }
 
             const int requested_channel = adapter->requested_channel.load();
-            if (requested_channel == 0 || requested_channel == adapter->applied_channel.load())
+            const int requested_tx_power = adapter->requested_tx_power.load();
+            const bool channel_pending =
+                requested_channel != 0 && requested_channel != adapter->applied_channel.load();
+            const bool tx_power_pending =
+                requested_tx_power >= 0 && requested_tx_power != adapter->applied_tx_power.load();
+            if (!channel_pending && !tx_power_pending)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 continue;
@@ -870,28 +819,43 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
 
             try
             {
+                // A cross-band SetMonitorChannel performs a long RF/BB/IQK sequence. The
+                // per-adapter locks do not protect the shared Android usbfs/xHCI control
+                // plane, and running two such sequences concurrently resets the whole hub.
+                // Serialize the operations without adding timing or channel-specific policy.
+                std::lock_guard<std::mutex> channel_change_lock(
+                    adapter->channel_change_coordinator->mutex);
                 std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
                 if (!adapter->device || adapter->should_stop.load())
                 {
                     break;
                 }
 
-                adapter->channel_change_in_progress.store(true);
-                LOGI("Setting monitor channel to {} on adapter {}", requested_channel, adapter->index);
-                adapter->device->SetMonitorChannel(makeSelectedChannel(requested_channel));
-                adapter->applied_channel.store(requested_channel);
-                adapter->channel_change_in_progress.store(false);
+                if (channel_pending)
+                {
+                    adapter->channel_change_in_progress.store(true);
+                    LOGI("Setting monitor channel to {} on adapter {}", requested_channel, adapter->index);
+                    adapter->device->SetMonitorChannel(makeSelectedChannel(requested_channel));
+                    adapter->applied_channel.store(requested_channel);
+                    adapter->channel_change_in_progress.store(false);
+                }
+                else
+                {
+                    LOGI("Setting TX power to {} on adapter {}", requested_tx_power, adapter->index);
+                    adapter->device->SetTxPower(static_cast<uint8_t>(requested_tx_power));
+                    adapter->applied_tx_power.store(requested_tx_power);
+                }
             }
             catch (const std::exception& e)
             {
-                LOGW("SetMonitorChannel failed after USB detach on adapter {}: {}", adapter->index, e.what());
+                LOGW("RTL control operation failed after USB detach on adapter {}: {}", adapter->index, e.what());
                 adapter->channel_change_in_progress.store(false);
                 adapter->should_stop.store(true);
                 break;
             }
             catch (...)
             {
-                LOGW("SetMonitorChannel failed after USB detach on adapter {} with unknown exception", adapter->index);
+                LOGW("RTL control operation failed after USB detach on adapter {} with unknown exception", adapter->index);
                 adapter->channel_change_in_progress.store(false);
                 adapter->should_stop.store(true);
                 break;

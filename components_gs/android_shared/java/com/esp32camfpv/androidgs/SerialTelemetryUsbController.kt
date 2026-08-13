@@ -237,10 +237,9 @@ class SerialTelemetryUsbController(
                     UsbSerialPort.STOPBITS_1,
                     UsbSerialPort.PARITY_NONE
                 )
-                // Some FTDI/FC pairings need DTR asserted before the chip will
-                // actually transmit bytes received from the host (the line stays
-                // idle otherwise). Match the behavior of the reference Android
-                // taranis-smartport project.
+                // Keep both control lines asserted while the port is active. The ESP32-S3
+                // Arduino USBCDC implementation reports no TX capacity until TinyUSB sees
+                // both DTR and RTS, so deasserting either line suppresses all RC frames.
                 try { port.dtr = true } catch (_: Throwable) {}
                 try { port.rts = true } catch (_: Throwable) {}
             } catch (t: Throwable) {

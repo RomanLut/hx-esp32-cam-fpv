@@ -146,8 +146,12 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_ground_stats.restoredCompletedFrames;
     overlay_input.video_fps_alert = core.last_had_frame_loss;
     overlay_input.rc_period_warning = core.session.shouldShowRCWarning(now);
-    overlay_input.video_received_packet_count = core.gs_stats.inUniquePacketCounter;
-    overlay_input.video_last_packet_index = core.gs_stats.lastPacketIndex;
+    // Link-quality sampling needs one coherent cumulative source. GSStats is a
+    // one-second display accumulator that is cleared at rollover, while the FEC
+    // decoder owns the cumulative packet count and order index used by the gauge.
+    const FecBlockDecoder::Stats decoder_stats = core.rx_decoder.getStats();
+    overlay_input.video_received_packet_count = decoder_stats.unique_packet_count;
+    overlay_input.video_last_packet_index = decoder_stats.last_packet_index;
     overlay_input.video_fec_k = core.rx_decoder_k;
     overlay_input.video_fec_n = core.rx_decoder_n;
     overlay_input.gs_out_packet_rate = core.last_ground_stats.outPacketCounter;

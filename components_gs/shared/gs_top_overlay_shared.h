@@ -44,14 +44,17 @@ struct TopOverlayData
     float gs_temp_celsius = 0.0f;
     int battery_percent = -1;   // -1 = unknown (Android-only)
     bool osd_font_error = false;
-    uint16_t video_received_packet_count = 0;
+    uint32_t video_received_packet_count = 0;
     uint32_t video_last_packet_index = 0;
     uint8_t video_fec_k = FEC_K;
     uint8_t video_fec_n = FEC_N;
     uint16_t gs_out_packet_rate = 0;
     uint16_t air_in_packet_rate = 0;
     Clock::time_point incompatible_firmware_time = Clock::time_point{};
-    Clock::time_point now = Clock::time_point::max();
+    // The renderer can draw before the first runtime sync. Start with a real
+    // steady-clock value so time-based samplers are not poisoned by a future
+    // sentinel that makes every subsequent elapsed duration negative.
+    Clock::time_point now = Clock::now();
 };
 
 void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width);

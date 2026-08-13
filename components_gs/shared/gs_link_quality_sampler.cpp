@@ -103,8 +103,7 @@ void LinkQualitySampler::updateVideoQuality(const TopOverlayData& input)
     }
 
     const uint32_t expected_packets = completed_blocks * static_cast<uint32_t>(fec_n);
-    const uint16_t received_packets = static_cast<uint16_t>(
-        input.video_received_packet_count - m_window_start_received);
+    const uint32_t received_packets = input.video_received_packet_count - m_window_start_received;
     m_video_quality = expected_packets > 0
         ? std::clamp(static_cast<float>(received_packets) / static_cast<float>(expected_packets), 0.0f, 1.0f)
         : 0.0f;

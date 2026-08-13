@@ -27,8 +27,8 @@ private:
     bool m_video_initialized = false;
     uint8_t m_video_fec_k = FEC_K;
     uint8_t m_video_fec_n = FEC_N;
-    uint16_t m_window_start_received = 0;
-    uint16_t m_last_observed_received = 0;
+    uint32_t m_window_start_received = 0;
+    uint32_t m_last_observed_received = 0;
     uint32_t m_window_start_block_index = 0;
     uint32_t m_max_video_block_index = 0;
     Clock::time_point m_last_video_sample_tp = {};

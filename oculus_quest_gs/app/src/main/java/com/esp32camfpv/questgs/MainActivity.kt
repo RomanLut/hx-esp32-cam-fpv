@@ -215,7 +215,12 @@ class MainActivity : ComponentActivity()
         }
     }
 
-    override fun onDestroy() {
+    //===================================================================================
+    //===================================================================================
+    // Tears down activity-owned resources and resets process-global XR state when finished.
+    override fun onDestroy()
+    {
+        val terminateProcessAfterDestroy = isFinishing
         vrFocusRecoveryJob?.cancel()
         vrFocusRecoveryJob = null
         if (openXrStarted) {
@@ -229,7 +234,17 @@ class MainActivity : ComponentActivity()
         wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
+        if (terminateProcessAfterDestroy) {
+            // Horizon can finish the immersive activity without using the in-app Exit menu.
+            // KeepAliveService otherwise preserves stale process-global OpenXR/EGL state, and
+            // the next Library launch is rejected by the runtime and returns to Home.
+            stopService(Intent(this, KeepAliveService::class.java))
+        }
         super.onDestroy()
+        if (terminateProcessAfterDestroy) {
+            Log.i(TAG, "Terminating finished Quest GS process after OpenXR teardown")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

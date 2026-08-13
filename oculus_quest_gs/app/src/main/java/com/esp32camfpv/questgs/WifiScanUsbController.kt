@@ -52,7 +52,7 @@ class WifiScanUsbController(
     private var usbDetachGeneration = 0L
     private var reconciledUsbDetachGeneration = 0L
     private var lastUsbTopologyRestartAtMs = 0L
-    private var permissionRequestPending = false
+    private var permissionRequestPendingDeviceName: String? = null
     private var permissionDeniedDeviceName: String? = null
     private val syncMutex = Mutex()
 
@@ -63,7 +63,7 @@ class WifiScanUsbController(
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
                             UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                            permissionRequestPending = false
+                            permissionRequestPendingDeviceName = null
                             permissionDeniedDeviceName =
                                 if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                                     null
@@ -80,9 +80,14 @@ class WifiScanUsbController(
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
-                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                            permissionRequestPending = false
-                            permissionDeniedDeviceName = null
+                            val detachedDeviceName = intent.getUsbDevice()?.deviceName
+                            if (permissionRequestPendingDeviceName == detachedDeviceName) {
+                                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                                permissionRequestPendingDeviceName = null
+                            }
+                            if (permissionDeniedDeviceName == detachedDeviceName) {
+                                permissionDeniedDeviceName = null
+                            }
                             usbTopologyChanged = true
                             usbDetachGeneration++
                         }
@@ -93,9 +98,11 @@ class WifiScanUsbController(
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
-                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                            permissionRequestPending = false
-                            permissionDeniedDeviceName = null
+                            // Hub children attach independently. Do not cancel a permission
+                            // dialog already in flight for the selected RTL adapter.
+                            if (permissionDeniedDeviceName == intent.getUsbDevice()?.deviceName) {
+                                permissionDeniedDeviceName = null
+                            }
                             usbTopologyChanged = true
                         }
                         syncNowSafely()
@@ -135,7 +142,7 @@ class WifiScanUsbController(
 
     fun stop() {
         UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-        permissionRequestPending = false
+        permissionRequestPendingDeviceName = null
         syncJob?.cancel()
         syncJob = null
         activity.lifecycleScope.launch(Dispatchers.Main) {
@@ -190,7 +197,7 @@ class WifiScanUsbController(
             }
             if (activeTransportKind != NativeCore.TRANSPORT_WIFI_SCAN) {
                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                permissionRequestPending = false
+                permissionRequestPendingDeviceName = null
                 updateState(ControllerState.NOT_SCAN_TRANSPORT, "Active transport is not WifiChannelScan")
                 stopCurrentAdapterSync(handle)
                 return
@@ -200,7 +207,7 @@ class WifiScanUsbController(
             if (targetDevice == null) {
                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
-                permissionRequestPending = false
+                permissionRequestPendingDeviceName = null
                 permissionDeniedDeviceName = null
                 stopCurrentAdapterSync(handle)
                 reconciledUsbDetachGeneration = usbDetachGeneration
@@ -217,20 +224,20 @@ class WifiScanUsbController(
                     ControllerState.WAITING_PERMISSION,
                     "Waiting for USB permission for ${targetDevice.deviceName}"
                 )
-                if (!permissionRequestPending &&
+                if (permissionRequestPendingDeviceName == null &&
                     permissionDeniedDeviceName != targetDevice.deviceName &&
                     UsbPermissionRequestCoordinator.tryAcquire(
                         PERMISSION_OWNER,
                         targetDevice.deviceName
                     )
                 ) {
-                    permissionRequestPending = true
+                    permissionRequestPendingDeviceName = targetDevice.deviceName
                     requestPermission(targetDevice)
                 }
                 return
             }
             UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-            permissionRequestPending = false
+            permissionRequestPendingDeviceName = null
             permissionDeniedDeviceName = null
 
             if (activeDeviceName == targetDevice.deviceName) {

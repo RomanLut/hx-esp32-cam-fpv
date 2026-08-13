@@ -52,6 +52,7 @@ class RawBroadcastUsbController(
     private var reconciledUsbDetachGeneration = 0L
     private var permissionRequestPendingDeviceName: String? = null
     private val permissionDeniedDeviceNames = mutableSetOf<String>()
+    private var permissionFlowNeedsFocusRecovery = false
     private val syncMutex = Mutex()
 
     private val receiver = object : BroadcastReceiver() {
@@ -71,7 +72,6 @@ class RawBroadcastUsbController(
                             }
                             usbTopologyChanged = true
                         }
-                        requestVrFocusRecovery("rawBroadcastUsbPermissionResult")
                         syncNowSafely()
                     }
                 }
@@ -79,9 +79,12 @@ class RawBroadcastUsbController(
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
-                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                            permissionRequestPendingDeviceName = null
-                            permissionDeniedDeviceNames.clear()
+                            val detachedDeviceName = intent.getUsbDevice()?.deviceName
+                            if (permissionRequestPendingDeviceName == detachedDeviceName) {
+                                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                                permissionRequestPendingDeviceName = null
+                            }
+                            detachedDeviceName?.let { permissionDeniedDeviceNames.remove(it) }
                             usbTopologyChanged = true
                             usbDetachGeneration++
                         }
@@ -92,9 +95,12 @@ class RawBroadcastUsbController(
                 UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
-                            UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-                            permissionRequestPendingDeviceName = null
-                            permissionDeniedDeviceNames.clear()
+                            // A hub enumerates its children one by one. An unrelated attach must
+                            // not erase the permission request already displayed for an earlier
+                            // child, or its result can no longer advance/recover the workflow.
+                            intent.getUsbDevice()?.deviceName?.let {
+                                permissionDeniedDeviceNames.remove(it)
+                            }
                             usbTopologyChanged = true
                         }
                         syncNowSafely()
@@ -160,6 +166,7 @@ class RawBroadcastUsbController(
     private suspend fun syncNowSafely() {
         try {
             syncNow()
+            recoverVrFocusIfPermissionFlowSettled()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
@@ -245,6 +252,7 @@ class RawBroadcastUsbController(
                     )
                 ) {
                     permissionRequestPendingDeviceName = permissionTarget.deviceName
+                    permissionFlowNeedsFocusRecovery = true
                     requestPermission(permissionTarget)
                 }
                 return
@@ -345,6 +353,30 @@ class RawBroadcastUsbController(
             PendingIntent.FLAG_IMMUTABLE
         )
         usbManager.requestPermission(device, pendingIntent)
+    }
+
+    //===================================================================================
+    //===================================================================================
+    // Restores Quest input only after every RAW adapter permission prompt has completed.
+    private suspend fun recoverVrFocusIfPermissionFlowSettled()
+    {
+        val shouldRecover = syncMutex.withLock {
+            val permissionFlowSettled =
+                permissionRequestPendingDeviceName == null &&
+                    findSupportedAdapters().all { device ->
+                        usbManager.hasPermission(device) ||
+                            device.deviceName in permissionDeniedDeviceNames
+                    }
+            if (permissionFlowNeedsFocusRecovery && permissionFlowSettled) {
+                permissionFlowNeedsFocusRecovery = false
+                true
+            } else {
+                false
+            }
+        }
+        if (shouldRecover) {
+            requestVrFocusRecovery("rawBroadcastUsbPermissionFlowSettled")
+        }
     }
 
     @Suppress("DEPRECATION")
