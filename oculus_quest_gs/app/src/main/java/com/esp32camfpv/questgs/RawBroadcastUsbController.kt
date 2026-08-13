@@ -51,6 +51,7 @@ class RawBroadcastUsbController(
     private var usbDetachGeneration = 0L
     private var reconciledUsbDetachGeneration = 0L
     private var permissionRequestPendingDeviceName: String? = null
+    private var permissionRequestObservedFocusLoss = false
     private val permissionDeniedDeviceNames = mutableSetOf<String>()
     private var permissionFlowNeedsFocusRecovery = false
     private val syncMutex = Mutex()
@@ -63,6 +64,7 @@ class RawBroadcastUsbController(
                         syncMutex.withLock {
                             UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                             permissionRequestPendingDeviceName = null
+                            permissionRequestObservedFocusLoss = false
                             val permissionDevice =
                                 intent.getUsbDevice() ?: findSupportedAdapters().firstOrNull()
                             if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
@@ -83,12 +85,13 @@ class RawBroadcastUsbController(
                             if (permissionRequestPendingDeviceName == detachedDeviceName) {
                                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                                 permissionRequestPendingDeviceName = null
+                                permissionRequestObservedFocusLoss = false
                             }
                             detachedDeviceName?.let { permissionDeniedDeviceNames.remove(it) }
                             usbTopologyChanged = true
                             usbDetachGeneration++
                         }
-                        syncNowSafely()
+                        syncNowSafely(allowPermissionRequest = false)
                     }
                 }
 
@@ -103,7 +106,7 @@ class RawBroadcastUsbController(
                             }
                             usbTopologyChanged = true
                         }
-                        syncNowSafely()
+                        syncNowSafely(allowPermissionRequest = false)
                     }
                 }
             }
@@ -132,7 +135,7 @@ class RawBroadcastUsbController(
 
         syncJob = activity.lifecycleScope.launch(Dispatchers.Main) {
             while (true) {
-                syncNowSafely()
+                syncNowSafely(allowPermissionRequest = true)
                 delay(3_000L)
             }
         }
@@ -141,6 +144,7 @@ class RawBroadcastUsbController(
     fun stop() {
         UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
         permissionRequestPendingDeviceName = null
+        permissionRequestObservedFocusLoss = false
         syncJob?.cancel()
         syncJob = null
         activity.lifecycleScope.launch(Dispatchers.Main) {
@@ -159,13 +163,17 @@ class RawBroadcastUsbController(
             syncMutex.withLock {
                 usbTopologyChanged = true
             }
-            syncNowSafely()
+            // A hub reports its children as separate attach intents. Reconcile native handles
+            // immediately, but let the periodic pass request permission only after that attach
+            // burst has completed; opening a Horizon dialog while the hub is still enumerating
+            // can close it without delivering the requested device's permission result.
+            syncNowSafely(allowPermissionRequest = false)
         }
     }
 
-    private suspend fun syncNowSafely() {
+    private suspend fun syncNowSafely(allowPermissionRequest: Boolean = true) {
         try {
-            syncNow()
+            syncNow(allowPermissionRequest)
             recoverVrFocusIfPermissionFlowSettled()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -177,7 +185,7 @@ class RawBroadcastUsbController(
         }
     }
 
-    private suspend fun syncNow() {
+    private suspend fun syncNow(allowPermissionRequest: Boolean) {
         syncMutex.withLock {
             val handle = currentNativeHandle()
             if (handle == 0L) {
@@ -192,6 +200,7 @@ class RawBroadcastUsbController(
             if (activeTransportKind != NativeCore.TRANSPORT_RAW_BROADCAST) {
                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                 permissionRequestPendingDeviceName = null
+                permissionRequestObservedFocusLoss = false
                 updateState(ControllerState.NOT_RAW_TRANSPORT, "Active transport is not RawBroadcast")
                 stopCurrentAdapterSync(handle)
                 return
@@ -209,6 +218,7 @@ class RawBroadcastUsbController(
                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                 updateState(ControllerState.NO_ADAPTER, "No supported RTL adapter detected")
                 permissionRequestPendingDeviceName = null
+                permissionRequestObservedFocusLoss = false
                 permissionDeniedDeviceNames.clear()
                 stopCurrentAdapterSync(handle)
                 reconciledUsbDetachGeneration = usbDetachGeneration
@@ -219,13 +229,34 @@ class RawBroadcastUsbController(
                 targetDevices.firstOrNull { device -> device.deviceName == pendingName }
             }
             if (pendingPermissionDevice != null && usbManager.hasPermission(pendingPermissionDevice)) {
-                // Horizon can grant UsbManager permission without delivering our dynamic
-                // permission-result broadcast. The periodic observation is authoritative;
-                // otherwise the first RTL request remains pending forever and blocks the
-                // second adapter from requesting permission after a hub replug.
+                // UsbManager is authoritative once the grant is visible. Quest can leave and
+                // restore OpenXR focus entirely between two polling passes, so requiring this
+                // loop to sample the transient focus loss can strand an already granted device
+                // as pending forever and block permission for every later adapter on the hub.
+                permissionDeniedDeviceNames.remove(pendingPermissionDevice.deviceName)
                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                 permissionRequestPendingDeviceName = null
-                permissionDeniedDeviceNames.remove(pendingPermissionDevice.deviceName)
+                permissionRequestObservedFocusLoss = false
+            } else if (pendingPermissionDevice != null && !NativeCore.isOpenXrFocused()) {
+                permissionRequestObservedFocusLoss = true
+            }
+            if (pendingPermissionDevice != null &&
+                permissionRequestObservedFocusLoss &&
+                NativeCore.isOpenXrFocused()
+            ) {
+                // Quest can close UsbPermissionActivity without delivering our PendingIntent
+                // broadcast. Activity onResume is not usable because Horizon invokes it while
+                // its panel is still visible. OpenXR must first leave FOCUSED and later return;
+                // the pre-dialog FOCUSED transition can otherwise be mistaken for completion.
+                // UsbManager then tells us whether the request was granted.
+                if (usbManager.hasPermission(pendingPermissionDevice)) {
+                    permissionDeniedDeviceNames.remove(pendingPermissionDevice.deviceName)
+                } else {
+                    permissionDeniedDeviceNames.add(pendingPermissionDevice.deviceName)
+                }
+                UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
+                permissionRequestPendingDeviceName = null
+                permissionRequestObservedFocusLoss = false
             }
 
             val permissionTarget = targetDevices.firstOrNull { device ->
@@ -245,19 +276,24 @@ class RawBroadcastUsbController(
                     ControllerState.WAITING_PERMISSION,
                     "Waiting for USB permission for ${permissionTarget.deviceName}"
                 )
-                if (permissionRequestPendingDeviceName == null &&
+                if (allowPermissionRequest &&
+                    permissionRequestPendingDeviceName == null &&
                     UsbPermissionRequestCoordinator.tryAcquire(
                         PERMISSION_OWNER,
                         permissionTarget.deviceName
                     )
                 ) {
                     permissionRequestPendingDeviceName = permissionTarget.deviceName
+                    permissionRequestObservedFocusLoss = false
                     permissionFlowNeedsFocusRecovery = true
                     requestPermission(permissionTarget)
                 }
                 return
             }
-            if (targetDevices.any { device -> !usbManager.hasPermission(device) }) {
+            val permittedTargetDevices = targetDevices.filter { device ->
+                usbManager.hasPermission(device)
+            }
+            if (permittedTargetDevices.isEmpty()) {
                 if (reconciledUsbDetachGeneration != usbDetachGeneration &&
                     activeDeviceNames.isNotEmpty()
                 ) {
@@ -267,10 +303,12 @@ class RawBroadcastUsbController(
                 return
             }
             permissionRequestPendingDeviceName = null
+            permissionRequestObservedFocusLoss = false
             UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
-            permissionDeniedDeviceNames.clear()
 
-            val targetDeviceNames = targetDevices.map { device -> device.deviceName }.toSet()
+            // A denied adapter must not prevent an already authorized adapter from running.
+            // Keep the denial until detach so polling does not reopen redundant Quest dialogs.
+            val targetDeviceNames = permittedTargetDevices.map { device -> device.deviceName }.toSet()
             if (activeDeviceNames == targetDeviceNames) {
                 val nativeAdapterCount = withContext(Dispatchers.Default) {
                     NativeCore.getRawBroadcastUsbAdapterCount(handle)
@@ -309,7 +347,9 @@ class RawBroadcastUsbController(
             // Preserve working connections and retry only devices missing from the native set.
             val startedConnections = activeConnections.toMutableList()
             val startedDeviceNames = activeDeviceNames.toMutableSet()
-            for (targetDevice in targetDevices.filter { it.deviceName !in startedDeviceNames }) {
+            for (targetDevice in permittedTargetDevices.filter {
+                it.deviceName !in startedDeviceNames
+            }) {
                 val connection = usbManager.openDevice(targetDevice)
                 if (connection == null) {
                     Log.w(LOG_TAG, "Failed to open USB adapter ${targetDevice.deviceName}")

@@ -237,11 +237,11 @@ class SerialTelemetryUsbController(
                     UsbSerialPort.STOPBITS_1,
                     UsbSerialPort.PARITY_NONE
                 )
-                // Keep both control lines asserted while the port is active. The ESP32-S3
-                // Arduino USBCDC implementation reports no TX capacity until TinyUSB sees
-                // both DTR and RTS, so deasserting either line suppresses all RC frames.
-                try { port.dtr = true } catch (_: Throwable) {}
-                try { port.rts = true } catch (_: Throwable) {}
+                // Arduino USBCDC suppresses TX while TinyUSB sees DTR deasserted. A failed
+                // control-line request therefore means the port is not usable and must not
+                // be published as open; the surrounding failure path closes it and retries.
+                port.dtr = true
+                port.rts = true
             } catch (t: Throwable) {
                 Log.w(LOG_TAG, "Open/setParameters failed for ${target.deviceName}", t)
                 try { port.close() } catch (_: Throwable) {}
