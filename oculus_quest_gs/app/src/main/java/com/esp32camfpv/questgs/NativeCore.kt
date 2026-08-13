@@ -113,16 +113,23 @@ object NativeCore {
     const val TRANSPORT_TEST = 2
     const val TRANSPORT_WIFI_SCAN = 3
 
+    // Set when libopenxr_loader.so could not be loaded at all; the native side logs and
+    // reports the failure rather than silently running without a VR session.
+    @Volatile
+    @JvmStatic
+    var openXrLoaderError: String? = null
+        private set
+
     init {
+        // Loader comes from the org.khronos.openxr:openxr_loader_for_android AAR. There is
+        // deliberately no fallback loader: a second, differently-built loader masks real
+        // failures and was the source of the runtime/ABI mismatch this replaced.
         try {
             System.loadLibrary("openxr_loader")
+            Log.i("QuestGs", "openxr_loader loaded")
         } catch (t: Throwable) {
-            Log.e("QuestGs", "Failed to load openxr_loader", t)
-            try {
-                System.loadLibrary("openxr_loader_no_khr_init")
-            } catch (t2: Throwable) {
-                Log.e("QuestGs", "Failed to load openxr_loader_no_khr_init", t2)
-            }
+            openXrLoaderError = "${t.javaClass.simpleName}: ${t.message}"
+            Log.e("QuestGs", "FATAL: failed to load openxr_loader - VR session cannot start", t)
         }
         System.loadLibrary("android_gs_core")
     }

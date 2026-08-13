@@ -5,6 +5,9 @@
 #include <chrono>
 #include <thread>
 
+#include "Log.h"
+#include "openxr_video_bridge.h"
+
 // Defined in openxr_video_bridge.cpp; returns the OpenXR thread's EGLContext so
 // the renderer's context can be created in the same share group. The OpenXR
 // thread populates this during its own initEgl, before any frames are drawn.
@@ -75,7 +78,10 @@ bool GsGlSurfaceBackend::swapBuffers()
     {
         return false;
     }
-    glFlush();
+    // Inserts the fence the OpenXR thread waits on before sampling this frame's texture,
+    // and flushes. A bare glFlush does not order our writes against the other context's
+    // reads — that ordering is what the fence provides.
+    gs::openxr::publishRendererFence();
     return true;
 }
 
@@ -107,13 +113,19 @@ int GsGlSurfaceBackend::surfaceHeight() const
 // thread can race with OpenXR startup.
 bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
 {
+    // NOTE: eglGetDisplay(EGL_DEFAULT_DISPLAY) returns the process-wide display, the same
+    // object the OpenXR thread and the Android UI use. eglTerminate on it would mark every
+    // context and surface in the process for destruction, including the OpenXR thread's,
+    // so this function never calls it — it only destroys the objects it created itself.
     const EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (display == EGL_NO_DISPLAY)
     {
+        LOGE("renderer EGL: eglGetDisplay(EGL_DEFAULT_DISPLAY) failed: 0x{:X}", eglGetError());
         return false;
     }
     if (eglInitialize(display, nullptr, nullptr) != EGL_TRUE)
     {
+        LOGE("renderer EGL: eglInitialize failed: 0x{:X}", eglGetError());
         return false;
     }
 
@@ -131,7 +143,8 @@ bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
     EGLint num_configs = 0;
     if (eglChooseConfig(display, config_attribs, &config, 1, &num_configs) != EGL_TRUE || num_configs != 1)
     {
-        eglTerminate(display);
+        LOGE("renderer EGL: eglChooseConfig found no ES3 pbuffer config (num={}): 0x{:X}",
+             num_configs, eglGetError());
         return false;
     }
 
@@ -143,7 +156,7 @@ bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
     const EGLSurface surface = eglCreatePbufferSurface(display, config, pbuffer_attribs);
     if (surface == EGL_NO_SURFACE)
     {
-        eglTerminate(display);
+        LOGE("renderer EGL: eglCreatePbufferSurface failed: 0x{:X}", eglGetError());
         return false;
     }
 
@@ -151,12 +164,36 @@ bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
     if (gsGetSharedEglContext != nullptr)
     {
         // OpenXR thread sets its EGLContext after its own initEgl; on cold start
-        // the renderer can race ahead, so wait briefly (up to ~2 s) for it.
-        for (int i = 0; i < 200 && gsGetSharedEglContext() == nullptr; ++i)
+        // the renderer can race ahead, so wait briefly (up to ~5 s) for it.
+        constexpr int k_share_wait_steps = 500;
+        int waited = 0;
+        for (; waited < k_share_wait_steps && gsGetSharedEglContext() == nullptr; ++waited)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         share_context = static_cast<EGLContext>(gsGetSharedEglContext());
+        if (share_context != EGL_NO_CONTEXT && waited > 0)
+        {
+            LOGI("renderer EGL: waited {} ms for the OpenXR share context", waited * 10);
+        }
+    }
+    else
+    {
+        LOGE("renderer EGL: gsGetSharedEglContext symbol is missing - this build cannot "
+             "share textures with the OpenXR thread");
+    }
+
+    if (share_context == EGL_NO_CONTEXT)
+    {
+        // Previously this fell through and built an unshared context. The texture id then
+        // published to the OpenXR thread names a different object (or nothing) in that
+        // thread's context, which produces garbage or a GPU fault instead of an error.
+        LOGE("renderer EGL: FATAL no OpenXR share context available after waiting; refusing "
+             "to create an unshared context because the published texture would be invalid "
+             "in the OpenXR thread");
+        eglDestroySurface(display, surface);
+        gs::openxr::setRendererContextShared(false);
+        return false;
     }
 
     constexpr EGLint context_attribs[] = {
@@ -166,18 +203,23 @@ bool GsGlSurfaceBackend::initEgl(bool vsync_enabled)
     const EGLContext context = eglCreateContext(display, config, share_context, context_attribs);
     if (context == EGL_NO_CONTEXT)
     {
+        LOGE("renderer EGL: eglCreateContext (shared) failed: 0x{:X}", eglGetError());
         eglDestroySurface(display, surface);
-        eglTerminate(display);
+        gs::openxr::setRendererContextShared(false);
         return false;
     }
 
     if (eglMakeCurrent(display, surface, surface, context) != EGL_TRUE)
     {
+        LOGE("renderer EGL: eglMakeCurrent failed: 0x{:X}", eglGetError());
         eglDestroyContext(display, context);
         eglDestroySurface(display, surface);
-        eglTerminate(display);
+        gs::openxr::setRendererContextShared(false);
         return false;
     }
+
+    gs::openxr::setRendererContextShared(true);
+    LOGI("renderer EGL: context ready in the OpenXR share group");
 
     eglSwapInterval(display, vsync_enabled ? 1 : 0);
 
@@ -202,6 +244,11 @@ void GsGlSurfaceBackend::destroyEgl()
 
     if (display != nullptr && display != EGL_NO_DISPLAY)
     {
+        // Drop the shared fence while this context is still current — it was created here.
+        if (context != nullptr && context != EGL_NO_CONTEXT)
+        {
+            gs::openxr::resetRendererFence();
+        }
         eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (context != nullptr && context != EGL_NO_CONTEXT)
         {
@@ -211,9 +258,11 @@ void GsGlSurfaceBackend::destroyEgl()
         {
             eglDestroySurface(display, surface);
         }
-        eglTerminate(display);
+        // Deliberately no eglTerminate: the display is shared with the OpenXR thread and the
+        // Android UI, and terminating it here would tear down their contexts too.
     }
 
+    gs::openxr::setRendererContextShared(false);
     m_egl_display = nullptr;
     m_egl_surface = nullptr;
     m_egl_context = nullptr;

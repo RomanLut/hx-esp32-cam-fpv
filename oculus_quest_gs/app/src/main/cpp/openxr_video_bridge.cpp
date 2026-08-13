@@ -1,5 +1,8 @@
 #include "openxr_video_bridge.h"
 
+#include <GLES3/gl3.h>
+
+#include <atomic>
 #include <deque>
 #include <mutex>
 
@@ -17,6 +20,15 @@ std::mutex g_renderer_tex_mutex;
 unsigned int g_renderer_tex = 0;
 int g_renderer_tex_w = 0;
 int g_renderer_tex_h = 0;
+
+// Guards g_renderer_fence for the whole duration of the glWaitSync/glDeleteSync calls, so a
+// fence can never be deleted out from under a consumer that is about to wait on it. Both
+// operations are cheap: glWaitSync only enqueues a server-side wait and does not block the
+// CPU, and glFenceSync only inserts a command.
+std::mutex g_fence_mutex;
+GLsync g_renderer_fence = nullptr;
+
+std::atomic<bool> g_renderer_context_shared{false};
 }
 
 //===================================================================================
@@ -87,6 +99,76 @@ bool getRendererTexture(unsigned int& gl_texture, int& width, int& height)
     width = g_renderer_tex_w;
     height = g_renderer_tex_h;
     return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Renderer thread: inserts a fence after the frame's draw commands. The OpenXR thread
+// waits on it before sampling the shared texture.
+void publishRendererFence()
+{
+    const GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (fence == nullptr)
+    {
+        return;
+    }
+    // Required: a sync object is not guaranteed to be observable by other contexts in the
+    // share group until the commands preceding it have been flushed.
+    glFlush();
+
+    GLsync previous = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_fence_mutex);
+        previous = g_renderer_fence;
+        g_renderer_fence = fence;
+    }
+    if (previous != nullptr)
+    {
+        glDeleteSync(previous);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// OpenXR thread: makes this context's subsequent sampling wait for the renderer's writes.
+// Server-side wait — it does not stall the CPU or the frame loop.
+void waitForRendererFence()
+{
+    std::lock_guard<std::mutex> lock(g_fence_mutex);
+    if (g_renderer_fence == nullptr)
+    {
+        return;
+    }
+    glWaitSync(g_renderer_fence, 0, GL_TIMEOUT_IGNORED);
+}
+
+//===================================================================================
+//===================================================================================
+// Drops the pending fence. Called on teardown while a context is still current.
+void resetRendererFence()
+{
+    GLsync fence = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_fence_mutex);
+        fence = g_renderer_fence;
+        g_renderer_fence = nullptr;
+    }
+    if (fence != nullptr)
+    {
+        glDeleteSync(fence);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+void setRendererContextShared(bool shared)
+{
+    g_renderer_context_shared.store(shared);
+}
+
+bool isRendererContextShared()
+{
+    return g_renderer_context_shared.load();
 }
 
 } // namespace gs::openxr

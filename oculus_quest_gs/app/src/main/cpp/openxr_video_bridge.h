@@ -21,4 +21,20 @@ void* getSharedEglContext();
 void publishRendererTexture(unsigned int gl_texture, int width, int height);
 bool getRendererTexture(unsigned int& gl_texture, int& width, int& height);
 
+// Cross-context GPU synchronisation for the shared texture above. The renderer thread and
+// the OpenXR thread own separate GL contexts in one share group, so the producer's writes
+// are not ordered against the consumer's sampling by a glFlush alone: a fence is required.
+// publishRendererFence() is called by the renderer at the end of each frame;
+// waitForRendererFence() is called by the OpenXR thread before it samples the texture.
+// Both are no-ops until the first fence exists.
+void publishRendererFence();
+void waitForRendererFence();
+void resetRendererFence();
+
+// True once the renderer has confirmed its GL context was created in the OpenXR thread's
+// share group. When false the published texture id is meaningless in the OpenXR context and
+// must not be sampled.
+void setRendererContextShared(bool shared);
+bool isRendererContextShared();
+
 } // namespace gs::openxr

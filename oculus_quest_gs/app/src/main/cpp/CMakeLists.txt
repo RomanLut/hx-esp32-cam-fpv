@@ -204,12 +204,16 @@ find_library(log-lib log)
 find_library(android-lib android)
 find_library(egl-lib EGL)
 find_library(gles-lib GLESv2)
+# GLESv3 provides the ES 3.0 entry points (glFenceSync/glWaitSync/glDeleteSync) used to
+# synchronise the renderer thread's texture writes with the OpenXR thread's sampling.
+find_library(gles3-lib GLESv3)
 find_library(dl-lib dl)
 
 target_link_libraries(android_gs_core
     ${android-lib}
     ${egl-lib}
     ${gles-lib}
+    ${gles3-lib}
     ${dl-lib}
     libusb_prebuilt
     opencv_wrapper_prebuilt
