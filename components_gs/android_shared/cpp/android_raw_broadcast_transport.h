@@ -9,7 +9,6 @@
 #include <thread>
 #include <vector>
 
-#include "fec_block_decoder.h"
 #include "core/transport_base.h"
 #include "devourer/src/IRtlDevice.h"
 #include "devourer/src/WiFiDriver.h"
@@ -28,6 +27,9 @@ struct libusb_device_handle;
 class AndroidRawBroadcastTransport final : public gs::core::TransportBase
 {
 public:
+    using TransportPacketSink =
+        std::function<void(const uint8_t*, size_t, int, size_t)>;
+
     ~AndroidRawBroadcastTransport() override;
     bool init(const gs::core::RXDescriptor& rx_descriptor,
               const gs::core::TXDescriptor& tx_descriptor) override;
@@ -56,10 +58,7 @@ public:
     bool isUsbAdapterRunning() const;
     size_t activeUsbAdapterCount() const;
     int activeUsbFd() const;
-    void setTransportPacketCallback(std::function<void(const uint8_t* data,
-                                                       size_t size,
-                                                       int input_dbm,
-                                                       size_t interface_index)> callback);
+    void setTransportPacketSink(TransportPacketSink sink);
 
 private:
     //===================================================================================
@@ -127,7 +126,6 @@ private:
     std::vector<std::shared_ptr<UsbAdapter>> m_usb_adapters;
     Clock::time_point m_last_adapter_transition_time = Clock::time_point::min();
     fec_t* m_tx_fec = nullptr;
-    FecBlockDecoder m_rx_decoder;
     uint8_t m_tx_power = 0;
     std::atomic<Clock::time_point::rep> m_last_rx_packet_tp {Clock::time_point::min().time_since_epoch().count()};
     size_t m_packet_header_offset = 0;
@@ -136,10 +134,8 @@ private:
     uint32_t m_next_block_index = 1;
     std::atomic<int> m_best_input_dbm = {0};
     std::atomic<int> m_latched_input_dbm = {0};
-    size_t m_data_stats_rate = 0;
-    size_t m_data_stats_data_accumulated = 0;
-    uint64_t m_last_rx_decoded_bytes_total = 0;
+    std::atomic<size_t> m_data_stats_rate = {0};
+    std::atomic<size_t> m_data_stats_data_accumulated = {0};
     Clock::time_point m_data_stats_last_tp = Clock::now();
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)>
-        m_transport_packet_callback;
+    TransportPacketSink m_transport_packet_sink;
 };

@@ -21,7 +21,6 @@
 namespace
 {
 
-constexpr uint32_t kRxRestartBackjumpBlocks = 64;
 constexpr size_t kAndroidRawAdapterCount = 2;
 
 //===================================================================================
@@ -211,27 +210,6 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     m_transport_packet_size = m_payload_offset + m_tx_descriptor.mtu;
     resetTxAssemblerLocked();
 
-    FecBlockDecoder::Descriptor decoder_descriptor = {};
-    decoder_descriptor.coding_k = m_rx_descriptor.coding_k;
-    decoder_descriptor.coding_n = m_rx_descriptor.coding_n;
-    decoder_descriptor.mtu = static_cast<uint16_t>(m_rx_descriptor.mtu);
-    decoder_descriptor.reset_duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(m_rx_descriptor.reset_duration);
-    decoder_descriptor.restart_backjump_blocks = kRxRestartBackjumpBlocks;
-    decoder_descriptor.max_block_queue_size = 3;
-    decoder_descriptor.duplicate_window = 100;
-    decoder_descriptor.interface_count = 2;
-    if (!m_rx_decoder.init(decoder_descriptor))
-    {
-        LOGE("RX decoder init failed k={} n={} mtu={}",
-             static_cast<unsigned int>(decoder_descriptor.coding_k),
-             static_cast<unsigned int>(decoder_descriptor.coding_n),
-             static_cast<unsigned int>(decoder_descriptor.mtu));
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-        return false;
-    }
-
     LOGI("Initialized raw transport channel={} mtu={} tx_k={} tx_n={} rx_k={} rx_n={}",
          s_groundstation_config.wifi_channel,
          m_tx_descriptor.mtu,
@@ -284,12 +262,13 @@ void AndroidRawBroadcastTransport::activate()
 // which holds handle->mutex, and the rx thread callback also acquires handle->mutex.
 // Joining here would deadlock. The actual thread join and libusb teardown are deferred
 // to stopUsbAdapter(), which is called from Java (without handle->mutex held) or the destructor.
+// The packet sink is a lifetime binding to the sole runtime decoder and must survive
+// transport switches; destruction clears it only after all USB RX threads have joined.
 void AndroidRawBroadcastTransport::deactivate()
 {
     m_active = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_transport_packet_callback = nullptr;
         for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
             adapter->should_stop = true;
@@ -328,18 +307,9 @@ bool AndroidRawBroadcastTransport::supportsMenuSearchOrConnect() const
 
 //===================================================================================
 //===================================================================================
-// Updates transport data-rate and latched RSSI statistics from the queued RX path.
+// Updates transport data-rate and latched RSSI statistics from packets sent to the runtime.
 void AndroidRawBroadcastTransport::process()
 {
-    m_rx_decoder.process(Clock::now());
-    const FecBlockDecoder::Stats stats = m_rx_decoder.getStats();
-    if (stats.decoded_bytes_total >= m_last_rx_decoded_bytes_total)
-    {
-        m_data_stats_data_accumulated +=
-            static_cast<size_t>(stats.decoded_bytes_total - m_last_rx_decoded_bytes_total);
-    }
-    m_last_rx_decoded_bytes_total = stats.decoded_bytes_total;
-
     const int best_input_dbm = m_best_input_dbm.exchange(std::numeric_limits<int>::lowest());
     if (best_input_dbm != std::numeric_limits<int>::lowest())
     {
@@ -356,25 +326,23 @@ void AndroidRawBroadcastTransport::process()
     if (now - m_data_stats_last_tp >= std::chrono::seconds(1))
     {
         const float elapsed_seconds = std::chrono::duration<float>(now - m_data_stats_last_tp).count();
-        m_data_stats_rate = elapsed_seconds > 0.0f
-            ? static_cast<size_t>(static_cast<float>(m_data_stats_data_accumulated) / elapsed_seconds)
-            : 0;
-        m_data_stats_data_accumulated = 0;
+        const size_t accumulated_bytes = m_data_stats_data_accumulated.exchange(0);
+        m_data_stats_rate.store(elapsed_seconds > 0.0f
+            ? static_cast<size_t>(static_cast<float>(accumulated_bytes) / elapsed_seconds)
+            : 0);
         m_data_stats_last_tp = now;
     }
 }
 
 //===================================================================================
 //===================================================================================
-// Clears queued Android RX session packets and resets transport statistics.
+// Resets Android RAW transmit assembly and transport-local rate statistics.
 void AndroidRawBroadcastTransport::reset_rx_state()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     resetTxAssemblerLocked();
-    m_rx_decoder.reset(Clock::now());
-    m_data_stats_rate = 0;
-    m_data_stats_data_accumulated = 0;
-    m_last_rx_decoded_bytes_total = 0;
+    m_data_stats_rate.store(0);
+    m_data_stats_data_accumulated.store(0);
     m_data_stats_last_tp = Clock::now();
 }
 
@@ -471,10 +439,12 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
 
 //===================================================================================
 //===================================================================================
-// Pops one already-filtered session payload received from the Android driver callback.
-bool AndroidRawBroadcastTransport::receive(void* data, size_t& size, bool& restoredByFEC)
+// Reports no decoded payloads because GsRuntimeCore is the sole Android RAW FEC decoder.
+bool AndroidRawBroadcastTransport::receive(void* /* data */,
+                                           size_t& /* size */,
+                                           bool& /* restoredByFEC */)
 {
-    return m_rx_decoder.receive(data, size, restoredByFEC);
+    return false;
 }
 
 //===================================================================================
@@ -543,7 +513,7 @@ void AndroidRawBroadcastTransport::setTxInterface(const std::string& interface)
 // Returns the current Android raw-broadcast receive throughput estimate in bytes/s.
 size_t AndroidRawBroadcastTransport::get_data_rate() const
 {
-    return m_data_stats_rate;
+    return m_data_stats_rate.load();
 }
 
 //===================================================================================
@@ -730,8 +700,6 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         {
             resetTxAssemblerLocked();
             m_tx_block_packets.clear();
-            m_rx_decoder.reset(Clock::now());
-            m_last_rx_decoded_bytes_total = 0;
             m_next_block_index = 1;
         }
         if (m_tx_power > 0)
@@ -990,13 +958,12 @@ int AndroidRawBroadcastTransport::activeUsbFd() const
 
 //===================================================================================
 //===================================================================================
-// Installs one callback that receives every filtered raw transport packet immediately.
-void AndroidRawBroadcastTransport::setTransportPacketCallback(
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback)
+// Binds filtered RAW packets to the sole application-level FEC decoder pipeline.
+void AndroidRawBroadcastTransport::setTransportPacketSink(TransportPacketSink sink)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_transport_packet_callback = std::move(callback);
-    LOGI("Transport packet callback installed={}", m_transport_packet_callback ? 1 : 0);
+    m_transport_packet_sink = std::move(sink);
+    LOGI("Transport packet sink installed={}", m_transport_packet_sink ? 1 : 0);
 }
 
 //===================================================================================
@@ -1177,7 +1144,7 @@ bool AndroidRawBroadcastTransport::sendRawPacketWithFailover(const std::vector<u
 
 //===================================================================================
 //===================================================================================
-// Filters one received raw-broadcast transport packet and pushes it into the shared FEC decoder.
+// Filters one raw-broadcast packet and forwards it to the sole runtime FEC decoder.
 void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
                                                        const uint8_t* data,
                                                        size_t size,
@@ -1188,6 +1155,10 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
 
     constexpr size_t fcs_length = 4;
     if (data == nullptr || size < WLAN_IEEE_HEADER_SIZE + sizeof(Packet_Header) + fcs_length)
+    {
+        return;
+    }
+    if (!m_active.load())
     {
         return;
     }
@@ -1234,19 +1205,29 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
         return;
     }
 
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback;
+    TransportPacketSink sink;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        callback = m_transport_packet_callback;
+        sink = m_transport_packet_sink;
     }
-    if (callback)
+    if (!sink)
     {
-        callback(transport_packet, transport_size, input_dbm, adapter->index);
+        static std::atomic<bool> s_missing_sink_logged = {false};
+        if (!s_missing_sink_logged.exchange(true))
+        {
+            LOGE("Dropping Android RAW packets because the runtime packet sink is not installed");
+        }
+        return;
     }
-    else
+    if (!m_active.load())
     {
-        m_rx_decoder.pushPacket(transport_packet, transport_size, adapter->index, Clock::now());
+        return;
     }
+    // Quest consumes this call immediately for minimum latency. Standard Android's
+    // sink only copies into its bounded handoff queue so libusb RX can be resubmitted
+    // without waiting for FEC or JPEG work; both paths feed GsRuntimeCore::rx_decoder.
+    sink(transport_packet, transport_size, input_dbm, adapter->index);
+    m_data_stats_data_accumulated.fetch_add(transport_size);
     adapter->filtered_frame_count.fetch_add(1);
     const uint64_t adapter_filtered_lifetime_count =
         adapter->filtered_frame_lifetime_count.fetch_add(1) + 1;
@@ -1264,9 +1245,9 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
     m_best_input_dbm.store(std::max(m_best_input_dbm.load(), input_dbm));
     m_last_rx_packet_tp.store(Clock::now().time_since_epoch().count());
     const uint32_t rx_count = s_rx_pass_count.fetch_add(1) + 1;
-    if (callback && rx_count == 1U)
+    if (rx_count == 1U)
     {
-        LOGI("Dispatching filtered packet through direct callback");
+        LOGI("Dispatching filtered packet to the runtime decoder sink");
     }
     if ((rx_count % 100) == 1)
     {

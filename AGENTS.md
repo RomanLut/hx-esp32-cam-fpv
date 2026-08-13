@@ -12,6 +12,11 @@ root-cause fixes:
 - trace the failure to the owning layer, fix the causal defect there, and verify the complete user-visible workflow
 - if the root cause is not yet proven, continue diagnosis or report the remaining evidence gap instead of presenting an ad hoc mitigation as a fix
 
+Quest testing dialog authorization:
+- when testing on Meta Quest, the user authorizes the agent to approve or dismiss Oculus/Horizon permission and system dialogs itself as required by the test
+- inspect the fresh headset screenshot, focused window, exact prompt, and target device/network before acting, then use one verified input action and confirm the resulting permission or system state
+- do not stop merely to ask the user to press a visible Quest dialog when a proven remote input route is available
+
 code style and comments:
 - brackets `{}` are always placed on the next line
 - every out-of-class function or method definition, and every class or struct definition, should start with:

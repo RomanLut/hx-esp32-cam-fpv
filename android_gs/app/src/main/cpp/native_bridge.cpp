@@ -241,6 +241,7 @@ struct NativeHandle
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
         transport_manager.rawBroadcastTransport().stopUsbAdapter();
+        transport_manager.rawBroadcastTransport().setTransportPacketSink({});
         gs::mcp::GsMcpServer::instance().stop();
     }
 
@@ -290,7 +291,7 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
 
 //===================================================================================
 //===================================================================================
-// Injects one APFPV transport packet into the Android runtime decoder pipeline.
+// Injects one encoded transport packet into the sole Android runtime decoder pipeline.
 int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
@@ -1206,7 +1207,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                                                        jint gsDeviceId)
 {
     auto* handle = new NativeHandle(static_cast<uint16_t>(gsDeviceId));
-    handle->transport_manager.rawBroadcastTransport().setTransportPacketCallback(
+    handle->transport_manager.rawBroadcastTransport().setTransportPacketSink(
         [handle](const uint8_t* data, size_t size, int input_dbm, size_t interface_index)
         {
             if (handle == nullptr || data == nullptr || size == 0)
@@ -1247,6 +1248,15 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                         processPendingRawBroadcastChannelChange(
                             handle->transport_manager.rawBroadcastTransport());
                         drainQueuedRawTransportPacketsLocked(*handle, 64);
+                    }
+                    else
+                    {
+                        // Packets captured before RAW deactivation belong to the old
+                        // runtime decoder epoch and must not be replayed after returning
+                        // from APFPV or channel scan mode.
+                        std::lock_guard<std::mutex> queue_lock(
+                            handle->raw_transport_packet_queue_mutex);
+                        handle->raw_transport_packet_queue.clear();
                     }
                     // Drain incoming serial telemetry (USB-UART) and forward to
                     // the air side. Mirrors the Linux GS runtime loop.

@@ -233,6 +233,7 @@ struct NativeHandle
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
         transport_manager.rawBroadcastTransport().stopUsbAdapter();
+        transport_manager.rawBroadcastTransport().setTransportPacketSink({});
         gs::mcp::GsMcpServer::instance().stop();
     }
 
@@ -280,7 +281,7 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
 
 //===================================================================================
 //===================================================================================
-// Injects one APFPV transport packet into the Android runtime decoder pipeline.
+// Injects one encoded transport packet into the sole Android runtime decoder pipeline.
 int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
@@ -1164,7 +1165,7 @@ Java_com_esp32camfpv_questgs_NativeCore_createHandle(JNIEnv* /* env */,
                                                        jint gsDeviceId)
 {
     auto* handle = new NativeHandle(static_cast<uint16_t>(gsDeviceId));
-    handle->transport_manager.rawBroadcastTransport().setTransportPacketCallback(
+    handle->transport_manager.rawBroadcastTransport().setTransportPacketSink(
         [handle](const uint8_t* data, size_t size, int input_dbm, size_t interface_index)
         {
             if (handle == nullptr || data == nullptr || size == 0)
@@ -1173,6 +1174,10 @@ Java_com_esp32camfpv_questgs_NativeCore_createHandle(JNIEnv* /* env */,
             }
 
             std::lock_guard<std::mutex> lock(handle->mutex);
+            if (handle->transport_manager.activeKind() != gs::core::TransportKind::RawBroadcast)
+            {
+                return;
+            }
             processTransportPacket(*handle, data, size, false, input_dbm, interface_index);
         });
     handle->background_runtime_thread = std::make_unique<std::thread>(
@@ -1872,7 +1877,6 @@ Java_com_esp32camfpv_questgs_NativeCore_syncRendererOverlay(JNIEnv* env,
                                                               jlong handle,
                                                               jstring build_info)
 {
-    static uint32_t s_sync_overlay_call_count = 0;
 
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
@@ -1883,14 +1887,6 @@ Java_com_esp32camfpv_questgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     const std::string info = fromJString(env, build_info);
     RuntimeSyncState sync_state;
     gs::imgui::TopOverlayData overlay_input = {};
-    s_sync_overlay_call_count++;
-    if ((s_sync_overlay_call_count % 60U) == 1U)
-    {
-        LOGI("syncRendererOverlay calls={} transport={} raw_usb={}",
-             static_cast<unsigned int>(s_sync_overlay_call_count),
-             static_cast<int>(native_handle->transport_manager.activeKind()),
-             native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? 1 : 0);
-    }
     syncApfpvUdpClient(*native_handle);
     applyPendingRendererInvalidation(*native_handle);
     {
