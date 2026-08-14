@@ -2126,13 +2126,13 @@ QuestOpenXrRuntime g_runtime;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_questgs_NativeCore_startOpenXr(JNIEnv* env, jobject /*thiz*/, jobject activity)
+Java_com_esp32camfpv_questgs_QuestOpenXr_startOpenXr(JNIEnv* env, jobject /*thiz*/, jobject activity)
 {
     return g_runtime.start(env, activity) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_questgs_NativeCore_stopOpenXr(JNIEnv* env, jobject /*thiz*/)
+Java_com_esp32camfpv_questgs_QuestOpenXr_stopOpenXr(JNIEnv* env, jobject /*thiz*/)
 {
     g_runtime.stop(env);
 }
@@ -2141,7 +2141,7 @@ Java_com_esp32camfpv_questgs_NativeCore_stopOpenXr(JNIEnv* env, jobject /*thiz*/
 //===================================================================================
 // Reports whether Quest currently grants controller-input focus to this OpenXR session.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_questgs_NativeCore_isOpenXrFocused(JNIEnv* /*env*/, jobject /*thiz*/)
+Java_com_esp32camfpv_questgs_QuestOpenXr_isOpenXrFocused(JNIEnv* /*env*/, jobject /*thiz*/)
 {
     return g_runtime.isFocused() ? JNI_TRUE : JNI_FALSE;
 }

@@ -71,7 +71,8 @@ android {
                 file("../../assets_gs")
             )
             java.srcDirs(
-                file("src/main/java")
+                file("src/main/java"),
+                file("../../components_gs/android_shared/java")
             )
             res.srcDirs(
                 file("src/main/res"),

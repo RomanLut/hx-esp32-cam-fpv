@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/transport_base.h"
+#include "core/tx_fec_block_encoder.h"
 #include "devourer/src/IRtlDevice.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
@@ -125,7 +126,7 @@ private:
     Logger_t m_devourer_logger;
     std::vector<std::shared_ptr<UsbAdapter>> m_usb_adapters;
     Clock::time_point m_last_adapter_transition_time = Clock::time_point::min();
-    fec_t* m_tx_fec = nullptr;
+    gs::core::TxFecBlockEncoder m_tx_fec_encoder;
     uint8_t m_tx_power = 0;
     std::atomic<Clock::time_point::rep> m_last_rx_packet_tp {Clock::time_point::min().time_since_epoch().count()};
     size_t m_packet_header_offset = 0;

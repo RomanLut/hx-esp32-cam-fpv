@@ -1,7 +1,9 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.gscommon
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -11,9 +13,11 @@ import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -24,10 +28,14 @@ import kotlinx.coroutines.withContext
 
 //===================================================================================
 //===================================================================================
-// Discovers APFPV cameras and owns the Android Wi-Fi connection lifecycle.
+// Discovers APFPV cameras and manages the Wi-Fi connection and streaming lock.
+//
+// requestVrFocusRecovery is a no-op on the phone build; the Quest build uses it to
+// reclaim VR input after a system approval dialog has taken focus away.
 class ApfpvWifiController(
     private val activity: ComponentActivity,
-    private val currentNativeHandle: () -> Long
+    private val currentNativeHandle: () -> Long,
+    private val requestVrFocusRecovery: (String) -> Unit = {}
 )
 {
     private data class CameraNetwork(
@@ -48,6 +56,7 @@ class ApfpvWifiController(
     private val permissionLauncher =
         activity.registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             permissionRequestInFlight = false
+            recoverVrFocus("wifiPermissionResult")
             if (hasRequiredPermissions()) {
                 activity.lifecycleScope.launch(Dispatchers.Main) {
                     syncNow()
@@ -118,8 +127,9 @@ class ApfpvWifiController(
         lastAirApfpvModeEnabled = airApfpvModeEnabled
         if (apfpvModeChanged) {
             // Android scanResults is a platform cache. Clear the published camera list first so
-            // the menu does not keep stale APFPV SSIDs after the air unit switches mode. A
-            // low-latency Wi-Fi lock can abort off-channel scans, so keep it released here.
+            // the menu does not keep stale APFPV SSIDs after the air unit switches mode. Quest 2
+            // cannot scan while its low-latency Wi-Fi lock is held, so leave it released until a
+            // camera connection is active again.
             syncCameraState(emptyList(), null)
             awaitingMenuCameraSelection = false
             releaseWifiStreamingLock()
@@ -133,11 +143,11 @@ class ApfpvWifiController(
 
         if (!hasRequiredPermissions()) {
             releaseWifiStreamingLock()
-            NativeCore.setApfpvWifiScanPermissionError(handle, true)
+            syncScanPermissionError(handle, true)
             requestRequiredPermissions(force = explicitPromptRequested)
             return
         }
-        NativeCore.setApfpvWifiScanPermissionError(handle, false)
+        syncScanPermissionError(handle, false)
 
         val currentSsid = currentConnectedCameraSsid()
         val cameraNetworks = withContext(Dispatchers.Default) {
@@ -157,8 +167,9 @@ class ApfpvWifiController(
         val reconnectRequested = nativeState[2] != 0
 
         if (searchActive) {
-            // Search displays fresh results and waits for an explicit Connect-to selection.
-            // Retaining the old preferred ID must not immediately open a system dialog.
+            // Explicit Search must leave the ground station disconnected until the user chooses
+            // a rendered Connect-to row. Otherwise the retained preferred ID immediately opens
+            // another system approval dialog and hides the search results.
             awaitingMenuCameraSelection = true
             releaseWifiStreamingLock()
             handleMenuSearch(handle, cameraNetworks, currentSsid)
@@ -214,7 +225,11 @@ class ApfpvWifiController(
         val scanResults = try {
             wifiManager.scanResults
         } catch (securityException: SecurityException) {
-            Log.w(LOG_TAG, "Wi-Fi scan permission error while reading results", securityException)
+            Log.w(LOG_TAG, "Wi-Fi scan permission error while reading scan results", securityException)
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
             return emptyList()
         } ?: return emptyList()
         val bestResults = scanResults
@@ -237,6 +252,10 @@ class ApfpvWifiController(
         return bestResults
     }
 
+    //===================================================================================
+    //===================================================================================
+    // Advances an explicit menu search. A single discovered camera is connected directly;
+    // two or more are published as Connect-to rows for the user to choose between.
     private suspend fun handleMenuSearch(
         handle: Long,
         cameraNetworks: List<CameraNetwork>,
@@ -245,21 +264,29 @@ class ApfpvWifiController(
         if (currentSsid != null) {
             disconnectFromCurrentCamera(handle)
             syncCameraState(cameraNetworks, null)
-            requestWifiScan("menuSearchDisconnect", force = true)
+            requestWifiScan("menuSearchDisconnect")
             return
         }
 
-        // Never trust only Android's retained scan cache for an explicit user search.
-        requestWifiScan("menuSearch", force = true)
+        // Always request a fresh scan for an explicit menu search. Cached Android results can
+        // describe cameras that have moved channel or are no longer powered on.
+        requestWifiScan("menuSearch")
 
         if (cameraNetworks.size >= 2) {
             syncCameraState(cameraNetworks, null)
             return
         }
 
-        // One camera is still rendered as a Connect-to row; connection begins only when the
-        // user selects it. Zero results remain in search while later scan callbacks republish.
-        syncCameraState(cameraNetworks, null)
+        if (cameraNetworks.size == 1) {
+            val target = cameraNetworks.first()
+            withContext(Dispatchers.Default) {
+                NativeCore.setPreferredApfpvCameraId(handle, target.deviceId)
+            }
+            connectToCameraNetwork(handle, target.ssid)
+            return
+        }
+
+        requestWifiScan("menuSearchNoTargets")
     }
 
     private suspend fun disconnectFromCurrentCamera(handle: Long) {
@@ -306,6 +333,7 @@ class ApfpvWifiController(
                 bindToNetwork(network)
                 acquireWifiStreamingLock()
                 syncCameraState(findCameraNetworks(), ssid)
+                recoverVrFocus("apfpvNetworkAvailable")
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
@@ -334,8 +362,11 @@ class ApfpvWifiController(
                 if (requestedSsid == ssid) {
                     releaseRequestedNetwork()
                 }
+                // A rejected or stale system approval must not immediately open the same
+                // dialog again. Leave reconnection to an explicit menu selection.
                 awaitingMenuCameraSelection = true
                 syncCameraState(findCameraNetworks(), null)
+                recoverVrFocus("apfpvNetworkUnavailable")
                 activity.lifecycleScope.launch(Dispatchers.Default) {
                     NativeCore.stopUdpClient(handle)
                     NativeCore.resetSession(handle)
@@ -345,6 +376,8 @@ class ApfpvWifiController(
 
         requestedSsid = ssid
         requestedNetworkCallback = callback
+        // Quest can dismiss a stale Horizon approval activity without delivering a result.
+        // The bounded request guarantees onUnavailable() eventually restores VR focus.
         connectivityManager.requestNetwork(request, callback, NETWORK_REQUEST_TIMEOUT_MS)
         Log.i(LOG_TAG, "Requested APFPV Wi-Fi network: $ssid")
     }
@@ -388,6 +421,8 @@ class ApfpvWifiController(
             return
         }
 
+        // Quest 2 Horizon OS 14/QCA6390 aborts every off-channel Wi-Fi scan while this
+        // low-latency lock is held. Do not acquire it before APFPV discovery completes.
         wifiStreamingLock.acquire()
         Log.i(LOG_TAG, "Acquired APFPV Wi-Fi streaming lock")
     }
@@ -424,25 +459,43 @@ class ApfpvWifiController(
         }
     }
 
+    private fun syncScanPermissionError(handle: Long, enabled: Boolean) {
+        activity.lifecycleScope.launch(Dispatchers.Default) {
+            NativeCore.setApfpvWifiScanPermissionError(handle, enabled)
+        }
+    }
+
     private fun requestWifiScan(reason: String, force: Boolean = false): Boolean {
+        // Quest 2/QCA6390 reports NL80211 scan-aborted while this lock is held. Release it even
+        // when Android throttles this particular request so the next framework scan can run.
         releaseWifiStreamingLock()
+
         val now = SystemClock.elapsedRealtime()
         if (!force && lastScanRequestElapsedMs != 0L &&
-            now - lastScanRequestElapsedMs < SCAN_REQUEST_MIN_INTERVAL_MS
-        ) {
+            (now - lastScanRequestElapsedMs) < SCAN_REQUEST_MIN_INTERVAL_MS) {
             return false
         }
+
         if (!hasRequiredPermissions()) {
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
             return false
         }
+
         return try {
             val started = wifiManager.startScan()
             lastScanRequestElapsedMs = now
             if (!started) {
-                Log.w(LOG_TAG, "Wi-Fi scan request rejected, reason=$reason")
+                Log.w(LOG_TAG, "Wi-Fi scan request rejected by framework, reason=$reason")
             }
             started
         } catch (securityException: SecurityException) {
+            val handle = currentNativeHandle()
+            if (handle != 0L) {
+                syncScanPermissionError(handle, true)
+            }
             Log.w(LOG_TAG, "Wi-Fi scan permission error, reason=$reason", securityException)
             false
         }
@@ -452,12 +505,13 @@ class ApfpvWifiController(
         if (!force) {
             return
         }
+
         val now = SystemClock.elapsedRealtime()
         if (lastPermissionPromptElapsedMs != 0L &&
-            now - lastPermissionPromptElapsedMs < PERMISSION_PROMPT_MIN_INTERVAL_MS
-        ) {
+            (now - lastPermissionPromptElapsedMs) < PERMISSION_PROMPT_MIN_INTERVAL_MS) {
             return
         }
+
         if (permissionRequestInFlight) {
             return
         }
@@ -470,7 +524,32 @@ class ApfpvWifiController(
             }
         }
         lastPermissionPromptElapsedMs = now
+        Log.i(LOG_TAG, "Requesting Wi-Fi scan permissions due to explicit APFPV search action")
+        if (requiresManualPermissionGrant(permissions)) {
+            Log.w(LOG_TAG, "Permissions appear permanently denied; opening app settings")
+            openAppPermissionSettings()
+        }
         permissionLauncher.launch(permissions.toTypedArray())
+    }
+
+    private fun requiresManualPermissionGrant(permissions: List<String>): Boolean {
+        return permissions.any { permission ->
+            ContextCompat.checkSelfPermission(activity, permission) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+        }
+    }
+
+    private fun openAppPermissionSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", activity.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            activity.startActivity(intent)
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "Failed to open app settings: ${t.message}")
+        }
     }
 
     private fun syncCameraState(networks: List<CameraNetwork>, activeSsid: String?) {
@@ -484,6 +563,13 @@ class ApfpvWifiController(
         val connectingSsid = if (activeSsid == null) requestedSsid else null
         activity.lifecycleScope.launch(Dispatchers.Default) {
             NativeCore.syncApfpvCameraState(handle, discoveredSsids, activeSsid, gsRssiDbm, connectingSsid)
+        }
+    }
+
+    private fun recoverVrFocus(reason: String)
+    {
+        activity.runOnUiThread {
+            requestVrFocusRecovery(reason)
         }
     }
 

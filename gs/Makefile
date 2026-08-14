@@ -13,6 +13,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/transport_globals.cpp \
 	../components_gs/shared/core/transport_kind.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
+	../components_gs/shared/core/tx_fec_block_encoder.cpp \
 	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_recordings_storage.cpp \
 	../components_gs/shared/gs_playback_manager.cpp \

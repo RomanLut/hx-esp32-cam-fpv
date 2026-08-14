@@ -16,17 +16,7 @@
 #include "gs_image_histogram.h"
 #include "gs_video_stabilization_shared.h"
 
-#if defined(OCULUS_QUEST_GS)
-#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge$Result"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
-    "([B)Lcom/esp32camfpv/questgs/BitmapDecodeBridge$Result;"
-#else
-#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge$Result"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
-    "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;"
-#endif
+#include "android_gs_jni_names.h"
 
 namespace
 {

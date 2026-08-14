@@ -33,6 +33,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import com.esp32camfpv.gscommon.ApfpvWifiController
+import com.esp32camfpv.gscommon.NativeCore
+import com.esp32camfpv.gscommon.RawBroadcastUsbController
+import com.esp32camfpv.gscommon.SerialTelemetryUsbController
+import com.esp32camfpv.gscommon.WifiScanUsbController
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -94,13 +99,16 @@ class MainActivity : ComponentActivity()
         super.onCreate(savedInstanceState)
         setupThermalStatusMonitoring()
         setupBatteryMonitoring()
+        // Must precede every NativeCore use: this loads libopenxr_loader.so before
+        // android_gs_core, which carries a DT_NEEDED on it.
+        QuestOpenXr.ensureLoaded()
         NativeCore.setActivity(this)
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         NativeCore.setRecordingsPath(Environment.getExternalStorageDirectory().absolutePath)
         startService(Intent(this, KeepAliveService::class.java))
         if (!openXrStarted) {
-            openXrStarted = NativeCore.startOpenXr(this)
+            openXrStarted = QuestOpenXr.startOpenXr(this)
             Log.i(TAG, "startOpenXr(onCreate) result=$openXrStarted")
         }
         apfpvWifiController = ApfpvWifiController(
@@ -111,7 +119,10 @@ class MainActivity : ComponentActivity()
         rawBroadcastUsbController = RawBroadcastUsbController(
             activity = this,
             currentNativeHandle = { inputNativeHandle },
-            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) }
+            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) },
+            // Enables the OpenXR focus-transition fallback for permission dialogs that
+            // Horizon closes without delivering the PendingIntent broadcast.
+            isSystemUiFocused = { QuestOpenXr.isOpenXrFocused() }
         )
         wifiScanUsbController = WifiScanUsbController(
             activity = this,
@@ -158,7 +169,7 @@ class MainActivity : ComponentActivity()
     override fun onResume() {
         super.onResume()
         if (!openXrStarted) {
-            openXrStarted = NativeCore.startOpenXr(this)
+            openXrStarted = QuestOpenXr.startOpenXr(this)
             Log.i(TAG, "startOpenXr(onResume) result=$openXrStarted")
         }
         applyImmersiveFullscreen()
@@ -189,7 +200,7 @@ class MainActivity : ComponentActivity()
             // Wi-Fi and permission callbacks run when their Horizon overlay has completed. Give
             // Horizon time to restore focus naturally before reactivating this singleTask.
             delay(VR_FOCUS_RECOVERY_DELAY_MS)
-            if (isFinishing || isDestroyed || !openXrStarted || NativeCore.isOpenXrFocused()) {
+            if (isFinishing || isDestroyed || !openXrStarted || QuestOpenXr.isOpenXrFocused()) {
                 return@launch
             }
 
@@ -224,7 +235,7 @@ class MainActivity : ComponentActivity()
         vrFocusRecoveryJob?.cancel()
         vrFocusRecoveryJob = null
         if (openXrStarted) {
-            NativeCore.stopOpenXr()
+            QuestOpenXr.stopOpenXr()
             openXrStarted = false
         }
         NativeCore.setActivity(null)

@@ -35,10 +35,14 @@ architecture notes:
 - the renderer thread runs `m_cv.wait_for(50ms)` so the UI ticks at ≥ 20 FPS
   even without video — controller key edges surface within ~50 ms
 - the OpenXR thread's `EGLContext` must exist before the renderer creates its
-  context (share group setup); `android_surface_backend.cpp::initEgl` polls
-  the bridge for up to 2 s to handle the cold-start race
-- the legacy `android_gs/` build still uses the original `SurfaceView` /
-  `eglSwapBuffers` path; nothing in `components_gs/shared/` is unconditionally
+  context (share group setup);
+  `components_gs/android_shared/cpp/android_surface_backend_openxr.cpp::initEgl`
+  polls the bridge for up to 2 s to handle the cold-start race
+- the `android_gs/` build uses the original `SurfaceView` / `eglSwapBuffers`
+  path, implemented in the sibling
+  `components_gs/android_shared/cpp/android_surface_backend_window.cpp`; both
+  implement the one interface in `android_surface_backend.h` and each app
+  compiles exactly one of them; nothing in `components_gs/shared/` is unconditionally
   Quest-only — Quest behavior is gated on
   `gsPublishRendererTexture != nullptr`
 

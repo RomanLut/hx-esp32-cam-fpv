@@ -9,6 +9,7 @@
 #include <atomic>
 #include <iostream>
 #include "fec.h"
+#include "core/tx_fec_block_encoder.h"
 #include "Log.h"
 #include "Pool.h"
 #include "structures.h"
@@ -401,7 +402,7 @@ struct LinuxRawBroadcastTransport::TX
 {
     std::thread thread;
 
-    fec_t* fec = nullptr;
+    gs::core::TxFecBlockEncoder fec_encoder;
     std::array<uint8_t const*, 16> fec_src_packet_ptrs;
     std::array<uint8_t*, 32> fec_dst_packet_ptrs;
 
@@ -457,15 +458,12 @@ static void seal_packet(PacketFilter& packet_filter,
                         uint8_t packet_index)
 {
     //header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
-    assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
-
-    Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
-
-    packet_filter.apply_packet_header_data(&header);
-
-    header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
-    header.block_index = block_index;
-    header.packet_index = packet_index;
+    gs::core::sealTransportPacket(packet_filter,
+                                  packet.data.data(),
+                                  packet.data.size(),
+                                  header_offset,
+                                  block_index,
+                                  packet_index);
 }
 
 //===================================================================================
@@ -523,10 +521,9 @@ LinuxRawBroadcastTransport::~LinuxRawBroadcastTransport()
 {
     stopBackend();
 
-    if (m_impl && m_impl->tx.fec)
+    if (m_impl)
     {
-        fec_free(m_impl->tx.fec);
-        m_impl->tx.fec = nullptr;
+        m_impl->tx.fec_encoder.release();
     }
 }
 
@@ -958,19 +955,19 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
     m_tx_descriptor = tx_descriptor;
     //m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
-    if (m_tx_descriptor.coding_k == 0 || 
-        m_tx_descriptor.coding_n < m_tx_descriptor.coding_k || 
-        m_tx_descriptor.coding_k > m_impl->tx.fec_src_packet_ptrs.size() || 
+    //The fixed-size pointer arrays used to feed fec_encode bound the coding params
+    //beyond what the shared encoder itself validates.
+    if (m_tx_descriptor.coding_k > m_impl->tx.fec_src_packet_ptrs.size() ||
         m_tx_descriptor.coding_n > m_impl->tx.fec_dst_packet_ptrs.size())
     {
         LOGE("Invalid coding params: {} / {}", m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
         return false;
     }
 
-    if (m_impl->tx.fec)
-        fec_free(m_impl->tx.fec);
-
-    m_impl->tx.fec = fec_new(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
+    if (!m_impl->tx.fec_encoder.init(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n))
+    {
+        return false;
+    }
 
     /////////
     
@@ -1346,7 +1343,9 @@ void LinuxRawBroadcastTransport::tx_thread_proc()
                 }
 
                 //encode
-                fec_encode(tx.fec, tx.fec_src_packet_ptrs.data(), tx.fec_dst_packet_ptrs.data(), fec_block_nums() + coding_k, coding_n - coding_k, tx.payload_size);
+                tx.fec_encoder.encodeBlock(tx.fec_src_packet_ptrs.data(),
+                                           tx.fec_dst_packet_ptrs.data(),
+                                           tx.payload_size);
 
                 //seal the result
                 for (size_t i = 0; i < fec_count; i++)

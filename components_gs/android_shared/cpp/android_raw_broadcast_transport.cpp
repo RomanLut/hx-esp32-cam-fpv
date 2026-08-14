@@ -144,12 +144,12 @@ void sealPacket(PacketFilter& packet_filter,
                 uint32_t block_index,
                 uint8_t packet_index)
 {
-    Packet_Header* header =
-        reinterpret_cast<Packet_Header*>(packet.data() + packet_header_offset);
-    packet_filter.apply_packet_header_data(header);
-    header->size = static_cast<uint16_t>(packet.size() - packet_header_offset - sizeof(Packet_Header));
-    header->block_index = block_index;
-    header->packet_index = packet_index;
+    gs::core::sealTransportPacket(packet_filter,
+                                  packet.data(),
+                                  packet.size(),
+                                  packet_header_offset,
+                                  block_index,
+                                  packet_index);
 }
 
 }
@@ -160,11 +160,7 @@ void sealPacket(PacketFilter& packet_filter,
 AndroidRawBroadcastTransport::~AndroidRawBroadcastTransport()
 {
     stopUsbAdapter();
-    if (m_tx_fec != nullptr)
-    {
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-    }
+    m_tx_fec_encoder.release();
 }
 
 //===================================================================================
@@ -179,28 +175,11 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     {
         m_rx_descriptor.interfaces.push_back(rawUsbAdapterLabel(index));
     }
-    if (m_tx_descriptor.coding_k == 0 ||
-        m_tx_descriptor.coding_n < m_tx_descriptor.coding_k)
-    {
-        LOGE("Invalid TX coding params k={} n={}",
-             static_cast<unsigned int>(m_tx_descriptor.coding_k),
-             static_cast<unsigned int>(m_tx_descriptor.coding_n));
-        return false;
-    }
-
     m_devourer_logger = std::make_shared<Logger>();
     m_wifi_driver = std::make_unique<WiFiDriver>(m_devourer_logger);
-    if (m_tx_fec != nullptr)
+    //Validates and reports the coding parameters itself.
+    if (!m_tx_fec_encoder.init(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n))
     {
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-    }
-    m_tx_fec = fec_new(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
-    if (m_tx_fec == nullptr)
-    {
-        LOGE("fec_new failed k={} n={}",
-             static_cast<unsigned int>(m_tx_descriptor.coding_k),
-             static_cast<unsigned int>(m_tx_descriptor.coding_n));
         return false;
     }
 
@@ -407,12 +386,9 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
                         reinterpret_cast<gf*>(fec_packet.data() + m_payload_offset);
                 }
 
-                fec_encode(m_tx_fec,
-                           fec_src_packet_ptrs.data(),
-                           fec_dst_packet_ptrs.data(),
-                           fec_block_nums() + m_tx_descriptor.coding_k,
-                           m_tx_descriptor.coding_n - m_tx_descriptor.coding_k,
-                           m_tx_descriptor.mtu);
+                m_tx_fec_encoder.encodeBlock(fec_src_packet_ptrs.data(),
+                                             fec_dst_packet_ptrs.data(),
+                                             m_tx_descriptor.mtu);
 
                 const size_t fec_start_index = packets_to_send.size() -
                     (m_tx_descriptor.coding_n - m_tx_descriptor.coding_k);

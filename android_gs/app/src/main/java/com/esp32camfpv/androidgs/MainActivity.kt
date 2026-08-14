@@ -38,6 +38,11 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.esp32camfpv.gscommon.ApfpvWifiController
+import com.esp32camfpv.gscommon.NativeCore
+import com.esp32camfpv.gscommon.RawBroadcastUsbController
+import com.esp32camfpv.gscommon.SerialTelemetryUsbController
+import com.esp32camfpv.gscommon.WifiScanUsbController
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
@@ -83,10 +88,22 @@ class MainActivity : ComponentActivity() {
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         NativeCore.setRecordingsPath(Environment.getExternalStorageDirectory().absolutePath)
-        apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
-        rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
-        wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
-        serialTelemetryUsbController = SerialTelemetryUsbController(this)
+        // Named arguments: the shared controllers take trailing platform hooks
+        // (VR focus recovery, focus probe) that this build leaves at their no-op
+        // defaults, so a trailing lambda would bind to the wrong parameter.
+        apfpvWifiController = ApfpvWifiController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle }
+        )
+        rawBroadcastUsbController = RawBroadcastUsbController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle }
+        )
+        wifiScanUsbController = WifiScanUsbController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle }
+        )
+        serialTelemetryUsbController = SerialTelemetryUsbController(activity = this)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()

@@ -1,4 +1,4 @@
-package com.esp32camfpv.questgs
+package com.esp32camfpv.gscommon
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -27,13 +27,21 @@ import kotlinx.coroutines.sync.withLock
 //===================================================================================
 //===================================================================================
 // Bridges one USB-UART device to native telemetry with single-flight permission handling.
+//
+// requestVrFocusRecovery is a no-op on the phone build; the Quest build uses it to
+// reclaim VR input after the system permission dialog has taken focus away.
 class SerialTelemetryUsbController(
     private val activity: ComponentActivity,
-    private val requestVrFocusRecovery: (String) -> Unit
+    private val requestVrFocusRecovery: (String) -> Unit = {}
 )
 {
     private val usbManager =
         activity.applicationContext.getSystemService(Context.USB_SERVICE) as UsbManager
+
+    // Scoped to the installed package so two GS apps on one device cannot observe each
+    // other's permission broadcasts.
+    private val actionUsbPermission =
+        "${activity.applicationContext.packageName}.USB_PERMISSION"
 
     private var syncJob: Job? = null
     private var receiverRegistered = false
@@ -53,7 +61,7 @@ class SerialTelemetryUsbController(
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_USB_PERMISSION -> {
+                actionUsbPermission -> {
                     val permissionDevice = intent.getUsbDevice() ?: findSupportedDevice("auto")
                     UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
                     permissionRequestPendingDeviceName = null
@@ -69,6 +77,9 @@ class SerialTelemetryUsbController(
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
+                            // Only the device the dialog is actually about may cancel the
+                            // in-flight request. Another child detaching on the same hub must
+                            // not erase a permission request the user has not answered yet.
                             val detachedDeviceName = intent.getUsbDevice()?.deviceName
                             if (permissionRequestPendingDeviceName == detachedDeviceName) {
                                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
@@ -85,7 +96,7 @@ class SerialTelemetryUsbController(
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
                             // Do not let another child on the same hub erase an in-flight UART
-                            // permission request before Horizon delivers its result.
+                            // permission request before the system delivers its result.
                             intent.getUsbDevice()?.deviceName?.let {
                                 permissionDeniedDeviceNames.remove(it)
                             }
@@ -100,7 +111,7 @@ class SerialTelemetryUsbController(
     fun start() {
         if (!receiverRegistered) {
             val filter = IntentFilter().apply {
-                addAction(ACTION_USB_PERMISSION)
+                addAction(actionUsbPermission)
                 addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
                 addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             }
@@ -210,8 +221,8 @@ class SerialTelemetryUsbController(
             }
 
             if (!usbManager.hasPermission(target)) {
-                // Quest does not coalesce repeated UsbManager requests. Keep one dialog in
-                // flight and remember denial until the topology changes or selection changes.
+                // The platform does not coalesce repeated UsbManager requests. Keep one dialog
+                // in flight and remember denial until the topology or selection changes.
                 if (permissionRequestPendingDeviceName == null &&
                     target.deviceName !in permissionDeniedDeviceNames &&
                     UsbPermissionRequestCoordinator.tryAcquire(PERMISSION_OWNER, target.deviceName)
@@ -349,7 +360,7 @@ class SerialTelemetryUsbController(
     private fun requestPermission(device: UsbDevice) {
         val pendingIntent = PendingIntent.getBroadcast(
             activity, 0,
-            Intent(ACTION_USB_PERMISSION),
+            Intent(actionUsbPermission),
             PendingIntent.FLAG_IMMUTABLE
         )
         usbManager.requestPermission(device, pendingIntent)
@@ -377,7 +388,6 @@ class SerialTelemetryUsbController(
     private companion object {
         const val LOG_TAG = "SerialTelemetryUsb"
         const val PERMISSION_OWNER = "serial-telemetry"
-        const val ACTION_USB_PERMISSION = "com.esp32camfpv.questgs.USB_PERMISSION"
         const val WRITE_TIMEOUT_MS = 100
     }
 }

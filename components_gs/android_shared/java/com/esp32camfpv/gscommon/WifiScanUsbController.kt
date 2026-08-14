@@ -1,4 +1,4 @@
-package com.esp32camfpv.questgs
+package com.esp32camfpv.gscommon
 
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -24,11 +24,14 @@ import kotlinx.coroutines.withContext
 
 //===================================================================================
 //===================================================================================
-// Owns the Quest RTL scan adapter and its serialized USB permission flow.
+// Owns the RTL scan adapter and its serialized USB permission flow.
+//
+// requestVrFocusRecovery is a no-op on the phone build; the Quest build uses it to
+// reclaim VR focus after the system permission dialog has taken it away.
 class WifiScanUsbController(
     private val activity: ComponentActivity,
     private val currentNativeHandle: () -> Long,
-    private val requestVrFocusRecovery: (String) -> Unit
+    private val requestVrFocusRecovery: (String) -> Unit = {}
 )
 {
     private enum class ControllerState {
@@ -42,6 +45,11 @@ class WifiScanUsbController(
 
     private val usbManager =
         activity.applicationContext.getSystemService(Context.USB_SERVICE) as UsbManager
+
+    // Scoped to the installed package so two GS apps on one device cannot observe each
+    // other's permission broadcasts.
+    private val actionUsbPermission =
+        "${activity.applicationContext.packageName}.WIFI_SCAN_USB_PERMISSION"
 
     private var syncJob: Job? = null
     private var receiverRegistered = false
@@ -59,7 +67,7 @@ class WifiScanUsbController(
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                ACTION_USB_PERMISSION -> {
+                actionUsbPermission -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
                             UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
@@ -80,6 +88,9 @@ class WifiScanUsbController(
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     activity.lifecycleScope.launch(Dispatchers.Main) {
                         syncMutex.withLock {
+                            // Only the device the dialog is actually about may cancel the
+                            // in-flight request. Another child detaching on the same hub must
+                            // not erase a permission request the user has not answered yet.
                             val detachedDeviceName = intent.getUsbDevice()?.deviceName
                             if (permissionRequestPendingDeviceName == detachedDeviceName) {
                                 UsbPermissionRequestCoordinator.release(PERMISSION_OWNER)
@@ -115,7 +126,7 @@ class WifiScanUsbController(
     fun start() {
         if (!receiverRegistered) {
             val filter = IntentFilter().apply {
-                addAction(ACTION_USB_PERMISSION)
+                addAction(actionUsbPermission)
                 addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
                 addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             }
@@ -305,7 +316,7 @@ class WifiScanUsbController(
         val pendingIntent = PendingIntent.getBroadcast(
             activity,
             0,
-            Intent(ACTION_USB_PERMISSION),
+            Intent(actionUsbPermission),
             PendingIntent.FLAG_IMMUTABLE
         )
         usbManager.requestPermission(device, pendingIntent)
@@ -344,7 +355,6 @@ class WifiScanUsbController(
     private companion object {
         const val LOG_TAG = "WifiScanUsb"
         const val PERMISSION_OWNER = "wifi-scan"
-        const val ACTION_USB_PERMISSION = "com.esp32camfpv.questgs.WIFI_SCAN_USB_PERMISSION"
         const val USB_TOPOLOGY_RESTART_DEBOUNCE_MS = 5_000L
     }
 }

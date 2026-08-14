@@ -1,8 +1,8 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.gscommon
 
 //===================================================================================
 //===================================================================================
-// Serializes Android USB permission dialogs across all in-process USB controllers.
+// Serializes USB permission dialogs across all in-process USB controllers.
 object UsbPermissionRequestCoordinator
 {
     private var owner: String? = null

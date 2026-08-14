@@ -1,4 +1,4 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.gscommon
 
 import android.Manifest
 import android.app.Activity
@@ -16,7 +16,18 @@ import androidx.core.content.ContextCompat
 import java.io.File
 import java.lang.ref.WeakReference
 
+//===================================================================================
+//===================================================================================
+// JNI facade shared by every Android-family ground station app (phone/tablet and Quest).
+//
+// This object deliberately lives in the neutral `gscommon` package rather than in each
+// app's own package. JNI export symbols encode the Java package name, so a per-app
+// package would force a per-app copy of the whole native bridge. Keeping one package
+// here lets android_gs and oculus_quest_gs share one native_bridge implementation.
+// Do not move this class into an app-specific package.
 object NativeCore {
+
+    const val LOG_TAG = "esp32-cam-fpv"
 
     @Volatile private var activityRef: WeakReference<Activity>? = null
 
@@ -25,6 +36,14 @@ object NativeCore {
     }
 
     @Volatile private var pendingRecordingUri: Uri? = null
+
+    //===================================================================================
+    //===================================================================================
+    // Forces the native library to load without performing any other work. Platform
+    // bootstrap code calls this to control library load ordering (the Quest build must
+    // load the OpenXR loader before the core library pulls it in via DT_NEEDED).
+    fun ensureLoaded() {
+    }
 
     @JvmStatic
     fun createRecordingFd(filename: String): Int {
@@ -94,7 +113,7 @@ object NativeCore {
             }
             activity.contentResolver.update(uri, values, null, null)
         } catch (t: Throwable) {
-            Log.w("AndroidGs", "finalizeRecordingFd failed", t)
+            Log.w(LOG_TAG, "finalizeRecordingFd failed", t)
         }
     }
 
@@ -162,7 +181,9 @@ object NativeCore {
     external fun handleTap(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float)
     external fun handleTouchDown(handle: Long, x: Float, y: Float, viewWidth: Float, viewHeight: Float): Boolean
     external fun handleKey(handle: Long, keyCode: Int): Boolean
-    external fun setRenderSurface(handle: Long, surface: Surface)
+    // Nullable because the Quest backend clears the surface by passing null; the phone
+    // build always passes a real Surface.
+    external fun setRenderSurface(handle: Long, surface: Surface?)
     external fun clearRenderSurface(handle: Long)
     external fun consumeExitRequested(handle: Long): Boolean
     external fun resetSession(handle: Long)
@@ -187,7 +208,7 @@ object NativeCore {
         try {
             serialTelemetryWriter?.invoke(data)
         } catch (t: Throwable) {
-            android.util.Log.w("AndroidGs", "serialTelemetryWrite failed", t)
+            Log.w(LOG_TAG, "serialTelemetryWrite failed", t)
         }
     }
 }

@@ -1,10 +1,16 @@
-package com.esp32camfpv.androidgs
+package com.esp32camfpv.gscommon
 
 import android.hardware.usb.UsbDevice
 
 // VID/PID table copied from svpcom/rtl8812au branch
 // v5.2.20-rssi-fix-but-sometimes-crash, os_dep/linux/usb_intf.c.
 // Keep this limited to chip families implemented by the bundled Devourer HAL.
+//
+// This list must stay a superset-consistent match with the shared
+// components_gs/android_shared/res/xml/usb_device_filter.xml manifest filter: the
+// manifest decides which devices can launch/notify the app, this table decides which
+// devices the controllers will actually claim. When the two disagree, a device is
+// advertised by the manifest and then silently rejected at runtime.
 object RtlUsbDeviceAllowlist {
     val RTL8812A_DEVICE_IDS: Set<Pair<Int, Int>> = setOf(
         0x0BDA to 0x8812,
