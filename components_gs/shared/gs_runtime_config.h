@@ -13,7 +13,9 @@ void commitGround2AirConfig(const Ground2Air_Config_Packet& config);
 void applyWifiChannelToSession(Ground2Air_Config_Packet& config);
 void applyWifiChannelInstantToSession(Ground2Air_Config_Packet& config, gs::core::ITransport& transport);
 void applyGSTxPowerToTransport(gs::core::ITransport& transport);
-void performAirUnpair(uint16_t gs_device_id, gs::core::ITransport& transport);
+void performAirUnpair(uint16_t gs_device_id,
+                      gs::core::ITransport& transport,
+                      uint16_t ignored_air_device_id = 0);
 void resetAirPairing(uint16_t gs_device_id, gs::core::ITransport& transport);
 gs::core::TransportKind currentTransportKind();
 bool switchActiveTransport(gs::core::TransportKind kind);

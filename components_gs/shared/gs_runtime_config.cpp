@@ -196,11 +196,18 @@ void applyGSTxPowerToTransport(gs::core::ITransport& transport)
     transport.setTxPower(s_groundstation_config.txPower);
 }
 
-void performAirUnpair(uint16_t gs_device_id, gs::core::ITransport& transport)
+//===================================================================================
+//===================================================================================
+// Unpairs the current Air and optionally excludes it from the next pairing attempt.
+void performAirUnpair(uint16_t gs_device_id,
+                      gs::core::ITransport& transport,
+                      uint16_t ignored_air_device_id)
 {
     s_last_packet_tp = Clock::now();
     s_last_stats_packet_tp = Clock::now();
-    resetAirPairing(gs_device_id, transport);
+    s_runtimeCore.gs_device_id = gs_device_id;
+    std::lock_guard<std::mutex> transport_lock(s_transport_mutex);
+    s_runtimeCore.resetPairing(transport, Clock::now(), ignored_air_device_id);
 }
 
 void resetAirPairing(uint16_t gs_device_id, gs::core::ITransport& transport)
@@ -227,6 +234,14 @@ bool switchActiveTransport(gs::core::TransportKind kind)
     if (s_transportManager == nullptr)
     {
         return false;
+    }
+
+    // Search re-selects the current transport before it starts. Treat that as the
+    // same logical no-op as TransportManagerBase so the active Air ID remains
+    // available for the RAW search exclusion instead of being reset prematurely.
+    if (s_transportManager->activeKind() == kind)
+    {
+        return true;
     }
 
     requestTransportReconnectPause();

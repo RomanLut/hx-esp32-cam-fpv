@@ -128,7 +128,11 @@ struct SessionEvent
 class GsSessionCore
 {
 public:
-    void resetPairing(uint16_t gs_device_id, ITransport& transport, Clock::time_point now);
+    void resetPairing(uint16_t gs_device_id,
+                      ITransport& transport,
+                      Clock::time_point now,
+                      uint16_t ignored_air_device_id = 0);
+    void clearPairingAirDeviceExclusion();
 
     bool tryAcceptConnectConfig(const protocol::AirPacketInfo& packet_info,
                                 const uint8_t* packet_data,
@@ -231,6 +235,7 @@ private:
     Clock::time_point m_rc_warning_until = {};
     std::deque<Clock::time_point> m_rc_packet_times;
     uint16_t m_connected_air_device_id = 0;
+    uint16_t m_ignored_pairing_air_device_id = 0;
     bool m_has_received_rc_packet = false;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;

@@ -177,15 +177,17 @@ void TransportManagerBase::beginSearchOrConnect(Ground2Air_Config_Packet& config
 
     if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
     {
+        const uint16_t active_air_device_id = s_runtimeCore.session.connectedAirDeviceId();
         // Search must dwell on the configured channel first without rewriting the
         // already-active radio channel. Some Realtek monitor drivers wedge reception
-        // when the same channel is redundantly applied through iwconfig.
+        // when the same channel is redundantly applied through iwconfig. The active Air
+        // is excluded so its config packets cannot immediately terminate this search.
         s_groundstation_config.wifi_channel = getBandAwareWifiChannel(
             s_groundstation_config.wifi_channel,
             s_groundstation_config.wifiBand);
         applyWifiChannelToSession(config);
         search_tp = Clock::now();
-        performAirUnpair(s_groundstation_config.deviceId, *m_active_transport);
+        performAirUnpair(s_groundstation_config.deviceId, *m_active_transport, active_air_device_id);
         return;
     }
 
@@ -222,7 +224,9 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
         return;
     }
 
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < kSearchTimeStepMs / 2)
+    // Ignored Air packets still reach the decoded-packet pipeline while searching, so
+    // only an accepted pairing proves that the current channel contains a search result.
+    if (isConnected())
     {
         search_done = true;
         search_tp = Clock::now() + std::chrono::milliseconds(kSearchTimeStepMs);
@@ -241,6 +245,10 @@ void TransportManagerBase::cancelSearchOrConnect()
     if (m_active_transport != nullptr && m_active_transport->supportsMenuSearchOrConnect())
     {
         m_active_transport->cancelMenuSearchOrConnect();
+    }
+    else if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
+    {
+        s_runtimeCore.session.clearPairingAirDeviceExclusion();
     }
 }
 

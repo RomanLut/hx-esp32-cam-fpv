@@ -774,6 +774,9 @@ std::string buildSnapshotJson()
         << "\"ground_stats\":{"
         << "\"rx_packets_interface_0\":" << last_gs_stats.inPacketCounter[0] << ','
         << "\"rx_packets_interface_1\":" << last_gs_stats.inPacketCounter[1] << ','
+        << "\"rssi_dbm_interface_0\":" << static_cast<int>(last_gs_stats.rssiDbm[0]) << ','
+        << "\"rssi_dbm_interface_1\":" << static_cast<int>(last_gs_stats.rssiDbm[1]) << ','
+        << "\"noise_floor_dbm\":" << static_cast<int>(last_gs_stats.noiseFloorDbm) << ','
         << "\"unique_packets\":" << last_gs_stats.inUniquePacketCounter << ','
         << "\"duplicate_packets\":" << last_gs_stats.inDublicatedPacketCounter << ','
         << "\"fec_blocks\":" << last_gs_stats.FECBlocksCounter << ','

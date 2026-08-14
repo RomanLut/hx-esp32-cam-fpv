@@ -37,12 +37,12 @@ bool AndroidAPFPVTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
-// Activates the Android APFPV transport and requests preferred-camera reconnect flow.
+// Activates Android APFPV without authorizing a saved preferred-camera connection.
 void AndroidAPFPVTransport::activate()
 {
     m_menu_search_active.store(false);
     m_menu_search_done.store(false);
-    m_reconnect_requested.store(true);
+    m_reconnect_requested.store(false);
 }
 
 //===================================================================================
@@ -470,7 +470,7 @@ void AndroidAPFPVTransport::syncCameraState(size_t discovered_camera_count, bool
         return;
     }
 
-    if (m_menu_search_active.load() && discovered_camera_count >= 2)
+    if (m_menu_search_active.load() && discovered_camera_count >= 1)
     {
         m_menu_search_active.store(false);
         m_menu_search_done.store(true);

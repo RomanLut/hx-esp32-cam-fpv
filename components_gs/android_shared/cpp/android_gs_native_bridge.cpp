@@ -1318,20 +1318,25 @@ Java_com_esp32camfpv_gscommon_NativeCore_getActiveTransportKind(JNIEnv* /* env *
 
 //===================================================================================
 //===================================================================================
-// Returns whether the live air config packet currently enables APFPV camera mode.
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_gscommon_NativeCore_isAirApfpvModeEnabled(JNIEnv* /* env */,
-                                                                jobject /* thiz */,
-                                                                jlong handle)
+// Returns -1 before a live air config arrives, otherwise the config's APFPV mode as 0 or 1.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_gscommon_NativeCore_getAirApfpvModeState(JNIEnv* /* env */,
+                                                               jobject /* thiz */,
+                                                               jlong handle)
 {
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
     {
-        return JNI_FALSE;
+        return -1;
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return s_runtimeCore.session.copyConfigPacket().misc.apfpv != 0 ? JNI_TRUE : JNI_FALSE;
+    if (!s_runtimeCore.session.gotConfigPacket())
+    {
+        return -1;
+    }
+
+    return s_runtimeCore.session.copyConfigPacket().misc.apfpv != 0 ? 1 : 0;
 }
 
 //===================================================================================

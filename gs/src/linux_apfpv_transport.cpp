@@ -398,22 +398,18 @@ bool LinuxApfpvTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
-// Activates APFPV mode by switching the configured Linux interfaces to managed mode.
+// Activates APFPV mode in a disconnected state until the user selects a camera.
 void LinuxApfpvTransport::activate()
 {
     const std::vector<std::string> connect_interfaces = selectApfpvConnectInterfaces(m_apfpv_interfaces);
     setManagedMode(connect_interfaces);
     resetWifiAutoconnectState();
+    // A managed-mode association can survive a GS restart. Drop it before opening the UDP
+    // backend so saved OS and GS state cannot silently restore the previous camera session.
+    disconnectCurrentWifiLink();
     startBackend();
-    if (getApfpvPreferredCameraId() != 0)
-    {
-        startConnectToPreferredCamera(Clock::now());
-    }
-    else
-    {
-        m_wifi_state = WifiState::Idle;
-        setMessage("");
-    }
+    m_wifi_state = WifiState::Idle;
+    setMessage("");
 }
 
 //===================================================================================
@@ -450,6 +446,7 @@ bool LinuxApfpvTransport::requestImmediateReconnect()
          formatApfpvCameraId(getApfpvPreferredCameraId()));
     disconnectCurrentWifiLink();
     transitionToIdle(Clock::now(), true);
+    m_waiting_for_search_selection = false;
     waitForPreferredCameraVisibility(Clock::now());
     return true;
 }
@@ -474,7 +471,7 @@ void LinuxApfpvTransport::beginMenuSearchOrConnect()
     m_menu_search_cancel_requested.store(false);
     m_menu_search_active.store(true);
     m_menu_search_request_pending.store(true);
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
 }
 
 //===================================================================================
@@ -583,7 +580,7 @@ void LinuxApfpvTransport::resetWifiAutoconnectState()
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
     m_discovered_candidates.clear();
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
     m_next_retry_tp = Clock::now();
     m_wait_for_link_deadline_tp = Clock::now();
     m_stream_connect_deadline_tp = Clock::now();
@@ -763,6 +760,7 @@ void LinuxApfpvTransport::handlePendingMenuRequests(Clock::time_point now)
     {
         m_menu_search_active.store(false);
         m_menu_search_done.store(true);
+        m_waiting_for_search_selection = true;
         if (m_wifi_state == WifiState::Searching)
         {
             transitionToIdle(now, true);
@@ -785,7 +783,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
     setManagedMode(selectApfpvConnectInterfaces(m_apfpv_interfaces));
     clearApfpvActiveCamera();
     m_discovered_candidates.clear();
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
     updateApfpvDiscoveredCameras({});
     s_runtimeCore.resetTransportRuntimePreserveApfpvState(*this, now);
     m_target_interface.clear();
@@ -805,7 +803,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
 
 //===================================================================================
 //===================================================================================
-// Advances one explicit APFPV camera search pass and reacts to the resulting candidate count.
+// Advances one explicit APFPV camera search pass and publishes results for user selection.
 void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
 {
     setMessage("");
@@ -828,7 +826,7 @@ void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
     {
         if (now - m_search_started_tp >= kApfpvSearchDuration)
         {
-            m_waiting_for_search_selection = false;
+            m_waiting_for_search_selection = true;
             m_menu_search_active.store(false);
             m_menu_search_done.store(true);
             m_wifi_state = WifiState::Idle;
@@ -836,30 +834,12 @@ void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
         return;
     }
 
-    if (m_discovered_candidates.size() >= 2)
-    {
-        m_waiting_for_search_selection = true;
-        m_menu_search_active.store(false);
-        m_menu_search_done.store(true);
-        m_wifi_state = WifiState::Idle;
-        return;
-    }
-
-    const std::optional<SearchCandidate> candidate = selectSingleSearchCandidate(m_discovered_candidates);
-    if (!candidate.has_value())
-    {
-        return;
-    }
-
-    s_groundstation_config.apfpvPreferredCameraId = candidate->camera.device_id;
-    setApfpvPreferredCameraId(candidate->camera.device_id);
-    s_settingsStorage.saveGroundStationConfig();
-    m_waiting_for_search_selection = false;
-    m_target_interface = candidate->interface;
-    m_target_ssid = candidate->camera.ssid;
-    m_target_frequency_mhz = candidate->frequency_mhz;
-    m_wifi_state = WifiState::Connecting;
-    setMessage("Connecting to WiFi network...");
+    // Even a sole result is only a discovery result. The Connect menu owns selection,
+    // persistence, and the reconnect request so Search can never associate implicitly.
+    m_waiting_for_search_selection = true;
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(true);
+    m_wifi_state = WifiState::Idle;
 }
 
 //===================================================================================
@@ -1288,20 +1268,6 @@ std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::normalize
 
 //===================================================================================
 //===================================================================================
-// Returns the sole APFPV search candidate when exactly one camera was found.
-std::optional<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::selectSingleSearchCandidate(
-    const std::vector<SearchCandidate>& candidates) const
-{
-    if (candidates.size() != 1)
-    {
-        return std::nullopt;
-    }
-
-    return candidates.front();
-}
-
-//===================================================================================
-//===================================================================================
 // Returns the preferred APFPV search candidate when that exact camera is visible in the latest scan results.
 std::optional<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::selectPreferredSearchCandidate(
     uint16_t preferred_camera_id,
@@ -1345,10 +1311,15 @@ bool LinuxApfpvTransport::detectCurrentWifiLink(std::string& interface, std::str
 
 //===================================================================================
 //===================================================================================
-// Disconnects the currently linked APFPV Wi-Fi interface before a reconnect attempt.
+// Disconnects a tracked or OS-retained APFPV Wi-Fi link before changing connection state.
 void LinuxApfpvTransport::disconnectCurrentWifiLink()
 {
-    const std::string interface = !m_connected_interface.empty() ? m_connected_interface : m_target_interface;
+    std::string interface = !m_connected_interface.empty() ? m_connected_interface : m_target_interface;
+    if (interface.empty())
+    {
+        std::string retained_ssid;
+        (void)detectCurrentWifiLink(interface, retained_ssid);
+    }
     if (!interface.empty())
     {
         runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));

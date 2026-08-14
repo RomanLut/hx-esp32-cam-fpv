@@ -15,12 +15,16 @@ namespace gs::core
 
 //===================================================================================
 //===================================================================================
-// Resets session/lens state and reconfigures the transport filter for a fresh pairing.
-void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, Clock::time_point now)
+// Resets session/lens state and optionally excludes one Air ID from the fresh pairing.
+void GsSessionCore::resetPairing(uint16_t gs_device_id,
+                                 ITransport& transport,
+                                 Clock::time_point now,
+                                 uint16_t ignored_air_device_id)
 {
     {
         std::lock_guard<std::mutex> lg(m_state_mutex);
         m_connected_air_device_id = 0;
+        m_ignored_pairing_air_device_id = ignored_air_device_id;
         m_got_config_packet = false;
         m_accept_config_packet = false;
         m_telemetry_buffered_size = 0;
@@ -49,24 +53,35 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id, ITransport& transport, C
 
 //===================================================================================
 //===================================================================================
-// Accepts an initial connect-config packet from the air unit if not already connected,
+// Clears the temporary Air ID exclusion when a pairing search is cancelled.
+void GsSessionCore::clearPairingAirDeviceExclusion()
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    m_ignored_pairing_air_device_id = 0;
+}
+
+//===================================================================================
+//===================================================================================
+// Accepts an initial connect-config packet from a permitted air unit if not already connected,
 // stores the air config, and updates the transport packet filter.
 bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet_info,
                                           const uint8_t* packet_data,
                                           uint16_t gs_device_id,
                                           ITransport& transport)
 {
-    {
-        std::lock_guard<std::mutex> lg(m_state_mutex);
-        if (m_got_config_packet || m_accept_config_packet)
-        {
-            return false;
-        }
-    }
-
     if (!protocol::isConnectConfigPacket(packet_info, Air2Ground_Header::Type::Config, gs_device_id))
     {
         return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lg(m_state_mutex);
+        if (m_got_config_packet || m_accept_config_packet ||
+            (m_ignored_pairing_air_device_id != 0 &&
+             packet_info.header->airDeviceId == m_ignored_pairing_air_device_id))
+        {
+            return false;
+        }
     }
 
     const auto* air_config = reinterpret_cast<const Air2Ground_Config_Packet*>(packet_data);
@@ -81,6 +96,7 @@ bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet
     {
         std::lock_guard<std::mutex> lg(m_state_mutex);
         m_connected_air_device_id = air_device_id;
+        m_ignored_pairing_air_device_id = 0;
         m_accept_config_packet = true;
     }
 

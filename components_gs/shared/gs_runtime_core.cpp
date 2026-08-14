@@ -105,9 +105,14 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value, bool clear_apfpv_sta
     setLinkState(LinkState::None);
 }
 
-void GsRuntimeCore::resetPairing(gs::core::ITransport& transport, Clock::time_point now)
+//===================================================================================
+//===================================================================================
+// Resets pairing state and optionally excludes one Air ID from the next connection.
+void GsRuntimeCore::resetPairing(gs::core::ITransport& transport,
+                                 Clock::time_point now,
+                                 uint16_t ignored_air_device_id)
 {
-    session.resetPairing(gs_device_id, transport, now);
+    session.resetPairing(gs_device_id, transport, now, ignored_air_device_id);
     transport.getPacketFilter().set_packet_filtering(0, 0);
 }
 

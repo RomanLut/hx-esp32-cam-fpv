@@ -25,9 +25,8 @@
  - APFPV UDP backend initialization also happens during activation. The transport opens
    the local UDP socket on port 5600, configures socket timeouts/buffers, and starts
    the backend receive thread before Wi-Fi association is attempted.
- - If a preferred camera id is already stored in settings, the state machine first runs
-   discovery scans until that specific camera becomes visible, and only then starts a
-   managed-mode connect attempt to that camera.
+ - A stored preferred camera id is only a remembered menu selection. Activating APFPV
+   remains disconnected until the user explicitly selects a `Connect to:` row.
  - APFPV connect/search uses the dedicated `APFPV Interface` selected in GS settings
    when that interface is available in the Linux transport descriptors.
  - Discovery is not a background service. APFPV camera scanning only runs after the
@@ -35,9 +34,8 @@
  - `Search...` closes any current APFPV Wi-Fi link, clears the shared discovered-camera
    list, and moves the state machine into a search state. While search is active, the
    comms thread periodically scans for APFPV SSIDs and updates the shared menu snapshot.
- - If search finds one APFPV camera, that camera becomes the preferred target and the
-   state machine immediately starts connecting to it. If search finds multiple cameras,
-   search stops and the Connect menu shows `Connect to:` rows for the user to choose.
+ - When search finds one or more APFPV cameras, search stops and the Connect menu shows
+   `Connect to:` rows for the user to choose. Discovery never authorizes association.
  - A normal APFPV connect attempt is performed on the selected interface with the
    sequence:
    `iw dev <iface> disconnect -> ip link set dev <iface> down -> iw dev <iface> set
@@ -125,7 +123,6 @@ private:
     void advanceSearchState(Clock::time_point now);
     std::vector<SearchCandidate> runSearchPass() const;
     std::vector<SearchCandidate> normalizeCandidates(std::vector<SearchCandidate> candidates) const;
-    std::optional<SearchCandidate> selectSingleSearchCandidate(const std::vector<SearchCandidate>& candidates) const;
     std::optional<SearchCandidate> selectPreferredSearchCandidate(uint16_t preferred_camera_id,
                                                                   const std::vector<SearchCandidate>& candidates) const;
     void latchConnectedCamera(const std::string& interface, const std::string& ssid, Clock::time_point now);

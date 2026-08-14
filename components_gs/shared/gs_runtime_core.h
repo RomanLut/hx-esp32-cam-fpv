@@ -26,7 +26,9 @@ struct GsRuntimeCore
     ~GsRuntimeCore();
 
     void resetState(uint16_t gs_device_id_value, bool clear_apfpv_state = true);
-    void resetPairing(gs::core::ITransport& transport, Clock::time_point now);
+    void resetPairing(gs::core::ITransport& transport,
+                      Clock::time_point now,
+                      uint16_t ignored_air_device_id = 0);
     void resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now);
     void resetTransportRuntimePreserveApfpvState(gs::core::ITransport& transport, Clock::time_point now);
 

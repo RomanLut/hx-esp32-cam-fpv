@@ -990,7 +990,11 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
     {
         char buf[256];
         const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
-        int channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
+        // Once APFPV is connected, the air config is authoritative because managed-mode
+        // discovery is independent of the GS raw-broadcast band filter.
+        int channel = apfpv && isSelectedTransportConnected()
+            ? getValidWifiChannel(config.dataChannel.wifi_channel)
+            : getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
         if (apfpv && !isWifiChannelSupportedForApfpv(channel))
         {
             channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
@@ -3321,14 +3325,6 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
             this->drawStatusError("No Permissions for Wifi scanning##apfpv_perm_err");
         }
 
-        if (apfpv_camera_state.active_camera_id != 0)
-        {
-            const std::string active_caption =
-                "Active Air Id: " + formatApfpvCameraId(apfpv_camera_state.active_camera_id) + "##apfpv_active";
-            (void)this->drawMenuItem(active_caption.c_str(), item_index);
-            item_index++;
-        }
-
         for (const ApfpvCameraDescriptor& camera : apfpv_camera_state.discovered_cameras)
         {
             if (camera.device_id == 0 || camera.device_id == apfpv_camera_state.active_camera_id)
@@ -3352,6 +3348,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 
         if (apfpv_camera_state.active_camera_id == 0 && apfpv_camera_state.discovered_cameras.empty())
         {
+            drawLargeGapIfTallScreen();
             this->drawStatus("No APFPV cameras found##apfpv_empty");
         }
     }
@@ -3374,6 +3371,24 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
                 this->goForward(OSDMenuId::SearchRun, 0);
             }
         }
+    }
+
+    uint16_t active_air_id = 0;
+    if (transport_kind == gs::core::TransportKind::APFPV)
+    {
+        active_air_id = apfpv_camera_state.active_camera_id;
+    }
+    else if (uses_channel_search && isSelectedTransportConnected())
+    {
+        active_air_id = s_runtimeCore.session.connectedAirDeviceId();
+    }
+
+    if (active_air_id != 0)
+    {
+        drawLargeGapIfTallScreen();
+        const std::string active_caption =
+            "Active Air Id: " + formatApfpvCameraId(active_air_id) + "##active_air_id";
+        this->drawStatus(active_caption.c_str());
     }
 
     if (!uses_channel_search && transport_kind != gs::core::TransportKind::APFPV && this->selectedItem > 0)
@@ -3481,7 +3496,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
         }
         else if (apfpv_camera_state.discovered_cameras.size() == 1)
         {
-            sprintf(buf, "Connecting to %s...", formatApfpvCameraId(apfpv_camera_state.discovered_cameras.front().device_id).c_str());
+            sprintf(buf, "Found APFPV camera.");
         }
         else
         {

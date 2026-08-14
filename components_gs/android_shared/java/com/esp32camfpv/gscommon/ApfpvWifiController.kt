@@ -72,7 +72,7 @@ class ApfpvWifiController(
     private var boundNetwork: Network? = null
     private var permissionRequestInFlight = false
     private var lastAirApfpvModeEnabled: Boolean? = null
-    private var awaitingMenuCameraSelection = false
+    private var awaitingMenuCameraSelection = true
 
     fun start() {
         if (syncJob != null) {
@@ -91,7 +91,7 @@ class ApfpvWifiController(
         syncJob?.cancel()
         syncJob = null
         lastAirApfpvModeEnabled = null
-        awaitingMenuCameraSelection = false
+        awaitingMenuCameraSelection = true
         syncCameraState(emptyList(), null)
         releaseRequestedNetwork()
         releaseWifiStreamingLock()
@@ -112,7 +112,7 @@ class ApfpvWifiController(
         }
         if (activeTransportKind != NativeCore.TRANSPORT_APFPV) {
             lastAirApfpvModeEnabled = null
-            awaitingMenuCameraSelection = false
+            awaitingMenuCameraSelection = true
             syncCameraState(emptyList(), null)
             releaseRequestedNetwork()
             releaseWifiStreamingLock()
@@ -121,17 +121,27 @@ class ApfpvWifiController(
         }
 
         val airApfpvModeEnabled = withContext(Dispatchers.Default) {
-            NativeCore.isAirApfpvModeEnabled(handle)
+            when (NativeCore.getAirApfpvModeState(handle)) {
+                0 -> false
+                1 -> true
+                else -> null
+            }
         }
-        val apfpvModeChanged = lastAirApfpvModeEnabled != null && lastAirApfpvModeEnabled != airApfpvModeEnabled
-        lastAirApfpvModeEnabled = airApfpvModeEnabled
+        // Before the first config packet, the native config storage contains default values.
+        // Do not treat the first live APFPV value as a mode change and disconnect that camera.
+        val apfpvModeChanged = airApfpvModeEnabled != null &&
+            lastAirApfpvModeEnabled != null &&
+            lastAirApfpvModeEnabled != airApfpvModeEnabled
+        if (airApfpvModeEnabled != null) {
+            lastAirApfpvModeEnabled = airApfpvModeEnabled
+        }
         if (apfpvModeChanged) {
             // Android scanResults is a platform cache. Clear the published camera list first so
             // the menu does not keep stale APFPV SSIDs after the air unit switches mode. Quest 2
             // cannot scan while its low-latency Wi-Fi lock is held, so leave it released until a
             // camera connection is active again.
             syncCameraState(emptyList(), null)
-            awaitingMenuCameraSelection = false
+            awaitingMenuCameraSelection = true
             releaseWifiStreamingLock()
             requestWifiScan("apfpvModeChanged", force = true)
             return
@@ -181,6 +191,15 @@ class ApfpvWifiController(
         }
 
         val preferredNetwork = cameraNetworks.firstOrNull { it.deviceId == preferredCameraId }
+        if (awaitingMenuCameraSelection) {
+            // A platform Wi-Fi association or cached preferred ID is not a user selection for
+            // this GS run. Keep it out of native active state until a Connect-to row is pressed.
+            releaseRequestedNetwork()
+            releaseWifiStreamingLock()
+            bindToNetwork(null)
+            syncCameraState(cameraNetworks, null)
+            return
+        }
         if (currentSsid != null) {
             if (reconnectRequested) {
                 releaseWifiStreamingLock()
@@ -204,10 +223,6 @@ class ApfpvWifiController(
         }
 
         releaseWifiStreamingLock()
-        if (awaitingMenuCameraSelection) {
-            syncCameraState(cameraNetworks, null)
-            return
-        }
         if (preferredNetwork != null) {
             connectToCameraNetwork(handle, preferredNetwork.ssid)
             return
@@ -254,8 +269,7 @@ class ApfpvWifiController(
 
     //===================================================================================
     //===================================================================================
-    // Advances an explicit menu search. A single discovered camera is connected directly;
-    // two or more are published as Connect-to rows for the user to choose between.
+    // Advances an explicit menu search and publishes every result for user selection.
     private suspend fun handleMenuSearch(
         handle: Long,
         cameraNetworks: List<CameraNetwork>,
@@ -272,17 +286,8 @@ class ApfpvWifiController(
         // describe cameras that have moved channel or are no longer powered on.
         requestWifiScan("menuSearch")
 
-        if (cameraNetworks.size >= 2) {
+        if (cameraNetworks.isNotEmpty()) {
             syncCameraState(cameraNetworks, null)
-            return
-        }
-
-        if (cameraNetworks.size == 1) {
-            val target = cameraNetworks.first()
-            withContext(Dispatchers.Default) {
-                NativeCore.setPreferredApfpvCameraId(handle, target.deviceId)
-            }
-            connectToCameraNetwork(handle, target.ssid)
             return
         }
 
