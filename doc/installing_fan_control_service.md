@@ -10,7 +10,7 @@ Boot, ssh, download script:
 
   **Raspberry Pi**: Add ```dtoverlay=pwm-2chan,pin2=19,func2=2``` to  the end of the file ```boot/config.txt```   
   
-  **Radxa Zero 3W**: Enable **PWM14-M0** overlay in **rsetup**: **Overlays\Manager Overlays\Enable PWM14-M0**
+  **Radxa Zero 3W**: Enable **PWM14-M0**, **PWM15-M1**, or both overlays in **rsetup**. At least one must be enabled. When both are available, the service drives both outputs with the same frequency and duty cycle.
 
 ## Adjust parameters
 Edit ```fan_control.sh```, adjust:
