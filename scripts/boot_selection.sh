@@ -45,9 +45,10 @@ BOOT_SELECTION_FILE="$HOME_DIRECTORY/bootSelection.txt"
 
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
-echo "QABUTTON1=$QABUTTON1"
-echo "QABUTTON2=$QABUTTON2"
-echo "QABUTTON3=$QABUTTON3"
+echo "==================================="
+echo "QABUTTON1(AIR REC,R)=$QABUTTON1"
+echo "QABUTTON2(GS REC,G)=$QABUTTON2"
+echo "QABUTTON3(Center)=$QABUTTON3"
 
 
 # Launch Ruby on first boot to install drivers
@@ -72,18 +73,30 @@ sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON2/direction"
 sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/export"
 sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON3/direction"
 
-# Check GPIO values and write to bootSelection.txt
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON1/value) -eq 1 ]; then
+# Allow the GPIO input configuration and button levels to settle before the
+# one-time boot selection sample.
+sleep 0.2
+
+# Sample each button once so the reported state is the state used for boot selection.
+QABUTTON1_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON1/value)
+QABUTTON2_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON2/value)
+QABUTTON3_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON3/value)
+
+echo "==================================="
+echo "QABUTTON1(AIR REC,R) state=$QABUTTON1_STATE"
+echo "QABUTTON2(GS REC,G) state=$QABUTTON2_STATE"
+echo "QABUTTON3(Center) state=$QABUTTON3_STATE"
+echo "==================================="
+
+# REC/R has priority so pressing REC/R and REC/G together always selects
+# esp32-cam-fpv instead of allowing the later Ruby selection to overwrite it.
+if [ "$QABUTTON1_STATE" -eq 1 ]; then
     echo "esp32camfpv" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
-fi
-
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON2/value) -eq 1 ]; then
+elif [ "$QABUTTON2_STATE" -eq 1 ] || [ "$QABUTTON3_STATE" -eq 1 ]; then
     echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
 fi
-
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON3/value) -eq 1 ]; then
-    echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
-fi
+# With no pressed button, leave bootSelection.txt unchanged and reuse the
+# previous boot choice.
 
 # Restore GPIOs
 sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
