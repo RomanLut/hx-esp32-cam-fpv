@@ -420,12 +420,15 @@ if ($Build)
 
     if ($stopNeeded)
     {
-        # GS normally runs as root through launch.sh. Stop it before replacing build outputs,
-        # and wait for termination so the compiler never competes with GS for Radxa resources.
-        $stopGsCmd = "(tmux kill-session -t gslaunch 2>/dev/null || true) && " +
+        # Radxa boot starts launch.sh in a restart-managed transient systemd unit. Stop the
+        # owning unit before killing fallback launches, otherwise systemd immediately starts
+        # a replacement GS process while make is still using the board's resources.
+        $stopGsCmd = "(sudo systemctl stop esp32camfpv-gs-session.service 2>/dev/null || true) && " +
+                     "(tmux kill-session -t gslaunch 2>/dev/null || true) && " +
                      "(sudo pkill -TERM -x gs 2>/dev/null || true); " +
                      "attempt=0; while pgrep -x gs >/dev/null 2>&1 && [ `$attempt -lt 50 ]; do sleep 0.1; attempt=`$((attempt + 1)); done; " +
                      "if pgrep -x gs >/dev/null 2>&1; then sudo pkill -KILL -x gs 2>/dev/null || true; sleep 0.2; fi; " +
+                     "if systemctl is-active --quiet esp32camfpv-gs-session.service; then echo 'Failed to stop the GS systemd unit.' >&2; exit 1; fi; " +
                      "if pgrep -x gs >/dev/null 2>&1; then echo 'Failed to stop GS.' >&2; exit 1; fi"
         Invoke-RemoteCommand "Stopping the running GS before build/restart ..." $stopGsCmd
     }
