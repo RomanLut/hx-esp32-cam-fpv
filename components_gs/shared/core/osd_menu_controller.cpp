@@ -1009,9 +1009,13 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
+        const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
         int i = gs::menu::getWifiRateMenuIndex(config.dataChannel.wifi_rate);
-        sprintf(buf, "Wifi Rate: %s##2", gs::menu::getWifiRateSummary(config).c_str());
-        if ( this->drawMenuItem( buf, 3) )
+        // APFPV leaves PHY rate selection to the SoftAP driver, so fixed-rate choices
+        // are intentionally unavailable until returning to RAW Broadcast transport.
+        const std::string rate_summary = apfpv ? "Auto" : gs::menu::getWifiRateSummary(config);
+        sprintf(buf, "Wifi Rate: %s##2", rate_summary.c_str());
+        if ( this->drawMenuItem( buf, 3) && !apfpv )
         {
             this->goForward( OSDMenuId::WifiRate, i );
         }
