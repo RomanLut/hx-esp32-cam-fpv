@@ -211,6 +211,9 @@ public:
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
     bool acceptConfigPacket() const;
+    bool isSpectator(uint16_t gs_device_id) const;
+    bool shouldShowSpectator(Clock::time_point now) const;
+    uint64_t searchCandidatePacketCount() const;
 
 private:
     mutable std::mutex m_state_mutex;
@@ -235,7 +238,10 @@ private:
     Clock::time_point m_rc_warning_until = {};
     std::deque<Clock::time_point> m_rc_packet_times;
     uint16_t m_connected_air_device_id = 0;
+    uint16_t m_associated_gs_device_id = 0;
     uint16_t m_ignored_pairing_air_device_id = 0;
+    uint64_t m_search_candidate_packet_count = 0;
+    Clock::time_point m_spectator_until = {};
     bool m_has_received_rc_packet = false;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;

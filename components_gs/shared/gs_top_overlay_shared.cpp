@@ -37,6 +37,7 @@ struct OverlayChipSpec
     std::string text;
     bool alert = false;
     float width = 0.0f;
+    bool warning = false;
 };
 
 //===================================================================================
@@ -83,8 +84,9 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips,
             y += resolved_height + row_gap;
         }
 
-        const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
-                                     : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
+        const ImVec4 bg = chip.warning ? ImVec4(0.95f, 0.73f, 0.05f, 0.92f)
+                                      : chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
+                                                   : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
 
         // The fullscreen overlay window is shared with OSD/menu drawing, so draw
         // chips with absolute coordinates instead of relying on ImGui item cursor state.
@@ -93,7 +95,9 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips,
         const ImVec2 text_pos(chip_min.x + std::max(0.0f, (chip_width - text_size.x) * 0.5f),
                               chip_min.y + std::max(0.0f, (resolved_height - text_size.y) * 0.5f));
         draw_list->AddRectFilled(chip_min, chip_max, ImGui::ColorConvertFloat4ToU32(bg));
-        draw_list->AddText(text_pos, ImGui::GetColorU32(ImGuiCol_Text), chip.text.c_str());
+        const ImU32 text_color = chip.warning ? IM_COL32(20, 20, 20, 255)
+                                              : ImGui::GetColorU32(ImGuiCol_Text);
+        draw_list->AddText(text_pos, text_color, chip.text.c_str());
 
         x += chip_width + row_gap;
         drew_chip = true;
@@ -176,6 +180,8 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
     bool show_gs_temp = false;
     bool show_air_temp = false;
 
+    if (input.spectator) chips.push_back({"SPECTATOR", false, 135.0f, true});
+
     if (input.air_stats_valid)
     {
         std::snprintf(buf, sizeof(buf), "AIR:%d", -input.air_rssi_dbm);
@@ -255,7 +261,9 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
         chips.push_back({buf, input.battery_percent < 30, 0.0f});
     }
 
-    if (input.no_ping) chips.push_back({"NO PING!", true, 0.0f});
+    // A spectator does not own the camera's control link, so a missing pong is
+    // expected and must not be presented as a link failure.
+    if (input.no_ping && !input.spectator) chips.push_back({"NO PING!", true, 0.0f});
     if (input.interference) chips.push_back({"CHANNEL CONGESTED!", true, 0.0f});
     if (input.sd_slow) chips.push_back({"SD SLOW!", true, 0.0f});
     if (input.air_record) chips.push_back({"AIR", true, 0.0f});

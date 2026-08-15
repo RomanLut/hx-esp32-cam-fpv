@@ -3315,6 +3315,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
             }
             this->searchDone = false;
             beginSelectedTransportSearchOrConnect(config, this->search_tp);
+            resetSearchPacketGraph();
             this->goForward(OSDMenuId::SearchRun, 0);
             return;
         }
@@ -3357,7 +3358,11 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
     {
         {
             char buf[256];
-            sprintf(buf, "Search...##1");
+            // RAW search excludes the currently selected camera for the entire round,
+            // so make that behavior explicit before the user starts it.
+            const bool searches_for_other_camera =
+                s_runtimeCore.session.connectedAirDeviceId() != 0;
+            sprintf(buf, "%s##1", searches_for_other_camera ? "Search other..." : "Search...");
             if (this->drawMenuItem(buf, 1))
             {
                 if (!switchActiveTransport(transport_kind))
@@ -3367,6 +3372,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 
                 this->searchDone = false;
                 beginSelectedTransportSearchOrConnect(config, this->search_tp);
+                resetSearchPacketGraph();
 
                 this->goForward(OSDMenuId::SearchRun, 0);
             }
@@ -3448,6 +3454,102 @@ void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
+// Resets the RAW-search histogram and assigns one fixed bar to every channel in the selected band.
+void OSDMenuController::resetSearchPacketGraph()
+{
+    m_search_packet_channels.clear();
+    m_search_packet_rates.clear();
+    m_search_packet_graph_active = currentTransportKind() == gs::core::TransportKind::RawBroadcast;
+    if (!m_search_packet_graph_active)
+    {
+        return;
+    }
+
+    for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
+    {
+        const int channel = WIFI_CHANNELS_BY_INDEX[i];
+        if (isWifiChannelAllowedByBand(channel, s_groundstation_config.wifiBand))
+        {
+            m_search_packet_channels.push_back(channel);
+            m_search_packet_rates.push_back(0.0f);
+        }
+    }
+
+    m_search_packet_channel = s_groundstation_config.wifi_channel;
+    m_search_last_capture_packet_count =
+        s_runtimeCore.raw_capture_packets_seen.load(std::memory_order_relaxed);
+    m_search_channel_capture_packet_count = 0;
+    m_search_channel_sample_tp = Clock::now();
+}
+
+//===================================================================================
+//===================================================================================
+// Samples all captured frames as packets/second and applies the WiFi scanner's 50/50 EMA.
+void OSDMenuController::updateSearchPacketGraph()
+{
+    if (!m_search_packet_graph_active || currentTransportKind() != gs::core::TransportKind::RawBroadcast)
+    {
+        return;
+    }
+
+    const uint64_t current_packet_count =
+        s_runtimeCore.raw_capture_packets_seen.load(std::memory_order_relaxed);
+    const int configured_channel = s_groundstation_config.wifi_channel;
+    const Clock::time_point now = Clock::now();
+
+    if (configured_channel != m_search_packet_channel)
+    {
+        const auto channel_it = std::find(m_search_packet_channels.begin(),
+                                          m_search_packet_channels.end(),
+                                          m_search_packet_channel);
+        const auto sample_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - m_search_channel_sample_tp).count();
+        if (channel_it != m_search_packet_channels.end() && sample_us > 0)
+        {
+            const size_t channel_index = static_cast<size_t>(
+                std::distance(m_search_packet_channels.begin(), channel_it));
+            const float packets_per_second =
+                static_cast<float>(m_search_channel_capture_packet_count) * 1000000.0f /
+                static_cast<float>(sample_us);
+            m_search_packet_rates[channel_index] =
+                m_search_packet_rates[channel_index] * 0.5f + packets_per_second * 0.5f;
+        }
+
+        // The channel change is the sampling boundary. Discard frames captured during
+        // reconfiguration so they cannot be attributed to either adjacent channel.
+        m_search_packet_channel = configured_channel;
+        m_search_last_capture_packet_count = current_packet_count;
+        m_search_channel_capture_packet_count = 0;
+        m_search_channel_sample_tp = now;
+        return;
+    }
+
+    m_search_channel_capture_packet_count +=
+        current_packet_count - m_search_last_capture_packet_count;
+    m_search_last_capture_packet_count = current_packet_count;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the non-scrolling RAW-search packet graph below the current search status.
+void OSDMenuController::drawSearchPacketGraph()
+{
+    if (m_search_packet_graph_active && currentTransportKind() == gs::core::TransportKind::RawBroadcast)
+    {
+        const auto channel_it = std::find(m_search_packet_channels.begin(),
+                                          m_search_packet_channels.end(),
+                                          s_groundstation_config.wifi_channel);
+        const int current_channel_index = channel_it == m_search_packet_channels.end()
+            ? -1
+            : static_cast<int>(std::distance(m_search_packet_channels.begin(), channel_it));
+        gs::menu::imgui::drawMenuPacketHistogram(m_search_packet_rates,
+                                                  current_channel_index,
+                                                  m_imgui_layout);
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Draws the active channel search or connect progress screen.
 void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
 {
@@ -3512,7 +3614,10 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
         this->drawStatus(buf);
     }
 
+    updateSearchPacketGraph();
+    drawSearchPacketGraph();
     advanceSelectedTransportSearchOrConnect(config, this->search_tp, this->searchDone);
+    updateSearchPacketGraph();
 
     if (uses_channel_search)
     {

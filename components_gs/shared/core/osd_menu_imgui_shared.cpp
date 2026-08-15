@@ -52,6 +52,14 @@ void popButtonStyle()
     ImGui::PopStyleColor(3);
 }
 
+//===================================================================================
+//===================================================================================
+// Returns the status/graph width that fits between both menu-window padding edges.
+float getVisibleStatusWidth(const MenuFrameLayout& layout)
+{
+    return std::max(0.0f, std::min(layout.status_width, ImGui::GetContentRegionAvail().x));
+}
+
 } // namespace
 
 //===================================================================================
@@ -144,7 +152,7 @@ bool drawMenuItem(const char* caption, const MenuFrameLayout& layout, bool selec
 void drawMenuStatus(const char* caption, const MenuFrameLayout& layout)
 {
     pushButtonStyle(ImColor(48, 48, 48));
-    ImGui::Button(caption, ImVec2(layout.status_width, layout.button_height));
+    ImGui::Button(caption, ImVec2(getVisibleStatusWidth(layout), layout.button_height));
     popButtonStyle();
 }
 
@@ -154,8 +162,58 @@ void drawMenuStatus(const char* caption, const MenuFrameLayout& layout)
 void drawMenuStatusError(const char* caption, const MenuFrameLayout& layout)
 {
     pushButtonStyle(ImColor(176, 44, 44));
-    ImGui::Button(caption, ImVec2(layout.status_width, layout.button_height));
+    ImGui::Button(caption, ImVec2(getVisibleStatusWidth(layout), layout.button_height));
     popButtonStyle();
+}
+
+//===================================================================================
+//===================================================================================
+// Draws a fixed-position per-channel packet histogram and marks the active bar below it.
+void drawMenuPacketHistogram(const std::vector<float>& packet_rates,
+                             int current_channel_index,
+                             const MenuFrameLayout& layout)
+{
+    if (packet_rates.empty())
+    {
+        return;
+    }
+
+    const float line_margin = std::max(0.0f, layout.button_height - layout.item_gap_y);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + line_margin);
+
+    const float maximum_rate = *std::max_element(packet_rates.begin(), packet_rates.end());
+    const float graph_width = getVisibleStatusWidth(layout);
+    ImGui::PlotHistogram("##search_channel_packet_counts",
+                         packet_rates.data(),
+                         static_cast<int>(packet_rates.size()),
+                         0,
+                         nullptr,
+                         0.0f,
+                         std::max(1.0f, maximum_rate),
+                         ImVec2(graph_width, 84.0f * layout.scale));
+
+    if (current_channel_index < 0 || current_channel_index >= static_cast<int>(packet_rates.size()))
+    {
+        return;
+    }
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2 graph_min = ImGui::GetItemRectMin();
+    const ImVec2 graph_max = ImGui::GetItemRectMax();
+    const float inner_width = graph_max.x - graph_min.x - style.FramePadding.x * 2.0f;
+    const float bar_width = inner_width / static_cast<float>(packet_rates.size());
+    const float marker_center_x = graph_min.x + style.FramePadding.x +
+                                  (static_cast<float>(current_channel_index) + 0.5f) * bar_width;
+    const float marker_top_y = graph_max.y + 2.0f * layout.scale;
+    const float marker_half_width = 5.0f * layout.scale;
+    const float marker_height = 8.0f * layout.scale;
+
+    ImGui::GetWindowDrawList()->AddTriangleFilled(
+        ImVec2(marker_center_x, marker_top_y),
+        ImVec2(marker_center_x - marker_half_width, marker_top_y + marker_height),
+        ImVec2(marker_center_x + marker_half_width, marker_top_y + marker_height),
+        IM_COL32_WHITE);
+    ImGui::Dummy(ImVec2(0.0f, marker_height));
 }
 
 //===================================================================================

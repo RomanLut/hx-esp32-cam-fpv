@@ -754,7 +754,9 @@ std::string buildSnapshotJson()
         << "\"gs_device_id\":" << s_runtimeCore.gs_device_id << ','
         << "\"connected_air_device_id\":" << s_runtimeCore.session.connectedAirDeviceId() << ','
         << "\"got_config_packet\":" << (s_runtimeCore.session.gotConfigPacket() ? "true" : "false") << ','
-        << "\"accept_config_packet\":" << (s_runtimeCore.session.acceptConfigPacket() ? "true" : "false")
+        << "\"accept_config_packet\":" << (s_runtimeCore.session.acceptConfigPacket() ? "true" : "false") << ','
+        << "\"spectator\":" << (s_runtimeCore.session.isSpectator(s_runtimeCore.gs_device_id) ? "true" : "false") << ','
+        << "\"spectator_visible\":" << (s_runtimeCore.session.shouldShowSpectator(Clock::now()) ? "true" : "false")
         << "},"
         << "\"transport_debug\":{"
         << "\"transport_packets_seen\":" << s_runtimeCore.transport_packets_seen << ','

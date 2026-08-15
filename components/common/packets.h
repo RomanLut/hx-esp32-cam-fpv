@@ -210,7 +210,7 @@ struct Ground2Air_Header
     uint8_t crc = 0;
     uint8_t packet_version = PACKET_VERSION;
     uint16_t airDeviceId; //unique id of target AIR unit. 
-    uint16_t gsDeviceId;  //ID of GS. Assigned permanently on first boot.
+    uint16_t gsDeviceId;  //ID of GS. The first nonzero ID accepted by AIR owns it until AIR reboots.
 
 };
 
@@ -260,7 +260,7 @@ struct Air2Ground_Header
     uint8_t version; //PACKET_VERSION
     uint8_t crc = 0;
     uint16_t airDeviceId; //unique id of this AIR unit. Assigned permanently on first boot.
-    uint16_t gsDeviceId;  //ID of GS this unit is connected to cuurently. 0 - not connected currently. Will accept 
+    uint16_t gsDeviceId;  //ID of the associated GS. 0 means AIR has not associated since boot.
 };
 
 //======================================================

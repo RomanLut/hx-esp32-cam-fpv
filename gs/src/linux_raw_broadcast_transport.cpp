@@ -668,6 +668,10 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
             }
         }
 
+        // Search activity must include every captured monitor frame, before any
+        // radiotap, MAC-signature, checksum, or transport-packet filtering.
+        s_runtimeCore.raw_capture_packets_seen.fetch_add(1, std::memory_order_relaxed);
+
         if (pcap.index < 2)
         {
             std::lock_guard<std::mutex> lg(s_gs_stats_mutex);

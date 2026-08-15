@@ -24,7 +24,10 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id,
     {
         std::lock_guard<std::mutex> lg(m_state_mutex);
         m_connected_air_device_id = 0;
+        m_associated_gs_device_id = 0;
         m_ignored_pairing_air_device_id = ignored_air_device_id;
+        m_search_candidate_packet_count = 0;
+        m_spectator_until = {};
         m_got_config_packet = false;
         m_accept_config_packet = false;
         m_telemetry_buffered_size = 0;
@@ -41,7 +44,9 @@ void GsSessionCore::resetPairing(uint16_t gs_device_id,
     }
 
     transport.getPacketFilter().set_packet_header_data(gs_device_id, 0);
-    transport.getPacketFilter().set_packet_filtering(0, gs_device_id);
+    // An unpaired GS must hear Config packets addressed to another GS so it can
+    // select that camera as a receive-only spectator session.
+    transport.getPacketFilter().set_packet_filtering(0, 0);
     transport.reset_rx_state();
 
     // Lens settings belong to the paired air camera, so a fresh pairing must not
@@ -62,14 +67,21 @@ void GsSessionCore::clearPairingAirDeviceExclusion()
 
 //===================================================================================
 //===================================================================================
-// Accepts an initial connect-config packet from a permitted air unit if not already connected,
-// stores the air config, and updates the transport packet filter.
+// Selects the first valid camera config, retaining its owning GS ID for control or spectator mode.
 bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet_info,
                                           const uint8_t* packet_data,
                                           uint16_t gs_device_id,
                                           ITransport& transport)
 {
-    if (!protocol::isConnectConfigPacket(packet_info, Air2Ground_Header::Type::Config, gs_device_id))
+    if (!packet_info.header || packet_info.header->type != Air2Ground_Header::Type::Config ||
+        packet_info.header->gsDeviceId == 0 || packet_data == nullptr ||
+        packet_info.packetSize < sizeof(Air2Ground_Config_Packet))
+    {
+        return false;
+    }
+
+    const auto* air_config = reinterpret_cast<const Air2Ground_Config_Packet*>(packet_data);
+    if (!protocol::validateFixedHeaderCrc(*air_config))
     {
         return false;
     }
@@ -84,7 +96,6 @@ bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet
         }
     }
 
-    const auto* air_config = reinterpret_cast<const Air2Ground_Config_Packet*>(packet_data);
     {
         std::lock_guard<std::mutex> config_lock(m_config_packet_mutex);
         m_config_packet.camera = air_config->camera;
@@ -93,15 +104,20 @@ bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet
     }
 
     const uint16_t air_device_id = packet_info.header->airDeviceId;
+    const uint16_t associated_gs_device_id = packet_info.header->gsDeviceId;
+    const bool spectator = associated_gs_device_id != gs_device_id;
     {
         std::lock_guard<std::mutex> lg(m_state_mutex);
         m_connected_air_device_id = air_device_id;
+        m_associated_gs_device_id = associated_gs_device_id;
         m_ignored_pairing_air_device_id = 0;
         m_accept_config_packet = true;
+        m_spectator_until = spectator ? Clock::now() + std::chrono::seconds(2)
+                                      : Clock::time_point{};
     }
 
     transport.getPacketFilter().set_packet_header_data(gs_device_id, air_device_id);
-    transport.getPacketFilter().set_packet_filtering(air_device_id, gs_device_id);
+    transport.getPacketFilter().set_packet_filtering(air_device_id, associated_gs_device_id);
     return true;
 }
 
@@ -111,8 +127,13 @@ bool GsSessionCore::tryAcceptConnectConfig(const protocol::AirPacketInfo& packet
 bool GsSessionCore::isPacketForSession(const protocol::AirPacketInfo& packet_info, uint16_t gs_device_id) const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
+    const uint16_t associated_gs_device_id = m_associated_gs_device_id != 0
+        ? m_associated_gs_device_id
+        : gs_device_id;
     return m_got_config_packet &&
-           protocol::isPacketForSession(packet_info, gs_device_id, m_connected_air_device_id);
+           protocol::isPacketForSession(packet_info,
+                                        associated_gs_device_id,
+                                        m_connected_air_device_id);
 }
 
 //===================================================================================
@@ -130,6 +151,21 @@ SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
         return decision;
     }
 
+    {
+        std::lock_guard<std::mutex> lg(m_state_mutex);
+        if (!m_got_config_packet && m_ignored_pairing_air_device_id != 0 &&
+            decision.packet_info.header->airDeviceId == m_ignored_pairing_air_device_id)
+        {
+            // Search-round exclusion applies to all packets from the previous camera,
+            // not only Config, so its traffic cannot extend this channel's dwell.
+            return decision;
+        }
+        if (!m_got_config_packet)
+        {
+            m_search_candidate_packet_count++;
+        }
+    }
+
     if (!gotConfigPacket())
     {
         decision.accepted_connect_config =
@@ -140,6 +176,15 @@ SessionPacketDecision GsSessionCore::classifyPacket(const uint8_t* packet_data,
     if (!isPacketForSession(decision.packet_info, gs_device_id))
     {
         return decision;
+    }
+
+    if (decision.packet_info.header->gsDeviceId != 0 &&
+        decision.packet_info.header->gsDeviceId != gs_device_id)
+    {
+        // Refresh only after the active Air ID and its recorded owner pass the
+        // session filter. Traffic from other cameras must remain invisible.
+        std::lock_guard<std::mutex> lg(m_state_mutex);
+        m_spectator_until = Clock::now() + std::chrono::seconds(2);
     }
 
     switch (decision.packet_info.header->type)
@@ -320,6 +365,10 @@ ControlPacketView GsSessionCore::buildControlPacket(uint16_t gs_device_id) const
     ControlPacketView view;
 
     std::lock_guard<std::mutex> state_lock(m_state_mutex);
+    if (m_associated_gs_device_id != 0 && m_associated_gs_device_id != gs_device_id)
+    {
+        return view;
+    }
     if (!m_got_config_packet)
     {
         view.type = ControlPacketType::Connect;
@@ -509,11 +558,14 @@ void GsSessionCore::flushTelemetryIfNeeded(bool got_rc_packet,
     size_t buffered_size = 0;
     uint16_t connected_air_device_id = 0;
     bool got_config_packet = false;
+    bool spectator = false;
     {
         std::lock_guard<std::mutex> state_lock(m_state_mutex);
         buffered_size = m_telemetry_buffered_size;
         got_config_packet = m_got_config_packet;
         connected_air_device_id = m_connected_air_device_id;
+        spectator = m_associated_gs_device_id != 0 &&
+                    m_associated_gs_device_id != gs_device_id;
 
         bool should_flush =
             (buffered_size == GROUND2AIR_DATA_MAX_PAYLOAD_SIZE) ||
@@ -529,7 +581,7 @@ void GsSessionCore::flushTelemetryIfNeeded(bool got_rc_packet,
         m_telemetry_buffered_size = 0;
     }
 
-    if (!got_config_packet)
+    if (!got_config_packet || spectator)
     {
         return;
     }
@@ -926,6 +978,33 @@ bool GsSessionCore::acceptConfigPacket() const
 {
     std::lock_guard<std::mutex> lg(m_state_mutex);
     return m_accept_config_packet;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether the selected camera is associated with a different GS.
+bool GsSessionCore::isSpectator(uint16_t gs_device_id) const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return m_associated_gs_device_id != 0 && m_associated_gs_device_id != gs_device_id;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether foreign-owned camera traffic refreshed the two-second banner.
+bool GsSessionCore::shouldShowSpectator(Clock::time_point now) const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return now < m_spectator_until;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns decoded packets from non-excluded cameras observed during the current search round.
+uint64_t GsSessionCore::searchCandidatePacketCount() const
+{
+    std::lock_guard<std::mutex> lg(m_state_mutex);
+    return m_search_candidate_packet_count;
 }
 
 }

@@ -9,7 +9,9 @@
 namespace
 {
 
-constexpr int kSearchTimeStepMs = 1000;
+constexpr int kSearchInitialDwellMs = 300;
+constexpr int kSearchEspPacketExtensionMs = 1500;
+constexpr int kSearchResultDisplayOffsetMs = 1000;
 
 //===================================================================================
 //===================================================================================
@@ -19,7 +21,6 @@ void advanceSearchWifiChannel(Ground2Air_Config_Packet& config,
                               Clock::time_point& search_tp)
 {
     auto& gs_config = s_groundstation_config;
-    search_tp = Clock::now();
 
     gs_config.wifi_channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
     int channel_index = getWifiChannelIndex(gs_config.wifi_channel);
@@ -41,6 +42,9 @@ void advanceSearchWifiChannel(Ground2Air_Config_Packet& config,
     }
 
     applyWifiChannelInstantToSession(config, transport);
+    // Start the dwell only after synchronous radio reconfiguration completes. Starting
+    // before the channel switch shortens the actual receive window on slower adapters.
+    search_tp = Clock::now();
 }
 
 }
@@ -187,7 +191,10 @@ void TransportManagerBase::beginSearchOrConnect(Ground2Air_Config_Packet& config
             s_groundstation_config.wifiBand);
         applyWifiChannelToSession(config);
         search_tp = Clock::now();
+        m_search_channel_dwell_extended = false;
         performAirUnpair(s_groundstation_config.deviceId, *m_active_transport, active_air_device_id);
+        m_search_channel_candidate_packet_baseline =
+            s_runtimeCore.session.searchCandidatePacketCount();
         return;
     }
 
@@ -214,7 +221,21 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
         return;
     }
 
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - search_tp).count() <= kSearchTimeStepMs)
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now() - search_tp).count();
+    if (!m_search_channel_dwell_extended &&
+        elapsed_ms <= kSearchInitialDwellMs &&
+        s_runtimeCore.session.searchCandidatePacketCount() !=
+            m_search_channel_candidate_packet_baseline)
+    {
+        // A decoded packet from a non-excluded camera was observed during the fast
+        // scan window. Keep this channel long enough for pairing/config traffic.
+        m_search_channel_dwell_extended = true;
+    }
+
+    const int dwell_ms = kSearchInitialDwellMs +
+                         (m_search_channel_dwell_extended ? kSearchEspPacketExtensionMs : 0);
+    if (elapsed_ms <= dwell_ms)
     {
         return;
     }
@@ -224,17 +245,19 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
         return;
     }
 
-    // Ignored Air packets still reach the decoded-packet pipeline while searching, so
-    // only an accepted pairing proves that the current channel contains a search result.
+    // Only an accepted pairing proves that the current channel contains a search result.
     if (isConnected())
     {
         search_done = true;
-        search_tp = Clock::now() + std::chrono::milliseconds(kSearchTimeStepMs);
+        search_tp = Clock::now() + std::chrono::milliseconds(kSearchResultDisplayOffsetMs);
         s_settingsStorage.saveGroundStationConfig();
         return;
     }
 
     advanceSearchWifiChannel(config, *m_active_transport, search_tp);
+    m_search_channel_candidate_packet_baseline =
+        s_runtimeCore.session.searchCandidatePacketCount();
+    m_search_channel_dwell_extended = false;
 }
 
 //===================================================================================

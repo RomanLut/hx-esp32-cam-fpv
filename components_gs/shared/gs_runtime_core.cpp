@@ -68,6 +68,7 @@ void GsRuntimeCore::resetState(uint16_t gs_device_id_value, bool clear_apfpv_sta
     next_tx_block_index = 1;
     tx_block_has_first_packet = false;
     tx_first_packet_payload.fill(0);
+    raw_capture_packets_seen.store(0, std::memory_order_relaxed);
     transport_packets_seen = 0;
     transport_packets_passed_filter = 0;
     transport_packets_filtered = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -46,6 +47,7 @@ struct GsRuntimeCore
     fec_t* tx_fec = nullptr;
     bool tx_block_has_first_packet = false;
     std::array<uint8_t, GROUND2AIR_MAX_MTU> tx_first_packet_payload = {};
+    std::atomic<uint64_t> raw_capture_packets_seen = {0};
     uint32_t transport_packets_seen = 0;
     uint32_t transport_packets_passed_filter = 0;
     uint32_t transport_packets_filtered = 0;

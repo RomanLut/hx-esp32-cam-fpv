@@ -11,6 +11,7 @@
 
 #include "fec.h"
 #include "Log.h"
+#include "gs_runtime_core.h"
 #include "gs_shared_state.h"
 #include "structures.h"
 #include "wifi_channels.h"
@@ -704,21 +705,38 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
                 return;
             }
 
-            // InitWrite performs the RTL8812EU TX+RX/coex bring-up. StartRxLoop
-            // then owns bulk-IN and delivers monitor frames through this callback.
-            adapter->device->InitWrite(makeSelectedChannel(s_groundstation_config.wifi_channel));
-            adapter->device->StartRxLoop(
-                [this, adapter](const Packet& packet)
-                {
-                    // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110.
-                    // Derived from Jaguar1; used as a best-effort approximation on Jaguar2/3
-                    // adapters too until a per-generation RSSI-to-dBm conversion is validated
-                    // on that hardware.
-                    const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
-                    const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
-                    const int input_dbm = std::max(dbm0, dbm1);
-                    queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
-                });
+            const auto receive_packet = [this, adapter](const Packet& packet)
+            {
+                // Match WiFi scan semantics: count every captured monitor frame
+                // before MAC-signature and transport validation discard traffic.
+                s_runtimeCore.raw_capture_packets_seen.fetch_add(1, std::memory_order_relaxed);
+
+                // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110.
+                // Derived from Jaguar1; used as a best-effort approximation on Jaguar2/3
+                // adapters too until a per-generation RSSI-to-dBm conversion is validated
+                // on that hardware.
+                const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
+                const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
+                const int input_dbm = std::max(dbm0, dbm1);
+                queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
+            };
+
+            const devourer::AdapterCaps adapter_caps = adapter->device->GetAdapterCaps();
+            const SelectedChannel initial_channel =
+                makeSelectedChannel(s_groundstation_config.wifi_channel);
+            if (adapter_caps.generation == devourer::ChipGeneration::Jaguar3)
+            {
+                // Jaguar3/RTL8812EU requires the TX-oriented bring-up with RX enabled,
+                // followed by a separate RX loop. Jaguar1/2 must retain their RX-first
+                // Init path; applying the Jaguar3 sequence globally prevents monitor
+                // frames from reaching bulk-IN on RTL8812AU.
+                adapter->device->InitWrite(initial_channel);
+                adapter->device->StartRxLoop(receive_packet);
+            }
+            else
+            {
+                adapter->device->Init(receive_packet, initial_channel);
+            }
         }
         catch (const std::exception& ex)
         {

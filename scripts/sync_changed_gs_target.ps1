@@ -334,6 +334,7 @@ Write-Host "Remote: ${User}@${RemoteHost}:${RemoteProjectDir}"
 Write-Host "Syncing OpenCV trees via rsync ..."
 $opencvWrapperBuildInputsChanged = $false
 $gsRuntimeHadRsyncChanges = $false
+$gsBuildInputsHadRsyncChanges = $false
 foreach ($relativePath in $opencvSyncPaths)
 {
     $sourceForWsl = Convert-ToWslPath (Join-Path $repoRoot $relativePath)
@@ -391,6 +392,13 @@ foreach ($relativePath in $gsSyncPaths)
         {
             $gsRuntimeHadRsyncChanges = $true
         }
+        if ($relativePath -in @("gs", "components_gs", "components/common"))
+        {
+            # rsync preserves source timestamps. A changed file can therefore remain
+            # older than its remote object, so make -q alone cannot prove the binary
+            # contains newly transferred content.
+            $gsBuildInputsHadRsyncChanges = $true
+        }
     }
 }
 
@@ -414,7 +422,7 @@ if ($Build)
 {
     $gsNeedsBuild = Test-RemoteGsNeedsBuild
     $gsIsRunning = Test-RemoteGsIsRunning
-    $compileNeeded = $opencvWrapperBuildInputsChanged -or $gsNeedsBuild
+    $compileNeeded = $opencvWrapperBuildInputsChanged -or $gsBuildInputsHadRsyncChanges -or $gsNeedsBuild
     $restartNeeded = $gsRuntimeHadRsyncChanges -or $compileNeeded -or (-not $gsIsRunning)
     $stopNeeded = $compileNeeded -or ($RunAfterBuild -and $restartNeeded)
 
@@ -442,7 +450,12 @@ if ($Build)
         Write-Host "Skipping OpenCV wrapper rebuild: rsync reported no wrapper source, header, or CMake input changes."
     }
 
-    if ($gsNeedsBuild)
+    if ($gsBuildInputsHadRsyncChanges)
+    {
+        Write-Host "Rebuilding GS because rsync transferred build inputs ..."
+        Invoke-RemoteCommand "" "cd $RemoteProjectDir/$RemoteBuildSubdir && make --no-print-directory -B -j`$(nproc)"
+    }
+    elseif ($gsNeedsBuild)
     {
         Write-Host "Building only out-of-date GS targets on remote host ..."
         Invoke-RemoteCommand "" "cd $RemoteProjectDir/$RemoteBuildSubdir && make --no-print-directory -j`$(nproc)"

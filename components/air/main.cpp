@@ -195,8 +195,6 @@ static bool s_sd_record_current_frame = false;
 static uint16_t s_air_device_id;
 static uint16_t s_connected_gs_device_id = 0;
 
-static int64_t s_accept_connection_timeout_ms = 0;
-
 #ifdef UART_MAVLINK
 
 static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
@@ -1533,15 +1531,11 @@ IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue,
     return false;
 }
 
-static void unpairGS();
-
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
 static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
-    s_accept_connection_timeout_ms = 0;
-
     int64_t t = esp_timer_get_time();
     s_last_seen_config_packet = t;
 
@@ -1961,6 +1955,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
+// Permanently associates this camera with one GS for the current boot.
 __attribute__((optimize("Os")))
 IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
 {
@@ -1969,39 +1964,25 @@ IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
     s_fec_decoder.packetFilter.set_packet_filtering( s_connected_gs_device_id, s_air_device_id );
 
     LOG("Accepting connection to GS device ID: 0x%04x\n", s_connected_gs_device_id );
-
-    s_accept_connection_timeout_ms = millis() + 3000;
 }
 
 //===========================================================================================
 //===========================================================================================
-static void unpairGS()
-{
-    s_connected_gs_device_id = 0;
-    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
-    s_fec_decoder.packetFilter.set_packet_filtering( 0, 0 );
-
-    LOG("Unpair from GS\n" );
-
-    s_accept_connection_timeout_ms = 0;
-}
-
-//===========================================================================================
-//===========================================================================================
+// Accepts configuration only from the GS associated with this camera.
 static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
+    // The decoder filter rejects new packets from other devices after association,
+    // while this check also rejects packets already queued before the filter changed.
+    if ( src.gsDeviceId == 0 || src.airDeviceId != s_air_device_id ||
+         ( s_connected_gs_device_id != 0 && src.gsDeviceId != s_connected_gs_device_id ) )
+    {
+        return;
+    }
+
     if ( s_connected_gs_device_id == 0 ) 
     {
-        if ( src.airDeviceId == s_air_device_id )
-        {
-            //accept connection with GS. This GS was connected to this camera before. 
-            //Camera rebooted?
-            acceptConnectionWithGS( src.gsDeviceId );
-        }
-        else
-        {
-            return;
-        }
+        // Accept the first GS addressing this camera and keep that association until reboot.
+        acceptConnectionWithGS( src.gsDeviceId );
     }
 
     //handle settings not related to camera sensor setup.
@@ -2011,10 +1992,12 @@ static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 
 //===========================================================================================
 //===========================================================================================
+// Associates the first valid GS and ignores later connection requests until reboot.
 IRAM_ATTR static void handle_ground2air_connect_packet(Ground2Air_Config_Packet& src)
 {
-    if ( s_connected_gs_device_id == 0 )
+    if ( src.gsDeviceId != 0 && s_connected_gs_device_id == 0 )
     {
+        // Connect is broadcast during search; the first valid GS owns the camera until reboot.
         acceptConnectionWithGS( src.gsDeviceId );
     }
 }
@@ -2105,7 +2088,9 @@ static void send_mavlink_radio_status_if_idle()
 __attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
-    if ( ( s_connected_gs_device_id == 0 ) || ( src.gsDeviceId != s_connected_gs_device_id ) ) return;
+    if ( ( s_connected_gs_device_id == 0 ) ||
+         ( src.gsDeviceId != s_connected_gs_device_id ) ||
+         ( src.airDeviceId != s_air_device_id ) ) return;
 
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
@@ -4058,14 +4043,6 @@ extern "C" void app_main()
                 }
                 
                 s_fec_encoder.unlock();
-            }
-        }
-
-        if ( s_accept_connection_timeout_ms != 0 ) 
-        {
-            if ( s_accept_connection_timeout_ms < millis() )
-            {
-                unpairGS();
             }
         }
 

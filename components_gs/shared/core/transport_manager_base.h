@@ -43,6 +43,8 @@ protected:
     RXDescriptor m_rx_descriptor = {};
     TXDescriptor m_tx_descriptor = {};
     bool m_descriptors_ready = false;
+    uint64_t m_search_channel_candidate_packet_baseline = 0;
+    bool m_search_channel_dwell_extended = false;
 };
 
 }
