@@ -42,7 +42,7 @@ GS_RESTART_MANAGED="${ESP32CAMFPV_RESTART_ON_FAILURE:-0}"
 # Prevents a separate tty1 login shell from receiving GS menu key presses.
 stop_console_getty_while_gs_runs()
 {
-    if ! $IS_RADXA || ! command -v systemctl >/dev/null 2>&1; then
+    if ! command -v systemctl >/dev/null 2>&1; then
         return
     fi
 
@@ -56,12 +56,12 @@ stop_console_getty_while_gs_runs()
         return
     fi
 
-    # Radxa images autologin root on tty1. GS can be launched from SSH while
+    # RubyFPV images autologin root on tty1. GS can be launched from SSH while
     # that physical console shell is still active; GPIO/uinput and keyboard
     # navigation keys then reach both GS and the shell, so Up/Down/Enter can
     # execute shell-history commands such as "sudo reboot". When GS is started
-    # by /root/.profile on tty1, stopping getty@tty1 would kill the launch
-    # shell itself, so only stop tty1 for SSH/other launch contexts.
+    # directly by /root/.profile on tty1, stopping getty@tty1 would kill the
+    # launch shell itself, so only stop tty1 for detached/SSH launch contexts.
     if [ "$(tty 2>/dev/null)" = "/dev/tty1" ]; then
         return
     fi
@@ -126,8 +126,12 @@ else
     GS_EXIT_STATUS=$?
 fi
 
-#let LAN card get ip address (required if dhcpcd service is disabled)
-sudo systemctl start dhcpcd &
+# RubyFPV disables dhcpcd, so request a lease after GS exits only when the wired
+# interface has no address. Starting dhcpcd over a persistent static management
+# address adds a second DHCP address and changes the default source route.
+if ! ip -4 addr show dev eth0 2>/dev/null | grep -q 'inet '; then
+    sudo systemctl start dhcpcd &
+fi
 
 #reconnect wlan0 to access point
 sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf

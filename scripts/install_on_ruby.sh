@@ -80,6 +80,10 @@ sudo apt update
 
 sudo apt install --no-install-recommends -y libdrm-dev libgbm-dev libgles2-mesa-dev libpcap-dev libturbojpeg0-dev libts-dev libfreetype6-dev build-essential autoconf automake libtool libasound2-dev libudev-dev libdbus-1-dev libxext-dev libsdl2-dev dkms git aircrack-ng cmake
 
+if [ "$IS_RADXA" = false ]; then
+    sudo apt install --no-install-recommends -y raspberrypi-kernel-headers
+fi
+
 SDL2_VERSION="2.32.10"
 SDL2_ARCHIVE="SDL2-$SDL2_VERSION.tar.gz"
 SDL2_SOURCE_DIR="$HOME_DIRECTORY/SDL2-$SDL2_VERSION"
@@ -108,9 +112,7 @@ if [ ! -d esp32-cam-fpv/.git ]; then
 fi
 cd esp32-cam-fpv
 
-if [ "$IS_RADXA" = true ]; then
-    MAKE_JOBS="$MAKE_JOBS" bash scripts/install_ruby_rtl8812au_driver.sh
-fi
+MAKE_JOBS="$MAKE_JOBS" bash scripts/install_ruby_rtl8812au_driver.sh
 
 if [ -f OpenCV/OpenCVWrapper/scripts/build_linux.sh ]; then
     BUILD_WRAPPER_SCRIPT="OpenCV/OpenCVWrapper/scripts/build_linux.sh"

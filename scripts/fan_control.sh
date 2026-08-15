@@ -92,9 +92,10 @@ configure_pwm()
 
         # Add the PWM configuration under [all] section
         sudo awk -v pwm="$pwm_line" '
-            /^\[all\]/ {
+            /^\[all\]/ && !inserted {
                 print $0
                 print pwm
+                inserted = 1
                 next
             }
             { print }

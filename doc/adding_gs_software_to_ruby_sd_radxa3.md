@@ -24,7 +24,7 @@
 
 ssh connection should stay alive untill reboot.
 
-On Radxa, the installer also builds the pinned RubyFPV RTL8812AU v5.2.20 driver
+The installer also builds the pinned RubyFPV RTL8812AU v5.2.20 driver
 with the APFPV fixes and replaces both copies of the module:
 
 * ```/lib/modules/$(uname -r)/kernel/drivers/net/wireless/88XXau.ko```, which is
@@ -178,7 +178,7 @@ There is no separate GS recovery hook and no automatic USB reset.
 After a Ruby software update, check whether that update replaced the packaged
 driver. If the hashes differ, rerun the GS driver installer and reboot:
 
-```sha256sum /home/radxa/ruby/drivers/88XXau-radxa.ko /lib/modules/$(uname -r)/kernel/drivers/net/wireless/88XXau.ko```
+```sudo sha256sum /home/radxa/ruby/drivers/88XXau-radxa.ko /lib/modules/$(uname -r)/kernel/drivers/net/wireless/88XXau.ko```
 
 ```cd /home/radxa/esp32-cam-fpv && MAKE_JOBS=4 bash scripts/install_ruby_rtl8812au_driver.sh```
 

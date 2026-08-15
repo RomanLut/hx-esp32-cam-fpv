@@ -147,6 +147,11 @@ CFLAGS = $(CXXFLAGS)
 LDFLAGS := -L/usr/lib/aarch64-linux-gnu/ -L/usr/lib/ -L/opt/vc/lib/ 
 LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs -ldl
 
+# GCC implements 64-bit atomics through libatomic on 32-bit ARM targets.
+ifneq ($(filter armv6l armv7l,$(shell uname -m)),)
+LDLIBS += -latomic
+endif
+
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td
 

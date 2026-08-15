@@ -5,10 +5,24 @@ DRIVER_REPOSITORY="https://github.com/svpcom/rtl8812au.git"
 DRIVER_COMMIT="20bcaf511f159bfd8f435f7117b82056fc453572"
 SCRIPT_DIRECTORY=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PATCH_FILE="$SCRIPT_DIRECTORY/rtl8812au_v5.2.20_apfpv.patch"
-RUBY_DRIVER="/home/radxa/ruby/drivers/88XXau-radxa.ko"
 KERNEL_RELEASE=$(uname -r)
+
+if [ -d /home/radxa/ruby/drivers ]; then
+    RUBY_DRIVER="/home/radxa/ruby/drivers/88XXau-radxa.ko"
+elif [ -d /home/pi/ruby/drivers ]; then
+    case "$KERNEL_RELEASE" in
+        *-v7l+|*-v8+) RUBY_DRIVER="/home/pi/ruby/drivers/88XXau-pi+.ko" ;;
+        *) RUBY_DRIVER="/home/pi/ruby/drivers/88XXau-pi.ko" ;;
+    esac
+else
+    echo "ERROR: Ruby driver directory was not found."
+    exit 1
+fi
+
 KERNEL_DRIVER="/lib/modules/$KERNEL_RELEASE/kernel/drivers/net/wireless/88XXau.ko"
-BUILD_DIRECTORY=$(mktemp -d)
+# RubyFPV mounts /tmp as a 10 MB tmpfs on Raspberry Pi, which is too small for
+# the driver checkout and build. Keep temporary sources on the home filesystem.
+BUILD_DIRECTORY=$(mktemp -d "${HOME}/rtl8812au-build.XXXXXX")
 MODINFO=$(command -v modinfo || true)
 
 if [ -z "$MODINFO" ] && [ -x /sbin/modinfo ]; then
@@ -60,5 +74,5 @@ sudo mv "$KERNEL_DRIVER.new" "$KERNEL_DRIVER"
 sudo depmod -a "$KERNEL_RELEASE"
 
 echo "Installed patched Ruby RTL8812AU driver:"
-sha256sum "$BUILT_DRIVER" "$RUBY_DRIVER" "$KERNEL_DRIVER"
+sudo sha256sum "$BUILT_DRIVER" "$RUBY_DRIVER" "$KERNEL_DRIVER"
 echo "The patched kernel module will be loaded after reboot."
