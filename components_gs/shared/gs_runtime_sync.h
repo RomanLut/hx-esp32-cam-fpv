@@ -82,6 +82,10 @@ struct RuntimeSyncState
     std::string osd_font_name;
 };
 
+void populateSessionOverlayState(gs::core::GsSessionCore& session,
+                                 Clock::time_point now,
+                                 gs::imgui::TopOverlayData& overlay_input);
+
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
                                          gs::imgui::TopOverlayData& overlay_input);

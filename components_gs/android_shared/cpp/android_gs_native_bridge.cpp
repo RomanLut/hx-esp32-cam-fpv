@@ -199,7 +199,7 @@ struct NativeHandle
         s_recordingsStorage = &getAndroidRecordingsStorage();
         s_playbackManager = &playback_manager;
         s_runtimeCore.resetState(gs_device_id_value);
-        loadSharedSettings(s_runtimeCore.gs_device_id);
+        loadSharedSettings(gs_device_id_value);
 #if defined(OCULUS_QUEST_GS)
         // The Quest compositor samples an RGB888 texture, and the headset has no
         // screen orientation of its own: VR mode and vertical flip are properties of

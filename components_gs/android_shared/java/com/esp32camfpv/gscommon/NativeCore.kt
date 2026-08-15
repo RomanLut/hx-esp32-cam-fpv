@@ -141,7 +141,7 @@ object NativeCore {
     external fun setAssetManager(assetManager: AssetManager)
     external fun setSettingsPath(path: String)
     external fun setRecordingsPath(path: String)
-    external fun createHandle(gsDeviceId: Int = 1): Long
+    external fun createHandle(gsDeviceId: Int): Long
     external fun describeHandle(handle: Long): String
     external fun getActiveTransportKind(handle: Long): Int
     external fun getAirApfpvModeState(handle: Long): Int

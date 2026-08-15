@@ -182,6 +182,9 @@ void drawMenuPacketHistogram(const std::vector<float>& packet_rates,
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + line_margin);
 
     const float maximum_rate = *std::max_element(packet_rates.begin(), packet_rates.end());
+    // Keep five percent of dynamic headroom so the tallest bar remains visually
+    // separated from the top edge of the histogram background.
+    const float graph_maximum_rate = std::max(1.0f, maximum_rate * 1.05f);
     const float graph_width = getVisibleStatusWidth(layout);
     ImGui::PlotHistogram("##search_channel_packet_counts",
                          packet_rates.data(),
@@ -189,7 +192,7 @@ void drawMenuPacketHistogram(const std::vector<float>& packet_rates,
                          0,
                          nullptr,
                          0.0f,
-                         std::max(1.0f, maximum_rate),
+                         graph_maximum_rate,
                          ImVec2(graph_width, 84.0f * layout.scale));
 
     if (current_channel_index < 0 || current_channel_index >= static_cast<int>(packet_rates.size()))

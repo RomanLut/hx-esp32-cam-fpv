@@ -2278,7 +2278,10 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "IP: %s##status_ip", s_RuntimePlatformServices->getSystemIPv4().c_str());
+        sprintf(buf,
+                "IP: %s  ID: 0x%04X##status_ip",
+                s_RuntimePlatformServices->getSystemIPv4().c_str(),
+                s_runtimeCore.gs_device_id);
         this->drawStatus( buf );
     }
 

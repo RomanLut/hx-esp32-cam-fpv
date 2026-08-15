@@ -33,6 +33,7 @@
 #include "gs_camera_calibration_shared.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
+#include "gs_runtime_sync.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_video_layout_shared.h"
 #include "gs_video_stabilization_shared.h"
@@ -536,7 +537,9 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.throughput_mbps = static_cast<float>(s_total_data) * 8.0f / (1024.0f * 1024.0f);
             input.video_fps = static_cast<int>(video_fps);
             input.video_fps_alert = had_loss;
-            input.rc_period_warning = s_runtimeCore.session.shouldShowRCWarning(now);
+            // Linux owns a separate statistics lifecycle, but all session-derived
+            // warnings are populated by the same helper used by Android.
+            populateSessionOverlayState(s_runtimeCore.session, now, input);
             {
                 std::lock_guard<std::mutex> stats_lock(s_gs_stats_mutex);
                 input.video_received_packet_count = s_gs_stats.inUniquePacketCounter;

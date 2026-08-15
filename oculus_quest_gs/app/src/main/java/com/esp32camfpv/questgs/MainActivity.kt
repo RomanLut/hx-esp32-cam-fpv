@@ -34,6 +34,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.esp32camfpv.gscommon.ApfpvWifiController
+import com.esp32camfpv.gscommon.AndroidGsDeviceId
 import com.esp32camfpv.gscommon.NativeCore
 import com.esp32camfpv.gscommon.RawBroadcastUsbController
 import com.esp32camfpv.gscommon.SerialTelemetryUsbController
@@ -137,11 +138,13 @@ class MainActivity : ComponentActivity()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
         applyImmersiveFullscreen()
+        val gsDeviceId = AndroidGsDeviceId.fromContext(this)
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AndroidGsApp(
+                        gsDeviceId = gsDeviceId,
                         onHandleChanged = { inputNativeHandle = it },
                         thermalStatusProvider = { currentThermalStatusValue() },
                         batteryPercentProvider = { currentBatteryPercentValue() },
@@ -349,13 +352,15 @@ class MainActivity : ComponentActivity()
 
 @Composable
 private fun AndroidGsApp(
+    gsDeviceId: Int,
     onHandleChanged: (Long) -> Unit,
     thermalStatusProvider: () -> Int,
     batteryPercentProvider: () -> Int,
     onExitApp: () -> Unit,
     onScreenFlipVChanged: (Boolean) -> Unit = {}
-) {
-    val nativeHandle = remember { NativeCore.createHandle(1) }
+)
+{
+    val nativeHandle = remember(gsDeviceId) { NativeCore.createHandle(gsDeviceId) }
     DisposableEffect(nativeHandle) {
         onHandleChanged(nativeHandle)
         // Trigger renderer EGL init in offscreen pbuffer mode. The Quest build

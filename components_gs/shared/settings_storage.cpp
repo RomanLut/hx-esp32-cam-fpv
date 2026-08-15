@@ -36,17 +36,11 @@ const std::string& SettingsStorage::path() const
     return m_path;
 }
 
+//===================================================================================
+//===================================================================================
+// Loads persisted GS preferences without overriding the platform-derived device identity.
 void SettingsStorage::loadGroundStationConfig()
 {
-    {
-        std::string& temp = (*this)["gs"]["gs_device_id"];
-        const int device_id = std::atoi(temp.c_str());
-        if (device_id > 0)
-        {
-            s_groundstation_config.deviceId = static_cast<uint16_t>(device_id);
-        }
-    }
-
     {
         std::string& temp = (*this)["gs"]["wifi_channel"];
         const int channel = std::atoi(temp.c_str());
@@ -401,6 +395,9 @@ void SettingsStorage::loadGround2AirConfig()
     s_runtimeCore.session.setConfigPacket(config);
 }
 
+//===================================================================================
+//===================================================================================
+// Saves GS preferences while removing obsolete persisted device identity values.
 void SettingsStorage::saveGroundStationConfig()
 {
     (*this)["gs"]["wifi_channel"] = std::to_string(s_groundstation_config.wifi_channel);
@@ -434,7 +431,8 @@ void SettingsStorage::saveGroundStationConfig()
     (*this)["gs"]["transport_kind"] = std::to_string(gs::core::transportKindToInt(s_groundstation_config.transportKind));
     (*this)["gs"]["apfpv_camera_id"] = std::to_string(s_groundstation_config.apfpvPreferredCameraId);
     (*this)["gs"]["gpio_keys_layout"] = std::to_string((int)s_groundstation_config.GPIOKeysLayout);
-    (*this)["gs"]["gs_device_id"] = std::to_string(s_groundstation_config.deviceId);
+    // Device identity is derived by the platform and must not follow copied settings.
+    (*this)["gs"].remove("gs_device_id");
     (*this)["gs"]["image_stabilization_enabled"] = std::to_string(s_imageStabilizationState.enabled ? 1 : 0);
     (*this)["gs"]["image_stabilization_debug"] = std::to_string(s_imageStabilizationState.debug ? 1 : 0);
     (*this)["gs"].remove("image_stabilization_channel");
