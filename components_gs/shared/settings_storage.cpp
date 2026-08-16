@@ -94,7 +94,7 @@ void SettingsStorage::loadGroundStationConfig()
     {
         std::string& temp = (*this)["gs"]["gpio_keys_layout"];
         const int layout = std::atoi(temp.c_str());
-        if ((layout == 0) || (layout == 1))
+        if ((layout >= 0) && (layout <= 2))
         {
             s_groundstation_config.GPIOKeysLayout = static_cast<uint8_t>(layout);
         }

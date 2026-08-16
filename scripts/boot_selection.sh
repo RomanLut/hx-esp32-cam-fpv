@@ -42,6 +42,9 @@ else
 fi
 
 BOOT_SELECTION_FILE="$HOME_DIRECTORY/bootSelection.txt"
+GS_INI_FILE="$HOME_DIRECTORY/esp32-cam-fpv/gs/gs.ini"
+GPIO_KEYS_LAYOUT=$(sed -n 's/^[[:space:]]*gpio_keys_layout[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$GS_INI_FILE" 2>/dev/null | head -n 1)
+GPIO_KEYS_LAYOUT=${GPIO_KEYS_LAYOUT:-0}
 
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
@@ -82,10 +85,17 @@ QABUTTON1_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON1/value)
 QABUTTON2_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON2/value)
 QABUTTON3_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON3/value)
 
+# DIY VRX 2 keeps the DIY wiring but deliberately ignores the GS REC input,
+# including during boot selection before the GS GPIO handler is running.
+if [ "$GPIO_KEYS_LAYOUT" -eq 2 ]; then
+    QABUTTON2_STATE=0
+fi
+
 echo "==================================="
 echo "QABUTTON1(AIR REC,R) state=$QABUTTON1_STATE"
 echo "QABUTTON2(GS REC,G) state=$QABUTTON2_STATE"
 echo "QABUTTON3(Center) state=$QABUTTON3_STATE"
+echo "GPIO keys layout=$GPIO_KEYS_LAYOUT"
 echo "==================================="
 
 # REC/R has priority so pressing REC/R and REC/G together always selects

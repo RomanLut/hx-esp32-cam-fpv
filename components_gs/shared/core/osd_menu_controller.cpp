@@ -2261,11 +2261,13 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
     if (s_RuntimePlatformServices->supportsGPIOKeys())
     {
         char buf[256];
-        const char* layout = gs_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
+        const char* const layouts[] = {"DIY VRX", "Runcam VRX", "DIY VRX 2"};
+        const uint8_t layout_index = std::min<uint8_t>(gs_config.GPIOKeysLayout, 2);
+        const char* layout = layouts[layout_index];
         sprintf(buf, "GPIO Keys Layout: %s##gpio_keys", layout);
         if ( this->drawMenuItem( buf, next_item_index) )
         {
-            gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
+            gs_config.GPIOKeysLayout = static_cast<uint8_t>((layout_index + 1) % 3);
             s_settingsStorage.saveGroundStationConfig();
             s_RuntimePlatformServices->restartGPIOButtons();
         }
