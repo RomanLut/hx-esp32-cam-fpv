@@ -4,6 +4,8 @@ Preparing SD Card for **Raspberry PI GS**: [/doc/software_for_rpi.md](/doc/softw
 
 Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32-cam-fpv** by swapping SD card.
 
+Hold **Air Rec** button on powerup to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** or **Center** button on powerup to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
+
 STL files for 3D printing **Raspberry Pi Zero 2W GS** enclosure on Thingiverse: https://www.thingiverse.com/thing:6624580
 
 ## Single rtl8812au variant
