@@ -4,7 +4,7 @@ Preparing SD Card for **Radxa Zero 3W** GS: [/doc/software_for_radxa.md](/doc/so
 
 Note: Joystick and keys wiring is compatible with **RubyFPV**. GS built for **RubyFPV** can be used with **hx-esp32cam-fpv** at the same time with dualboot SD Card.
 
-Hold **Air Rec** button on powerup to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** button on powerup to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
+Hold **Air Rec** button on powerup to boot **hx-esp32-cam-fpv** software. Hold **GS Rec** or **Center** button on powerup to boot **RubyFPV** software. If no buttons are pressed, last software is loaded on reboot.
 
 STL files for 3D printing **Radxa Zero 3W** GS enclosure on Thingiverse: https://www.thingiverse.com/thing:6847533
 
