@@ -3659,6 +3659,7 @@ bool isUSBDiskMounted()
 
 //=============================================================================================
 //=============================================================================================
+// Initializes the firmware and selects normal transport or file-server startup mode.
 extern "C" void app_main()
 {
     //esp_task_wdt_init();
@@ -3743,16 +3744,6 @@ extern "C" void app_main()
 
     s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 
-    //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
-    int channel = getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel );
-    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate,
-               channel,
-               s_ground2air_config_packet.dataChannel.wifi_power,
-               s_air_device_id,
-               s_ground2air_config_packet.misc.apfpv != 0,
-               transport_packet_received_cb);
-    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
-
     bool runFileServer = false;
 
 #ifdef DVR_SUPPORT
@@ -3761,6 +3752,17 @@ extern "C" void app_main()
 
     if ( !runFileServer )
     {
+        // Allocate the normal transport only when this boot will use it. File-server
+        // mode starts its own SoftAP and must not inherit an APFPV band or channel.
+        int channel = getValidWifiChannel(s_ground2air_config_packet.dataChannel.wifi_channel);
+        setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate,
+                   channel,
+                   s_ground2air_config_packet.dataChannel.wifi_power,
+                   s_air_device_id,
+                   s_ground2air_config_packet.misc.apfpv != 0,
+                   transport_packet_received_cb);
+        s_fec_encoder.packetFilter.set_packet_header_data(s_air_device_id, 0);
+
         //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
 #ifdef USE_MOCK_CAMERA
         init_mock_camera();
@@ -3807,12 +3809,8 @@ extern "C" void app_main()
         //============================================================================
         LOG("Starting file server...");
 
-        stop_wifi_transport();
-        vTaskSuspend(s_wifi_rx_task);
-        vTaskSuspend(s_wifi_tx_task);
-
-        //free some memory for the fileserver and OTA
-        deinitQueues();
+        // The normal Wi-Fi transport was intentionally never initialized on this boot.
+        // Release only recorder buffers before starting the independent file-server AP.
         free(sd_write_block);
         heap_caps_free( s_sd_slow_buffer->getBufferPtr() );
 
@@ -3822,7 +3820,7 @@ extern "C" void app_main()
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
         heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
-        setup_wifi_file_server(channel);
+        setup_wifi_file_server();
 
 #if defined(USB_DISK_SUPPORT)
         if (s_sd_initialized)

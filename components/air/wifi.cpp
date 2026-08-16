@@ -1115,24 +1115,21 @@ esp_err_t start_file_server(const char *base_path);
 
 //===========================================================================================
 //===========================================================================================
-//Starts the configuration file server AP on the selected validated Wi-Fi channel
-void setup_wifi_file_server(uint8_t channel)
+// Starts the configuration file server AP with automatic channel selection.
+void setup_wifi_file_server()
 {
-    channel = static_cast<uint8_t>(getValidWifiChannel(channel));
-    ESP_ERROR_CHECK(stop_wifi_transport());
     ESP_ERROR_CHECK(ensure_wifi_init());
     ESP_ERROR_CHECK(ensure_ap_netif());
     ESP_ERROR_CHECK(esp_netif_set_static_ip(s_ap_netif));
-    esp_wifi_set_promiscuous(false);
-    esp_wifi_stop();
-    ESP_ERROR_CHECK(apply_wifi_country_for_channel(channel));
+    ESP_ERROR_CHECK(apply_wifi_country_for_channel(DEFAULT_WIFI_CHANNEL_2_4GHZ));
 
     wifi_config_t wifi_config = {
         .ap = {
             .ssid = {0},
             .password = {0},
             .ssid_len = 0,
-            .channel = channel,
+            // Zero asks ESP-IDF to select the SoftAP channel automatically.
+            .channel = 0,
             .authmode = WIFI_AUTH_OPEN,
             .ssid_hidden = 0,
             .max_connection = 5,
