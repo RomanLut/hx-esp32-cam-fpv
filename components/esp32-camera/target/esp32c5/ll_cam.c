@@ -32,7 +32,10 @@
 #define MIN_FRAME_ALLOC_SIZE 160
 
 //parlio buffer
-#define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 16384
+// Keep enough internal DMA heap available for 5 GHz SoftAP management frames.
+// A 16 KiB PARLIO payload leaves the C5 heap effectively empty after camera startup,
+// causing authentication to succeed while the larger association response is dropped.
+#define CONFIG_CAMERA_PAYLOAD_BUFFER_SIZE 8192
 
 // IDF 5.5.2 inverted this setting on ESP32-C5, so the old pioarduino
 // platform needed NEG to sample the camera on the rising PCLK edge.
@@ -67,14 +70,13 @@ static bool IRAM_ATTR on_partial_receive_callback(parlio_rx_unit_handle_t rx_uni
     return (HPTaskAwoken == pdTRUE);
 }
 
+//===================================================================================
+//===================================================================================
+// Leaves PARLIO shutdown to task-context deinitialization because this can run in its ISR.
 bool IRAM_ATTR ll_cam_stop(cam_obj_t *cam)
 {
-/*
-    if (cam->rx_unit) {
-        // Stop PARLIO RX unit
-        parlio_rx_unit_disable(cam->rx_unit);
-    }
-*/
+    // ll_cam_send_event() calls this on queue overflow from the PARLIO ISR. The
+    // public PARLIO disable API takes a mutex and therefore is not ISR-safe.
     return true;
 }
 
@@ -200,29 +202,82 @@ bool ll_cam_start_continuous(cam_obj_t *cam, const camera_config_t *config)
     return true;
 }
 
+//===================================================================================
+//===================================================================================
+// Stops PARLIO callbacks and releases all C5 capture resources in task context.
 esp_err_t ll_cam_deinit(cam_obj_t *cam)
 {
-    /*
-    // Disable and delete PARLIO RX unit
-    if (cam->rx_unit) {
-        parlio_rx_unit_disable(cam->rx_unit);
-        parlio_del_rx_unit(cam->rx_unit);
-        cam->rx_unit = NULL;
+    esp_err_t result = ESP_OK;
+
+    if (cam->rx_unit)
+    {
+        // Disabling synchronously stops GDMA and its interrupt before cam_hal deletes
+        // the event queue referenced by on_partial_receive_callback().
+        esp_err_t ret = parlio_rx_unit_disable(cam->rx_unit);
+        if ((ret != ESP_OK) && (ret != ESP_ERR_INVALID_STATE))
+        {
+            ESP_LOGE(TAG, "Failed to disable PARLIO RX unit: %s", esp_err_to_name(ret));
+            result = ret;
+        }
+
+        if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE)
+        {
+            const parlio_rx_event_callbacks_t callbacks = { 0 };
+            ret = parlio_rx_unit_register_event_callbacks(cam->rx_unit, &callbacks, NULL);
+            if (ret != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to unregister PARLIO RX callbacks: %s", esp_err_to_name(ret));
+                if (result == ESP_OK)
+                {
+                    result = ret;
+                }
+            }
+        }
     }
 
-    // Delete delimiter
-    if (cam->delimiter) {
-        parlio_del_rx_delimiter(cam->delimiter);
-        cam->delimiter = NULL;
+    if (cam->delimiter)
+    {
+        const esp_err_t ret = parlio_del_rx_delimiter(cam->delimiter);
+        if (ret == ESP_OK)
+        {
+            cam->delimiter = NULL;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Failed to delete PARLIO delimiter: %s", esp_err_to_name(ret));
+            if (result == ESP_OK)
+            {
+                result = ret;
+            }
+        }
     }
 
-    // Free payload buffer
-    if (cam->payload_buffer) {
+    if (cam->rx_unit)
+    {
+        const esp_err_t ret = parlio_del_rx_unit(cam->rx_unit);
+        if (ret == ESP_OK)
+        {
+            cam->rx_unit = NULL;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Failed to delete PARLIO RX unit: %s", esp_err_to_name(ret));
+            if (result == ESP_OK)
+            {
+                result = ret;
+            }
+        }
+    }
+
+    // The camera task has already been deleted and the RX unit no longer owns this
+    // buffer, so no callback or consumer can retain a pointer into it now.
+    if (!cam->rx_unit && cam->payload_buffer)
+    {
         free(cam->payload_buffer);
         cam->payload_buffer = NULL;
     }
-*/
-    return ESP_OK;
+
+    return result;
 }
 
 

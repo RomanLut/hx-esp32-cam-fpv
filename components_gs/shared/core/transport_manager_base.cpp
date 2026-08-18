@@ -9,7 +9,9 @@
 namespace
 {
 
-constexpr int kSearchTimeStepMs = 1000;
+constexpr int kSearchInitialDwellMs = 300;
+constexpr int kSearchEspPacketExtensionMs = 1500;
+constexpr int kSearchResultDisplayOffsetMs = 1000;
 
 //===================================================================================
 //===================================================================================
@@ -19,7 +21,6 @@ void advanceSearchWifiChannel(Ground2Air_Config_Packet& config,
                               Clock::time_point& search_tp)
 {
     auto& gs_config = s_groundstation_config;
-    search_tp = Clock::now() + std::chrono::milliseconds(kSearchTimeStepMs);
 
     gs_config.wifi_channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
     int channel_index = getWifiChannelIndex(gs_config.wifi_channel);
@@ -41,6 +42,9 @@ void advanceSearchWifiChannel(Ground2Air_Config_Packet& config,
     }
 
     applyWifiChannelInstantToSession(config, transport);
+    // Start the dwell only after synchronous radio reconfiguration completes. Starting
+    // before the channel switch shortens the actual receive window on slower adapters.
+    search_tp = Clock::now();
 }
 
 }
@@ -101,6 +105,14 @@ bool TransportManagerBase::init(TransportKind initial_kind,
 bool TransportManagerBase::switchTransport(TransportKind kind)
 {
     ITransport& transport = resolveTransport(kind);
+    if (m_active_transport == &transport)
+    {
+        // Selecting the already-active mode is a logical no-op. Re-activating RAW
+        // tears down pcap and reapplies the same Realtek monitor channel, which can
+        // wedge reception when the Search menu only intends to reset pairing state.
+        return true;
+    }
+
     const bool switching_transport = m_active_transport != nullptr && m_active_transport != &transport;
     if (m_active_transport != nullptr && m_active_transport != &transport)
     {
@@ -108,6 +120,14 @@ bool TransportManagerBase::switchTransport(TransportKind kind)
     }
     if (switching_transport)
     {
+        if (!prepareTransportSwitch(m_active_kind, kind))
+        {
+            // A platform may defer destination initialization to a scheduled process
+            // restart. Keep the deactivated source object valid until that restart runs.
+            m_active_kind = kind;
+            return true;
+        }
+
         // Linux transport switches can leave backend-specific device state behind, especially
         // when the same Wi-Fi adapter changes mode between managed APFPV and monitor raw-broadcast.
         // Reinitializing the destination transport on every real switch matches a fresh process
@@ -124,6 +144,14 @@ bool TransportManagerBase::switchTransport(TransportKind kind)
     m_active_transport = &transport;
     m_active_kind = kind;
     s_transport = m_active_transport;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Allows platform managers to recover device state and optionally defer destination initialization.
+bool TransportManagerBase::prepareTransportSwitch(TransportKind /* from */, TransportKind /* to */)
+{
     return true;
 }
 
@@ -153,8 +181,20 @@ void TransportManagerBase::beginSearchOrConnect(Ground2Air_Config_Packet& config
 
     if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
     {
-        advanceSearchWifiChannel(config, *m_active_transport, search_tp);
-        performAirUnpair(s_groundstation_config.deviceId, *m_active_transport);
+        const uint16_t active_air_device_id = s_runtimeCore.session.connectedAirDeviceId();
+        // Search must dwell on the configured channel first without rewriting the
+        // already-active radio channel. Some Realtek monitor drivers wedge reception
+        // when the same channel is redundantly applied through iwconfig. The active Air
+        // is excluded so its config packets cannot immediately terminate this search.
+        s_groundstation_config.wifi_channel = getBandAwareWifiChannel(
+            s_groundstation_config.wifi_channel,
+            s_groundstation_config.wifiBand);
+        applyWifiChannelToSession(config);
+        search_tp = Clock::now();
+        m_search_channel_dwell_extended = false;
+        performAirUnpair(s_groundstation_config.deviceId, *m_active_transport, active_air_device_id);
+        m_search_channel_candidate_packet_baseline =
+            s_runtimeCore.session.searchCandidatePacketCount();
         return;
     }
 
@@ -181,7 +221,21 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
         return;
     }
 
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - search_tp).count() <= kSearchTimeStepMs)
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now() - search_tp).count();
+    if (!m_search_channel_dwell_extended &&
+        elapsed_ms <= kSearchInitialDwellMs &&
+        s_runtimeCore.session.searchCandidatePacketCount() !=
+            m_search_channel_candidate_packet_baseline)
+    {
+        // A decoded packet from a non-excluded camera was observed during the fast
+        // scan window. Keep this channel long enough for pairing/config traffic.
+        m_search_channel_dwell_extended = true;
+    }
+
+    const int dwell_ms = kSearchInitialDwellMs +
+                         (m_search_channel_dwell_extended ? kSearchEspPacketExtensionMs : 0);
+    if (elapsed_ms <= dwell_ms)
     {
         return;
     }
@@ -191,15 +245,19 @@ void TransportManagerBase::advanceSearchOrConnect(Ground2Air_Config_Packet& conf
         return;
     }
 
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - s_last_packet_tp).count() < kSearchTimeStepMs / 2)
+    // Only an accepted pairing proves that the current channel contains a search result.
+    if (isConnected())
     {
         search_done = true;
-        search_tp = Clock::now() + std::chrono::milliseconds(kSearchTimeStepMs);
+        search_tp = Clock::now() + std::chrono::milliseconds(kSearchResultDisplayOffsetMs);
         s_settingsStorage.saveGroundStationConfig();
         return;
     }
 
     advanceSearchWifiChannel(config, *m_active_transport, search_tp);
+    m_search_channel_candidate_packet_baseline =
+        s_runtimeCore.session.searchCandidatePacketCount();
+    m_search_channel_dwell_extended = false;
 }
 
 //===================================================================================
@@ -210,6 +268,10 @@ void TransportManagerBase::cancelSearchOrConnect()
     if (m_active_transport != nullptr && m_active_transport->supportsMenuSearchOrConnect())
     {
         m_active_transport->cancelMenuSearchOrConnect();
+    }
+    else if (m_active_transport != nullptr && m_active_transport->usesChannelSearch())
+    {
+        s_runtimeCore.session.clearPairingAirDeviceExclusion();
     }
 }
 

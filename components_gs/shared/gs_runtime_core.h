@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -26,7 +27,9 @@ struct GsRuntimeCore
     ~GsRuntimeCore();
 
     void resetState(uint16_t gs_device_id_value, bool clear_apfpv_state = true);
-    void resetPairing(gs::core::ITransport& transport, Clock::time_point now);
+    void resetPairing(gs::core::ITransport& transport,
+                      Clock::time_point now,
+                      uint16_t ignored_air_device_id = 0);
     void resetTransportRuntime(gs::core::ITransport& transport, Clock::time_point now);
     void resetTransportRuntimePreserveApfpvState(gs::core::ITransport& transport, Clock::time_point now);
 
@@ -44,6 +47,7 @@ struct GsRuntimeCore
     fec_t* tx_fec = nullptr;
     bool tx_block_has_first_packet = false;
     std::array<uint8_t, GROUND2AIR_MAX_MTU> tx_first_packet_payload = {};
+    std::atomic<uint64_t> raw_capture_packets_seen = {0};
     uint32_t transport_packets_seen = 0;
     uint32_t transport_packets_passed_filter = 0;
     uint32_t transport_packets_filtered = 0;

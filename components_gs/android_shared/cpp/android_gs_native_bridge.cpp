@@ -25,11 +25,12 @@
 #include <unistd.h>
 
 #include "android_bitmap_jpeg_decoder.h"
+#include "android_gs_jni_names.h"
 #include "android_jni_shared.h"
 #include "android_osd_font_storage.h"
 #include "android_playback_manager.h"
 #include "android_recordings_storage.h"
-#include "../../../../../components/common/avi.h"
+#include "avi.h"
 #include "android_runtime_platform_services.h"
 #include "android_transport_manager.h"
 #include "gs_video_renderer.h"
@@ -53,6 +54,7 @@
 #include "gs_runtime_video_flow.h"
 #include "gs_runtime_osd_font_storage.h"
 #include "gs_shared_runtime.h"
+#include "gs_shared_state.h"
 #include "gs_runtime_state.h"
 #include "gs_stats.h"
 #include "gs_camera_calibration_shared.h"
@@ -64,7 +66,7 @@
 #include "gs_runtime_core.h"
 #include "gs_udp_broadcast.h"
 #include "android_udp_broadcast.h"
-#include "../../../../../components_gs/mcp/gs_mcp_server.h"
+#include "mcp/gs_mcp_server.h"
 
 static jclass s_nativeCoreClass = nullptr;
 static jmethodID s_createRecordingFdMethod = nullptr;
@@ -72,7 +74,7 @@ static jmethodID s_finalizeRecordingFdMethod = nullptr;
 
 void initRecordingJniRefs(JNIEnv* env)
 {
-    jclass localClass = env->FindClass("com/esp32camfpv/androidgs/NativeCore");
+    jclass localClass = env->FindClass(ANDROID_GS_NATIVE_CORE_CLASS);
     if (localClass == nullptr)
     {
         return;
@@ -197,7 +199,16 @@ struct NativeHandle
         s_recordingsStorage = &getAndroidRecordingsStorage();
         s_playbackManager = &playback_manager;
         s_runtimeCore.resetState(gs_device_id_value);
-        loadSharedSettings(s_runtimeCore.gs_device_id);
+        loadSharedSettings(gs_device_id_value);
+#if defined(OCULUS_QUEST_GS)
+        // The Quest compositor samples an RGB888 texture, and the headset has no
+        // screen orientation of its own: VR mode and vertical flip are properties of
+        // the phone/tablet presentation path only and must stay off here regardless
+        // of what the persisted settings contain.
+        s_postprocessingState.pipeline_mode = PostprocessingState::PipelineMode::RGB888;
+        s_groundstation_config.vrMode = false;
+        s_groundstation_config.screenFlipV = false;
+#endif
         prepAviBuffers();
         s_recordingsStorage->refreshGroundStorageStatus();
         s_ground2air_config_packet = s_runtimeCore.session.copyConfigPacket();
@@ -241,6 +252,7 @@ struct NativeHandle
         bindAndroidRuntimeRenderer(nullptr);
         stopUdpClient();
         transport_manager.rawBroadcastTransport().stopUsbAdapter();
+        transport_manager.rawBroadcastTransport().setTransportPacketSink({});
         gs::mcp::GsMcpServer::instance().stop();
     }
 
@@ -290,7 +302,7 @@ std::vector<std::vector<uint8_t>> buildControlTransportPacketsLocked(NativeHandl
 
 //===================================================================================
 //===================================================================================
-// Injects one APFPV transport packet into the Android runtime decoder pipeline.
+// Injects one encoded transport packet into the sole Android runtime decoder pipeline.
 int processTransportPacket(NativeHandle& handle,
                            const uint8_t* data,
                            size_t size,
@@ -623,7 +635,10 @@ void ensureRxDecoderConfigLocked(NativeHandle& handle)
 
     const uint8_t effective_k = config_k > 0 ? config_k : FEC_K;
     const uint8_t effective_n = config_n > 0 ? config_n : static_cast<uint8_t>(8);
-    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
+    const uint16_t effective_mtu =
+        handle.transport_manager.activeKind() == gs::core::TransportKind::APFPV
+            ? APFPV_AIR2GROUND_MAX_MTU
+            : AIR2GROUND_MAX_MTU;
 
     if (s_runtimeCore.rx_decoder_k == effective_k &&
         s_runtimeCore.rx_decoder_n == effective_n &&
@@ -1158,13 +1173,13 @@ ImGuiKey androidKeyCodeToImGuiKey(int key_code)
 } // namespace
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getBuildInfo(JNIEnv* env, jobject /* thiz */)
+Java_com_esp32camfpv_gscommon_NativeCore_getBuildInfo(JNIEnv* env, jobject /* thiz */)
 {
     return newJavaString(env, buildInfoString());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setAssetManager(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_setAssetManager(JNIEnv* env,
                                                           jobject /* thiz */,
                                                           jobject asset_manager)
 {
@@ -1172,7 +1187,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setAssetManager(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setSettingsPath(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_setSettingsPath(JNIEnv* env,
                                                           jobject /* thiz */,
                                                           jstring path)
 {
@@ -1186,7 +1201,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setSettingsPath(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setRecordingsPath(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_setRecordingsPath(JNIEnv* env,
                                                              jobject /* thiz */,
                                                              jstring path)
 {
@@ -1198,12 +1213,12 @@ Java_com_esp32camfpv_androidgs_NativeCore_setRecordingsPath(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_createHandle(JNIEnv* /* env */,
                                                        jobject /* thiz */,
                                                        jint gsDeviceId)
 {
     auto* handle = new NativeHandle(static_cast<uint16_t>(gsDeviceId));
-    handle->transport_manager.rawBroadcastTransport().setTransportPacketCallback(
+    handle->transport_manager.rawBroadcastTransport().setTransportPacketSink(
         [handle](const uint8_t* data, size_t size, int input_dbm, size_t interface_index)
         {
             if (handle == nullptr || data == nullptr || size == 0)
@@ -1245,6 +1260,15 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
                             handle->transport_manager.rawBroadcastTransport());
                         drainQueuedRawTransportPacketsLocked(*handle, 64);
                     }
+                    else
+                    {
+                        // Packets captured before RAW deactivation belong to the old
+                        // runtime decoder epoch and must not be replayed after returning
+                        // from APFPV or channel scan mode.
+                        std::lock_guard<std::mutex> queue_lock(
+                            handle->raw_transport_packet_queue_mutex);
+                        handle->raw_transport_packet_queue.clear();
+                    }
                     // Drain incoming serial telemetry (USB-UART) and forward to
                     // the air side. Mirrors the Linux GS runtime loop.
                     if (g_serialTelemetry->isOpen())
@@ -1263,7 +1287,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_createHandle(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_describeHandle(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_describeHandle(JNIEnv* env,
                                                          jobject /* thiz */,
                                                          jlong handle)
 {
@@ -1278,7 +1302,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_describeHandle(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getActiveTransportKind(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_getActiveTransportKind(JNIEnv* /* env */,
                                                                  jobject /* thiz */,
                                                                  jlong handle)
 {
@@ -1294,27 +1318,32 @@ Java_com_esp32camfpv_androidgs_NativeCore_getActiveTransportKind(JNIEnv* /* env 
 
 //===================================================================================
 //===================================================================================
-// Returns whether the live air config packet currently enables APFPV camera mode.
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isAirApfpvModeEnabled(JNIEnv* /* env */,
-                                                                jobject /* thiz */,
-                                                                jlong handle)
+// Returns -1 before a live air config arrives, otherwise the config's APFPV mode as 0 or 1.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_esp32camfpv_gscommon_NativeCore_getAirApfpvModeState(JNIEnv* /* env */,
+                                                               jobject /* thiz */,
+                                                               jlong handle)
 {
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
     {
-        return JNI_FALSE;
+        return -1;
     }
 
     std::lock_guard<std::mutex> lock(native_handle->mutex);
-    return s_runtimeCore.session.copyConfigPacket().misc.apfpv != 0 ? JNI_TRUE : JNI_FALSE;
+    if (!s_runtimeCore.session.gotConfigPacket())
+    {
+        return -1;
+    }
+
+    return s_runtimeCore.session.copyConfigPacket().misc.apfpv != 0 ? 1 : 0;
 }
 
 //===================================================================================
 //===================================================================================
 // Returns the persisted APFPV preferred camera id used by shared camera selection logic.
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getPreferredApfpvCameraId(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_getPreferredApfpvCameraId(JNIEnv* /* env */,
                                                                     jobject /* thiz */,
                                                                     jlong handle)
 {
@@ -1332,7 +1361,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getPreferredApfpvCameraId(JNIEnv* /* e
 //===================================================================================
 // Stores the selected APFPV preferred camera id used by shared menu and reconnect logic.
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setPreferredApfpvCameraId(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_setPreferredApfpvCameraId(JNIEnv* /* env */,
                                                                     jobject /* thiz */,
                                                                     jlong handle,
                                                                     jint device_id)
@@ -1353,7 +1382,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setPreferredApfpvCameraId(JNIEnv* /* e
 //===================================================================================
 // Returns whether the shared Android APFPV menu search flow is currently active.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isApfpvMenuSearchActive(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isApfpvMenuSearchActive(JNIEnv* /* env */,
                                                                   jobject /* thiz */,
                                                                   jlong handle)
 {
@@ -1371,7 +1400,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isApfpvMenuSearchActive(JNIEnv* /* env
 //===================================================================================
 // Returns and clears one queued Android APFPV reconnect request for the Wi-Fi controller.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_consumeApfpvReconnectRequest(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_consumeApfpvReconnectRequest(JNIEnv* /* env */,
                                                                        jobject /* thiz */,
                                                                        jlong handle)
 {
@@ -1387,9 +1416,46 @@ Java_com_esp32camfpv_androidgs_NativeCore_consumeApfpvReconnectRequest(JNIEnv* /
 
 //===================================================================================
 //===================================================================================
+// Returns and clears one user-requested APFPV Wi-Fi permission prompt.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_esp32camfpv_gscommon_NativeCore_consumeApfpvWifiScanPermissionPromptRequest(JNIEnv* /* env */,
+                                                                                      jobject /* thiz */,
+                                                                                      jlong handle)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return JNI_FALSE;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    return consumeApfpvWifiScanPermissionPromptRequest() ? JNI_TRUE : JNI_FALSE;
+}
+
+//===================================================================================
+//===================================================================================
+// Publishes whether APFPV discovery is blocked by missing Android permissions.
+extern "C" JNIEXPORT void JNICALL
+Java_com_esp32camfpv_gscommon_NativeCore_setApfpvWifiScanPermissionError(JNIEnv* /* env */,
+                                                                          jobject /* thiz */,
+                                                                          jlong handle,
+                                                                          jboolean enabled)
+{
+    NativeHandle* native_handle = fromJLong(handle);
+    if (native_handle == nullptr)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(native_handle->mutex);
+    setApfpvWifiScanPermissionError(enabled == JNI_TRUE);
+}
+
+//===================================================================================
+//===================================================================================
 // Returns whether Android APFPV has already received any UDP packets from the camera.
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_hasSeenApfpvUdpPackets(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_hasSeenApfpvUdpPackets(JNIEnv* /* env */,
                                                                  jobject /* thiz */,
                                                                  jlong handle)
 {
@@ -1407,7 +1473,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_hasSeenApfpvUdpPackets(JNIEnv* /* env 
 //===================================================================================
 // Synchronizes discovered and active APFPV camera SSIDs from the Android Wi-Fi controller.
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_syncApfpvCameraState(JNIEnv* env,
                                                                jobject /* thiz */,
                                                                jlong handle,
                                                                jobjectArray discovered_ssids,
@@ -1468,7 +1534,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncApfpvCameraState(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_pushPacket(JNIEnv* env,
                                                      jobject /* thiz */,
                                                      jlong handle,
                                                      jbyteArray data,
@@ -1499,7 +1565,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_pushPacket(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_buildControlTransportPackets(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_buildControlTransportPackets(JNIEnv* env,
                                                                        jobject /* thiz */,
                                                                        jlong handle)
 {
@@ -1519,7 +1585,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_buildControlTransportPackets(JNIEnv* e
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_takeCompletedFrame(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_takeCompletedFrame(JNIEnv* env,
                                                              jobject /* thiz */,
                                                              jlong handle)
 {
@@ -1541,7 +1607,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_takeCompletedFrame(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_startUdpClient(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_startUdpClient(JNIEnv* env,
                                                          jobject /* thiz */,
                                                          jlong handle,
                                                          jstring peer_host,
@@ -1619,7 +1685,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_startUdpClient(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_stopUdpClient(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_stopUdpClient(JNIEnv* /* env */,
                                                         jobject /* thiz */,
                                                         jlong handle)
 {
@@ -1633,7 +1699,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_stopUdpClient(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_startRawBroadcastUsb(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_startRawBroadcastUsb(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle,
                                                                jint fd)
@@ -1660,7 +1726,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_startRawBroadcastUsb(JNIEnv* /* env */
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_stopRawBroadcastUsb(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_stopRawBroadcastUsb(JNIEnv* /* env */,
                                                               jobject /* thiz */,
                                                               jlong handle)
 {
@@ -1674,7 +1740,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_stopRawBroadcastUsb(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* env */,
                                                                    jobject /* thiz */,
                                                                    jlong handle)
 {
@@ -1688,7 +1754,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isRawBroadcastUsbRunning(JNIEnv* /* en
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getRawBroadcastUsbAdapterCount(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_getRawBroadcastUsbAdapterCount(JNIEnv* /* env */,
                                                                          jobject /* thiz */,
                                                                          jlong handle)
 {
@@ -1703,7 +1769,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getRawBroadcastUsbAdapterCount(JNIEnv*
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_startWifiScanUsb(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_startWifiScanUsb(JNIEnv* /* env */,
                                                            jobject /* thiz */,
                                                            jlong handle,
                                                            jint fd)
@@ -1730,7 +1796,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_startWifiScanUsb(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_stopWifiScanUsb(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_stopWifiScanUsb(JNIEnv* /* env */,
                                                           jobject /* thiz */,
                                                           jlong handle)
 {
@@ -1744,7 +1810,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_stopWifiScanUsb(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isWifiScanUsbRunning(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isWifiScanUsbRunning(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle)
 {
@@ -1758,7 +1824,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isWifiScanUsbRunning(JNIEnv* /* env */
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_setVideoUdpOutput(JNIEnv* env,
                                                             jobject /* thiz */,
                                                             jlong /* handle */,
                                                             jstring addr,
@@ -1779,7 +1845,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setVideoUdpOutput(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isUdpClientRunning(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isUdpClientRunning(JNIEnv* /* env */,
                                                              jobject /* thiz */,
                                                              jlong handle)
 {
@@ -1794,7 +1860,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isUdpClientRunning(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getLastEventKind(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_getLastEventKind(JNIEnv* /* env */,
                                                            jobject /* thiz */,
                                                            jlong handle)
 {
@@ -1809,7 +1875,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getLastEventKind(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_getScreenAspectRatio(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle)
 {
@@ -1824,7 +1890,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_getScreenAspectRatio(JNIEnv* /* env */
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isVrModeEnabled(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isVrModeEnabled(JNIEnv* /* env */,
                                                           jobject /* thiz */,
                                                           jlong handle)
 {
@@ -1838,7 +1904,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isVrModeEnabled(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_isScreenFlipVEnabled(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_isScreenFlipVEnabled(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle)
 {
@@ -1852,7 +1918,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_isScreenFlipVEnabled(JNIEnv* /* env */
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_setRendererScreenMode(JNIEnv* /* env */,
                                                                 jobject /* thiz */,
                                                                 jlong handle,
                                                                 jint screen_mode)
@@ -1867,7 +1933,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setRendererScreenMode(JNIEnv* /* env *
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setRendererVrMode(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_setRendererVrMode(JNIEnv* /* env */,
                                                             jobject /* thiz */,
                                                             jlong handle,
                                                             jboolean enabled)
@@ -1882,13 +1948,11 @@ Java_com_esp32camfpv_androidgs_NativeCore_setRendererVrMode(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_syncRendererOverlay(JNIEnv* env,
                                                               jobject /* thiz */,
                                                               jlong handle,
                                                               jstring build_info)
 {
-    static uint32_t s_sync_overlay_call_count = 0;
-
     NativeHandle* native_handle = fromJLong(handle);
     if (native_handle == nullptr)
     {
@@ -1898,14 +1962,6 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
     const std::string info = fromJString(env, build_info);
     RuntimeSyncState sync_state;
     gs::imgui::TopOverlayData overlay_input = {};
-    s_sync_overlay_call_count++;
-    if ((s_sync_overlay_call_count % 60U) == 1U)
-    {
-        LOGI("syncRendererOverlay calls={} transport={} raw_usb={}",
-             static_cast<unsigned int>(s_sync_overlay_call_count),
-             static_cast<int>(native_handle->transport_manager.activeKind()),
-             native_handle->transport_manager.rawBroadcastTransport().isUsbAdapterRunning() ? 1 : 0);
-    }
     syncApfpvUdpClient(*native_handle);
     applyPendingRendererInvalidation(*native_handle);
     {
@@ -1967,7 +2023,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_syncRendererOverlay(JNIEnv* env,
 //===================================================================================
 // Stores the latest Android thermal status enum for overlay rendering and legacy stats.
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setThermalStatus(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_setThermalStatus(JNIEnv* /* env */,
                                                            jobject /* thiz */,
                                                            jlong handle,
                                                            jint thermal_status)
@@ -1986,7 +2042,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setThermalStatus(JNIEnv* /* env */,
 //===================================================================================
 // Stores the latest Android battery level for overlay rendering.
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setBatteryPercent(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_setBatteryPercent(JNIEnv* /* env */,
                                                             jobject /* thiz */,
                                                             jlong handle,
                                                             jint battery_percent)
@@ -2001,7 +2057,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_setBatteryPercent(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_handleTap(JNIEnv* /* env */,
                                                     jobject /* thiz */,
                                                     jlong handle,
                                                     jfloat x,
@@ -2035,7 +2091,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTap(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_handleTouchDown(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_handleTouchDown(JNIEnv* /* env */,
                                                           jobject /* thiz */,
                                                           jlong handle,
                                                           jfloat x,
@@ -2070,7 +2126,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleTouchDown(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_handleKey(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_handleKey(JNIEnv* /* env */,
                                                     jobject /* thiz */,
                                                     jlong handle,
                                                     jint key_code)
@@ -2092,23 +2148,39 @@ Java_com_esp32camfpv_androidgs_NativeCore_handleKey(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_setRenderSurface(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_setRenderSurface(JNIEnv* env,
                                                            jobject /* thiz */,
                                                            jlong handle,
                                                            jobject surface)
 {
     NativeHandle* native_handle = fromJLong(handle);
-    if (native_handle == nullptr || surface == nullptr)
+    if (native_handle == nullptr)
     {
         return;
     }
 
+#if defined(OCULUS_QUEST_GS)
+    // On Quest the renderer's GL backend is pbuffer-only — it ignores the window
+    // pointer. A null Surface from Kotlin maps to a non-null sentinel here so the
+    // surface backend treats it as "(re-)init EGL"; the matching clearRenderSurface
+    // JNI calls renderer.clearSurface() which sends null and tears EGL down.
+    ANativeWindow* window = (surface != nullptr)
+        ? ANativeWindow_fromSurface(env, surface)
+        : reinterpret_cast<ANativeWindow*>(0x1);
+#else
+    // The window backend dereferences the ANativeWindow, so a null Surface is a
+    // no-op rather than a teardown request; teardown goes through clearRenderSurface.
+    if (surface == nullptr)
+    {
+        return;
+    }
     ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+#endif
     native_handle->renderer.setSurface(window);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_clearRenderSurface(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_clearRenderSurface(JNIEnv* /* env */,
                                                              jobject /* thiz */,
                                                              jlong handle)
 {
@@ -2122,7 +2194,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_clearRenderSurface(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_submitVideoFrame(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_submitVideoFrame(JNIEnv* env,
                                                            jobject /* thiz */,
                                                            jlong handle,
                                                            jobject rgba,
@@ -2153,7 +2225,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_submitVideoFrame(JNIEnv* env,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_consumeExitRequested(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_consumeExitRequested(JNIEnv* /* env */,
                                                                jobject /* thiz */,
                                                                jlong handle)
 {
@@ -2170,7 +2242,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_consumeExitRequested(JNIEnv* /* env */
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_resetSession(JNIEnv* /* env */,
                                                        jobject /* thiz */,
                                                        jlong handle)
 {
@@ -2188,7 +2260,7 @@ Java_com_esp32camfpv_androidgs_NativeCore_resetSession(JNIEnv* /* env */,
 
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_destroyHandle(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_destroyHandle(JNIEnv* /* env */,
                                                         jobject /* thiz */,
                                                         jlong handle)
 {
@@ -2196,21 +2268,21 @@ Java_com_esp32camfpv_androidgs_NativeCore_destroyHandle(JNIEnv* /* env */,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnOpen(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_serialTelemetryOnOpen(JNIEnv* /* env */,
                                                                 jclass /* clazz */)
 {
     g_androidSerialTelemetry.onJavaOpened();
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnClose(JNIEnv* /* env */,
+Java_com_esp32camfpv_gscommon_NativeCore_serialTelemetryOnClose(JNIEnv* /* env */,
                                                                  jclass /* clazz */)
 {
     g_androidSerialTelemetry.onJavaClosed();
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_esp32camfpv_androidgs_NativeCore_serialTelemetryOnBytes(JNIEnv* env,
+Java_com_esp32camfpv_gscommon_NativeCore_serialTelemetryOnBytes(JNIEnv* env,
                                                                  jclass /* clazz */,
                                                                  jbyteArray data,
                                                                  jint length)

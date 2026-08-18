@@ -42,12 +42,16 @@ else
 fi
 
 BOOT_SELECTION_FILE="$HOME_DIRECTORY/bootSelection.txt"
+GS_INI_FILE="$HOME_DIRECTORY/esp32-cam-fpv/gs/gs.ini"
+GPIO_KEYS_LAYOUT=$(sed -n 's/^[[:space:]]*gpio_keys_layout[[:space:]]*=[[:space:]]*\([0-9][0-9]*\)[[:space:]]*$/\1/p' "$GS_INI_FILE" 2>/dev/null | head -n 1)
+GPIO_KEYS_LAYOUT=${GPIO_KEYS_LAYOUT:-0}
 
 # Output the results
 echo "IS_RADXA=$IS_RADXA"
-echo "QABUTTON1=$QABUTTON1"
-echo "QABUTTON2=$QABUTTON2"
-echo "QABUTTON3=$QABUTTON3"
+echo "==================================="
+echo "QABUTTON1(AIR REC,R)=$QABUTTON1"
+echo "QABUTTON2(GS REC,G)=$QABUTTON2"
+echo "QABUTTON3(Center)=$QABUTTON3"
 
 
 # Launch Ruby on first boot to install drivers
@@ -72,18 +76,37 @@ sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON2/direction"
 sudo sh -c "echo $QABUTTON3 > /sys/class/gpio/export"
 sudo sh -c "echo in > /sys/class/gpio/gpio$QABUTTON3/direction"
 
-# Check GPIO values and write to bootSelection.txt
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON1/value) -eq 1 ]; then
+# Allow the GPIO input configuration and button levels to settle before the
+# one-time boot selection sample.
+sleep 0.2
+
+# Sample each button once so the reported state is the state used for boot selection.
+QABUTTON1_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON1/value)
+QABUTTON2_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON2/value)
+QABUTTON3_STATE=$(sudo cat /sys/class/gpio/gpio$QABUTTON3/value)
+
+# DIY VRX 2 keeps the DIY wiring but deliberately ignores the GS REC input,
+# including during boot selection before the GS GPIO handler is running.
+if [ "$GPIO_KEYS_LAYOUT" -eq 2 ]; then
+    QABUTTON2_STATE=0
+fi
+
+echo "==================================="
+echo "QABUTTON1(AIR REC,R) state=$QABUTTON1_STATE"
+echo "QABUTTON2(GS REC,G) state=$QABUTTON2_STATE"
+echo "QABUTTON3(Center) state=$QABUTTON3_STATE"
+echo "GPIO keys layout=$GPIO_KEYS_LAYOUT"
+echo "==================================="
+
+# REC/R has priority so pressing REC/R and REC/G together always selects
+# esp32-cam-fpv instead of allowing the later Ruby selection to overwrite it.
+if [ "$QABUTTON1_STATE" -eq 1 ]; then
     echo "esp32camfpv" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
-fi
-
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON2/value) -eq 1 ]; then
+elif [ "$QABUTTON2_STATE" -eq 1 ] || [ "$QABUTTON3_STATE" -eq 1 ]; then
     echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
 fi
-
-if [ $(sudo cat /sys/class/gpio/gpio$QABUTTON3/value) -eq 1 ]; then
-    echo "ruby" | sudo tee "$BOOT_SELECTION_FILE" > /dev/null
-fi
+# With no pressed button, leave bootSelection.txt unchanged and reuse the
+# previous boot choice.
 
 # Restore GPIOs
 sudo sh -c "echo $QABUTTON1 > /sys/class/gpio/unexport"
@@ -96,8 +119,8 @@ if [ -f "$BOOT_SELECTION_FILE" ] && grep -q "ruby" "$BOOT_SELECTION_FILE"; then
     cd ${HOME_DIRECTORY}/ruby
     ./ruby_start
 else
-    # launch.sh can restart getty@tty1 after GS (non-tty1 start); the new autologin re-runs
-    # this script from /root/.profile. Consume the one-shot flag so that login stays in shell.
+    # launch.sh only creates this flag after a GS instance started outside tty1
+    # restores the console. Never apply it to the RubyFPV boot-selection path.
     GS_SKIP_NEXT_FPV_AUTOSTART_FLAG=/run/esp32camfpv-skip-fpv-autostart-once
     if [ -f "$GS_SKIP_NEXT_FPV_AUTOSTART_FLAG" ]; then
         echo "Skipping esp32-cam-fpv autostart once (after GS released the console)."
@@ -105,7 +128,17 @@ else
         exit 0
     fi
     echo "Launching esp32-cam-fpv..."
-    cd ${HOME_DIRECTORY}/esp32-cam-fpv/gs
-    ./launch.sh
+    GS_DIRECTORY="${HOME_DIRECTORY}/esp32-cam-fpv/gs"
+    if [ "$(tty 2>/dev/null)" = "/dev/tty1" ] && command -v systemd-run >/dev/null 2>&1; then
+        # KMS takes ownership of tty1. Run the selected GS outside getty's cgroup so
+        # launch.sh can stop getty without killing itself or starting duplicate GS copies.
+        : > /tmp/esp32camfpv-gs.log
+        systemd-run --quiet --collect --unit=esp32camfpv-gs-session \
+            --property=Restart=on-failure --property=RestartSec=2s \
+            /usr/bin/env ESP32CAMFPV_RESTART_ON_FAILURE=1 \
+            /bin/bash -c "cd '$GS_DIRECTORY' && exec ./launch.sh >>/tmp/esp32camfpv-gs.log 2>&1"
+    else
+        cd "$GS_DIRECTORY"
+        ./launch.sh
+    fi
 fi
-

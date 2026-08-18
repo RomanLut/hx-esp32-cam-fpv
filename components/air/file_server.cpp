@@ -671,20 +671,31 @@ static esp_err_t file_list_handler(httpd_req_t *req)
     cJSON_free((void *)json_str);
     return ESP_OK;
 }
+//===================================================================================
+//===================================================================================
+// Reads and updates camera configuration exposed by the file-server settings page.
 static esp_err_t configs_handler(httpd_req_t *req)
 {
     if(req->method == HTTP_GET)
     {
         char channel_str[6]="";
+        char rc_channel_str[6]="";
+        char stabilization_channel_str[6]="";
         char mavlink_baudrate_str[8]="";
         char packet_version_str[6]="";
         cJSON *root;
         root = cJSON_CreateObject();
 
         snprintf(channel_str, sizeof(channel_str), "%d", s_ground2air_config_packet.dataChannel.wifi_channel);
+        snprintf(rc_channel_str, sizeof(rc_channel_str), "%u", (unsigned int)s_ground2air_config_packet.misc.cameraStopChannel);
+        snprintf(stabilization_channel_str, sizeof(stabilization_channel_str), "%u", (unsigned int)s_ground2air_config_packet.misc.stabilizationChannel);
         snprintf(mavlink_baudrate_str, sizeof(mavlink_baudrate_str), "%lu", (unsigned long)s_mavlink_baudrate);
         cJSON_AddStringToObject(root,"channel",channel_str);
+        cJSON_AddStringToObject(root, "camera_stop_channel", rc_channel_str);
+        cJSON_AddStringToObject(root, "stabilization_channel", stabilization_channel_str);
         cJSON_AddStringToObject(root,"mavlink_baudrate",mavlink_baudrate_str);
+        cJSON_AddStringToObject(root, "mavlink_inject_radio_status", s_ground2air_config_packet.misc.mavlinkInjectRadioStatus ? "true" : "false");
+        cJSON_AddStringToObject(root, "mavlink_inject_rssi_ch16", s_ground2air_config_packet.misc.mavlinkInjectRssiCh16 ? "true" : "false");
         cJSON_AddBoolToObject(root, "wifi_5ghz_supported", getValidWifiChannel(DEFAULT_WIFI_CHANNEL_5_8_GHZ) == DEFAULT_WIFI_CHANNEL_5_8_GHZ);
         cJSON_AddStringToObject(root, "apfpv", s_ground2air_config_packet.misc.apfpv ? "true" : "false");
         cJSON_AddStringToObject(root,"default_dvr", s_ground2air_config_packet.misc.autostartRecord ? "true" : "false");
@@ -702,7 +713,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
     }
     else
     {
-        char buf[160]={0};
+        char buf[384]={0};
         httpd_req_recv(req, buf, MIN(req->content_len, sizeof(buf) - 1));
         
         cJSON *root = cJSON_Parse(buf);
@@ -733,7 +744,46 @@ static esp_err_t configs_handler(httpd_req_t *req)
         {
             uint32_t baudrate = getValidMavlinkBaudrate(strtoul(mavlink_baudrate->valuestring, NULL, 10));
             s_mavlink_baudrate = baudrate;
+            s_ground2air_config_packet.misc.mavlinkBaudrate = getMavlinkBaudrateSetting(baudrate);
             nvs_args_set(NVS_KEY_MAVLINK_BAUDRATE, baudrate);
+        }
+
+        cJSON *camera_stop_channel = cJSON_GetObjectItem(root, "camera_stop_channel");
+        if (camera_stop_channel != NULL && cJSON_IsString(camera_stop_channel))
+        {
+            const uint32_t channel = strtoul(camera_stop_channel->valuestring, NULL, 10);
+            if (channel <= 18)
+            {
+                s_ground2air_config_packet.misc.cameraStopChannel = channel;
+                nvs_args_set("cameraStopCH", channel);
+            }
+        }
+
+        cJSON *stabilization_channel = cJSON_GetObjectItem(root, "stabilization_channel");
+        if (stabilization_channel != NULL && cJSON_IsString(stabilization_channel))
+        {
+            const uint32_t channel = strtoul(stabilization_channel->valuestring, NULL, 10);
+            if (channel <= 18)
+            {
+                s_ground2air_config_packet.misc.stabilizationChannel = channel;
+                nvs_args_set("stabilizationCH", channel);
+            }
+        }
+
+        cJSON *mavlink_inject_radio_status = cJSON_GetObjectItem(root, "mavlink_inject_radio_status");
+        if (mavlink_inject_radio_status != NULL && cJSON_IsString(mavlink_inject_radio_status))
+        {
+            s_ground2air_config_packet.misc.mavlinkInjectRadioStatus =
+                strcmp(mavlink_inject_radio_status->valuestring, "true") == 0;
+            nvs_args_set("mavInjectStat", s_ground2air_config_packet.misc.mavlinkInjectRadioStatus ? 1 : 0);
+        }
+
+        cJSON *mavlink_inject_rssi_ch16 = cJSON_GetObjectItem(root, "mavlink_inject_rssi_ch16");
+        if (mavlink_inject_rssi_ch16 != NULL && cJSON_IsString(mavlink_inject_rssi_ch16))
+        {
+            s_ground2air_config_packet.misc.mavlinkInjectRssiCh16 =
+                strcmp(mavlink_inject_rssi_ch16->valuestring, "true") == 0;
+            nvs_args_set("mavRssiCh16", s_ground2air_config_packet.misc.mavlinkInjectRssiCh16 ? 1 : 0);
         }
         
         cJSON_Delete(root);

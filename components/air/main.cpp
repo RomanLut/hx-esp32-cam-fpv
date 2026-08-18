@@ -63,6 +63,7 @@
 #include "util.h"
 
 #include "hx_mavlink_parser.h"
+#include "hx_mavlink_rc_encoder.h"
 
 #include "temperature_sensor.h"
 
@@ -126,6 +127,7 @@ uint32_t getValidMavlinkBaudrate(uint32_t baudrate)
 {
     switch (baudrate)
     {
+        case 4800:
         case 9600:
         case 19200:
         case 38400:
@@ -137,13 +139,53 @@ uint32_t getValidMavlinkBaudrate(uint32_t baudrate)
     }
 }
 
+//===================================================================================
+//===================================================================================
+// Converts the compact camera configuration value to a UART baudrate.
+uint32_t getMavlinkBaudrateFromSetting(uint8_t setting)
+{
+    static constexpr uint32_t baudrates[] = {115200, 57600, 38400, 19200, 9600, 4800};
+    return setting < sizeof(baudrates) / sizeof(baudrates[0]) ?
+        baudrates[setting] : DEFAULT_MAVLINK_BAUDRATE;
+}
+
+//===================================================================================
+//===================================================================================
+// Converts a UART baudrate to its compact camera configuration value.
+uint8_t getMavlinkBaudrateSetting(uint32_t baudrate)
+{
+    switch (getValidMavlinkBaudrate(baudrate))
+    {
+        case 57600: return 1;
+        case 38400: return 2;
+        case 19200: return 3;
+        case 9600: return 4;
+        case 4800: return 5;
+        default: return 0;
+    }
+}
+
 int32_t s_dbg;
 uint16_t s_framesCounter = 0;
 
 static bool s_initialized = false;
 static uint16_t s_camera_sensor_pid = OV2640_PID;
 
-static uint32_t s_last_rc_packet_tp = 0;
+static uint32_t s_last_sent_rc_command_tp = 0;
+
+//===================================================================================
+//===================================================================================
+// Records the interval between RC commands successfully queued for the flight controller.
+IRAM_ATTR void recordAirRcCommandSent()
+{
+    const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    if (s_last_sent_rc_command_tp != 0)
+    {
+        const int period = static_cast<int>(now - s_last_sent_rc_command_tp);
+        s_stats.RCPeriodMaxMS = std::max(s_stats.RCPeriodMaxMS, period);
+    }
+    s_last_sent_rc_command_tp = now;
+}
 
 #if defined(DVR_SUPPORT) && defined(BOARD_ESP32C5)
 static uint8_t s_sd_record_frame_selector = 0;
@@ -153,12 +195,21 @@ static bool s_sd_record_current_frame = false;
 static uint16_t s_air_device_id;
 static uint16_t s_connected_gs_device_id = 0;
 
-static int64_t s_accept_connection_timeout_ms = 0;
-
 #ifdef UART_MAVLINK
 
 static uint8_t s_mavlink_out_buffer[MAX_TELEMETRY_PAYLOAD_SIZE];
 static int s_mavlinkOutBufferCount = 0;
+
+static constexpr uint32_t MAVLINK_RADIO_STATUS_INTERVAL_MS = 1000;
+static constexpr uint32_t MAVLINK_RADIO_STATUS_IDLE_MS = 3000;
+static constexpr uint32_t MAVLINK_RC_LINK_TIMEOUT_MS = 1000;
+static uint32_t s_mavlink_radio_status_next_send_ms = 0;
+static uint32_t s_mavlink_last_input_ms = 0;
+static uint32_t s_mavlink_last_rc_received_ms = 0;
+static bool s_mavlink_rc_received = false;
+static uint8_t s_mavlink_radio_status_sequence = 0;
+static uint8_t s_mavlink_radio_status_link_quality = 0;
+static uint8_t s_mavlink_radio_status_rssi_dbm_magnitude = 0;
 #endif
 /////////////////////////////////////////////////////////////////////////
 
@@ -176,6 +227,7 @@ volatile bool s_air_record = false;
 
 static bool s_camera_stopped = false;
 static bool s_camera_stopped_requested = false;
+static volatile bool s_force_camera_settings_requested = false;
 
 volatile uint64_t s_shouldRestartRecording = 0;
 
@@ -1440,6 +1492,18 @@ IRAM_ATTR void transport_packet_received_cb(const uint8_t* data, size_t size, in
     s_stats.rssiDbm = rssi_dbm;
     s_stats.noiseFloorDbm = noise_floor_dbm;
 
+#ifdef UART_MAVLINK
+    // Wi-Fi supplies the magnitude of the negative dBm value here.
+    const int rssiMagnitudeDbm = std::clamp(static_cast<int>(rssi_dbm), 0, 127);
+    s_mavlink_radio_status_rssi_dbm_magnitude = static_cast<uint8_t>(rssiMagnitudeDbm);
+    s_mavlink_radio_status_link_quality = static_cast<uint8_t>(
+        std::clamp(100 - rssiMagnitudeDbm, 0, 100));
+#endif
+
+#ifdef UART_MSP_OSD
+    g_msp.setRadioRssi(rssi_dbm);
+#endif
+
     s_fec_decoder.lock();
     if (!s_fec_decoder.decode_data(data, size, false))
     {
@@ -1467,19 +1531,27 @@ IRAM_ATTR bool processSetting(const char* valueName, int fromValue, int toValue,
     return false;
 }
 
-static void unpairGS();
-
 //=============================================================================================
 //=============================================================================================
 //process settings not related to camera sensor setup
 static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
 {
-    s_accept_connection_timeout_ms = 0;
-
     int64_t t = esp_timer_get_time();
     s_last_seen_config_packet = t;
 
     Ground2Air_Config_Packet& dst = s_ground2air_config_packet;
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    // ESP32-C5 cannot perform the active radar detection required for a DFS SoftAP.
+    // Sanitize before processSetting() persists the requested channel to NVS.
+    if (src.misc.apfpv != 0 && !isWifiChannelSupportedForApfpv(src.dataChannel.wifi_channel))
+    {
+        LOG("APFPV channel %d requires DFS; using safe default channel %d\n",
+            src.dataChannel.wifi_channel,
+            DEFAULT_WIFI_CHANNEL_5_8_GHZ);
+        src.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+    }
+#endif
 
     bool transport_changed = processSetting( "apfpv",  dst.misc.apfpv, src.misc.apfpv, "apfpv" );
     if (transport_changed)
@@ -1515,6 +1587,16 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
         // APFPV mode must rebuild the AP on the new channel so GS can reassociate to the moved SSID.
         if (src.misc.apfpv != 0)
         {
+#if CONFIG_IDF_TARGET_ESP32C5
+            // Rebuilding the active C5 SoftAP while camera DMA and UDP tasks are running can
+            // abort inside the Wi-Fi driver. The channel is already persisted above, so use a
+            // deliberate reboot and let startup construct the radio stack on the new channel.
+            LOG("APFPV channel %d saved; intentionally rebooting to apply it\n", channel);
+            if (s_restart_time == 0)
+            {
+                s_restart_time = esp_timer_get_time() + 100000; // 100 ms
+            }
+#else
             LOG("APFPV applying channel change: requested=%d validated=%d rate=%d power=%d\n",
                 src.dataChannel.wifi_channel,
                 channel,
@@ -1524,6 +1606,7 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
                                                  src.dataChannel.wifi_rate,
                                                  channel,
                                                  src.dataChannel.wifi_power));
+#endif
         }
         else
         {
@@ -1544,6 +1627,44 @@ static void handle_ground2air_config_packetEx1(Ground2Air_Config_Packet& src)
     processSetting( "AutostartRecord", dst.misc.autostartRecord, src.misc.autostartRecord, "autostartRecord" );
 
     processSetting( "CameraStopChannel", dst.misc.cameraStopChannel, src.misc.cameraStopChannel, "cameraStopCH" );
+
+    if (src.misc.stabilizationChannel > 18)
+    {
+        src.misc.stabilizationChannel = 0;
+    }
+    processSetting("StabilizationChannel",
+                   dst.misc.stabilizationChannel,
+                   src.misc.stabilizationChannel,
+                   "stabilizationCH");
+
+    if (src.misc.mavlinkBaudrate > 5)
+    {
+        src.misc.mavlinkBaudrate = 0;
+    }
+    if (processSetting("MavlinkBaudrate",
+                       dst.misc.mavlinkBaudrate,
+                       src.misc.mavlinkBaudrate,
+                       nullptr))
+    {
+        const uint32_t baudrate = getMavlinkBaudrateFromSetting(src.misc.mavlinkBaudrate);
+        xSemaphoreTake(s_serial_mux, portMAX_DELAY);
+#ifdef UART_MAVLINK
+        ESP_ERROR_CHECK(uart_set_baudrate(UART_MAVLINK, baudrate));
+#endif
+        s_mavlink_baudrate = baudrate;
+        xSemaphoreGive(s_serial_mux);
+        nvs_args_set(NVS_KEY_MAVLINK_BAUDRATE, baudrate);
+    }
+
+    processSetting("MavlinkInjectRadioStatus",
+                   dst.misc.mavlinkInjectRadioStatus,
+                   src.misc.mavlinkInjectRadioStatus,
+                   "mavInjectStat");
+    processSetting("MavlinkInjectRssiCh16",
+                   dst.misc.mavlinkInjectRssiCh16,
+                   src.misc.mavlinkInjectRssiCh16,
+                   "mavRssiCh16");
+    src.misc.reserved = 0;
 
     processSetting( "mavlink2mspRC",  dst.misc.mavlink2mspRC, src.misc.mavlink2mspRC, "mavlink2mspRC" );
 
@@ -1834,6 +1955,7 @@ void handle_ground2air_config_packetEx2(bool forceCameraSettings)
 
 //===========================================================================================
 //===========================================================================================
+// Permanently associates this camera with one GS for the current boot.
 __attribute__((optimize("Os")))
 IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
 {
@@ -1842,39 +1964,25 @@ IRAM_ATTR static void acceptConnectionWithGS( uint16_t gsDeviceId )
     s_fec_decoder.packetFilter.set_packet_filtering( s_connected_gs_device_id, s_air_device_id );
 
     LOG("Accepting connection to GS device ID: 0x%04x\n", s_connected_gs_device_id );
-
-    s_accept_connection_timeout_ms = millis() + 3000;
 }
 
 //===========================================================================================
 //===========================================================================================
-static void unpairGS()
-{
-    s_connected_gs_device_id = 0;
-    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
-    s_fec_decoder.packetFilter.set_packet_filtering( 0, 0 );
-
-    LOG("Unpair from GS\n" );
-
-    s_accept_connection_timeout_ms = 0;
-}
-
-//===========================================================================================
-//===========================================================================================
+// Accepts configuration only from the GS associated with this camera.
 static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 {
+    // The decoder filter rejects new packets from other devices after association,
+    // while this check also rejects packets already queued before the filter changed.
+    if ( src.gsDeviceId == 0 || src.airDeviceId != s_air_device_id ||
+         ( s_connected_gs_device_id != 0 && src.gsDeviceId != s_connected_gs_device_id ) )
+    {
+        return;
+    }
+
     if ( s_connected_gs_device_id == 0 ) 
     {
-        if ( src.airDeviceId == s_air_device_id )
-        {
-            //accept connection with GS. This GS was connected to this camera before. 
-            //Camera rebooted?
-            acceptConnectionWithGS( src.gsDeviceId );
-        }
-        else
-        {
-            return;
-        }
+        // Accept the first GS addressing this camera and keep that association until reboot.
+        acceptConnectionWithGS( src.gsDeviceId );
     }
 
     //handle settings not related to camera sensor setup.
@@ -1884,47 +1992,161 @@ static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src)
 
 //===========================================================================================
 //===========================================================================================
+// Associates the first valid GS and ignores later connection requests until reboot.
 IRAM_ATTR static void handle_ground2air_connect_packet(Ground2Air_Config_Packet& src)
 {
-    if ( s_connected_gs_device_id == 0 )
+    if ( src.gsDeviceId != 0 && s_connected_gs_device_id == 0 )
     {
+        // Connect is broadcast during search; the first valid GS owns the camera until reboot.
         acceptConnectionWithGS( src.gsDeviceId );
     }
 }
 
 static void init_camera();
 
+#ifdef UART_MAVLINK
+//===================================================================================
+//===================================================================================
+// Writes one RADIO_STATUS frame and schedules the next event after a successful send.
+static bool send_mavlink_radio_status(size_t uart_free_size)
+{
+    uint8_t frame[MAVLINK_RADIO_STATUS_FRAME_SIZE];
+    const uint32_t now = millis();
+    const bool rcLinkActive = s_mavlink_rc_received &&
+        now - s_mavlink_last_rc_received_ms <= MAVLINK_RC_LINK_TIMEOUT_MS;
+    const uint8_t txBuffer = static_cast<uint8_t>(
+        std::min<size_t>(100, uart_free_size * 100 / UART_TX_BUFFER_SIZE_MAVLINK));
+
+    // INAV 9 ELRS mode reads RSSI dBm magnitude from remrssi and scales rssi
+    // from 0..255 to link quality 0..100. Rounding up preserves the requested
+    // 100 + dBm percentage after INAV's integer down-scaling. Report -100 dBm
+    // and zero LQ after one second without a real MAVLink RC packet.
+    const uint8_t linkQuality = rcLinkActive ? s_mavlink_radio_status_link_quality : 0;
+    const uint8_t rssiDbmMagnitude = rcLinkActive ?
+        s_mavlink_radio_status_rssi_dbm_magnitude : 100;
+    const uint8_t encodedLinkQuality = static_cast<uint8_t>(
+        std::min<int>(UINT8_MAX,
+            (linkQuality * UINT8_MAX + 99) / 100));
+    const size_t frameSize = HXMavlinkRCEncoder::buildRadioStatus(
+        frame,
+        sizeof(frame),
+        s_mavlink_radio_status_sequence,
+        encodedLinkQuality,
+        txBuffer,
+        rssiDbmMagnitude,
+        0);
+
+    if (frameSize == 0 || uart_write_bytes(UART_MAVLINK, frame, frameSize) != frameSize)
+    {
+        return false;
+    }
+
+    s_mavlink_radio_status_sequence++;
+    s_mavlink_radio_status_next_send_ms = millis() + MAVLINK_RADIO_STATUS_INTERVAL_MS;
+    return true;
+}
+
+//===================================================================================
+//===================================================================================
+// Sends a due RADIO_STATUS after input silence when injection is enabled and MAVLink is forwarded unchanged.
+static void send_mavlink_radio_status_if_idle()
+{
+    uint32_t now = millis();
+    if (s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus == 0 ||
+        s_ground2air_config_packet2.misc.mavlink2mspRC != 0 ||
+        static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) < 0 ||
+        now - s_mavlink_last_input_ms < MAVLINK_RADIO_STATUS_IDLE_MS)
+    {
+        return;
+    }
+
+    xSemaphoreTake(s_serial_mux, portMAX_DELAY);
+
+    // Input processing uses the same mutex and may have sent the pending status
+    // while this task was waiting, so recheck both deadlines under the lock.
+    now = millis();
+    if (s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus != 0 &&
+        s_ground2air_config_packet2.misc.mavlink2mspRC == 0 &&
+        static_cast<int32_t>(now - s_mavlink_radio_status_next_send_ms) >= 0 &&
+        now - s_mavlink_last_input_ms >= MAVLINK_RADIO_STATUS_IDLE_MS)
+    {
+        size_t free_size = 0;
+        ESP_ERROR_CHECK(uart_get_tx_buffer_free_size(UART_MAVLINK, &free_size));
+        if (free_size >= MAVLINK_RADIO_STATUS_FRAME_SIZE)
+        {
+            send_mavlink_radio_status(free_size);
+        }
+    }
+
+    xSemaphoreGive(s_serial_mux);
+}
+#endif
+
 //===========================================================================================
 //===========================================================================================
+// Parses ground-to-air MAVLink for local RC actions and forwards it to UART when available.
 __attribute__((optimize("Os")))
 IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
 {
-#ifdef UART_MAVLINK
-    if ( ( s_connected_gs_device_id == 0 ) || ( src.gsDeviceId != s_connected_gs_device_id ) ) return;
+    if ( ( s_connected_gs_device_id == 0 ) ||
+         ( src.gsDeviceId != s_connected_gs_device_id ) ||
+         ( src.airDeviceId != s_air_device_id ) ) return;
 
     xSemaphoreTake(s_serial_mux, portMAX_DELAY);
 
     int s = src.size - sizeof(Ground2Air_Header);
     s_stats.in_telemetry_data += s;
+#ifdef UART_MAVLINK
+    s_mavlink_last_input_ms = millis();
+#endif
+    const bool mavlink2MspRcEnabled = s_ground2air_config_packet2.misc.mavlink2mspRC != 0;
 
     uint8_t* dPtr = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+#ifdef UART_MAVLINK
+    int radio_status_insert_offset = -1;
+    int rc_packet_count = 0;
+    const bool radio_status_due =
+        s_ground2air_config_packet2.misc.mavlinkInjectRadioStatus != 0 &&
+        !mavlink2MspRcEnabled &&
+        static_cast<int32_t>(s_mavlink_last_input_ms - s_mavlink_radio_status_next_send_ms) >= 0;
+#endif
     for ( int i = 0; i < s; i++ )
     {
         mavlinkParserIn.processByte(*dPtr++);
         if ( mavlinkParserIn.gotPacket())
         {
+#ifdef UART_MAVLINK
+            if ( radio_status_due && radio_status_insert_offset < 0 )
+            {
+                radio_status_insert_offset = i + 1;
+            }
+#endif
+
             if ( mavlinkParserIn.getMessageId() == HX_MAXLINK_RC_CHANNELS_OVERRIDE )
             {
-                uint32_t t = (uint32_t)millis();
-                int d = t - s_last_rc_packet_tp;
-                s_last_rc_packet_tp = t;
-                if ( d > s_stats.RCPeriodMaxMS ) 
+#ifdef UART_MAVLINK
+                rc_packet_count++;
+                s_mavlink_last_rc_received_ms = s_mavlink_last_input_ms;
+                s_mavlink_rc_received = true;
+
+                if (s_ground2air_config_packet2.misc.mavlinkInjectRssiCh16 != 0)
                 {
-                    s_stats.RCPeriodMaxMS = d;
+                    const uint16_t rssiChannelValue = static_cast<uint16_t>(
+                        1000 + static_cast<uint16_t>(s_mavlink_radio_status_link_quality) * 10);
+                    const int mavlinkPacketLength = mavlinkParserIn.getPacketLength();
+                    const int mavlinkPacketOffset = i + 1 - mavlinkPacketLength;
+                    if (mavlinkPacketOffset >= 0 &&
+                        mavlinkParserIn.setRCChannelValue(16, rssiChannelValue))
+                    {
+                        memcpy(((uint8_t*)&src) + sizeof(Ground2Air_Header) + mavlinkPacketOffset,
+                               mavlinkParserIn.getPacketBuffer(),
+                               mavlinkPacketLength);
+                    }
                 }
+#endif
 
 #ifdef UART_MSP_OSD
-                if ( s_ground2air_config_packet2.misc.mavlink2mspRC != 0 )
+                if (mavlink2MspRcEnabled)
                 {
                     const HXMAVLinkRCChannelsOverride* msg = mavlinkParserIn.getMsg<HXMAVLinkRCChannelsOverride>();
                     //LOG("%d %d %d %d\n", msg->chan1_raw, msg->chan2_raw, msg->chan3_raw, msg->chan4_raw);
@@ -1953,16 +2175,38 @@ IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src)
         }
     }
 
+#ifdef UART_MAVLINK
     size_t freeSize = 0;
     ESP_ERROR_CHECK( uart_get_tx_buffer_free_size(UART_MAVLINK, &freeSize) );
 
-    if ( freeSize >= s )
+    uint8_t* payload = ((uint8_t*)&src) + sizeof(Ground2Air_Header);
+    bool mavlink_payload_queued = false;
+    if ( radio_status_insert_offset >= 0 && freeSize >= s + MAVLINK_RADIO_STATUS_FRAME_SIZE )
     {
-        uart_write_bytes(UART_MAVLINK, ((uint8_t*)&src) + sizeof(Ground2Air_Header), s);
+        const int first_part_written = uart_write_bytes(UART_MAVLINK, payload, radio_status_insert_offset);
+        send_mavlink_radio_status(freeSize - s);
+        const int second_part_size = s - radio_status_insert_offset;
+        const int second_part_written = uart_write_bytes(UART_MAVLINK,
+            payload + radio_status_insert_offset,
+            second_part_size);
+        mavlink_payload_queued = first_part_written == radio_status_insert_offset &&
+            second_part_written == second_part_size;
+    }
+    else if ( freeSize >= s )
+    {
+        mavlink_payload_queued = uart_write_bytes(UART_MAVLINK, payload, s) == s;
     }
 
-    xSemaphoreGive(s_serial_mux);
+    if (!mavlink2MspRcEnabled && mavlink_payload_queued)
+    {
+        for (int i = 0; i < rc_packet_count; i++)
+        {
+            recordAirRcCommandSent();
+        }
+    }
 #endif
+
+    xSemaphoreGive(s_serial_mux);
 }
 
 //=============================================================================================
@@ -2466,7 +2710,7 @@ IRAM_ATTR void recalculateFrameSizeQualityK(int video_full_frame_size)
 
     //k2 - max frame size which do not overload wifi output queue
     //wifi output queue should have space to hold frame data and fec data
-    int safe_frame_size = WLAN_OUTGOING_BUFFER_SIZE *  s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
+    int safe_frame_size = getWlanOutgoingQueueCapacity() * s_ground2air_config_packet.dataChannel.fec_codec_k / s_ground2air_config_packet.dataChannel.fec_codec_n;
     //queue is emptied by tx thread constantly so we can assume virtually "larger buffer"
     safe_frame_size += FECbandwidth / fps; 
     safe_frame_size = safe_frame_size * 7 / 10;  //assume next frame can suddenly increase is size by 30%
@@ -2924,7 +3168,9 @@ IRAM_ATTR size_t camera_data_available(void * cam_obj,const uint8_t* data, size_
 #ifdef PROFILE_CAMERA_DATA    
                     s_profiler.set(PF_CAMERA_DATA_SIZE, 0);
 #endif
-                    handle_ground2air_config_packetEx2(false);
+                    const bool forceCameraSettings = s_force_camera_settings_requested;
+                    s_force_camera_settings_requested = false;
+                    handle_ground2air_config_packetEx2(forceCameraSettings);
 
                     if ( !g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15)) )
                     {
@@ -3193,10 +3439,15 @@ void readConfig()
     }
     LOG("Air Device ID: 0x%04x\n", (int)s_air_device_id);
 
-    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read( "channel", DEFAULT_WIFI_CHANNEL_2_4GHZ );
+#ifdef BOARD_ESP32C5
+    constexpr uint16_t default_wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+#else
+    constexpr uint16_t default_wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+#endif
+    s_ground2air_config_packet.dataChannel.wifi_channel = (uint16_t)nvs_args_read("channel", default_wifi_channel);
     if  ( (s_ground2air_config_packet.dataChannel.wifi_channel < MIN_WIFI_CHANNEL) || (s_ground2air_config_packet.dataChannel.wifi_channel >= MAX_WIFI_CHANNEL))
     {
-        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_2_4GHZ;
+        s_ground2air_config_packet.dataChannel.wifi_channel = default_wifi_channel;
         nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
     }
 
@@ -3291,12 +3542,33 @@ void readConfig()
         s_ground2air_config_packet.misc.cameraStopChannel = 0;
     }
 
+    s_ground2air_config_packet.misc.stabilizationChannel = nvs_args_read("stabilizationCH", 0);
+    if (s_ground2air_config_packet.misc.stabilizationChannel > 18)
+    {
+        s_ground2air_config_packet.misc.stabilizationChannel = 0;
+    }
+
+    s_ground2air_config_packet.misc.mavlinkBaudrate = getMavlinkBaudrateSetting(s_mavlink_baudrate);
+    s_ground2air_config_packet.misc.mavlinkInjectRadioStatus = nvs_args_read("mavInjectStat", 1) != 0;
+    s_ground2air_config_packet.misc.mavlinkInjectRssiCh16 = nvs_args_read("mavRssiCh16", 0) != 0;
+    s_ground2air_config_packet.misc.reserved = 0;
+
     s_ground2air_config_packet.misc.mavlink2mspRC = nvs_args_read( "mavlink2mspRC", 0 );
 
 #ifdef APFPV_FIRMWARE
     s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 1 );
 #else
     s_ground2air_config_packet.misc.apfpv = nvs_args_read( "apfpv", 0 );
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32C5
+    // Recover automatically if an older GS persisted a DFS channel that cannot host APFPV.
+    if (s_ground2air_config_packet.misc.apfpv != 0 &&
+        !isWifiChannelSupportedForApfpv(s_ground2air_config_packet.dataChannel.wifi_channel))
+    {
+        s_ground2air_config_packet.dataChannel.wifi_channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+        nvs_args_set("channel", s_ground2air_config_packet.dataChannel.wifi_channel);
+    }
 #endif
 
     s_ground2air_config_packet.misc.osdFontCRC32 = (uint32_t)nvs_args_read( "osdFontCRC32", 0 );
@@ -3387,6 +3659,7 @@ bool isUSBDiskMounted()
 
 //=============================================================================================
 //=============================================================================================
+// Initializes the firmware and selects normal transport or file-server startup mode.
 extern "C" void app_main()
 {
     //esp_task_wdt_init();
@@ -3471,16 +3744,6 @@ extern "C" void app_main()
 
     s_air_record = s_ground2air_config_packet2.misc.autostartRecord != 0;
 
-    //allocates large continuous Wifi output bufer. Allocate ASAP until memory is not fragmented.
-    int channel = getValidWifiChannel( s_ground2air_config_packet.dataChannel.wifi_channel );
-    setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate,
-               channel,
-               s_ground2air_config_packet.dataChannel.wifi_power,
-               s_air_device_id,
-               s_ground2air_config_packet.misc.apfpv != 0,
-               transport_packet_received_cb);
-    s_fec_encoder.packetFilter.set_packet_header_data( s_air_device_id, 0 );
-
     bool runFileServer = false;
 
 #ifdef DVR_SUPPORT
@@ -3489,6 +3752,17 @@ extern "C" void app_main()
 
     if ( !runFileServer )
     {
+        // Allocate the normal transport only when this boot will use it. File-server
+        // mode starts its own SoftAP and must not inherit an APFPV band or channel.
+        int channel = getValidWifiChannel(s_ground2air_config_packet.dataChannel.wifi_channel);
+        setup_wifi(s_ground2air_config_packet.dataChannel.wifi_rate,
+                   channel,
+                   s_ground2air_config_packet.dataChannel.wifi_power,
+                   s_air_device_id,
+                   s_ground2air_config_packet.misc.apfpv != 0,
+                   transport_packet_received_cb);
+        s_fec_encoder.packetFilter.set_packet_header_data(s_air_device_id, 0);
+
         //allocates 16kb dma buffer. Allocate ASAP before memory is fragmented.
 #ifdef USE_MOCK_CAMERA
         init_mock_camera();
@@ -3535,12 +3809,8 @@ extern "C" void app_main()
         //============================================================================
         LOG("Starting file server...");
 
-        stop_wifi_transport();
-        vTaskSuspend(s_wifi_rx_task);
-        vTaskSuspend(s_wifi_tx_task);
-
-        //free some memory for the fileserver and OTA
-        deinitQueues();
+        // The normal Wi-Fi transport was intentionally never initialized on this boot.
+        // Release only recorder buffers before starting the independent file-server AP.
         free(sd_write_block);
         heap_caps_free( s_sd_slow_buffer->getBufferPtr() );
 
@@ -3550,7 +3820,7 @@ extern "C" void app_main()
         heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
         heap_caps_print_heap_info(MALLOC_CAP_DMA);
 
-        setup_wifi_file_server(channel);
+        setup_wifi_file_server();
 
 #if defined(USB_DISK_SUPPORT)
         if (s_sd_initialized)
@@ -3740,6 +4010,10 @@ extern "C" void app_main()
                     LOG("Camera started\n");
 #if !defined(USE_MOCK_CAMERA)
                     init_camera();
+                    // Reinitialization restores the driver's default SVGA mode. Apply every
+                    // configured sensor setting at the next completed frame, where camera
+                    // settings are normally changed, to restore custom OV5640 modes safely.
+                    s_force_camera_settings_requested = true;
 #endif                    
                 }
             }
@@ -3754,7 +4028,9 @@ extern "C" void app_main()
             {
                 s_fec_encoder.lock();
 
-                if ( !g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15)) )
+                // With no video frames, OSD packets are the air unit's only pong carrier.
+                // Send one on every stopped-camera tick so GS does not report a false link loss.
+                if ( !g_osd.isLocked() )
                 {
                     send_air2ground_osd_packet();
                     s_osdUpdateCounter = 0;
@@ -3765,14 +4041,6 @@ extern "C" void app_main()
                 }
                 
                 s_fec_encoder.unlock();
-            }
-        }
-
-        if ( s_accept_connection_timeout_ms != 0 ) 
-        {
-            if ( s_accept_connection_timeout_ms < millis() )
-            {
-                unpairGS();
             }
         }
 
@@ -3826,7 +4094,11 @@ extern "C" void app_main()
         //the msp.loop() should be called every ~10ms
         //115200 BAUD is 11520 bytes per second or 115 bytes per 10 ms
         //with UART RX buffer of 512 we are safe with periods 10...40ms
-        g_msp.loop();
+        g_msp.loop(s_ground2air_config_packet2.misc.mavlink2mspRC != 0);
+#endif
+
+#ifdef UART_MAVLINK
+        send_mavlink_radio_status_if_idle();
 #endif
 
         if ((s_restart_time!=0) && ( esp_timer_get_time()>s_restart_time))

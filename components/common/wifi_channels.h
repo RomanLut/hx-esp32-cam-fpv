@@ -32,6 +32,9 @@ int getWifiChannelIndex(int channels);
 //does not check legal channels range for current country
 int getValidWifiChannel(int channel);
 
+// Returns whether a channel can host APFPV SoftAP without DFS radar detection.
+bool isWifiChannelSupportedForApfpv(int channel);
+
 // checks channel compatibility with gs wifiBand values: 0=2.4GHz, 1=5.8GHz, 2=dual
 bool isWifiChannelAllowedByBand(int channel, uint8_t wifiBand);
 
@@ -41,5 +44,5 @@ int getFirstWifiChannelIndexForBand(uint8_t wifiBand);
 // returns a valid channel for selected band; falls back to first channel in that band
 int getBandAwareWifiChannel(int channel, uint8_t wifiBand);
 
-// returns index within a band-filtered channel menu list
-int getBandAwareWifiChannelMenuIndex(int channel, uint8_t wifiBand);
+// returns index within a band-filtered channel menu list; APFPV excludes DFS channels
+int getBandAwareWifiChannelMenuIndex(int channel, uint8_t wifiBand, bool apfpv = false);

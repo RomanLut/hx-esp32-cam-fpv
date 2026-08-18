@@ -1,0 +1,50 @@
+# Line-ending policy.
+#
+# The repository already stores every first-party source file with LF; this file
+# pins that so the result no longer depends on each developer's core.autocrlf
+# setting. Without it, a machine with core.autocrlf=false commits CRLF straight
+# into the repo (see components/common/circular_buffer.h, the one file where that
+# already happened), which turns every later diff of that file into noise.
+#
+# Working trees on Windows still get CRLF for the editable source types below;
+# only the committed content is normalized.
+
+* text=auto
+
+# First-party sources: normalize in the repo, native endings in the working tree.
+*.c      text
+*.cc     text
+*.cpp    text
+*.h      text
+*.hpp    text
+*.kt     text
+*.kts    text
+*.java   text
+*.xml    text
+*.md     text
+*.ini    text
+*.json   text
+*.gradle text
+Makefile text
+
+# Files consumed by a Linux target must be LF in the working tree too. Radxa /
+# Raspberry Pi / WSL deployments execute these directly, and a CR at end of line
+# makes the shebang and every command fail there (see AGENTS.md, "Linux script
+# copy rule").
+*.sh  text eol=lf
+*.py  text eol=lf
+
+# Windows-only scripts stay CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets: never touched.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.bin  binary
+*.so   binary
+*.a    binary
+*.avi  binary
+*.ttf  binary
+*.otf  binary

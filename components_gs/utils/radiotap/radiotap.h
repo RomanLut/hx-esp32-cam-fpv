@@ -1,3 +1,5 @@
+#include <cstdint>
+
 #include "ieee80211_radiotap.h"
 
 /* Radiotap header iteration
@@ -16,16 +18,23 @@
  * @bitmap_shifter: internal shifter for curr u32 bitmap, b0 set == arg present
  */
 
-struct ieee80211_radiotap_iterator {
+//===================================================================================
+//===================================================================================
+// Tracks presence bitmaps, namespaces, and field data while parsing one radiotap header.
+struct ieee80211_radiotap_iterator
+{
 	struct ieee80211_radiotap_header *rtheader;
 	int max_length;
 	int this_arg_index;
     uint8_t *this_arg;
+	int this_arg_size;
 
 	int arg_index;
     uint8_t *arg;
-	__le32 *next_bitmap;
+	uint8_t *next_bitmap;
     uint32_t bitmap_shifter;
+	bool reset_on_ext;
+	bool in_radiotap_namespace;
 };
 
 extern int ieee80211_radiotap_iterator_init(

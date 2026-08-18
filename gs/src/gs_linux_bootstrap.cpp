@@ -280,12 +280,8 @@ int runLinuxBootstrap(int argc, const char* argv[])
 
     s_hal.reset(new PI_HAL());
 
-    loadSharedSettings(0);
-    if (s_groundstation_config.deviceId == 0)
-    {
-        s_groundstation_config.deviceId = generateLinuxDeviceId();
-        s_settingsStorage.saveGroundStationConfig();
-    }
+    const uint16_t gs_device_id = generateLinuxDeviceId();
+    loadSharedSettings(gs_device_id);
     printf("gs_device_id: 0x%04x\n", s_groundstation_config.deviceId);
 
     s_settingsStorage.loadGround2AirConfig();

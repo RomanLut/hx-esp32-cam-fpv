@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14 (API 34) requires the granular per-type permission in addition to
+         FOREGROUND_SERVICE for KeepAliveService's android:foregroundServiceType="dataSync". -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -26,6 +29,15 @@
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
+
+    <!-- Package-visibility filtering (targetSdk >= 30) hides the OpenXR runtime broker
+         content providers unless they are declared here. Without this the Khronos loader
+         logs "Could access neither the installable nor system runtime broker" and silently
+         falls back to scanning /odm|/system|/vendor/etc/openxr/1/active_runtime*.json,
+         whose layout is not guaranteed to be the same across headset generations. -->
+    <queries>
+        <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -77,24 +89,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <activity
-            android:name=".UsbAttachActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:finishOnTaskLaunch="true"
-            android:noHistory="true"
-            android:launchMode="singleTask"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.AndroidGs.Starting">
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
-            <meta-data
-                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                android:resource="@xml/usb_device_filter" />
-        </activity>
     </application>
 
 </manifest>

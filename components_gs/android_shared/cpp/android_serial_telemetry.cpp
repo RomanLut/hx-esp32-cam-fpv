@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "android_gs_jni_names.h"
 #include "android_jni_shared.h"
 #include "gs_runtime_config.h"
 #include "gs_shared_state.h"
@@ -16,14 +17,6 @@ namespace
 std::mutex g_uart_list_mutex;
 std::vector<std::string> g_uart_list;
 }  // namespace
-
-#if defined(OCULUS_QUEST_GS)
-#define ANDROID_GS_NATIVE_CORE_CLASS "com/esp32camfpv/questgs/NativeCore"
-#define ANDROID_GS_JNI(name) Java_com_esp32camfpv_questgs_NativeCore_##name
-#else
-#define ANDROID_GS_NATIVE_CORE_CLASS "com/esp32camfpv/androidgs/NativeCore"
-#define ANDROID_GS_JNI(name) Java_com_esp32camfpv_androidgs_NativeCore_##name
-#endif
 
 void publishAndroidTelemetryUartList(const std::vector<std::string>& uarts)
 {
@@ -216,8 +209,9 @@ void applySelectedTelemetryUart()
 
 //===================================================================================
 //===================================================================================
-// JNI bindings shared by both Android apps; the Quest target uses a different
-// package name and selects its exported symbol names through OCULUS_QUEST_GS.
+// JNI bindings shared by both Android apps. Both resolve to the same exported
+// symbol names because NativeCore lives in the neutral com.esp32camfpv.gscommon
+// package; see android_gs_jni_names.h.
 extern "C" JNIEXPORT void JNICALL
 ANDROID_GS_JNI(publishTelemetryUarts)(JNIEnv* env, jclass /* clazz */, jobjectArray uarts)
 {

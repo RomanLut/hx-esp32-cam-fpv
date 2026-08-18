@@ -13,19 +13,10 @@
 #include "Log.h"
 #include "gs_jpeg_dct_postprocessing.h"
 #include "gs_shared_state.h"
+#include "gs_image_histogram.h"
 #include "gs_video_stabilization_shared.h"
 
-#if defined(OCULUS_QUEST_GS)
-#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/questgs/BitmapDecodeBridge$Result"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
-    "([B)Lcom/esp32camfpv/questgs/BitmapDecodeBridge$Result;"
-#else
-#define ANDROID_GS_BITMAP_DECODE_BRIDGE_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_CLASS "com/esp32camfpv/androidgs/BitmapDecodeBridge$Result"
-#define ANDROID_GS_BITMAP_DECODE_RESULT_SIGNATURE \
-    "([B)Lcom/esp32camfpv/androidgs/BitmapDecodeBridge$Result;"
-#endif
+#include "android_gs_jni_names.h"
 
 namespace
 {
@@ -457,6 +448,18 @@ void AndroidBitmapJpegDecoder::workerThreadProc()
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 Clock::now() - decode_begin)
                 .count());
+
+        // Bitmap pixels are counted only while Image Settings draws the histogram;
+        // the shared helper returns before touching the frame in every other menu.
+        if (use_rgb565)
+        {
+            gs::image_histogram::updateFromRgb565(pixels, width, height, stride);
+        }
+        else
+        {
+            gs::image_histogram::updateFromRgba8888(pixels, width, height, stride);
+        }
+
         m_decoded_count.fetch_add(1);
         m_decoded_total_ms.fetch_add(duration_ms);
 

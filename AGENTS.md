@@ -7,6 +7,16 @@ file reference formatting:
 - do not use `file://`
 - do not use plain inline code for clickable file references
 
+root-cause fixes:
+- do not implement recovery, restart, replug, retry, timeout, or state-reset workarounds as substitutes for a requested root-cause fix
+- trace the failure to the owning layer, fix the causal defect there, and verify the complete user-visible workflow
+- if the root cause is not yet proven, continue diagnosis or report the remaining evidence gap instead of presenting an ad hoc mitigation as a fix
+
+Quest testing dialog authorization:
+- when testing on Meta Quest, the user authorizes the agent to approve or dismiss Oculus/Horizon permission and system dialogs itself as required by the test
+- inspect the fresh headset screenshot, focused window, exact prompt, and target device/network before acting, then use one verified input action and confirm the resulting permission or system state
+- do not stop merely to ask the user to press a visible Quest dialog when a proven remote input route is available
+
 code style and comments:
 - brackets `{}` are always placed on the next line
 - every out-of-class function or method definition, and every class or struct definition, should start with:
@@ -31,4 +41,22 @@ Radxa deployment rule:
 
 Linux script copy rule:
 - whenever a script is copied from Windows workspace to any Linux target (Raspberry Pi, Radxa, WSL, or other), convert it to LF on target before execution (for example `sed -i 's/\r$//' <script>`), then restore executable flags (`chmod +x`) as needed
+
+ESP32 PlatformIO build rule:
+- never run ESP32 PlatformIO builds or clean commands concurrently; all firmware targets share PlatformIO packages and tools, and concurrent runs cause package-manager collisions and locked build files
+- build `air_firmware_esp32cam`, `air_firmware_esp32s3sense`, and `air_firmware_esp32c5` strictly one at a time, including when using orchestration tools; do not use `Promise.all`, parallel jobs, or overlapping shells for these targets
+- use `C:\Users\roman\.platformio\penv\Scripts\pio.exe` instead of the global `pio` command or `python -m platformio`
+- do not clean a target unless regeneration is actually required; a clean ESP-IDF build is much slower than an incremental build
+- allow at least 15 minutes for a clean ESP32 build command so the tool wrapper does not time out while the compiler is still working
+- if any PlatformIO command times out, assume its child processes may still be running; inspect PlatformIO, Python, CMake, Ninja, and Xtensa/RISC-V compiler processes and wait for the original build to finish before starting another build or clean command
+- never start a retry while any prior PlatformIO or compiler process for this workspace is alive, because the overlapping process can lock archives, linker scripts, and generated files
+- after a timed-out wrapper finishes in the background, verify its result from the completed process/artifacts and, if needed, run only one incremental confirmation after all prior processes have exited
+
+ESP32-C5 USB reset rule:
+- after flashing an ESP32-C5 over USB Serial/JTAG, a normal esptool hard reset or manual RTS pulse can leave the chip in the ROM loader with `boot:0xf (DOWNLOAD(UART0/USB))`; do not conclude that the application or flash is broken from this state
+- the C5 application reassigns the native USB pins to UART, so the COM port disappearing immediately after reset normally means the application booted successfully; use the watchdog-reset recovery only when the COM port remains present in ROM download mode
+- to start the flashed application without using the external reset/boot lines, connect to the existing ROM loader without a stub and request the C5 watchdog reset:
+  `C:\Users\roman\.platformio\penv\Scripts\python.exe -m esptool --chip esp32c5 --port <PORT> --no-stub --before no-reset --after watchdog-reset chip-id`
+- `--no-stub` is required because esptool's watchdog reset does not work through the flasher stub; `--before no-reset` is required so esptool does not first reassert the external download/reset sequence
+- verify success from serial output showing `boot:0x19 (SPI_FAST_FLASH_BOOT)` followed by the ESP-IDF bootloader and application logs
 

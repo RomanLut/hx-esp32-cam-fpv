@@ -46,10 +46,13 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 //leave ~5k for SD library to initialize correctly
 #if defined(BOARD_XIAOS3SENSE)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 90000;
+constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 90000;
 #elif defined(BOARD_ESP32CAM)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 45000;
+constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 45000;
 #elif defined(BOARD_ESP32C5)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 65000;
+constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 40000;
 #endif
 
 void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t device_id, bool apfpv, Transport_Payload_Received_CB packet_received_cb);
@@ -64,10 +67,11 @@ void set_ground2air_connect_packet_handler(void (*handler)(Ground2Air_Config_Pac
 void set_ground2air_data_packet_handler(void (*handler)(Ground2Air_Data_Packet& src));
 esp_err_t set_wifi_fixed_rate(WIFI_Rate value);
 esp_err_t set_wlan_power_dBm(float dBm);
-void setup_wifi_file_server(uint8_t channel);
+void setup_wifi_file_server();
 uint8_t getMaxWlanOutgoingQueueUsage();
 uint8_t getMinWlanOutgoingQueueUsageSeen();
 uint8_t getMaxWlanOutgoingQueueUsageFrame();
+size_t getWlanOutgoingQueueCapacity();
 uint8_t getMinWlanOutgoingQueueUsageFrame();
 void deinitQueues();
 

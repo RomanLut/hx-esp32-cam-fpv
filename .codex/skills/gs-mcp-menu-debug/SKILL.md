@@ -31,6 +31,39 @@ The embedded GS MCP server exposes these tools:
 
 Use `gs_get_snapshot` and `gs_get_menu_buffer` frequently while navigating. Do not navigate blind for more than one step.
 
+### Quest MCP access
+
+- The Quest GS APK embeds and starts the same MCP server on TCP port `17654`.
+- Do not report Quest MCP as unavailable merely because `gs_get_snapshot`, `gs_get_menu_buffer`, or the key tools are absent from the current Codex native tool registry.
+- First verify the headset listener with `adb shell ss -ltn` and check Quest logs for `GS MCP server listening`.
+- For a USB-attached Quest, create the host tunnel with `adb forward tcp:17654 tcp:17654`, then call the server through `gs/scripts/gs_mcp_client.py` at `127.0.0.1:17654`.
+- When launching or refocusing Quest GS through ADB, use its Oculus VR intent: `adb shell am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.esp32camfpv.questgs/.MainActivity`. A bare component launch can leave the app rendered and Android-resumed while OpenXR remains only `VISIBLE` (`state=4`), so physical controller actions are not polled and MCP input remains disabled.
+- In Quest app code, recover VR focus only from a callback proving that the blocking system flow completed, such as Wi-Fi `NetworkCallback.onAvailable`/`onUnavailable` or a permission result. Do not relaunch the VR activity from generic `onResume`, `onWindowFocusChanged`, or startup callbacks: Horizon can invoke them while its approval overlay is still waiting, and an eager relaunch hides the choice before the user can press it.
+- After a completion-triggered refocus, verify OpenXR reaches `FOCUSED` and real data/controller input resumes. An Android-resumed activity or visible rendering is not sufficient.
+- Native Codex tool exposure and embedded-server reachability are separate: native exposure requires MCP configuration and a new Codex session, while the direct client works through the ADB tunnel in the current session.
+- Only report Quest MCP unavailable after both the embedded listener and the direct forwarded client have been checked.
+- Before every MCP key injection on Quest, verify that Quest GS owns user input focus and that no Android permission dialog, Wi-Fi network-request dialog, Horizon panel, or other system overlay is focused or visibly blocking it.
+- Treat `OpenXR: session state=5` (`XR_SESSION_STATE_FOCUSED`) as the authoritative application-focus signal. If the latest state is not focused or cannot be established, do not inject a key.
+- A captured menu with `visible=true` only proves that the renderer processed earlier input; it does not prove the user can currently see or operate that menu.
+- Never use MCP to perform a menu action that the user could not perform with the controller in the current focus state.
+- Quest USB permission requests must be single-flight per device. A periodic controller sync must not call `UsbManager.requestPermission()` again while a request is pending, and a denial must suppress further prompts until the USB topology or explicit device selection changes.
+- Serialize USB permission requests across every Quest controller, not only inside each controller. Horizon can keep only one of simultaneous RAW/scan/telemetry requests visible while another controller remains stuck in a pending state. Release the app-wide permission owner on result, observed grant, detach, controller stop, and transport or device-selection change. Treat `UsbManager.hasPermission()==true` as authoritative because Horizon can grant access without delivering the dynamic permission-result broadcast.
+- Treat the USB permission-result broadcast as the completion signal for VR focus recovery. Do not recover focus merely because the activity resumed while the Horizon permission overlay is still open.
+- A fast Quest USB hub replug may reuse the same `/dev/bus/usb/...` device names. Track a detach generation and rebuild native USB objects after every observed detach even when names and adapter counts match; also keep periodic reconciliation alive after detach/open exceptions so devices can recover without restarting GS.
+
+### Quest unfocused-state workflow
+
+When Quest GS is not in `XR_SESSION_STATE_FOCUSED`, do not stop at reporting that MCP input is unavailable. Determine what currently owns user focus and continue debugging through that visible UI when appropriate:
+
+1. Use `adb shell dumpsys activity activities` and `adb shell dumpsys window windows` to identify the focused activity/window and its display and bounds.
+2. Capture the current headset display with `adb shell screencap -p`, pull it to a temporary host path, and visually inspect it before acting. `uiautomator dump` may expose only the VR shell hierarchy on Quest, so an empty or irrelevant hierarchy is not proof that no dialog is visible.
+3. Read the exact visible message, choices, and target. Do not guess that a dialog is an approval prompt; it may instead be an error, retry prompt, permission request, or another state.
+4. If the user has explicitly authorized the visible system action, interact with the focused Android/Horizon dialog using a controller-equivalent key or a tap on a verified visible control. This is system-UI input, not an MCP menu key.
+5. Send only one action at a time. Then re-check the focused window, capture another screenshot when the result is visual, and inspect the relevant service state or logs before taking another action.
+6. Never redirect input to Quest GS while another window owns focus. Resume MCP menu input only after the latest OpenXR state is `XR_SESSION_STATE_FOCUSED` and the MCP snapshot reports `synthetic_input_enabled=true` when that field is available.
+
+For Wi-Fi network-request dialogs, also verify the outcome in `adb shell dumpsys wifi`. Distinguish user approval (`mUserApprovedAccessPointMap`) from an actual network connection (`mWifiInfo`, the app's `NetworkCallback`, and the GS snapshot); approval alone does not prove that the headset connected or that video packets are arriving.
+
 ## Required Menu Verification Flow
 
 Before claiming anything about menu behavior:

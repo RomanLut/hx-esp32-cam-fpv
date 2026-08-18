@@ -299,6 +299,7 @@ static int set_image_options(sensor_t *sensor)
             || write_reg(sensor->slv_addr, X_INCREMENT, 0x31)//odd:3, even: 1
             || write_reg(sensor->slv_addr, Y_INCREMENT, 0x31);//odd:3, even: 1
     } else {
+        //0x4520: 0x10 (the OV5640 driver's value) was tested here and is visibly worse on OV3660 - keep 0xb0.
         ret  = write_reg(sensor->slv_addr, 0x4520, 0xb0)
             || write_reg(sensor->slv_addr, X_INCREMENT, 0x11)//odd:1, even: 1
             || write_reg(sensor->slv_addr, Y_INCREMENT, 0x11);//odd:1, even: 1
@@ -326,8 +327,7 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     uint16_t h = resolution[framesize].height;
     aspect_ratio_t ratio = resolution[sensor->status.framesize].aspect_ratio;
     ratio_settings_t settings = ratio_table[ratio];
-    bool is_1024x576_timing = (framesize == FRAMESIZE_P_FHD);
-    bool is_1280x720_timing = (framesize == FRAMESIZE_HD);
+    bool is_wide_16x9_timing = (framesize == FRAMESIZE_P_FHD || framesize == FRAMESIZE_HD);
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
     if (framesize == FRAMESIZE_VGA || framesize == FRAMESIZE_SVGA)
@@ -339,28 +339,24 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 #endif
 
-    if (is_1024x576_timing) {
-        // Use a moderate 1728x972 source for 1024x576. The wider 1920x1080 ->
-        // 1024x576 scaler ratio can produce unstable frame pacing on OV3660,
+    if (is_wide_16x9_timing) {
+        // Use a moderate 1760x984 source for both 1024x576 and 1280x720. The wider
+        // 1920x1080 -> scaler ratio can produce unstable frame pacing on OV3660,
         // while the 1536x864 3:2 path crops too much FOV.
+        //
+        // 1280x720 previously scanned a wider 1952x1092 window (64,242)-(2015,1333)
+        // with HTS 2172 / VTS 1128 for a slightly larger FOV. That window gives the
+        // image a persistent cyan/red cast that no other mode shows. Measured on
+        // ESP32-C5: the cast is unaffected by pixel clock (60 vs 72 MHz SYSCLK) and
+        // by vertical blanking (VTS 1128 vs the stock 16:9 1322), but disappears
+        // completely on this window, so the window/HTS itself is what breaks the
+        // sensor's black level calibration. Frame rate is unchanged (~30 FPS).
         sensor->status.binning = false;
         sensor->status.scale = true;
         ret  = write_addr_reg(sensor->slv_addr, X_ADDR_ST_H, 160, 282)
             || write_addr_reg(sensor->slv_addr, X_ADDR_END_H, 1919, 1265)
             || write_addr_reg(sensor->slv_addr, X_OUTPUT_SIZE_H, w, h)
             || write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, 1920, 1040)
-            || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 16, 6);
-    } else if (is_1280x720_timing) {
-        // OV3660's generic 16:9 table scans the full 1920x1080 window and tops
-        // out near 20 FPS. Keep the active source aligned to the stock 16:9
-        // window; odd scaler ratios/crops can corrupt colors on this sensor.
-        // It deliberately avoids binning so FOV stays close to the max 16:9 crop.
-        sensor->status.binning = false;
-        sensor->status.scale = true;
-        ret  = write_addr_reg(sensor->slv_addr, X_ADDR_ST_H, 64, 242)
-            || write_addr_reg(sensor->slv_addr, X_ADDR_END_H, 2015, 1333)
-            || write_addr_reg(sensor->slv_addr, X_OUTPUT_SIZE_H, w, h)
-            || write_addr_reg(sensor->slv_addr, X_TOTAL_SIZE_H, 2172, 1128)
             || write_addr_reg(sensor->slv_addr, X_OFFSET_H, 16, 6);
     } else {
         sensor->status.binning = (w <= (settings.max_width / 2) && h <= (settings.max_height / 2));
@@ -418,10 +414,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
         //24 MHz XCLK (ESP32-C5)
-        if (is_1024x576_timing) {
-            ret = set_pll(sensor, false, 10, 1, 0, false, 0, true, 8); //SYSCLK 60 MHz: 1024x576 30.0 FPS, 15 mhz pclk
-        } else if (is_1280x720_timing) {
-            ret = set_pll(sensor, false, 18, 1, 1, false, 0, true, 6); //SYSCLK 72 MHz: 1280x720 29.4 FPS, 24 mhz pclk
+        if (is_wide_16x9_timing) {
+            ret = set_pll(sensor, false, 10, 1, 0, false, 0, true, 8); //SYSCLK 60 MHz: 1024x576/1280x720 30.0 FPS, 15 mhz pclk
         } else if (sensor->status.binning && highFPS) {
             ret = set_pll(sensor, false, 18, 1, 1, false, 0, true, 6); //SYSCLK 72 MHz: 4:3 40.0 FPS, 16:9 50.1 FPS, 24 mhz pclk
         } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
@@ -431,10 +425,8 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
         //20 MHz XCLK (ESP32-S3, PCLK capture limit 40 MHz)
-        if (is_1024x576_timing) {
-            ret = set_pll(sensor, false, 12, 1, 0, false, 0, true, 8); //SYSCLK 60 MHz: 1024x576 30.0 FPS, 15 mhz pclk
-        } else if (is_1280x720_timing) {
-            ret = set_pll(sensor, false, 29, 1, 2, false, 0, true, 6); //SYSCLK 72.5 MHz: 1280x720 29.6 FPS, 24.2 mhz pclk
+        if (is_wide_16x9_timing) {
+            ret = set_pll(sensor, false, 12, 1, 0, false, 0, true, 8); //SYSCLK 60 MHz: 1024x576/1280x720 30.0 FPS, 15 mhz pclk
         } else if (sensor->status.binning && highFPS) {
             ret = set_pll(sensor, false, 29, 1, 2, false, 0, true, 6); //SYSCLK 72.5 MHz: 4:3 40.3 FPS, 16:9 50.4 FPS, 24.2 mhz pclk
         } else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9) {
@@ -444,13 +436,9 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
 #elif defined(CONFIG_IDF_TARGET_ESP32)
         //20 MHz XCLK (ESP32): VGA/SVGA use the validated 30 FPS 4:3 timing.
-        if (is_1024x576_timing)
+        if (is_wide_16x9_timing)
         {
-            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1024x576 22.5 FPS, 10 mhz pclk
-        }
-        else if (is_1280x720_timing)
-        {
-            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1280x720 18.4 FPS, 10 mhz pclk
+            ret = set_pll(sensor, false, 9, 1, 0, false, 0, true, 9); //VCO 180, SYSCLK 45 MHz: 1024x576/1280x720 22.5 FPS, 10 mhz pclk
         }
         else if (sensor->status.binning && ratio == ASPECT_RATIO_16X9)
         {

@@ -71,7 +71,8 @@ android {
                 file("../../assets_gs")
             )
             java.srcDirs(
-                file("src/main/java")
+                file("src/main/java"),
+                file("../../components_gs/android_shared/java")
             )
             res.srcDirs(
                 file("src/main/res"),
@@ -96,6 +97,13 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("com.github.mik3y:usb-serial-for-android:3.7.0")
+    // Official Khronos OpenXR loader for Android. Version matches the API version of the
+    // headers vendored in app/src/main/cpp/third_party/openxr (XR_CURRENT_API_VERSION 1.1.59).
+    // Replaces the previously hand-dropped jniLibs/libopenxr_loader*.so, which were built
+    // against the platform libc++.so (not libc++_shared) and therefore required shipping a
+    // foreign libc++.so alongside them. The AAR also contributes the <queries> entries the
+    // loader needs to reach the runtime broker.
+    implementation("org.khronos.openxr:openxr_loader_for_android:1.1.59")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

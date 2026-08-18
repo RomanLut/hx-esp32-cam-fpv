@@ -13,6 +13,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/core/transport_globals.cpp \
 	../components_gs/shared/core/transport_kind.cpp \
 	../components_gs/shared/core/video_frame_assembler.cpp \
+	../components_gs/shared/core/tx_fec_block_encoder.cpp \
 	../components_gs/shared/flight_osd.cpp \
 	../components_gs/shared/gs_recordings_storage.cpp \
 	../components_gs/shared/gs_playback_manager.cpp \
@@ -20,6 +21,7 @@ SRCS := src/main.cpp \
 	../components_gs/shared/gs_stub_transport.cpp \
 	../components_gs/shared/gs_test_transport.cpp \
 	../components_gs/shared/gs_wifi_scan_transport.cpp \
+	../components_gs/shared/gs_link_quality_sampler.cpp \
 	../components_gs/shared/gs_top_overlay_shared.cpp \
 	../components_gs/shared/gs_camera_calibration_shared.cpp \
 	../components_gs/shared/gs_video_stabilization_shared.cpp \
@@ -144,6 +146,11 @@ CFLAGS = $(CXXFLAGS)
 #LDFLAGS := -L/usr/lib -L=/opt/vc/lib -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lGLESv2 -lturbojpeg -lmmal_core -lmmal_util -lmmal_vc_client -lvcos -lepoxy
 LDFLAGS := -L/usr/lib/aarch64-linux-gnu/ -L/usr/lib/ -L/opt/vc/lib/ 
 LDLIBS := -lstdc++ -lm -lpthread -lz -lrt -lfreetype -lSDL2 -lturbojpeg -lpcap -lGLESv2 -lstdc++fs -ldl
+
+# GCC implements 64-bit atomics through libatomic on 32-bit ARM targets.
+ifneq ($(filter armv6l armv7l,$(shell uname -m)),)
+LDLIBS += -latomic
+endif
 
 # flags required for dependency generation; passed to compilers
 DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.Td
