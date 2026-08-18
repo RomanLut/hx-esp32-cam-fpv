@@ -114,7 +114,7 @@ for manifest_path in sorted(firmware_dir.glob("*_manifest.json")):
 # ---- ground-station images & companion apps ----
 # SD-card images may not be rebuilt every release, so fall back to a previous one.
 radxa_tag, radxa_asset = find_asset_current_or_previous("espvrx_dualboot_radxa3w_", ".zip")
-rpi_tag, rpi_asset = find_asset_current_or_previous("espvrx_rpi_", ".img.gz")
+rpi_tag, rpi_asset = find_asset_current_or_previous("espvrx_dualboot_rpi_", ".img.gz")
 android_apk = next(
     (
         name

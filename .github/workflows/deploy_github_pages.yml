@@ -7,6 +7,8 @@ on:
     paths:
       - "web/**"
       - "tools/ov*_pclk_calculator/**"
+      - ".github/scripts/extract_pages_firmware.py"
+      - ".github/scripts/populate_landing_page.py"
       - ".github/workflows/deploy_github_pages.yml"
   workflow_dispatch:
     inputs:
