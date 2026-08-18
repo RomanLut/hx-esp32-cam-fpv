@@ -8,6 +8,3 @@ Raspberry Pi 4 is recommended for development over Raspberry Pi 2/3 due to highe
 
 > [!NOTE]
 > Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
-
-> [!NOTE]
-> Raspberry Pi Zero 2W does not have enough performance to shown 1024x576 and 1280x720 at 30fps.***
