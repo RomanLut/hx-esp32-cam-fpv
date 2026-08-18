@@ -53,6 +53,8 @@ Open source digital FPV system based on esp32cam https://romanlut.github.io/hx-e
 - [x] optimized rendering on Radxa and RPI
 - [x] proper ov3660 support on GS
 - [x] **Release v0.6.4**
+- [x] Stabilise existing features
+- [x] **Release v0.6.5**
 - [ ] color grading on GS ?
 - [ ] tune image stabilization
 - [ ] adjust esp32c5 air unit recording
@@ -63,8 +65,9 @@ Open source digital FPV system based on esp32cam https://romanlut.github.io/hx-e
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
 - [ ] digital pan, zoom
-- [ ] lost frames inpainting using neural network ?
+- [ ] lost frames inpainting using neural network?
 - [ ] JPEG artefacts removal using neural network?
+- [ ] develop Radxa Zero 3W based FPV glasses?
 
 
 ## Features:
