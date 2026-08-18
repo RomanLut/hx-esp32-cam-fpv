@@ -11,6 +11,7 @@
 
 #include "fec.h"
 #include "Log.h"
+#include "gs_runtime_core.h"
 #include "gs_shared_state.h"
 #include "structures.h"
 #include "wifi_channels.h"
@@ -21,7 +22,6 @@
 namespace
 {
 
-constexpr uint32_t kRxRestartBackjumpBlocks = 64;
 constexpr size_t kAndroidRawAdapterCount = 2;
 
 //===================================================================================
@@ -138,49 +138,6 @@ SelectedChannel makeSelectedChannel(int channel)
 
 //===================================================================================
 //===================================================================================
-// Returns a different allowed channel so devourer cannot optimize retune as no-op.
-int chooseForcedTxPowerRetuneChannel(int current_channel)
-{
-    current_channel = getBandAwareWifiChannel(current_channel, s_groundstation_config.wifiBand);
-    int current_index = getWifiChannelIndex(current_channel);
-    if (current_index < 0)
-    {
-        current_index = getFirstWifiChannelIndexForBand(s_groundstation_config.wifiBand);
-    }
-
-    for (int offset = 1; offset < WIFI_CHANNELS_COUNT; offset++)
-    {
-        const int candidate_index = (current_index + offset) % WIFI_CHANNELS_COUNT;
-        const int candidate_channel = WIFI_CHANNELS_BY_INDEX[candidate_index];
-        if (candidate_channel != current_channel &&
-            isWifiChannelAllowedByBand(candidate_channel, s_groundstation_config.wifiBand))
-        {
-            return candidate_channel;
-        }
-    }
-
-    return current_channel;
-}
-
-//===================================================================================
-//===================================================================================
-// Stores TX power in devourer, then forces channel programming so TXAGC is rewritten.
-void applyTxPowerWithForcedChannelProgram(const std::shared_ptr<IRtlDevice>& device, uint8_t tx_power)
-{
-    const int current_channel =
-        getBandAwareWifiChannel(s_groundstation_config.wifi_channel, s_groundstation_config.wifiBand);
-    const int retune_channel = chooseForcedTxPowerRetuneChannel(current_channel);
-
-    device->SetTxPower(tx_power);
-    if (retune_channel != current_channel)
-    {
-        device->SetMonitorChannel(makeSelectedChannel(retune_channel));
-    }
-    device->SetMonitorChannel(makeSelectedChannel(current_channel));
-}
-
-//===================================================================================
-//===================================================================================
 // Fills the transport header fields for one fixed-size raw-broadcast packet.
 void sealPacket(PacketFilter& packet_filter,
                 std::vector<uint8_t>& packet,
@@ -188,12 +145,12 @@ void sealPacket(PacketFilter& packet_filter,
                 uint32_t block_index,
                 uint8_t packet_index)
 {
-    Packet_Header* header =
-        reinterpret_cast<Packet_Header*>(packet.data() + packet_header_offset);
-    packet_filter.apply_packet_header_data(header);
-    header->size = static_cast<uint16_t>(packet.size() - packet_header_offset - sizeof(Packet_Header));
-    header->block_index = block_index;
-    header->packet_index = packet_index;
+    gs::core::sealTransportPacket(packet_filter,
+                                  packet.data(),
+                                  packet.size(),
+                                  packet_header_offset,
+                                  block_index,
+                                  packet_index);
 }
 
 }
@@ -204,11 +161,7 @@ void sealPacket(PacketFilter& packet_filter,
 AndroidRawBroadcastTransport::~AndroidRawBroadcastTransport()
 {
     stopUsbAdapter();
-    if (m_tx_fec != nullptr)
-    {
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-    }
+    m_tx_fec_encoder.release();
 }
 
 //===================================================================================
@@ -223,28 +176,11 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     {
         m_rx_descriptor.interfaces.push_back(rawUsbAdapterLabel(index));
     }
-    if (m_tx_descriptor.coding_k == 0 ||
-        m_tx_descriptor.coding_n < m_tx_descriptor.coding_k)
-    {
-        LOGE("Invalid TX coding params k={} n={}",
-             static_cast<unsigned int>(m_tx_descriptor.coding_k),
-             static_cast<unsigned int>(m_tx_descriptor.coding_n));
-        return false;
-    }
-
     m_devourer_logger = std::make_shared<Logger>();
     m_wifi_driver = std::make_unique<WiFiDriver>(m_devourer_logger);
-    if (m_tx_fec != nullptr)
+    //Validates and reports the coding parameters itself.
+    if (!m_tx_fec_encoder.init(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n))
     {
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-    }
-    m_tx_fec = fec_new(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
-    if (m_tx_fec == nullptr)
-    {
-        LOGE("fec_new failed k={} n={}",
-             static_cast<unsigned int>(m_tx_descriptor.coding_k),
-             static_cast<unsigned int>(m_tx_descriptor.coding_n));
         return false;
     }
 
@@ -253,27 +189,6 @@ bool AndroidRawBroadcastTransport::init(const gs::core::RXDescriptor& rx_descrip
     m_payload_offset = m_packet_header_offset + sizeof(Packet_Header);
     m_transport_packet_size = m_payload_offset + m_tx_descriptor.mtu;
     resetTxAssemblerLocked();
-
-    FecBlockDecoder::Descriptor decoder_descriptor = {};
-    decoder_descriptor.coding_k = m_rx_descriptor.coding_k;
-    decoder_descriptor.coding_n = m_rx_descriptor.coding_n;
-    decoder_descriptor.mtu = static_cast<uint16_t>(m_rx_descriptor.mtu);
-    decoder_descriptor.reset_duration =
-        std::chrono::duration_cast<std::chrono::milliseconds>(m_rx_descriptor.reset_duration);
-    decoder_descriptor.restart_backjump_blocks = kRxRestartBackjumpBlocks;
-    decoder_descriptor.max_block_queue_size = 3;
-    decoder_descriptor.duplicate_window = 100;
-    decoder_descriptor.interface_count = 2;
-    if (!m_rx_decoder.init(decoder_descriptor))
-    {
-        LOGE("RX decoder init failed k={} n={} mtu={}",
-             static_cast<unsigned int>(decoder_descriptor.coding_k),
-             static_cast<unsigned int>(decoder_descriptor.coding_n),
-             static_cast<unsigned int>(decoder_descriptor.mtu));
-        fec_free(m_tx_fec);
-        m_tx_fec = nullptr;
-        return false;
-    }
 
     LOGI("Initialized raw transport channel={} mtu={} tx_k={} tx_n={} rx_k={} rx_n={}",
          s_groundstation_config.wifi_channel,
@@ -327,12 +242,13 @@ void AndroidRawBroadcastTransport::activate()
 // which holds handle->mutex, and the rx thread callback also acquires handle->mutex.
 // Joining here would deadlock. The actual thread join and libusb teardown are deferred
 // to stopUsbAdapter(), which is called from Java (without handle->mutex held) or the destructor.
+// The packet sink is a lifetime binding to the sole runtime decoder and must survive
+// transport switches; destruction clears it only after all USB RX threads have joined.
 void AndroidRawBroadcastTransport::deactivate()
 {
     m_active = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_transport_packet_callback = nullptr;
         for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
             adapter->should_stop = true;
@@ -371,18 +287,9 @@ bool AndroidRawBroadcastTransport::supportsMenuSearchOrConnect() const
 
 //===================================================================================
 //===================================================================================
-// Updates transport data-rate and latched RSSI statistics from the queued RX path.
+// Updates transport data-rate and latched RSSI statistics from packets sent to the runtime.
 void AndroidRawBroadcastTransport::process()
 {
-    m_rx_decoder.process(Clock::now());
-    const FecBlockDecoder::Stats stats = m_rx_decoder.getStats();
-    if (stats.decoded_bytes_total >= m_last_rx_decoded_bytes_total)
-    {
-        m_data_stats_data_accumulated +=
-            static_cast<size_t>(stats.decoded_bytes_total - m_last_rx_decoded_bytes_total);
-    }
-    m_last_rx_decoded_bytes_total = stats.decoded_bytes_total;
-
     const int best_input_dbm = m_best_input_dbm.exchange(std::numeric_limits<int>::lowest());
     if (best_input_dbm != std::numeric_limits<int>::lowest())
     {
@@ -399,25 +306,23 @@ void AndroidRawBroadcastTransport::process()
     if (now - m_data_stats_last_tp >= std::chrono::seconds(1))
     {
         const float elapsed_seconds = std::chrono::duration<float>(now - m_data_stats_last_tp).count();
-        m_data_stats_rate = elapsed_seconds > 0.0f
-            ? static_cast<size_t>(static_cast<float>(m_data_stats_data_accumulated) / elapsed_seconds)
-            : 0;
-        m_data_stats_data_accumulated = 0;
+        const size_t accumulated_bytes = m_data_stats_data_accumulated.exchange(0);
+        m_data_stats_rate.store(elapsed_seconds > 0.0f
+            ? static_cast<size_t>(static_cast<float>(accumulated_bytes) / elapsed_seconds)
+            : 0);
         m_data_stats_last_tp = now;
     }
 }
 
 //===================================================================================
 //===================================================================================
-// Clears queued Android RX session packets and resets transport statistics.
+// Resets Android RAW transmit assembly and transport-local rate statistics.
 void AndroidRawBroadcastTransport::reset_rx_state()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     resetTxAssemblerLocked();
-    m_rx_decoder.reset(Clock::now());
-    m_data_stats_rate = 0;
-    m_data_stats_data_accumulated = 0;
-    m_last_rx_decoded_bytes_total = 0;
+    m_data_stats_rate.store(0);
+    m_data_stats_data_accumulated.store(0);
     m_data_stats_last_tp = Clock::now();
 }
 
@@ -482,12 +387,9 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
                         reinterpret_cast<gf*>(fec_packet.data() + m_payload_offset);
                 }
 
-                fec_encode(m_tx_fec,
-                           fec_src_packet_ptrs.data(),
-                           fec_dst_packet_ptrs.data(),
-                           fec_block_nums() + m_tx_descriptor.coding_k,
-                           m_tx_descriptor.coding_n - m_tx_descriptor.coding_k,
-                           m_tx_descriptor.mtu);
+                m_tx_fec_encoder.encodeBlock(fec_src_packet_ptrs.data(),
+                                             fec_dst_packet_ptrs.data(),
+                                             m_tx_descriptor.mtu);
 
                 const size_t fec_start_index = packets_to_send.size() -
                     (m_tx_descriptor.coding_n - m_tx_descriptor.coding_k);
@@ -514,15 +416,19 @@ void AndroidRawBroadcastTransport::send(const void* data, size_t size, bool /* f
 
 //===================================================================================
 //===================================================================================
-// Pops one already-filtered session payload received from the Android driver callback.
-bool AndroidRawBroadcastTransport::receive(void* data, size_t& size, bool& restoredByFEC)
+// Reports no decoded payloads because GsRuntimeCore is the sole Android RAW FEC decoder.
+bool AndroidRawBroadcastTransport::receive(void* /* data */,
+                                           size_t& /* size */,
+                                           bool& /* restoredByFEC */)
 {
-    return m_rx_decoder.receive(data, size, restoredByFEC);
+    return false;
 }
 
 //===================================================================================
 //===================================================================================
-// Retunes every active RTL adapter to the requested monitor-mode channel when running.
+// Queues a coalesced retune for every active RTL adapter without blocking the GS thread.
+// Realtek register I/O can wedge after a USB fault; keeping it off the render/search
+// thread lets the other adapter find the camera and keeps cancel/mode UI responsive.
 void AndroidRawBroadcastTransport::setChannel(int ch)
 {
     std::vector<std::shared_ptr<UsbAdapter>> adapters;
@@ -539,81 +445,31 @@ void AndroidRawBroadcastTransport::setChannel(int ch)
 
     for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
     {
-        try
+        if (adapter->device && !adapter->should_stop.load())
         {
-            if (!adapter->device || adapter->should_stop.load())
-            {
-                continue;
-            }
-
-            const Clock::time_point now = Clock::now();
-            if (now < adapter->channel_change_ready_time)
-            {
-                // Devourer Init() applies the initial channel internally before
-                // entering its blocking RX loop. A menu retune during that bring-up
-                // window can race the driver and leave the adapter on the old
-                // channel, so delay only this immediate manual retune.
-                std::this_thread::sleep_until(adapter->channel_change_ready_time);
-            }
-
-            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-            if (!adapter->device || adapter->should_stop.load())
-            {
-                continue;
-            }
-
-            LOGI("Setting monitor channel to {} on adapter {}", ch, adapter->index);
-            adapter->device->SetMonitorChannel(makeSelectedChannel(ch));
-        }
-        catch (const std::exception& e)
-        {
-            LOGW("SetMonitorChannel failed after USB detach on adapter {}: {}", adapter->index, e.what());
-            adapter->should_stop = true;
-        }
-        catch (...)
-        {
-            LOGW("SetMonitorChannel failed after USB detach on adapter {} with unknown exception", adapter->index);
-            adapter->should_stop = true;
+            adapter->requested_channel.store(ch);
         }
     }
 }
 
 //===================================================================================
 //===================================================================================
-// Sets the TX power level on active RTL adapters (0 = driver default, 1..63 = dBm scale).
+// Queues TX power on each adapter control worker without blocking the GS menu thread.
 void AndroidRawBroadcastTransport::setTxPower(int txPower)
 {
-    std::vector<std::shared_ptr<UsbAdapter>> adapters;
+    const int requested_power = std::clamp(txPower, 0, 63);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_tx_power = static_cast<uint8_t>(std::clamp(txPower, 0, 63));
-        adapters = m_usb_adapters;
-    }
-
-    if (!adapters.empty())
-    {
-        std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-        for (const std::shared_ptr<UsbAdapter>& adapter : adapters)
+        m_tx_power = static_cast<uint8_t>(requested_power);
+        for (const std::shared_ptr<UsbAdapter>& adapter : m_usb_adapters)
         {
-            try
+            if (adapter->device && !adapter->should_stop.load())
             {
-                if (!adapter->device || adapter->should_stop.load())
-                {
-                    continue;
-                }
-
-                LOGI("Setting TX power to {} on adapter {}", m_tx_power, adapter->index);
-                applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
-            }
-            catch (const std::exception& e)
-            {
-                LOGW("SetTxPower failed after USB detach on adapter {}: {}", adapter->index, e.what());
-                adapter->should_stop = true;
-            }
-            catch (...)
-            {
-                LOGW("SetTxPower failed after USB detach on adapter {} with unknown exception", adapter->index);
-                adapter->should_stop = true;
+                // The menu update holds the native GS mutex. A synchronous libusb
+                // control transfer here deadlocks when the libusb event thread is in
+                // an RX callback waiting for that mutex. The adapter worker runs after
+                // the menu update releases it and owns all live control-plane I/O.
+                adapter->requested_tx_power.store(requested_power);
             }
         }
     }
@@ -634,7 +490,7 @@ void AndroidRawBroadcastTransport::setTxInterface(const std::string& interface)
 // Returns the current Android raw-broadcast receive throughput estimate in bytes/s.
 size_t AndroidRawBroadcastTransport::get_data_rate() const
 {
-    return m_data_stats_rate;
+    return m_data_stats_rate.load();
 }
 
 //===================================================================================
@@ -711,6 +567,7 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
     }
 
     std::shared_ptr<UsbAdapter> adapter = std::make_shared<UsbAdapter>();
+    adapter->channel_change_coordinator = m_channel_change_coordinator;
     // Devourer Init() runs on the RX thread and has no externally visible readiness state.
     // Establish the bring-up barrier before publishing the adapter so neither TX nor a
     // menu-triggered retune can race the initial monitor/channel setup.
@@ -820,15 +677,17 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
         {
             resetTxAssemblerLocked();
             m_tx_block_packets.clear();
-            m_rx_decoder.reset(Clock::now());
-            m_last_rx_decoded_bytes_total = 0;
             m_next_block_index = 1;
         }
         if (m_tx_power > 0)
         {
-            std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
-            applyTxPowerWithForcedChannelProgram(adapter->device, m_tx_power);
+            std::lock_guard<std::mutex> channel_change_lock(
+                adapter->channel_change_coordinator->mutex);
+            std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
+            adapter->device->SetTxPower(m_tx_power);
         }
+        adapter->requested_tx_power.store(m_tx_power);
+        adapter->applied_tx_power.store(m_tx_power);
         m_usb_adapters.push_back(adapter);
     }
 
@@ -846,21 +705,38 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
                 return;
             }
 
-            // InitWrite performs the RTL8812EU TX+RX/coex bring-up. StartRxLoop
-            // then owns bulk-IN and delivers monitor frames through this callback.
-            adapter->device->InitWrite(makeSelectedChannel(s_groundstation_config.wifi_channel));
-            adapter->device->StartRxLoop(
-                [this, adapter](const Packet& packet)
-                {
-                    // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110.
-                    // Derived from Jaguar1; used as a best-effort approximation on Jaguar2/3
-                    // adapters too until a per-generation RSSI-to-dBm conversion is validated
-                    // on that hardware.
-                    const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
-                    const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
-                    const int input_dbm = std::max(dbm0, dbm1);
-                    queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
-                });
+            const auto receive_packet = [this, adapter](const Packet& packet)
+            {
+                // Match WiFi scan semantics: count every captured monitor frame
+                // before MAC-signature and transport validation discard traffic.
+                s_runtimeCore.raw_capture_packets_seen.fetch_add(1, std::memory_order_relaxed);
+
+                // RTL8812AU gain_trsw formula (from RTL driver): dBm = (gain & 0x3F) * 2 - 110.
+                // Derived from Jaguar1; used as a best-effort approximation on Jaguar2/3
+                // adapters too until a per-generation RSSI-to-dBm conversion is validated
+                // on that hardware.
+                const int dbm0 = (static_cast<int>(packet.RxAtrib.rssi[0] & 0x3F)) * 2 - 110;
+                const int dbm1 = (static_cast<int>(packet.RxAtrib.rssi[1] & 0x3F)) * 2 - 110;
+                const int input_dbm = std::max(dbm0, dbm1);
+                queueReceivedPacket(adapter, packet.Data.data(), packet.Data.size(), input_dbm);
+            };
+
+            const devourer::AdapterCaps adapter_caps = adapter->device->GetAdapterCaps();
+            const SelectedChannel initial_channel =
+                makeSelectedChannel(s_groundstation_config.wifi_channel);
+            if (adapter_caps.generation == devourer::ChipGeneration::Jaguar3)
+            {
+                // Jaguar3/RTL8812EU requires the TX-oriented bring-up with RX enabled,
+                // followed by a separate RX loop. Jaguar1/2 must retain their RX-first
+                // Init path; applying the Jaguar3 sequence globally prevents monitor
+                // frames from reaching bulk-IN on RTL8812AU.
+                adapter->device->InitWrite(initial_channel);
+                adapter->device->StartRxLoop(receive_packet);
+            }
+            else
+            {
+                adapter->device->Init(receive_packet, initial_channel);
+            }
         }
         catch (const std::exception& ex)
         {
@@ -877,6 +753,78 @@ bool AndroidRawBroadcastTransport::startUsbAdapter(int fd)
             adapter->should_stop = true;
         }
     });
+
+    adapter->requested_channel.store(s_groundstation_config.wifi_channel);
+    adapter->applied_channel.store(s_groundstation_config.wifi_channel);
+    adapter->channel_worker_running.store(true);
+    std::thread([adapter]()
+    {
+        while (!adapter->channel_worker_stop.load())
+        {
+            if (Clock::now() < adapter->channel_change_ready_time)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            const int requested_channel = adapter->requested_channel.load();
+            const int requested_tx_power = adapter->requested_tx_power.load();
+            const bool channel_pending =
+                requested_channel != 0 && requested_channel != adapter->applied_channel.load();
+            const bool tx_power_pending =
+                requested_tx_power >= 0 && requested_tx_power != adapter->applied_tx_power.load();
+            if (!channel_pending && !tx_power_pending)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            try
+            {
+                // A cross-band SetMonitorChannel performs a long RF/BB/IQK sequence. The
+                // per-adapter locks do not protect the shared Android usbfs/xHCI control
+                // plane, and running two such sequences concurrently resets the whole hub.
+                // Serialize the operations without adding timing or channel-specific policy.
+                std::lock_guard<std::mutex> channel_change_lock(
+                    adapter->channel_change_coordinator->mutex);
+                std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
+                if (!adapter->device || adapter->should_stop.load())
+                {
+                    break;
+                }
+
+                if (channel_pending)
+                {
+                    adapter->channel_change_in_progress.store(true);
+                    LOGI("Setting monitor channel to {} on adapter {}", requested_channel, adapter->index);
+                    adapter->device->SetMonitorChannel(makeSelectedChannel(requested_channel));
+                    adapter->applied_channel.store(requested_channel);
+                    adapter->channel_change_in_progress.store(false);
+                }
+                else
+                {
+                    LOGI("Setting TX power to {} on adapter {}", requested_tx_power, adapter->index);
+                    adapter->device->SetTxPower(static_cast<uint8_t>(requested_tx_power));
+                    adapter->applied_tx_power.store(requested_tx_power);
+                }
+            }
+            catch (const std::exception& e)
+            {
+                LOGW("RTL control operation failed after USB detach on adapter {}: {}", adapter->index, e.what());
+                adapter->channel_change_in_progress.store(false);
+                adapter->should_stop.store(true);
+                break;
+            }
+            catch (...)
+            {
+                LOGW("RTL control operation failed after USB detach on adapter {} with unknown exception", adapter->index);
+                adapter->channel_change_in_progress.store(false);
+                adapter->should_stop.store(true);
+                break;
+            }
+        }
+        adapter->channel_worker_running.store(false);
+    }).detach();
 
     return true;
 }
@@ -903,10 +851,6 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
         stopUsbAdapterLocked(adapter);
     }
 
-    // Hot-unplug can leave queued TX work still trying to touch libusb while Java is stopping
-    // the transport. Hold the device I/O gate while clearing TX assembly so no send path
-    // can retain work for an adapter that is no longer active.
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         resetTxAssemblerLocked();
@@ -922,6 +866,7 @@ void AndroidRawBroadcastTransport::stopUsbAdapter()
 void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<UsbAdapter>& adapter)
 {
     adapter->should_stop = true;
+    adapter->channel_worker_stop.store(true);
     if (adapter->device)
     {
         adapter->device->StopRxLoop();
@@ -932,7 +877,21 @@ void AndroidRawBroadcastTransport::stopUsbAdapterLocked(const std::shared_ptr<Us
     }
     adapter->rx_thread.reset();
 
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    const Clock::time_point worker_deadline = Clock::now() + std::chrono::seconds(2);
+    while (adapter->channel_worker_running.load() && Clock::now() < worker_deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (adapter->channel_worker_running.load())
+    {
+        // A dead USB device can trap devourer's synchronous register I/O indefinitely.
+        // The detached worker owns this adapter object, so leave its stale native resources
+        // quarantined instead of freezing mode changes or app shutdown while joining it.
+        LOGW("Quarantining adapter {} after channel worker failed to stop", adapter->index);
+        return;
+    }
+
+    std::lock_guard<std::mutex> io_lock(adapter->device_io_mutex);
     if (adapter->device)
     {
         adapter->device->Stop();
@@ -993,13 +952,12 @@ int AndroidRawBroadcastTransport::activeUsbFd() const
 
 //===================================================================================
 //===================================================================================
-// Installs one callback that receives every filtered raw transport packet immediately.
-void AndroidRawBroadcastTransport::setTransportPacketCallback(
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback)
+// Binds filtered RAW packets to the sole application-level FEC decoder pipeline.
+void AndroidRawBroadcastTransport::setTransportPacketSink(TransportPacketSink sink)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_transport_packet_callback = std::move(callback);
-    LOGI("Transport packet callback installed={}", m_transport_packet_callback ? 1 : 0);
+    m_transport_packet_sink = std::move(sink);
+    LOGI("Transport packet sink installed={}", m_transport_packet_sink ? 1 : 0);
 }
 
 //===================================================================================
@@ -1104,7 +1062,15 @@ bool AndroidRawBroadcastTransport::sendRawPacket(const std::shared_ptr<UsbAdapte
         return false;
     }
 
-    std::lock_guard<std::mutex> io_lock(m_device_io_mutex);
+    // Search retunes run in per-adapter workers because Realtek register I/O may
+    // never return after a USB/firmware fault. Never let the GS processing thread
+    // wait behind that operation; fail over to the other adapter or skip this
+    // control packet while RX/search/menu processing remains responsive.
+    std::unique_lock<std::mutex> io_lock(adapter->device_io_mutex, std::try_to_lock);
+    if (!io_lock.owns_lock())
+    {
+        return false;
+    }
     if (adapter->should_stop.load())
     {
         return false;
@@ -1172,7 +1138,7 @@ bool AndroidRawBroadcastTransport::sendRawPacketWithFailover(const std::vector<u
 
 //===================================================================================
 //===================================================================================
-// Filters one received raw-broadcast transport packet and pushes it into the shared FEC decoder.
+// Filters one raw-broadcast packet and forwards it to the sole runtime FEC decoder.
 void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<UsbAdapter>& adapter,
                                                        const uint8_t* data,
                                                        size_t size,
@@ -1183,6 +1149,10 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
 
     constexpr size_t fcs_length = 4;
     if (data == nullptr || size < WLAN_IEEE_HEADER_SIZE + sizeof(Packet_Header) + fcs_length)
+    {
+        return;
+    }
+    if (!m_active.load())
     {
         return;
     }
@@ -1229,19 +1199,29 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
         return;
     }
 
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)> callback;
+    TransportPacketSink sink;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        callback = m_transport_packet_callback;
+        sink = m_transport_packet_sink;
     }
-    if (callback)
+    if (!sink)
     {
-        callback(transport_packet, transport_size, input_dbm, adapter->index);
+        static std::atomic<bool> s_missing_sink_logged = {false};
+        if (!s_missing_sink_logged.exchange(true))
+        {
+            LOGE("Dropping Android RAW packets because the runtime packet sink is not installed");
+        }
+        return;
     }
-    else
+    if (!m_active.load())
     {
-        m_rx_decoder.pushPacket(transport_packet, transport_size, adapter->index, Clock::now());
+        return;
     }
+    // Quest consumes this call immediately for minimum latency. Standard Android's
+    // sink only copies into its bounded handoff queue so libusb RX can be resubmitted
+    // without waiting for FEC or JPEG work; both paths feed GsRuntimeCore::rx_decoder.
+    sink(transport_packet, transport_size, input_dbm, adapter->index);
+    m_data_stats_data_accumulated.fetch_add(transport_size);
     adapter->filtered_frame_count.fetch_add(1);
     const uint64_t adapter_filtered_lifetime_count =
         adapter->filtered_frame_lifetime_count.fetch_add(1) + 1;
@@ -1259,9 +1239,9 @@ void AndroidRawBroadcastTransport::queueReceivedPacket(const std::shared_ptr<Usb
     m_best_input_dbm.store(std::max(m_best_input_dbm.load(), input_dbm));
     m_last_rx_packet_tp.store(Clock::now().time_since_epoch().count());
     const uint32_t rx_count = s_rx_pass_count.fetch_add(1) + 1;
-    if (callback && rx_count == 1U)
+    if (rx_count == 1U)
     {
-        LOGI("Dispatching filtered packet through direct callback");
+        LOGI("Dispatching filtered packet to the runtime decoder sink");
     }
     if ((rx_count % 100) == 1)
     {

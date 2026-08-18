@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.util.Log
@@ -31,15 +32,32 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import com.esp32camfpv.gscommon.ApfpvWifiController
+import com.esp32camfpv.gscommon.AndroidGsDeviceId
+import com.esp32camfpv.gscommon.NativeCore
+import com.esp32camfpv.gscommon.RawBroadcastUsbController
+import com.esp32camfpv.gscommon.SerialTelemetryUsbController
+import com.esp32camfpv.gscommon.WifiScanUsbController
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val VideoBackgroundColor = Color(0xFF0A0D14)
-class MainActivity : ComponentActivity() {
-    companion object {
+//===================================================================================
+//===================================================================================
+// Hosts the Quest OpenXR runtime, GS renderer, hardware controllers, and APFPV Wi-Fi flow.
+class MainActivity : ComponentActivity()
+{
+    companion object
+    {
         private const val TAG = "QuestGs"
+        private const val OCULUS_VR_CATEGORY = "com.oculus.intent.category.VR"
+        private const val VR_FOCUS_RECOVERY_DELAY_MS = 750L
+        private const val VR_FOCUS_RECOVERY_MIN_INTERVAL_MS = 2_000L
     }
     private val autoStartUsbControllers = true
     private var openXrStarted = false
@@ -54,6 +72,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var serialTelemetryUsbController: SerialTelemetryUsbController
     private var powerManager: PowerManager? = null
     private var thermalStatusListener: PowerManager.OnThermalStatusChangedListener? = null
+    private var vrFocusRecoveryJob: Job? = null
+    private var lastVrFocusRecoveryElapsedMs = 0L
 
     private fun exitFromRuntimeMenu() {
         stopService(Intent(this, KeepAliveService::class.java))
@@ -80,28 +100,51 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setupThermalStatusMonitoring()
         setupBatteryMonitoring()
+        // Must precede every NativeCore use: this loads libopenxr_loader.so before
+        // android_gs_core, which carries a DT_NEEDED on it.
+        QuestOpenXr.ensureLoaded()
         NativeCore.setActivity(this)
         NativeCore.setAssetManager(assets)
         NativeCore.setSettingsPath(filesDir.resolve("gs.ini").absolutePath)
         NativeCore.setRecordingsPath(Environment.getExternalStorageDirectory().absolutePath)
         startService(Intent(this, KeepAliveService::class.java))
         if (!openXrStarted) {
-            openXrStarted = NativeCore.startOpenXr(this)
+            openXrStarted = QuestOpenXr.startOpenXr(this)
             Log.i(TAG, "startOpenXr(onCreate) result=$openXrStarted")
         }
-        apfpvWifiController = ApfpvWifiController(this) { inputNativeHandle }
-        rawBroadcastUsbController = RawBroadcastUsbController(this) { inputNativeHandle }
-        wifiScanUsbController = WifiScanUsbController(this) { inputNativeHandle }
-        serialTelemetryUsbController = SerialTelemetryUsbController(this)
+        apfpvWifiController = ApfpvWifiController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle },
+            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) }
+        )
+        rawBroadcastUsbController = RawBroadcastUsbController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle },
+            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) },
+            // Enables the OpenXR focus-transition fallback for permission dialogs that
+            // Horizon closes without delivering the PendingIntent broadcast.
+            isSystemUiFocused = { QuestOpenXr.isOpenXrFocused() }
+        )
+        wifiScanUsbController = WifiScanUsbController(
+            activity = this,
+            currentNativeHandle = { inputNativeHandle },
+            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) }
+        )
+        serialTelemetryUsbController = SerialTelemetryUsbController(
+            activity = this,
+            requestVrFocusRecovery = { reason -> scheduleVrFocusRecovery(reason) }
+        )
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
         applyImmersiveFullscreen()
+        val gsDeviceId = AndroidGsDeviceId.fromContext(this)
 
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AndroidGsApp(
+                        gsDeviceId = gsDeviceId,
                         onHandleChanged = { inputNativeHandle = it },
                         thermalStatusProvider = { currentThermalStatusValue() },
                         batteryPercentProvider = { currentBatteryPercentValue() },
@@ -129,7 +172,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (!openXrStarted) {
-            openXrStarted = NativeCore.startOpenXr(this)
+            openXrStarted = QuestOpenXr.startOpenXr(this)
             Log.i(TAG, "startOpenXr(onResume) result=$openXrStarted")
         }
         applyImmersiveFullscreen()
@@ -153,6 +196,32 @@ class MainActivity : ComponentActivity() {
         handleUsbAttachIntent(intent)
     }
 
+    private fun scheduleVrFocusRecovery(reason: String)
+    {
+        vrFocusRecoveryJob?.cancel()
+        vrFocusRecoveryJob = lifecycleScope.launch(Dispatchers.Main) {
+            // Wi-Fi and permission callbacks run when their Horizon overlay has completed. Give
+            // Horizon time to restore focus naturally before reactivating this singleTask.
+            delay(VR_FOCUS_RECOVERY_DELAY_MS)
+            if (isFinishing || isDestroyed || !openXrStarted || QuestOpenXr.isOpenXrFocused()) {
+                return@launch
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastVrFocusRecoveryElapsedMs < VR_FOCUS_RECOVERY_MIN_INTERVAL_MS) {
+                return@launch
+            }
+            lastVrFocusRecoveryElapsedMs = now
+            Log.i(TAG, "Recovering Quest VR focus after $reason")
+            val focusIntent = Intent(this@MainActivity, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(OCULUS_VR_CATEGORY)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            startActivity(focusIntent)
+        }
+    }
+
     private fun handleUsbAttachIntent(intent: Intent?) {
         if (intent?.action == android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED) {
             rawBroadcastUsbController.handleUsbTopologyChanged()
@@ -160,9 +229,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
+    //===================================================================================
+    //===================================================================================
+    // Tears down activity-owned resources and resets process-global XR state when finished.
+    override fun onDestroy()
+    {
+        val terminateProcessAfterDestroy = isFinishing
+        vrFocusRecoveryJob?.cancel()
+        vrFocusRecoveryJob = null
         if (openXrStarted) {
-            NativeCore.stopOpenXr()
+            QuestOpenXr.stopOpenXr()
             openXrStarted = false
         }
         NativeCore.setActivity(null)
@@ -172,7 +248,17 @@ class MainActivity : ComponentActivity() {
         wifiScanUsbController.stop()
         rawBroadcastUsbController.stop()
         apfpvWifiController.stop()
+        if (terminateProcessAfterDestroy) {
+            // Horizon can finish the immersive activity without using the in-app Exit menu.
+            // KeepAliveService otherwise preserves stale process-global OpenXR/EGL state, and
+            // the next Library launch is rejected by the runtime and returns to Home.
+            stopService(Intent(this, KeepAliveService::class.java))
+        }
         super.onDestroy()
+        if (terminateProcessAfterDestroy) {
+            Log.i(TAG, "Terminating finished Quest GS process after OpenXR teardown")
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -261,17 +347,20 @@ class MainActivity : ComponentActivity() {
         thermalStatusListener = null
         powerManager = null
     }
+
 }
 
 @Composable
 private fun AndroidGsApp(
+    gsDeviceId: Int,
     onHandleChanged: (Long) -> Unit,
     thermalStatusProvider: () -> Int,
     batteryPercentProvider: () -> Int,
     onExitApp: () -> Unit,
     onScreenFlipVChanged: (Boolean) -> Unit = {}
-) {
-    val nativeHandle = remember { NativeCore.createHandle(1) }
+)
+{
+    val nativeHandle = remember(gsDeviceId) { NativeCore.createHandle(gsDeviceId) }
     DisposableEffect(nativeHandle) {
         onHandleChanged(nativeHandle)
         // Trigger renderer EGL init in offscreen pbuffer mode. The Quest build

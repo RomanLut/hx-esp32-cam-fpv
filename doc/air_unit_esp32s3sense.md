@@ -18,7 +18,7 @@ STL files for 3D Printing on Thingiverse: https://www.thingiverse.com/thing:6624
 
 Module comes with a moderate flexible antenna which should be replaced with a 2dBi dipole to maximize range.
 
-Internal yellow LED conflicts with SD card and thus can not be used for indication. External LED should be soldered to pin **D0** via 150 ... 680 Ohm resistor.
+The internal yellow LED (GPIO21) is used for status indication. Optionally, an external LED can be soldered between D0 (GPIO1) and GND via a 150…680 Ohm resistor for better visibility; it mirrors the internal LED.
 
 A jumper should be soldered on **J3** to enable SD card usage. It may appear to work without it, but the jumper is required for stable operation.
 

@@ -1,6 +1,6 @@
 # ESP32-C5 Air Unit
 
-The **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Thanks to lower interference on **5.8GHz**, the air unit can transmit a 14 Mb/s stream with a lower FEC ratio, resulting in better image quality. It is capable of broadcasting a 1280×720 stream at 25 FPS. It allows using the **RunCam WiFiLink VRX** as a ground station and allows using small **5.8GHz** lollipop antennas with circular polarization.
+The **esp32c5** supports both **2.4GHz** and **5.8GHz** bands. Thanks to lower interference on **5.8GHz**, the air unit can transmit a 14 Mb/s stream with a lower FEC ratio, resulting in better image quality. It is capable of broadcasting a 1280×720 stream at 30 FPS. It allows using the **RunCam WiFiLink VRX** as a ground station and allows using small **5.8GHz** lollipop antennas with circular polarization.
 
 Unfortunately, there are currently no **esp32c5** boards on the market with a good form factor and a proper camera connector. Using an **esp32c5** as an air unit requires advanced hardware skills and custom assembly. For this reason, the **esp32s3sense** remains the best choice for an air unit for now.
 
@@ -57,9 +57,9 @@ https://github.com/user-attachments/assets/3dfc3725-5c03-43d9-bf62-a5a76a4a5fef
 
 Current consumption: 540mA @ 5V.
 
-## esp32c5-airunit-nano (current) (recommended)
+## esp32c5-airunit-nano (recommended)
 
-c5-air is designed by **us3r-d0e5nt-3x1st** and is maintained in repository:
+**c5-air-nano** board is designed by **us3r-d0e5nt-3x1st** and is maintained in repository:
 
 https://github.com/us3r-d0e5nt-3x1st/esp32c5-airunit-nano
 

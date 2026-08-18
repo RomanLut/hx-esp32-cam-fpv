@@ -9,6 +9,7 @@
 #include <atomic>
 #include <iostream>
 #include "fec.h"
+#include "core/tx_fec_block_encoder.h"
 #include "Log.h"
 #include "Pool.h"
 #include "structures.h"
@@ -21,7 +22,9 @@
 #include "utils.h"
 #include <fstream>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <sstream>
 
 //#define DEBUG_PCAP
 
@@ -38,6 +41,76 @@ namespace
 
 //===================================================================================
 //===================================================================================
+// Reports whether Linux currently exposes the requested channel for one monitor interface.
+bool monitorChannelMatches(const std::string& interface, int expected_channel)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        int reported_channel = 0;
+        if (std::sscanf(line.c_str(), " channel %d", &reported_channel) == 1)
+        {
+            return reported_channel == expected_channel;
+        }
+    }
+
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Linux currently exposes one interface in monitor mode.
+bool monitorModeMatches(const std::string& interface)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    return output.find("type monitor") != std::string::npos;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Linux already exposes one interface in monitor mode on the requested channel.
+bool monitorInterfaceReady(const std::string& interface, int expected_channel)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
+    {
+        return false;
+    }
+
+    const bool monitor_mode = output.find("type monitor") != std::string::npos;
+    if (!monitor_mode)
+    {
+        return false;
+    }
+
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        int reported_channel = 0;
+        if (std::sscanf(line.c_str(), " channel %d", &reported_channel) == 1)
+        {
+            return reported_channel == expected_channel;
+        }
+    }
+
+    return false;
+}
+
+//===================================================================================
+//===================================================================================
 // Forces one monitor-mode interface onto the configured raw-broadcast channel with HT20 width.
 void setMonitorChannel(const std::string& interface, int channel)
 {
@@ -46,22 +119,32 @@ void setMonitorChannel(const std::string& interface, int channel)
         return;
     }
 
-    if (!runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel)))
+    const bool iw_succeeded = runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel));
+    if (iw_succeeded && monitorChannelMatches(interface, channel))
     {
-        LOGW("Failed to set monitor channel {} HT20 on {} via iw; falling back to iwconfig",
-             channel,
-             interface);
-        runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel));
+        return;
+    }
+
+    // Some out-of-tree Realtek drivers return success from nl80211 without applying
+    // the channel. Verify the reported radio state before deciding whether to fall back.
+    LOGW("Failed to apply monitor channel {} on {} via iw; falling back to iwconfig",
+         channel,
+         interface);
+    if (!runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel)) ||
+        !monitorChannelMatches(interface, channel))
+    {
+        LOGE("Failed to apply monitor channel {} on {}", channel, interface);
     }
 }
 
 //===================================================================================
 //===================================================================================
-// Waits until the Linux network interface reports an operational up state.
+// Waits until the Linux network interface is administratively ready for monitor capture.
 bool waitForInterfaceUp(const std::string& interface)
 {
     const std::string operstate_path = fmt::format("/sys/class/net/{}/operstate", interface);
     const std::string carrier_path = fmt::format("/sys/class/net/{}/carrier", interface);
+    const std::string flags_path = fmt::format("/sys/class/net/{}/flags", interface);
 
     for (int attempt = 0; attempt < 20; ++attempt)
     {
@@ -74,6 +157,29 @@ bool waitForInterfaceUp(const std::string& interface)
                 if (operstate == "up" || operstate == "unknown")
                 {
                     return true;
+                }
+            }
+        }
+
+        {
+            // Monitor interfaces have no association or carrier. rtl88x2eu therefore
+            // reports operstate=down even when `ip link set up` succeeded; IFF_UP is
+            // the authoritative readiness condition for carrierless packet capture.
+            std::ifstream flags_file(flags_path);
+            std::string flags;
+            if (flags_file.is_open())
+            {
+                std::getline(flags_file, flags);
+                try
+                {
+                    if ((std::stoul(flags, nullptr, 0) & 0x1UL) != 0)
+                    {
+                        return true;
+                    }
+                }
+                catch (const std::exception&)
+                {
+                    // Keep polling through a transient or malformed sysfs read.
                 }
             }
         }
@@ -166,8 +272,7 @@ void LinuxRawBroadcastTransport::cancelMenuSearchOrConnect()
 
 //===================================================================================
 //===================================================================================
-// Activates raw-broadcast mode by switching the configured RX interfaces to monitor mode
-// and reopening the pcap backend on the freshly reconfigured interface handles.
+// Activates raw-broadcast mode and reopens pcap without disturbing radios already configured for RAW.
 void LinuxRawBroadcastTransport::activate()
 {
     // Reopen the backend on every activation because switching the same adapter through
@@ -176,8 +281,39 @@ void LinuxRawBroadcastTransport::activate()
     setLinkState(LinkState::LookingForWifiNetwork);
     setLinkStateDetailText("Setting monitor mode...");
     stopBackend();
-    setMonitorMode(m_rx_descriptor.interfaces);
-    setChannel(s_groundstation_config.wifi_channel);
+
+    const bool radios_already_ready = std::all_of(
+        m_rx_descriptor.interfaces.begin(),
+        m_rx_descriptor.interfaces.end(),
+        [](const std::string& interface)
+        {
+            return monitorInterfaceReady(interface, s_groundstation_config.wifi_channel);
+        });
+    if (radios_already_ready)
+    {
+        // Test mode does not own or reconfigure Wi-Fi. Reapplying monitor mode or
+        // the same channel to rtl88x2eu can leave RX silent even though iw reports
+        // the requested state, so Test -> RAW must only reopen pcap here.
+        LOGI("RAW interfaces already use monitor channel {}; reopening pcap without radio reconfiguration",
+             s_groundstation_config.wifi_channel);
+    }
+    else
+    {
+        std::vector<std::string> interfaces_needing_monitor_mode;
+        for (const std::string& interface : m_rx_descriptor.interfaces)
+        {
+            if (!monitorModeMatches(interface))
+            {
+                interfaces_needing_monitor_mode.push_back(interface);
+            }
+        }
+
+        // Wi-Fi Scan keeps its capture adapter in monitor mode and only changes its
+        // channel. Do not bounce either interface through link-down/up on return;
+        // only restore mode where another transport actually changed it.
+        setMonitorMode(interfaces_needing_monitor_mode);
+        setChannel(s_groundstation_config.wifi_channel);
+    }
     if (!startBackend())
     {
         LOGE("Failed to restart raw-broadcast backend after switching to monitor mode");
@@ -266,7 +402,7 @@ struct LinuxRawBroadcastTransport::TX
 {
     std::thread thread;
 
-    fec_t* fec = nullptr;
+    gs::core::TxFecBlockEncoder fec_encoder;
     std::array<uint8_t const*, 16> fec_src_packet_ptrs;
     std::array<uint8_t*, 32> fec_dst_packet_ptrs;
 
@@ -322,15 +458,12 @@ static void seal_packet(PacketFilter& packet_filter,
                         uint8_t packet_index)
 {
     //header_offset = RADIOTAP_HEADER.size() + sizeof(WLAN_IEEE_HEADER_GROUND2AIR);
-    assert(packet.data.size() >= header_offset + sizeof(Packet_Header));
-
-    Packet_Header& header = *reinterpret_cast<Packet_Header*>(packet.data.data() + header_offset);
-
-    packet_filter.apply_packet_header_data(&header);
-
-    header.size = packet.data.size() - header_offset - sizeof( Packet_Header ); //size of user data, without Packet_header
-    header.block_index = block_index;
-    header.packet_index = packet_index;
+    gs::core::sealTransportPacket(packet_filter,
+                                  packet.data.data(),
+                                  packet.data.size(),
+                                  header_offset,
+                                  block_index,
+                                  packet_index);
 }
 
 //===================================================================================
@@ -388,10 +521,9 @@ LinuxRawBroadcastTransport::~LinuxRawBroadcastTransport()
 {
     stopBackend();
 
-    if (m_impl && m_impl->tx.fec)
+    if (m_impl)
     {
-        fec_free(m_impl->tx.fec);
-        m_impl->tx.fec = nullptr;
+        m_impl->tx.fec_encoder.release();
     }
 }
 
@@ -535,6 +667,10 @@ bool LinuxRawBroadcastTransport::process_rx_packet(PCap& pcap)
                 break;
             }
         }
+
+        // Search activity must include every captured monitor frame, before any
+        // radiotap, MAC-signature, checksum, or transport-packet filtering.
+        s_runtimeCore.raw_capture_packets_seen.fetch_add(1, std::memory_order_relaxed);
 
         if (pcap.index < 2)
         {
@@ -823,19 +959,19 @@ bool LinuxRawBroadcastTransport::init(RX_Descriptor const& rx_descriptor, TX_Des
     m_tx_descriptor = tx_descriptor;
     //m_tx_descriptor.mtu = std::min(tx_descriptor.mtu, AIR2GROUND_MAX_MTU);
 
-    if (m_tx_descriptor.coding_k == 0 || 
-        m_tx_descriptor.coding_n < m_tx_descriptor.coding_k || 
-        m_tx_descriptor.coding_k > m_impl->tx.fec_src_packet_ptrs.size() || 
+    //The fixed-size pointer arrays used to feed fec_encode bound the coding params
+    //beyond what the shared encoder itself validates.
+    if (m_tx_descriptor.coding_k > m_impl->tx.fec_src_packet_ptrs.size() ||
         m_tx_descriptor.coding_n > m_impl->tx.fec_dst_packet_ptrs.size())
     {
         LOGE("Invalid coding params: {} / {}", m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
         return false;
     }
 
-    if (m_impl->tx.fec)
-        fec_free(m_impl->tx.fec);
-
-    m_impl->tx.fec = fec_new(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n);
+    if (!m_impl->tx.fec_encoder.init(m_tx_descriptor.coding_k, m_tx_descriptor.coding_n))
+    {
+        return false;
+    }
 
     /////////
     
@@ -1211,7 +1347,9 @@ void LinuxRawBroadcastTransport::tx_thread_proc()
                 }
 
                 //encode
-                fec_encode(tx.fec, tx.fec_src_packet_ptrs.data(), tx.fec_dst_packet_ptrs.data(), fec_block_nums() + coding_k, coding_n - coding_k, tx.payload_size);
+                tx.fec_encoder.encodeBlock(tx.fec_src_packet_ptrs.data(),
+                                           tx.fec_dst_packet_ptrs.data(),
+                                           tx.payload_size);
 
                 //seal the result
                 for (size_t i = 0; i < fec_count; i++)
@@ -1437,6 +1575,13 @@ void LinuxRawBroadcastTransport::setChannel(int ch)
 {
     for (const auto& itf:m_rx_descriptor.interfaces)  //the list contains both RX and TX interfaces
     {
+        // Startup and menu flows can request the already-active channel after RAW
+        // activation. Avoid sending that redundant command to rtl88x2eu because it
+        // can silence RX while continuing to report the requested channel via iw.
+        if (monitorChannelMatches(itf, ch))
+        {
+            continue;
+        }
         setMonitorChannel(itf, ch);
     }
 }

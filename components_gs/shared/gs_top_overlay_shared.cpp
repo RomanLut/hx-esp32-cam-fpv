@@ -5,7 +5,9 @@
 #include <string>
 #include <vector>
 
+#include "gs_link_quality_sampler.h"
 #include "gs_runtime_state.h"
+#include "gs_shared_state.h"
 #include "core/osd_menu_common.h"
 #include "core/osd_menu_imgui_shared.h"
 #include "imgui.h"
@@ -19,6 +21,13 @@ namespace
 
 constexpr float kOverlayChipGap = 6.0f;
 constexpr float kOverlayBannerGap = 6.0f;
+constexpr float kTopOverlayHorizontalMargin = 3.0f;
+constexpr float kTopOverlayVerticalMargin = 3.0f;
+constexpr float kLinkGaugeWidth = 100.0f;
+constexpr float kLinkGaugeHeight = 16.0f;
+constexpr float kLinkGaugeBorderWidth = 3.0f;
+constexpr float kLinkGaugeInnerGap = 1.0f;
+constexpr float kLinkGaugeScreenMargin = 3.0f;
 
 //===================================================================================
 //===================================================================================
@@ -28,12 +37,16 @@ struct OverlayChipSpec
     std::string text;
     bool alert = false;
     float width = 0.0f;
+    bool warning = false;
 };
 
 //===================================================================================
 //===================================================================================
-// Draws the top overlay chips, wrapping to the next row when the next chip would overflow.
-float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float start_y, float overlay_width)
+// Draws inset top overlay chips, wrapping to the next row when the next chip would overflow.
+float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips,
+                           float start_y,
+                           float overlay_width,
+                           float horizontal_margin)
 {
     if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
     {
@@ -48,9 +61,10 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
     const ImVec2 window_pos = ImGui::GetWindowPos();
     // Content-region/window-size helpers are unreliable here because this fullscreen
     // overlay uses absolute drawing and can be replayed into VR eye viewports.
-    const float available_width = std::max(0.0f, overlay_width);
+    const float left_x = std::max(0.0f, horizontal_margin);
+    const float available_width = std::max(0.0f, overlay_width - (left_x * 2.0f));
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
-    float x = 0.0f;
+    float x = left_x;
     float y = start_y;
     bool drew_chip = false;
 
@@ -64,14 +78,15 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
 
         const ImVec2 text_size = ImGui::CalcTextSize(chip.text.c_str());
         const float chip_width = chip.width > 0.0f ? chip.width * osd_scale : std::max(44.0f, 16.0f + text_size.x);
-        if (x > 0.0f && available_width > 0.0f && x + chip_width > available_width)
+        if (x > left_x && available_width > 0.0f && (x - left_x) + chip_width > available_width)
         {
-            x = 0.0f;
+            x = left_x;
             y += resolved_height + row_gap;
         }
 
-        const ImVec4 bg = chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
-                                     : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
+        const ImVec4 bg = chip.warning ? ImVec4(0.95f, 0.73f, 0.05f, 0.92f)
+                                      : chip.alert ? ImVec4(0.54f, 0.29f, 0.29f, 0.80f)
+                                                   : ImVec4(0.42f, 0.42f, 0.42f, 0.80f);
 
         // The fullscreen overlay window is shared with OSD/menu drawing, so draw
         // chips with absolute coordinates instead of relying on ImGui item cursor state.
@@ -80,13 +95,67 @@ float drawOverlayChipStrip(const std::vector<OverlayChipSpec>& chips, float star
         const ImVec2 text_pos(chip_min.x + std::max(0.0f, (chip_width - text_size.x) * 0.5f),
                               chip_min.y + std::max(0.0f, (resolved_height - text_size.y) * 0.5f));
         draw_list->AddRectFilled(chip_min, chip_max, ImGui::ColorConvertFloat4ToU32(bg));
-        draw_list->AddText(text_pos, ImGui::GetColorU32(ImGuiCol_Text), chip.text.c_str());
+        const ImU32 text_color = chip.warning ? IM_COL32(20, 20, 20, 255)
+                                              : ImGui::GetColorU32(ImGuiCol_Text);
+        draw_list->AddText(text_pos, text_color, chip.text.c_str());
 
         x += chip_width + row_gap;
         drew_chip = true;
     }
 
     return drew_chip ? (y - start_y) + resolved_height : 0.0f;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws one transparent link-quality gauge with a white border and squared lime fill response.
+void drawLinkQualityGauge(float x, float y, float quality, bool fill_from_right)
+{
+    ImDrawList* draw_list = ImGui::GetWindowDrawList();
+    // The host window may carry a non-zero WindowPadding, which shrinks its clip
+    // rect by half the padding on each side and eats the outer border pixels of a
+    // gauge sitting at the screen margin. Gauges are positioned in absolute screen
+    // coordinates, so draw them against the full viewport instead.
+    draw_list->PushClipRectFullScreen();
+    const ImU32 border_color = IM_COL32(255, 255, 255, 255);
+    // Four filled bars produce exact 3 px edges. A stroked ImGui rectangle is
+    // centered on its path and anti-aliasing can make its clipped right edge thinner.
+    draw_list->AddRectFilled(ImVec2(x, y),
+                             ImVec2(x + kLinkGaugeWidth, y + kLinkGaugeBorderWidth),
+                             border_color);
+    draw_list->AddRectFilled(ImVec2(x, y + kLinkGaugeHeight - kLinkGaugeBorderWidth),
+                             ImVec2(x + kLinkGaugeWidth, y + kLinkGaugeHeight),
+                             border_color);
+    draw_list->AddRectFilled(ImVec2(x, y + kLinkGaugeBorderWidth),
+                             ImVec2(x + kLinkGaugeBorderWidth,
+                                    y + kLinkGaugeHeight - kLinkGaugeBorderWidth),
+                             border_color);
+    draw_list->AddRectFilled(ImVec2(x + kLinkGaugeWidth - kLinkGaugeBorderWidth,
+                                    y + kLinkGaugeBorderWidth),
+                             ImVec2(x + kLinkGaugeWidth,
+                                    y + kLinkGaugeHeight - kLinkGaugeBorderWidth),
+                             border_color);
+
+    const float inset = kLinkGaugeBorderWidth + kLinkGaugeInnerGap;
+    const float inner_left = x + inset;
+    const float inner_right = x + kLinkGaugeWidth - inset;
+    const float inner_top = y + inset;
+    const float inner_bottom = y + kLinkGaugeHeight - inset;
+    const float clamped_quality = std::clamp(quality, 0.0f, 1.0f);
+    const float displayed_quality = clamped_quality * clamped_quality;
+    const float fill_width = std::max(0.0f, inner_right - inner_left) * displayed_quality;
+    if (fill_width <= 0.0f || inner_bottom <= inner_top)
+    {
+        draw_list->PopClipRect();
+        return;
+    }
+
+    const float fill_left = fill_from_right ? inner_right - fill_width : inner_left;
+    const float fill_right = fill_from_right ? inner_right : inner_left + fill_width;
+    draw_list->AddRectFilled(ImVec2(fill_left, inner_top),
+                             ImVec2(fill_right, inner_bottom),
+                             IM_COL32(0, 255, 0, 255));
+    draw_list->PopClipRect();
 }
 
 } // namespace
@@ -110,6 +179,8 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
     std::string air_temp_text;
     bool show_gs_temp = false;
     bool show_air_temp = false;
+
+    if (input.spectator) chips.push_back({"SPECTATOR", false, 135.0f, true});
 
     if (input.air_stats_valid)
     {
@@ -181,6 +252,7 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
 
     std::snprintf(buf, sizeof(buf), "%02d", input.video_fps);
     chips.push_back({buf, input.video_fps_alert, 45.0f});
+    if (input.rc_period_warning) chips.push_back({"RC!", true, 0.0f});
     if (input.image_stabilization_enabled) chips.push_back({"STAB", false, 65.0f});
 
     if (input.battery_percent >= 0)
@@ -189,7 +261,9 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
         chips.push_back({buf, input.battery_percent < 30, 0.0f});
     }
 
-    if (input.no_ping) chips.push_back({"NO PING!", true, 0.0f});
+    // A spectator does not own the camera's control link, so a missing pong is
+    // expected and must not be presented as a link failure.
+    if (input.no_ping && !input.spectator) chips.push_back({"NO PING!", true, 0.0f});
     if (input.interference) chips.push_back({"CHANNEL CONGESTED!", true, 0.0f});
     if (input.sd_slow) chips.push_back({"SD SLOW!", true, 0.0f});
     if (input.air_record) chips.push_back({"AIR", true, 0.0f});
@@ -204,10 +278,45 @@ void drawTopOverlayStatus(const TopOverlayData& input, float overlay_width)
     if (input.osd_font_error) chips.push_back({"Displayport OSD Font Unexpected Format!", true, 0.0f});
     if (input.air_suspended) chips.push_back({"OFF", true, 0.0f});
 
-    const float main_row_height = drawOverlayChipStrip(chips, 0.0f, overlay_width);
+    const float additional_margin = static_cast<float>(std::clamp<int>(s_groundstation_config.osdMargin, 0, 32));
+    const float horizontal_margin = kTopOverlayHorizontalMargin + additional_margin;
+    const float top_margin = kTopOverlayVerticalMargin + additional_margin;
+    const float main_row_height = drawOverlayChipStrip(chips, top_margin, overlay_width, horizontal_margin);
     if (!input.transport_message.empty())
     {
-        drawOverlayChipStrip({{input.transport_message, true, 0.0f}}, main_row_height + kOverlayBannerGap, overlay_width);
+        drawOverlayChipStrip({{input.transport_message, true, 0.0f}},
+                             top_margin + main_row_height + kOverlayBannerGap,
+                             overlay_width,
+                             horizontal_margin);
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the optional video and RC link-quality gauges in the bottom corners.
+void drawLinkQualityGauges(const TopOverlayData& input, float overlay_width, float overlay_height)
+{
+    if (GImGui == nullptr || GImGui->CurrentWindow == nullptr || GImGui->Font == nullptr)
+    {
+        return;
+    }
+
+    static LinkQualitySampler sampler;
+    sampler.update(input);
+
+    const float additional_margin = static_cast<float>(std::clamp<int>(s_groundstation_config.osdMargin, 0, 32));
+    const float screen_margin = kLinkGaugeScreenMargin + additional_margin;
+    const float y = std::max(screen_margin,
+                             overlay_height - kLinkGaugeHeight - screen_margin);
+    if (s_groundstation_config.osdVideoLqGauge)
+    {
+        drawLinkQualityGauge(screen_margin, y, sampler.videoQuality(), false);
+    }
+    if (s_groundstation_config.osdRcLqGauge)
+    {
+        const float x = std::max(screen_margin,
+                                 overlay_width - kLinkGaugeWidth - screen_margin);
+        drawLinkQualityGauge(x, y, sampler.rcQuality(), true);
     }
 }
 }

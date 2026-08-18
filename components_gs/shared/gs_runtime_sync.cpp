@@ -9,6 +9,20 @@
 #include "gs_runtime_state.h"
 #include "gs_video_stabilization_shared.h"
 
+//===================================================================================
+//===================================================================================
+// Populates session-owned overlay warnings identically for every GS renderer.
+void populateSessionOverlayState(gs::core::GsSessionCore& session,
+                                 Clock::time_point now,
+                                 gs::imgui::TopOverlayData& overlay_input)
+{
+    overlay_input.rc_period_warning = session.shouldShowRCWarning(now);
+    overlay_input.spectator = session.shouldShowSpectator(now);
+}
+
+//===================================================================================
+//===================================================================================
+// Collects the shared Android/runtime UI snapshot and platform-independent overlay data.
 RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
                                          const RuntimeSyncParams& params,
                                          gs::imgui::TopOverlayData& overlay_input)
@@ -112,6 +126,7 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
         core.last_had_frame_loss = core.session.consumeLostFrameCount() != 0;
         GSStats next_stats = {};
         next_stats.statsPacketIndex = core.last_ground_stats.lastPacketIndex;
+        next_stats.statsUniquePacketCounter = core.last_ground_stats.inUniquePacketCounter;
         next_stats.rssiDbm[0] = gs_rssi0;
         next_stats.rssiDbm[1] = gs_rssi1;
         next_stats.noiseFloorDbm = gs_noise_floor;
@@ -144,6 +159,17 @@ RuntimeSyncState collectRuntimeSyncState(GsRuntimeCore& core,
     overlay_input.video_fps = core.last_ground_stats.receivedCompletedFrames +
         core.last_ground_stats.restoredCompletedFrames;
     overlay_input.video_fps_alert = core.last_had_frame_loss;
+    populateSessionOverlayState(core.session, now, overlay_input);
+    // Link-quality sampling needs one coherent cumulative source. GSStats is a
+    // one-second display accumulator that is cleared at rollover, while the FEC
+    // decoder owns the cumulative packet count and order index used by the gauge.
+    const FecBlockDecoder::Stats decoder_stats = core.rx_decoder.getStats();
+    overlay_input.video_received_packet_count = decoder_stats.unique_packet_count;
+    overlay_input.video_last_packet_index = decoder_stats.last_packet_index;
+    overlay_input.video_fec_k = core.rx_decoder_k;
+    overlay_input.video_fec_n = core.rx_decoder_n;
+    overlay_input.gs_out_packet_rate = core.last_ground_stats.outPacketCounter;
+    overlay_input.air_in_packet_rate = display_air_stats.inPacketRate;
     overlay_input.image_stabilization_enabled = s_imageStabilizationState.enabled;
     overlay_input.air_record = air_stats_valid && display_air_stats.air_record_state != 0;
     overlay_input.gs_record = s_recordingsStorage->isRecording();

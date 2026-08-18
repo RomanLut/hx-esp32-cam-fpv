@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 
 #include "../../../components/common/Clock.h"
@@ -127,7 +128,11 @@ struct SessionEvent
 class GsSessionCore
 {
 public:
-    void resetPairing(uint16_t gs_device_id, ITransport& transport, Clock::time_point now);
+    void resetPairing(uint16_t gs_device_id,
+                      ITransport& transport,
+                      Clock::time_point now,
+                      uint16_t ignored_air_device_id = 0);
+    void clearPairingAirDeviceExclusion();
 
     bool tryAcceptConnectConfig(const protocol::AirPacketInfo& packet_info,
                                 const uint8_t* packet_data,
@@ -165,6 +170,7 @@ public:
                                   ITransport& transport,
                                   std::mutex& gs_stats_mutex,
                                   GSStats& gs_stats);
+    bool shouldShowRCWarning(Clock::time_point now);
     void flushTelemetryIfNeeded(bool got_rc_packet,
                                Clock::time_point now,
                                uint16_t gs_device_id,
@@ -180,7 +186,7 @@ public:
 
     uint8_t currentPingToken() const;
     void onPingSent(Clock::time_point now);
-    void onVideoPong(uint8_t pong, Clock::time_point now);
+    void onAirPong(uint8_t pong, Clock::time_point now);
     PingSnapshot consumePingSnapshot();
     LinkStatusSnapshot consumeLinkStatus(Clock::time_point now);
     void addSentPackets(size_t count);
@@ -205,6 +211,9 @@ public:
     uint16_t connectedAirDeviceId() const;
     bool gotConfigPacket() const;
     bool acceptConfigPacket() const;
+    bool isSpectator(uint16_t gs_device_id) const;
+    bool shouldShowSpectator(Clock::time_point now) const;
+    uint64_t searchCandidatePacketCount() const;
 
 private:
     mutable std::mutex m_state_mutex;
@@ -224,7 +233,16 @@ private:
     Clock::time_point m_last_ping_sent_tp = Clock::now();
     Clock::time_point m_last_frame_completed_tp = Clock::now();
     Clock::time_point m_last_data_sent_tp = Clock::now();
+    Clock::time_point m_last_rc_command_tp = {};
+    Clock::time_point m_first_rc_command_tp = {};
+    Clock::time_point m_rc_warning_until = {};
+    std::deque<Clock::time_point> m_rc_packet_times;
     uint16_t m_connected_air_device_id = 0;
+    uint16_t m_associated_gs_device_id = 0;
+    uint16_t m_ignored_pairing_air_device_id = 0;
+    uint64_t m_search_candidate_packet_count = 0;
+    Clock::time_point m_spectator_until = {};
+    bool m_has_received_rc_packet = false;
     bool m_got_config_packet = false;
     bool m_accept_config_packet = false;
     HXMavlinkParser m_mavlink_parser_in = HXMavlinkParser(true);

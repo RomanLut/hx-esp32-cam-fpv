@@ -594,6 +594,10 @@
     data["apfpv"] = document.getElementById("apfpv").checked ? "true" : "false";
     data["default_dvr"] = document.getElementById("default_dvr").checked ? "true" : "false";
     data["mavlink_baudrate"] = document.getElementById('mavlink-baudrate').value.toString();
+    data["camera_stop_channel"] = document.getElementById('camera-stop-channel').value.toString();
+    data["stabilization_channel"] = document.getElementById('stabilization-channel').value.toString();
+    data["mavlink_inject_radio_status"] = document.getElementById("mavlink-inject-radio-status").checked ? "true" : "false";
+    data["mavlink_inject_rssi_ch16"] = document.getElementById("mavlink-inject-rssi-ch16").checked ? "true" : "false";
     var jsonData = JSON.stringify(data);
     console.log(jsonData);
 
@@ -692,6 +696,19 @@
         }
     }
 
+    function add_rc_channel_select_elements(elementId, selectedChannel) {
+        var selectElement = document.getElementById(elementId);
+        if (!selectElement) return;
+
+        for (var channel = 0; channel <= 18; channel++) {
+            var optionElement = document.createElement('option');
+            optionElement.value = channel;
+            optionElement.textContent = channel === 0 ? 'None' : channel;
+            optionElement.selected = channel === selectedChannel;
+            selectElement.appendChild(optionElement);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         fetch("/configs")
         .then(response => response.json())
@@ -721,9 +738,27 @@
                     <option value="115200">115200</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="camera-stop-channel">Camera Off RC Channel:</label>
+                <select id="camera-stop-channel"></select>
+            </div>
+            <div class="form-group">
+                <label for="stabilization-channel">Image Stabilization RC Channel:</label>
+                <select id="stabilization-channel"></select>
+            </div>
+            <div class="form-group">
+                <input id="mavlink-inject-radio-status" type="checkbox" name="mavlink_inject_radio_status" value="enable">
+                <label for="mavlink-inject-radio-status">Inject Mav2 Radio Status</label>
+            </div>
+            <div class="form-group">
+                <input id="mavlink-inject-rssi-ch16" type="checkbox" name="mavlink_inject_rssi_ch16" value="enable">
+                <label for="mavlink-inject-rssi-ch16">Inject Mav2 RSSI to CH16</label>
+            </div>
             <button id="save-button" onclick="submitForm()">Save</button><span id="save-status" style="margin-left: 1rem;"></span>
             `;
             add_select_elements(parseInt(data.channel), !!data.wifi_5ghz_supported);
+            add_rc_channel_select_elements('camera-stop-channel', parseInt(data.camera_stop_channel || "0"));
+            add_rc_channel_select_elements('stabilization-channel', parseInt(data.stabilization_channel || "0"));
             document.getElementById('mavlink-baudrate').value = data.mavlink_baudrate || "115200";
             var apfpvCheckbox = document.getElementById("apfpv");
             if(data.apfpv == "true"){
@@ -733,6 +768,8 @@
             if(data.default_dvr == "true"){
                 checkbox.checked = true;
             }
+            document.getElementById("mavlink-inject-radio-status").checked = data.mavlink_inject_radio_status == "true";
+            document.getElementById("mavlink-inject-rssi-ch16").checked = data.mavlink_inject_rssi_ch16 == "true";
         })
         .catch(error => {
             console.error('Error fetching settings:', error);

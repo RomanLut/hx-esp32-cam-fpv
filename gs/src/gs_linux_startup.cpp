@@ -196,7 +196,7 @@ bool findLinuxRXInterfaces(gs::core::RXDescriptor& rx_descriptor)
 
 //===================================================================================
 //===================================================================================
-// Generates unique device identifier based on machine-id
+// Generates a stable nonzero device identifier from the Linux machine ID.
 uint16_t generateLinuxDeviceId()
 {
     std::ifstream file("/etc/machine-id");
@@ -208,21 +208,21 @@ uint16_t generateLinuxDeviceId()
         file.close();
     }
 
-    uint16_t device_id = 0;
-    if (!machine_id.empty())
-    {
-        for (size_t i = 0; i < machine_id.size(); ++i)
-        {
-            device_id ^= (uint16_t)machine_id[i] << (i % 8);
-        }
-    }
-    else
+    if (machine_id.empty())
     {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<uint16_t> dist(0, 0xFFFF);
-        device_id = dist(gen);
+        std::uniform_int_distribution<uint16_t> dist(1, 0xFFFF);
+        return dist(gen);
     }
 
-    return device_id;
+    uint32_t hash = 2166136261u;
+    for (const unsigned char value : machine_id)
+    {
+        hash ^= value;
+        hash *= 16777619u;
+    }
+
+    const uint16_t device_id = static_cast<uint16_t>((hash >> 16u) ^ hash);
+    return device_id == 0 ? 1 : device_id;
 }

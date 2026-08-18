@@ -50,6 +50,11 @@ MCP design requirements for Ground Station debugging
    Network I/O may run on a background thread, but injected keys are only queued from
    MCP. They are drained into ImGui from the render thread before the frame consumes
    input.
+
+8. Synthetic input must respect platform focus.
+   A platform that can lose user input focus, such as Quest when a Horizon dialog
+   is visible, must disable MCP input immediately. Disabling input also discards
+   queued transitions so they cannot execute later when focus returns.
 ===================================================================================
 ===================================================================================
 */
@@ -85,13 +90,23 @@ struct InjectedKeyTransition
 
 //===================================================================================
 //===================================================================================
+// Enables or disables synthetic input and discards queued keys when it is disabled.
+void setInjectedInputEnabled(bool enabled);
+
+//===================================================================================
+//===================================================================================
+// Reports whether the current platform state permits synthetic user input.
+bool isInjectedInputEnabled();
+
+//===================================================================================
+//===================================================================================
 // Queues one synthetic key press to be injected into ImGui on the next frame.
-void queueInjectedKeyPress(ImGuiKey key);
+bool queueInjectedKeyPress(ImGuiKey key);
 
 //===================================================================================
 //===================================================================================
 // Queues multiple synthetic key presses to be injected into ImGui on future frames.
-void queueInjectedKeyPresses(const std::vector<ImGuiKey>& keys);
+bool queueInjectedKeyPresses(const std::vector<ImGuiKey>& keys);
 
 //===================================================================================
 //===================================================================================

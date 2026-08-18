@@ -123,6 +123,17 @@ Mapping mappings_pi[] =
         // Add more here if required...
         {0, NULL, NULL}};
 
+Mapping mappings_pi_diy_vrx_2[] =
+    {
+        {24, key_left, NULL},
+        {18, key_right, NULL},
+        {22, key_up, NULL},
+        {27, key_down, NULL},
+        {23, key_enter, NULL},
+        {17, key_r, key_g},
+        // DIY VRX 2 intentionally omits the dedicated GS REC GPIO (pin 4).
+        {0, NULL, NULL}};
+
 //https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface
 Mapping mappings_radxa[] =
     {
@@ -134,6 +145,17 @@ Mapping mappings_radxa[] =
         {114, key_r, key_g},    //Header pin 32
         {102, key_g, NULL},     //Header pin 38
         // Add more here if required...
+        {0, NULL, NULL}};
+
+Mapping mappings_radxa_diy_vrx_2[] =
+    {
+        {98, key_left, NULL},   //Header pin 13
+        {101, key_right, NULL}, //Header pin 40
+        {105, key_up, NULL},    //Header pin 16
+        {106, key_down, NULL},  //Header pin 18
+        {97, key_enter, NULL},  //Header pin 11
+        {114, key_r, key_g},    //Header pin 32
+        // DIY VRX 2 intentionally omits the dedicated GS REC GPIO (pin 102).
         {0, NULL, NULL}};
 
 Mapping mappings_runcam[] =
@@ -614,10 +636,18 @@ void gpio_buttons_start()
     {
       mappings = mappings_runcam;
     }
+    else if ( s_groundstation_config.GPIOKeysLayout == 2 )
+    {
+      mappings = mappings_radxa_diy_vrx_2;
+    }
   }
   else
   {
     mappings = mappings_pi;
+    if ( s_groundstation_config.GPIOKeysLayout == 2 )
+    {
+      mappings = mappings_pi_diy_vrx_2;
+    }
   }
 
   const Mapping *m = &mappings[pin];

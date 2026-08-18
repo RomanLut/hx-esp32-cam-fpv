@@ -11,6 +11,10 @@
 
 constexpr size_t AIR2GROUND_MIN_MTU = (WLAN_MAX_PAYLOAD_SIZE / 4) - PACKET_HEADER_SIZE; //min size of data without Packet_Header
 constexpr size_t AIR2GROUND_MAX_MTU = WLAN_MAX_PAYLOAD_SIZE - PACKET_HEADER_SIZE; //max size of data without Packet_Header
+// APFPV adds IPv4 and UDP headers, so its datagram must be four bytes smaller than the
+// raw 802.11 payload to stay within a 1500-byte IP MTU without fragmentation.
+constexpr size_t APFPV_AIR2GROUND_MAX_MTU = 1500 - 20 - 8 - PACKET_HEADER_SIZE;
+static_assert(APFPV_AIR2GROUND_MAX_MTU <= AIR2GROUND_MAX_MTU, "APFPV MTU must fit the raw transport MTU");
 
 constexpr size_t GROUND2AIR_MAX_MTU = 128; //max size of data without Packet_Header
 //variable mtu is not supported for Ground2Air
@@ -182,6 +186,12 @@ struct MiscConfig
     uint8_t apfpv : 1;// = 0;
 
     uint32_t osdFontCRC32;
+
+    uint32_t stabilizationChannel : 5;// = 0;  //0 - none
+    uint32_t mavlinkBaudrate : 3;// = 0, 0 = 115200, 1 = 57600, 2 = 38400, 3 = 19200, 4 = 9600, 5 = 4800
+    uint32_t mavlinkInjectRadioStatus : 1;// = 1;
+    uint32_t mavlinkInjectRssiCh16 : 1;// = 0;
+    uint32_t reserved: 22; //= 0
 };
 
 //======================================================
@@ -200,7 +210,7 @@ struct Ground2Air_Header
     uint8_t crc = 0;
     uint8_t packet_version = PACKET_VERSION;
     uint16_t airDeviceId; //unique id of target AIR unit. 
-    uint16_t gsDeviceId;  //ID of GS. Assigned permanently on first boot.
+    uint16_t gsDeviceId;  //ID of GS. The first nonzero ID accepted by AIR owns it until AIR reboots.
 
 };
 
@@ -250,7 +260,7 @@ struct Air2Ground_Header
     uint8_t version; //PACKET_VERSION
     uint8_t crc = 0;
     uint16_t airDeviceId; //unique id of this AIR unit. Assigned permanently on first boot.
-    uint16_t gsDeviceId;  //ID of GS this unit is connected to cuurently. 0 - not connected currently. Will accept 
+    uint16_t gsDeviceId;  //ID of the associated GS. 0 means AIR has not associated since boot.
 };
 
 //======================================================

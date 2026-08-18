@@ -19,6 +19,9 @@
 #define NVS_KEY_MAVLINK_BAUDRATE         "mavlink_baud"
 
 uint32_t getValidMavlinkBaudrate(uint32_t baudrate);
+uint32_t getMavlinkBaudrateFromSetting(uint8_t setting);
+uint8_t getMavlinkBaudrateSetting(uint32_t baudrate);
+void recordAirRcCommandSent();
 
 //===============================================================
 //For esp32cam

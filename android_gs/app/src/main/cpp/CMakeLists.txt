@@ -6,7 +6,7 @@ set(ANDROID_SHARED_DEVOURER_DIR ../../../../../components_gs/android_shared/devo
 add_library(android_gs_core SHARED
     ../../../../../components_gs/android_shared/cpp/android_apfpv_transport.cpp
     ../../../../../components_gs/android_shared/cpp/android_raw_broadcast_transport.cpp
-    android_surface_backend.cpp
+    ../../../../../components_gs/android_shared/cpp/android_surface_backend_window.cpp
     ../../../../../components_gs/android_shared/cpp/android_bitmap_jpeg_decoder.cpp
     ../../../../../components_gs/android_shared/cpp/android_osd_font_storage.cpp
     ../../../../../components_gs/android_shared/cpp/android_playback_manager.cpp
@@ -15,7 +15,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/android_shared/cpp/android_serial_telemetry.cpp
     ../../../../../components_gs/android_shared/cpp/android_transport_manager.cpp
     ../../../../../components_gs/android_shared/cpp/android_wifi_scan_transport.cpp
-    native_bridge.cpp
+    ../../../../../components_gs/android_shared/cpp/android_gs_native_bridge.cpp
     ../../../../../components_gs/mcp/gs_mcp_server.cpp
     ../../../../../components_gs/shared/frame_packets_debug.cpp
     ../../../../../components_gs/shared/gs_runtime_config.cpp
@@ -37,6 +37,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/settings_storage.cpp
     ../../../../../components_gs/shared/fontwalksnail.cpp
     ../../../../../components_gs/shared/flight_osd.cpp
+    ../../../../../components_gs/shared/gs_link_quality_sampler.cpp
     ../../../../../components_gs/shared/gs_top_overlay_shared.cpp
     ../../../../../components_gs/shared/gs_camera_calibration_shared.cpp
     ../../../../../components_gs/shared/gs_video_stabilization_shared.cpp
@@ -64,6 +65,7 @@ add_library(android_gs_core SHARED
     ../../../../../components_gs/shared/core/osd_menu_imgui_shared.cpp
     ../../../../../components_gs/shared/core/stats_panel_shared.cpp
     ../../../../../components_gs/shared/core/video_frame_assembler.cpp
+    ../../../../../components_gs/shared/core/tx_fec_block_encoder.cpp
     ../../../../../components/common/crc.cpp
     ../../../../../components/common/avi.cpp
     ../../../../../components/common/fec.cpp

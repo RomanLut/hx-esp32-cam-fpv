@@ -573,6 +573,9 @@ err:
     return ESP_FAIL;
 }
 
+//===================================================================================
+//===================================================================================
+// Stops camera producers before destroying the task, queues, and frame buffers.
 esp_err_t cam_deinit(void)
 {
     if (!cam_obj) {
@@ -582,15 +585,22 @@ esp_err_t cam_deinit(void)
     cam_stop();
     if (cam_obj->task_handle) {
         vTaskDelete(cam_obj->task_handle);
+        cam_obj->task_handle = NULL;
     }
+
+    // Low-level deinitialization must quiesce and detach every ISR before its event
+    // queue is deleted. ESP32-C5 PARLIO otherwise keeps delivering DMA callbacks to
+    // the freed queue while the camera is stopped and crashes on the next resume.
+    ll_cam_deinit(cam_obj);
+
     if (cam_obj->event_queue) {
         vQueueDelete(cam_obj->event_queue);
+        cam_obj->event_queue = NULL;
     }
     if (cam_obj->frame_buffer_queue) {
         vQueueDelete(cam_obj->frame_buffer_queue);
+        cam_obj->frame_buffer_queue = NULL;
     }
-
-    ll_cam_deinit(cam_obj);
 
 #if defined(CONFIG_IDF_TARGET_ESP32C5)
 #else

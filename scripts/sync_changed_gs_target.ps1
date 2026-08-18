@@ -334,6 +334,7 @@ Write-Host "Remote: ${User}@${RemoteHost}:${RemoteProjectDir}"
 Write-Host "Syncing OpenCV trees via rsync ..."
 $opencvWrapperBuildInputsChanged = $false
 $gsRuntimeHadRsyncChanges = $false
+$gsBuildInputsHadRsyncChanges = $false
 foreach ($relativePath in $opencvSyncPaths)
 {
     $sourceForWsl = Convert-ToWslPath (Join-Path $repoRoot $relativePath)
@@ -391,6 +392,13 @@ foreach ($relativePath in $gsSyncPaths)
         {
             $gsRuntimeHadRsyncChanges = $true
         }
+        if ($relativePath -in @("gs", "components_gs", "components/common"))
+        {
+            # rsync preserves source timestamps. A changed file can therefore remain
+            # older than its remote object, so make -q alone cannot prove the binary
+            # contains newly transferred content.
+            $gsBuildInputsHadRsyncChanges = $true
+        }
     }
 }
 
@@ -414,18 +422,21 @@ if ($Build)
 {
     $gsNeedsBuild = Test-RemoteGsNeedsBuild
     $gsIsRunning = Test-RemoteGsIsRunning
-    $compileNeeded = $opencvWrapperBuildInputsChanged -or $gsNeedsBuild
+    $compileNeeded = $opencvWrapperBuildInputsChanged -or $gsBuildInputsHadRsyncChanges -or $gsNeedsBuild
     $restartNeeded = $gsRuntimeHadRsyncChanges -or $compileNeeded -or (-not $gsIsRunning)
     $stopNeeded = $compileNeeded -or ($RunAfterBuild -and $restartNeeded)
 
     if ($stopNeeded)
     {
-        # GS normally runs as root through launch.sh. Stop it before replacing build outputs,
-        # and wait for termination so the compiler never competes with GS for Radxa resources.
-        $stopGsCmd = "(tmux kill-session -t gslaunch 2>/dev/null || true) && " +
+        # Radxa boot starts launch.sh in a restart-managed transient systemd unit. Stop the
+        # owning unit before killing fallback launches, otherwise systemd immediately starts
+        # a replacement GS process while make is still using the board's resources.
+        $stopGsCmd = "(sudo systemctl stop esp32camfpv-gs-session.service 2>/dev/null || true) && " +
+                     "(tmux kill-session -t gslaunch 2>/dev/null || true) && " +
                      "(sudo pkill -TERM -x gs 2>/dev/null || true); " +
                      "attempt=0; while pgrep -x gs >/dev/null 2>&1 && [ `$attempt -lt 50 ]; do sleep 0.1; attempt=`$((attempt + 1)); done; " +
                      "if pgrep -x gs >/dev/null 2>&1; then sudo pkill -KILL -x gs 2>/dev/null || true; sleep 0.2; fi; " +
+                     "if systemctl is-active --quiet esp32camfpv-gs-session.service; then echo 'Failed to stop the GS systemd unit.' >&2; exit 1; fi; " +
                      "if pgrep -x gs >/dev/null 2>&1; then echo 'Failed to stop GS.' >&2; exit 1; fi"
         Invoke-RemoteCommand "Stopping the running GS before build/restart ..." $stopGsCmd
     }
@@ -439,7 +450,12 @@ if ($Build)
         Write-Host "Skipping OpenCV wrapper rebuild: rsync reported no wrapper source, header, or CMake input changes."
     }
 
-    if ($gsNeedsBuild)
+    if ($gsBuildInputsHadRsyncChanges)
+    {
+        Write-Host "Rebuilding GS because rsync transferred build inputs ..."
+        Invoke-RemoteCommand "" "cd $RemoteProjectDir/$RemoteBuildSubdir && make --no-print-directory -B -j`$(nproc)"
+    }
+    elseif ($gsNeedsBuild)
     {
         Write-Host "Building only out-of-date GS targets on remote host ..."
         Invoke-RemoteCommand "" "cd $RemoteProjectDir/$RemoteBuildSubdir && make --no-print-directory -j`$(nproc)"

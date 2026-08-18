@@ -54,6 +54,10 @@ void HXMavlinkParser::crc_accumulate(uint8_t data, uint16_t *crcAccum)
 //=====================================================================
 void HXMavlinkParser::processByte(uint8_t byte)
 {
+    // Completion is a one-byte event. Keeping it latched would make bytes after
+    // a packet look like additional boundaries to stream filters and injectors.
+    this->bGotPacket = false;
+
     switch ( this->state )
     {
         case MPS_IDLE:
@@ -79,9 +83,19 @@ void HXMavlinkParser::processByte(uint8_t byte)
             this->sbuf[this->sbufIndex++] = byte;
             this->expectedLength--;
 
+            // The signed flag is the first MAVLink 2 body byte. Its 13-byte
+            // signature follows the checksum and is part of the frame boundary.
+            if ( this->v2 && this->sbufIndex == 3 && (byte & 0x01) != 0 )
+            {
+                this->expectedLength += HX_MAVLINK_SIGNATURE_BLOCK_LEN;
+            }
+
             if ( this->expectedLength == 0 )
             {
-                int crc1 = (this->sbuf[this->sbufIndex-1] << 8) | this->sbuf[this->sbufIndex-2];
+                const int signatureLength =
+                    this->v2 && (this->sbuf[2] & 0x01) != 0 ? HX_MAVLINK_SIGNATURE_BLOCK_LEN : 0;
+                const int crcOffset = this->sbufIndex - signatureLength - HX_MAVLINK_NUM_CHECKSUM_BYTES;
+                int crc1 = (this->sbuf[crcOffset + 1] << 8) | this->sbuf[crcOffset];
 
                 int msgId;
                 int header_len;
@@ -153,5 +167,43 @@ int HXMavlinkParser::getMessageId()
 {
     const HXMAVLinkMsgHeader* h = this->getMsg<HXMAVLinkMsgHeader>();
     return h->message_id[0] + ((int)(h->message_id[1]) << 8) + ((int)(h->message_id[2]) << 16);
+}
+
+//===================================================================================
+//===================================================================================
+// Replaces one present RC override channel and updates the MAVLink 2 checksum.
+bool HXMavlinkParser::setRCChannelValue(uint8_t channelIndex, uint16_t value)
+{
+    if (!this->bGotPacket || !this->v2 ||
+        this->getMessageId() != HX_MAXLINK_RC_CHANNELS_OVERRIDE ||
+        channelIndex < 1 || channelIndex > 18)
+    {
+        return false;
+    }
+
+    // A signed frame cannot be changed without the signing key because its
+    // signature covers the checksum and the complete MAVLink packet.
+    if ((this->sbuf[2] & 0x01) != 0)
+    {
+        return false;
+    }
+
+    const int payloadOffset = channelIndex <= 8 ?
+        (channelIndex - 1) * 2 : 18 + (channelIndex - 9) * 2;
+    if (payloadOffset + 1 >= this->sbuf[1])
+    {
+        return false;
+    }
+
+    uint8_t* payload = &this->sbuf[HX_MAVLINK_NUM_HEADER_BYTES];
+    payload[payloadOffset] = static_cast<uint8_t>(value);
+    payload[payloadOffset + 1] = static_cast<uint8_t>(value >> 8);
+
+    uint16_t checksum = this->crc_calculate(&this->sbuf[1], HX_MAVLINK_CORE_HEADER_LEN + this->sbuf[1]);
+    this->crc_accumulate(HX_MAVLINK_MESSAGE_CRCS[HX_MAXLINK_RC_CHANNELS_OVERRIDE], &checksum);
+    const int crcOffset = HX_MAVLINK_NUM_HEADER_BYTES + this->sbuf[1];
+    this->sbuf[crcOffset] = static_cast<uint8_t>(checksum);
+    this->sbuf[crcOffset + 1] = static_cast<uint8_t>(checksum >> 8);
+    return true;
 }
 

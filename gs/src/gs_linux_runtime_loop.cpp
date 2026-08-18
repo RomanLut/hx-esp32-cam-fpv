@@ -33,6 +33,7 @@
 #include "gs_camera_calibration_shared.h"
 #include "gs_runtime_platform_services.h"
 #include "gs_runtime_state.h"
+#include "gs_runtime_sync.h"
 #include "gs_top_overlay_shared.h"
 #include "gs_video_layout_shared.h"
 #include "gs_video_stabilization_shared.h"
@@ -242,6 +243,7 @@ void comms_thread_proc()
                 s_runtimeCore.last_ground_stats = s_last_gs_stats;
                 s_gs_stats = GSStats();
                 s_gs_stats.statsPacketIndex = s_last_gs_stats.lastPacketIndex;
+                s_gs_stats.statsUniquePacketCounter = s_last_gs_stats.inUniquePacketCounter;
                 s_gs_stats.rssiDbm[0] = rssi0;
                 s_gs_stats.rssiDbm[1] = rssi1;
                 s_gs_stats.noiseFloorDbm = noise_floor;
@@ -340,6 +342,16 @@ void comms_thread_proc()
             }
 
             received_packet_this_iteration = true;
+            s_runtimeCore.decoded_packets_seen++;
+            if (rx_data.size >= sizeof(Air2Ground_Header))
+            {
+                const auto* decoded_header = reinterpret_cast<const Air2Ground_Header*>(rx_data.data.data());
+                s_runtimeCore.last_decoded_type = static_cast<uint32_t>(decoded_header->type);
+                s_runtimeCore.last_decoded_size = decoded_header->size;
+                s_runtimeCore.last_decoded_air = decoded_header->airDeviceId;
+                s_runtimeCore.last_decoded_gs = decoded_header->gsDeviceId;
+            }
+
             ProcessedSessionPacket processed_packet = {};
             processed_packet.processed_tp = Clock::now();
             processed_packet.event =
@@ -485,6 +497,10 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        // Top chips use absolute fullscreen coordinates. Default ImGui window padding
+        // moves the draw-list clip edge inward and clips x=0 even though the window
+        // itself begins at x=0, so the fullscreen host must have no content padding.
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::Begin("fullscreen", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
         {
             const ImVec2 display_size = ImGui::GetIO().DisplaySize;
@@ -521,8 +537,24 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.throughput_mbps = static_cast<float>(s_total_data) * 8.0f / (1024.0f * 1024.0f);
             input.video_fps = static_cast<int>(video_fps);
             input.video_fps_alert = had_loss;
+            // Linux owns a separate statistics lifecycle, but all session-derived
+            // warnings are populated by the same helper used by Android.
+            populateSessionOverlayState(s_runtimeCore.session, now, input);
+            {
+                std::lock_guard<std::mutex> stats_lock(s_gs_stats_mutex);
+                input.video_received_packet_count = s_gs_stats.inUniquePacketCounter;
+                input.video_last_packet_index = s_gs_stats.lastPacketIndex;
+                input.gs_out_packet_rate = s_last_gs_stats.outPacketCounter;
+            }
+            input.video_fec_k = s_runtimeCore.rx_decoder_k;
+            input.video_fec_n = s_runtimeCore.rx_decoder_n;
+            input.air_in_packet_rate = air_stats.inPacketRate;
             input.image_stabilization_enabled = s_imageStabilizationState.enabled;
-            input.no_ping = s_noPing;
+            // Test and Wi-Fi Scan synthesize local air-to-ground packets but do not
+            // implement the RAW ping/pong exchange. Showing NO PING in those modes
+            // falsely describes a transport capability as a link failure.
+            input.no_ping = s_noPing &&
+                            currentTransportKind() == gs::core::TransportKind::RawBroadcast;
             input.interference = shouldShowInterferenceChip(s_last_gs_stats);
             input.sd_slow = air_stats_valid && s_SDSlow;
             input.air_record = air_stats_valid && s_air_record;
@@ -533,7 +565,18 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             input.incompatible_firmware_time = s_incompatibleFirmwareTime;
             input.transport_message = s_transport != nullptr ? s_transport->getTransportMessage() : "";
 
-            gs::imgui::drawTopOverlayStatus(input, overlay_width);
+            // Wi-Fi Scan renders its own full-screen channel graph. RAW link status
+            // and link-quality gauges are meaningless there and obscure the graph.
+            const bool show_link_overlays =
+                currentTransportKind() != gs::core::TransportKind::WifiChannelScan;
+            if (show_link_overlays && s_groundstation_config.osdTopStatusLine)
+            {
+                gs::imgui::drawTopOverlayStatus(input, overlay_width);
+            }
+            if (show_link_overlays)
+            {
+                gs::imgui::drawLinkQualityGauges(input, overlay_width, display_size.y);
+            }
             //------------------------------------------------
 
             if (frame_ui.overlay_stats_visible)
@@ -572,7 +615,7 @@ void registerLinuxRenderCallback(Ground2Air_Config_Packet& config, char* argv[])
             gs::calibration::drawCalibrationOverlay(overlay_width, display_size.y);
         }
         ImGui::End();
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar(3);
 
         const bool menu_visible = gs::menu::g_osdMenuController.isVisible();
         const bool playback_active = s_playbackManager != nullptr && s_playbackManager->status().active;

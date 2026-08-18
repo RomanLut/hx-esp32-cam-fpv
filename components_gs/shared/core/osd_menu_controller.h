@@ -74,6 +74,13 @@ private:
 
     Clock::time_point search_tp = Clock::now();
     bool searchDone = false;
+    std::vector<int> m_search_packet_channels;
+    std::vector<float> m_search_packet_rates;
+    uint64_t m_search_last_capture_packet_count = 0;
+    uint64_t m_search_channel_capture_packet_count = 0;
+    Clock::time_point m_search_channel_sample_tp = Clock::now();
+    int m_search_packet_channel = 0;
+    bool m_search_packet_graph_active = false;
     LensCorrectionState m_lens_correction_original = {};
     LensCorrectionState m_lens_correction_draft = {};
     bool m_lens_correction_draft_active = false;
@@ -152,6 +159,7 @@ private:
     void drawRestartMenu(Ground2Air_Config_Packet& config);
     void drawFECMenu(Ground2Air_Config_Packet& config);
     void drawGSSettingsMenu(Ground2Air_Config_Packet& config);
+    void drawGSOSDMenu(Ground2Air_Config_Packet& config);
     void drawGSWifiSettingsMenu(Ground2Air_Config_Packet& config);
     void drawGSScreenMenu(Ground2Air_Config_Packet& config);
     void drawGSPostprocessingMenu(Ground2Air_Config_Packet& config);
@@ -171,6 +179,7 @@ private:
     void drawCameraRCMenu(Ground2Air_Config_Packet& config);
     void drawCameraStopCHMenu(Ground2Air_Config_Packet& config);
     void drawImageStabilizationCHMenu(Ground2Air_Config_Packet& config);
+    void drawMavlinkBaudrateMenu(Ground2Air_Config_Packet& config);
     void drawDebugMenu(Ground2Air_Config_Packet& config);
     void drawPlaybackMenu(Ground2Air_Config_Packet& config);
     void drawPlaybackRunMenu(Ground2Air_Config_Packet& config);
@@ -179,6 +188,9 @@ private:
     int m_playback_delete_index = 0;
     std::string m_playback_delete_path;
     void drawSearchModeMenu(Ground2Air_Config_Packet& config);
+    void resetSearchPacketGraph();
+    void updateSearchPacketGraph();
+    void drawSearchPacketGraph();
     void drawSearchRunMenu(Ground2Air_Config_Packet& config);
     void drawCurrentMenu(Ground2Air_Config_Packet& config);
     void drawMenuWindow(const char* window_name,

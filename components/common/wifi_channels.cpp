@@ -80,15 +80,17 @@ int getBandAwareWifiChannel(int channel, uint8_t wifiBand)
     return WIFI_CHANNELS_BY_INDEX[index];
 }
 
-//==========================================================================
-//==========================================================================
-int getBandAwareWifiChannelMenuIndex(int channel, uint8_t wifiBand)
+//===================================================================================
+//===================================================================================
+// Returns the selected index within the band-filtered channel menu.
+int getBandAwareWifiChannelMenuIndex(int channel, uint8_t wifiBand, bool apfpv)
 {
     int filteredIndex = 0;
     for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
     {
         int current = WIFI_CHANNELS_BY_INDEX[i];
-        if (!isWifiChannelAllowedByBand(current, wifiBand))
+        if (!isWifiChannelAllowedByBand(current, wifiBand) ||
+            (apfpv && !isWifiChannelSupportedForApfpv(current)))
         {
             continue;
         }
@@ -99,6 +101,26 @@ int getBandAwareWifiChannelMenuIndex(int channel, uint8_t wifiBand)
         filteredIndex++;
     }
     return 0;
+}
+
+//===================================================================================
+//===================================================================================
+// Returns whether APFPV SoftAP can use a channel without DFS radar detection.
+bool isWifiChannelSupportedForApfpv(int channel)
+{
+    if (channel >= 52 && channel <= 144)
+    {
+        return false;
+    }
+
+    for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
+    {
+        if (WIFI_CHANNELS_BY_INDEX[i] == channel)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 

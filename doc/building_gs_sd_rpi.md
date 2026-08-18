@@ -40,13 +40,18 @@ https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-2
   
 Save and reboot.
 
-* Remove black border from screen:
+* Disable HDMI overscan so the framebuffer maps to the complete output mode:
 
   ```sudo nano /boot/config.txt```
 
-  Uncomment:
+  Set (replace an existing `disable_overscan=0` line if present):
 
-  ```#disable_overscan=1```
+  ```disable_overscan=1```
+
+  Also remove any `margin_left`, `margin_right`, `margin_top`, and
+  `margin_bottom` options from the `video=HDMI-A-1:...` argument in
+  `/boot/cmdline.txt`. Those margins scale the framebuffer even when the HDMI
+  mode itself is correct.
 
   Exit and save (Ctrl+X).
 

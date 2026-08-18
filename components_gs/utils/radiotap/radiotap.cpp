@@ -1,248 +1,224 @@
 /*
  * Radiotap parser
  *
- * Copyright 2007		Andy Green <andy@warmcat.com>
+ * Copyright 2007 Andy Green <andy@warmcat.com>
  */
-
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <resolv.h>
-#include <string.h>
-#include <utime.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <pcap.h>
-#include <endian.h>
 
 #include "radiotap.h"
 
-/**
- * ieee80211_radiotap_iterator_init - radiotap parser iterator initialization
- * @iterator: radiotap_iterator to initialize
- * @radiotap_header: radiotap header to parse
- * @max_length: total length we can parse into (eg, whole packet length)
- *
- * Returns: 0 or a negative error code if there is a problem.
- *
- * This function initializes an opaque iterator struct which can then
- * be passed to ieee80211_radiotap_iterator_next() to visit every radiotap
- * argument which is present in the header.  It knows about extended
- * present headers and handles them.
- *
- * How to use:
- * call __ieee80211_radiotap_iterator_init() to init a semi-opaque iterator
- * struct ieee80211_radiotap_iterator (no need to init the struct beforehand)
- * checking for a good 0 return code.  Then loop calling
- * __ieee80211_radiotap_iterator_next()... it returns either 0,
- * -ENOENT if there are no more args to parse, or -EINVAL if there is a problem.
- * The iterator's @this_arg member points to the start of the argument
- * associated with the current argument index that is present, which can be
- * found in the iterator's @this_arg_index member.  This arg index corresponds
- * to the IEEE80211_RADIOTAP_... defines.
- *
- * Radiotap header length:
- * You can find the CPU-endian total radiotap header length in
- * iterator->max_length after executing ieee80211_radiotap_iterator_init()
- * successfully.
- *
- * Example code:
- * See Documentation/networking/radiotap-headers.txt
- */
+#include <cerrno>
+#include <cstdint>
+#include <cstring>
 
+namespace
+{
+
+//===================================================================================
+//===================================================================================
+// Describes the alignment and encoded size of one standard radiotap field.
+struct RadiotapFieldLayout
+{
+    uint8_t alignment;
+    uint8_t size;
+};
+
+// Standard radiotap fields that GS consumes or must skip to reach repeated
+// antenna namespaces emitted by the rtl8812au monitor-mode driver.
+constexpr RadiotapFieldLayout kRadiotapFieldLayouts[] = {
+    {8, 8},  // IEEE80211_RADIOTAP_TSFT
+    {1, 1},  // IEEE80211_RADIOTAP_FLAGS
+    {1, 1},  // IEEE80211_RADIOTAP_RATE
+    {2, 4},  // IEEE80211_RADIOTAP_CHANNEL
+    {2, 2},  // IEEE80211_RADIOTAP_FHSS
+    {1, 1},  // IEEE80211_RADIOTAP_DBM_ANTSIGNAL
+    {1, 1},  // IEEE80211_RADIOTAP_DBM_ANTNOISE
+    {2, 2},  // IEEE80211_RADIOTAP_LOCK_QUALITY
+    {2, 2},  // IEEE80211_RADIOTAP_TX_ATTENUATION
+    {2, 2},  // IEEE80211_RADIOTAP_DB_TX_ATTENUATION
+    {1, 1},  // IEEE80211_RADIOTAP_DBM_TX_POWER
+    {1, 1},  // IEEE80211_RADIOTAP_ANTENNA
+    {1, 1},  // IEEE80211_RADIOTAP_DB_ANTSIGNAL
+    {1, 1},  // IEEE80211_RADIOTAP_DB_ANTNOISE
+    {2, 2},  // IEEE80211_RADIOTAP_RX_FLAGS
+    {2, 2},  // IEEE80211_RADIOTAP_TX_FLAGS
+    {1, 1},  // IEEE80211_RADIOTAP_RTS_RETRIES
+    {1, 1},  // IEEE80211_RADIOTAP_DATA_RETRIES
+    {0, 0},  // Reserved
+    {1, 3},  // IEEE80211_RADIOTAP_MCS
+    {4, 8},  // IEEE80211_RADIOTAP_AMPDU_STATUS
+    {2, 12}, // IEEE80211_RADIOTAP_VHT
+};
+
+} // namespace
+
+//===================================================================================
+//===================================================================================
+// Initializes an iterator and skips every extended presence bitmap before field data.
 int ieee80211_radiotap_iterator_init(
-    struct ieee80211_radiotap_iterator *iterator,
-    struct ieee80211_radiotap_header *radiotap_header,
+    struct ieee80211_radiotap_iterator* iterator,
+    struct ieee80211_radiotap_header* radiotap_header,
     int max_length)
 {
-	/* Linux only supports version 0 radiotap format */
-	if (radiotap_header->it_version)
-		return -EINVAL;
+    if (iterator == nullptr || radiotap_header == nullptr ||
+        max_length < static_cast<int>(sizeof(*radiotap_header)))
+    {
+        return -EINVAL;
+    }
 
-	/* sanity check for allowed length and radiotap length field */
-    if (max_length < radiotap_header->it_len)
-		return -EINVAL;
+    if (radiotap_header->it_version != PKTHDR_RADIOTAP_VERSION)
+    {
+        return -EINVAL;
+    }
 
-	iterator->rtheader = radiotap_header;
-    iterator->max_length = radiotap_header->it_len;
-	iterator->arg_index = 0;
-    iterator->bitmap_shifter = radiotap_header->it_present;
-    iterator->arg = (uint8_t *)radiotap_header + sizeof(*radiotap_header);
-	iterator->this_arg = 0;
+    uint16_t header_length = 0;
+    uint32_t first_present_bitmap = 0;
+    std::memcpy(&header_length, &radiotap_header->it_len, sizeof(header_length));
+    std::memcpy(&first_present_bitmap, &radiotap_header->it_present, sizeof(first_present_bitmap));
+    if (header_length < sizeof(*radiotap_header) || header_length > max_length)
+    {
+        return -EINVAL;
+    }
 
-	/* find payload start allowing for extended bitmap(s) */
+    iterator->rtheader = radiotap_header;
+    iterator->max_length = static_cast<int>(header_length);
+    iterator->this_arg_index = -1;
+    iterator->this_arg = nullptr;
+    iterator->this_arg_size = 0;
+    iterator->arg_index = 0;
+    iterator->bitmap_shifter = first_present_bitmap;
+    iterator->arg = reinterpret_cast<uint8_t*>(radiotap_header) + sizeof(*radiotap_header);
+    iterator->next_bitmap = iterator->arg;
+    iterator->reset_on_ext = false;
+    iterator->in_radiotap_namespace = true;
 
-    if (iterator->bitmap_shifter & (1<<IEEE80211_RADIOTAP_EXT)) {
-        while ((*((uint32_t *)iterator->arg)) &
-				   (1<<IEEE80211_RADIOTAP_EXT)) {
-            iterator->arg += sizeof(uint32_t);
+    // rtl8812au reports each RF path in another standard radiotap namespace.
+    // All presence words precede field data, so find their end before iteration.
+    uint32_t present_bitmap = first_present_bitmap;
+    while ((present_bitmap & (1U << IEEE80211_RADIOTAP_EXT)) != 0)
+    {
+        const size_t bitmap_offset = static_cast<size_t>(iterator->arg -
+            reinterpret_cast<uint8_t*>(radiotap_header));
+        if (bitmap_offset + sizeof(present_bitmap) > header_length)
+        {
+            return -EINVAL;
+        }
 
-			/*
-			 * check for insanity where the present bitmaps
-			 * keep claiming to extend up to or even beyond the
-			 * stated radiotap header length
-			 */
+        std::memcpy(&present_bitmap, iterator->arg, sizeof(present_bitmap));
+        iterator->arg += sizeof(present_bitmap);
+    }
 
-			if (((ulong)iterator->arg -
-			     (ulong)iterator->rtheader) > (ulong)iterator->max_length)
-				return -EINVAL;
-		}
-
-        iterator->arg += sizeof(uint32_t);
-
-		/*
-		 * no need to check again for blowing past stated radiotap
-		 * header length, because ieee80211_radiotap_iterator_next
-		 * checks it before it is dereferenced
-		 */
-	}
-
-	/* we are all initialized happily */
-
-	return 0;
+    return 0;
 }
 
-
-/**
- * ieee80211_radiotap_iterator_next - return next radiotap parser iterator arg
- * @iterator: radiotap_iterator to move to next arg (if any)
- *
- * Returns: 0 if there is an argument to handle,
- * -ENOENT if there are no more args or -EINVAL
- * if there is something else wrong.
- *
- * This function provides the next radiotap arg index (IEEE80211_RADIOTAP_*)
- * in @this_arg_index and sets @this_arg to point to the
- * payload for the field.  It takes care of alignment handling and extended
- * present fields.  @this_arg can be changed by the caller (eg,
- * incremented to move inside a compound argument like
- * IEEE80211_RADIOTAP_CHANNEL).  The args pointed to are in
- * little-endian format whatever the endianess of your CPU.
- */
-
-int ieee80211_radiotap_iterator_next(
-    struct ieee80211_radiotap_iterator *iterator)
+//===================================================================================
+//===================================================================================
+// Returns the next standard or raw vendor radiotap field, including repeated namespaces.
+int ieee80211_radiotap_iterator_next(struct ieee80211_radiotap_iterator* iterator)
 {
+    if (iterator == nullptr || iterator->rtheader == nullptr)
+    {
+        return -EINVAL;
+    }
 
-	/*
-	 * small length lookup table for all radiotap types we heard of
-	 * starting from b0 in the bitmap, so we can walk the payload
-	 * area of the radiotap header
-	 *
-	 * There is a requirement to pad args, so that args
-	 * of a given length must begin at a boundary of that length
-	 * -- but note that compound args are allowed (eg, 2 x u16
-	 * for IEEE80211_RADIOTAP_CHANNEL) so total arg length is not
-	 * a reliable indicator of alignment requirement.
-	 *
-	 * upper nybble: content alignment for arg
-	 * lower nybble: content length for arg
-	 */
+    while (true)
+    {
+        const int namespace_index = iterator->arg_index % 32;
+        if (namespace_index == IEEE80211_RADIOTAP_EXT &&
+            (iterator->bitmap_shifter & 1U) == 0)
+        {
+            return -ENOENT;
+        }
 
-    static const uint8_t rt_sizes[] = {
-		[IEEE80211_RADIOTAP_TSFT] = 0x88,
-		[IEEE80211_RADIOTAP_FLAGS] = 0x11,
-		[IEEE80211_RADIOTAP_RATE] = 0x11,
-		[IEEE80211_RADIOTAP_CHANNEL] = 0x24,
-		[IEEE80211_RADIOTAP_FHSS] = 0x22,
-		[IEEE80211_RADIOTAP_DBM_ANTSIGNAL] = 0x11,
-		[IEEE80211_RADIOTAP_DBM_ANTNOISE] = 0x11,
-		[IEEE80211_RADIOTAP_LOCK_QUALITY] = 0x22,
-		[IEEE80211_RADIOTAP_TX_ATTENUATION] = 0x22,
-		[IEEE80211_RADIOTAP_DB_TX_ATTENUATION] = 0x22,
-		[IEEE80211_RADIOTAP_DBM_TX_POWER] = 0x11,
-		[IEEE80211_RADIOTAP_ANTENNA] = 0x11,
-		[IEEE80211_RADIOTAP_DB_ANTSIGNAL] = 0x11,
-		[IEEE80211_RADIOTAP_DB_ANTNOISE] = 0x11
-		/*
-		 * add more here as they are defined in
-		 * include/net/ieee80211_radiotap.h
-		 */
-	};
+        if ((iterator->bitmap_shifter & 1U) == 0)
+        {
+            iterator->bitmap_shifter >>= 1;
+            ++iterator->arg_index;
+            continue;
+        }
 
-	/*
-	 * for every radiotap entry we can at
-	 * least skip (by knowing the length)...
-	 */
+        if (namespace_index == IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE)
+        {
+            iterator->reset_on_ext = true;
+            iterator->in_radiotap_namespace = true;
+            iterator->bitmap_shifter >>= 1;
+            ++iterator->arg_index;
+            continue;
+        }
 
-	while (iterator->arg_index < (int)sizeof(rt_sizes)) {
-		int hit = 0;
-		int pad;
+        if (namespace_index == IEEE80211_RADIOTAP_EXT)
+        {
+            uint32_t next_present_bitmap = 0;
+            std::memcpy(&next_present_bitmap, iterator->next_bitmap, sizeof(next_present_bitmap));
+            iterator->next_bitmap += sizeof(next_present_bitmap);
+            iterator->bitmap_shifter = next_present_bitmap;
+            iterator->arg_index = iterator->reset_on_ext ? 0 : iterator->arg_index + 1;
+            iterator->reset_on_ext = false;
+            continue;
+        }
 
-		if (!(iterator->bitmap_shifter & 1))
-			goto next_entry; /* arg not present */
+        size_t alignment = 0;
+        size_t field_size = 0;
+        if (namespace_index == IEEE80211_RADIOTAP_VENDOR_NAMESPACE)
+        {
+            alignment = 2;
+            field_size = 6;
+        }
+        else
+        {
+            if (!iterator->in_radiotap_namespace || iterator->arg_index < 0 ||
+                iterator->arg_index >= static_cast<int>(sizeof(kRadiotapFieldLayouts) /
+                                                        sizeof(kRadiotapFieldLayouts[0])))
+            {
+                return -ENOENT;
+            }
 
-		/*
-		 * arg is present, account for alignment padding
-		 *  8-bit args can be at any alignment
-		 * 16-bit args must start on 16-bit boundary
-		 * 32-bit args must start on 32-bit boundary
-		 * 64-bit args must start on 64-bit boundary
-		 *
-		 * note that total arg size can differ from alignment of
-		 * elements inside arg, so we use upper nybble of length
-		 * table to base alignment on
-		 *
-		 * also note: these alignments are ** relative to the
-		 * start of the radiotap header **.  There is no guarantee
-		 * that the radiotap header itself is aligned on any
-		 * kind of boundary.
-		 */
+            const RadiotapFieldLayout layout = kRadiotapFieldLayouts[iterator->arg_index];
+            alignment = layout.alignment;
+            field_size = layout.size;
+            if (alignment == 0)
+            {
+                return -ENOENT;
+            }
+        }
 
-		pad = (((ulong)iterator->arg) -
-			((ulong)iterator->rtheader)) &
-			((rt_sizes[iterator->arg_index] >> 4) - 1);
+        const size_t current_offset = static_cast<size_t>(iterator->arg -
+            reinterpret_cast<uint8_t*>(iterator->rtheader));
+        const size_t padding = current_offset & (alignment - 1);
+        if (padding != 0)
+        {
+            iterator->arg += alignment - padding;
+        }
 
-		if (pad)
-			iterator->arg +=
-				(rt_sizes[iterator->arg_index] >> 4) - pad;
+        if (namespace_index == IEEE80211_RADIOTAP_VENDOR_NAMESPACE)
+        {
+            const size_t vendor_header_offset = static_cast<size_t>(iterator->arg -
+                reinterpret_cast<uint8_t*>(iterator->rtheader));
+            if (vendor_header_offset + field_size > static_cast<size_t>(iterator->max_length))
+            {
+                return -EINVAL;
+            }
 
-		/*
-		 * this is what we will return to user, but we need to
-		 * move on first so next call has something fresh to test
-		 */
-		iterator->this_arg_index = iterator->arg_index;
-		iterator->this_arg = iterator->arg;
-		hit = 1;
+            uint16_t vendor_payload_size = 0;
+            std::memcpy(&vendor_payload_size, iterator->arg + 4, sizeof(vendor_payload_size));
+            field_size += vendor_payload_size;
+            iterator->reset_on_ext = true;
+            iterator->in_radiotap_namespace = false;
+        }
 
-		/* internally move on the size of this arg */
-		iterator->arg += rt_sizes[iterator->arg_index] & 0x0f;
+        const size_t field_offset = static_cast<size_t>(iterator->arg -
+            reinterpret_cast<uint8_t*>(iterator->rtheader));
+        if (field_offset + field_size > static_cast<size_t>(iterator->max_length))
+        {
+            return -EINVAL;
+        }
 
-		/*
-		 * check for insanity where we are given a bitmap that
-		 * claims to have more arg content than the length of the
-		 * radiotap section.  We will normally end up equalling this
-		 * max_length on the last arg, never exceeding it.
-		 */
+        iterator->this_arg_index = namespace_index;
+        iterator->this_arg = iterator->arg;
+        iterator->this_arg_size = static_cast<int>(field_size);
+        iterator->arg += field_size;
+        iterator->bitmap_shifter >>= 1;
+        ++iterator->arg_index;
 
-		if (((ulong)iterator->arg - (ulong)iterator->rtheader) >
-		    (ulong)iterator->max_length)
-			return -EINVAL;
-
-	next_entry:
-		iterator->arg_index++;
-        if ((iterator->arg_index & 31) == 0) {
-			/* completed current u32 bitmap */
-			if (iterator->bitmap_shifter & 1) {
-				/* b31 was set, there is more */
-				/* move to next u32 bitmap */
-                iterator->bitmap_shifter = *iterator->next_bitmap;
-				iterator->next_bitmap++;
-			} else {
-				/* no more bitmaps: end */
-				iterator->arg_index = sizeof(rt_sizes);
-			}
-		} else { /* just try the next bit */
-			iterator->bitmap_shifter >>= 1;
-		}
-
-		/* if we found a valid arg earlier, return it now */
-		if (hit)
-			return 0;
-	}
-
-	/* we don't know how to handle any more args, we're done */
-	return -ENOENT;
+        return 0;
+    }
 }
-

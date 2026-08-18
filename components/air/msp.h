@@ -21,9 +21,11 @@
 #define MSP_FC_VARIANT    2
 #define MSP_DISPLAYPORT   182
 
+#define MSP2_COMMON_SET_MSP_RC_LINK_STATS 0x100D
 #define MSP_SET_RAW_RC    200
 
-#define MSP_RC_CHANNELS_COUNT  18
+// This bridge forwards channels 1-16 only; MAVLink extension channels 17-18 are ignored
+#define MSP_RC_CHANNELS_COUNT  16
 
 
 #define MAX_MSP_MESSAGE 1024
@@ -42,15 +44,15 @@ typedef enum
 #define DPSC_DRAW_SCREEN  4
 #define DPSC_SET_OPTIONS  5
 
-//======================================================
-//======================================================
+//===================================================================================
+//===================================================================================
 class MSP
 {
 public:
 	MSP();
   ~MSP();
 
-  void loop();
+  void loop(bool mavlink2mspRCEnabled);
 
   bool sendCommand(uint16_t messageID, void * payload, uint16_t size);
 
@@ -58,10 +60,12 @@ public:
   int64_t lastLoop;
   int64_t lastRC;
   int64_t lastRealRC;
+  int64_t lastReceivedRC;
 
   bool gotRCChannels;
   uint16_t rcChannels[MSP_RC_CHANNELS_COUNT];
   void setRCChannels(const uint16_t* data); //MSP_RC_CHANNELS_COUNT values
+  void setRadioRssi(int8_t wifiRssiMagnitudeDbm);
 
 private:
 
@@ -106,6 +110,11 @@ private:
   void dispatchMessage(uint8_t expected_checksum);
   void processMessage();
   void sendPing();
+
+  int64_t nextRadioRssi;
+  volatile bool gotRadioRssi;
+  volatile uint8_t radioRssi;
+  volatile uint8_t radioRssiMagnitudeDbm;
 };
 
 extern MSP g_msp;

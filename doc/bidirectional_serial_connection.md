@@ -10,7 +10,7 @@ Setup baudrate 115200 for the UARTs.
 
 The **hx-esp32-cam-fpv** system supports remote control via the **Mavlink 2** protocol. It accepts **Mavlink 2 RC command messages** (```MAXLINK_RC_CHANNELS_OVERRIDE```) over the VRX UART interface.
 
-Although **Mavlink 1** and even **MSP RC** are also compatible, the system is specifically optimized for **Mavlink 2**. It accurately detects the boundaries of RC packets and transmits them without aggregation to minimize latency.
+Although **Mavlink 1** and other telemetry protocols can be used, the system is specifically optimized for **Mavlink 2**. It accurately detects the boundaries of RC packets and transmits them without aggregation to minimize latency.
 
 Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 
@@ -18,11 +18,54 @@ Example setup with https://github.com/RomanLut/hx_espnow_rc TX/RX modules:
 
 By default, on **Radxa** or **Runcam VRX**, stream is sent using **USB serial** if present, otherwise **UART3**. Port can be selected in **GS Settings->Wifi Settings** menu.
 
+### MAVLink link-status injection
+
+The link-status settings are available under ```Camera Settings -> RC```.
+
+#### RADIO_STATUS and INAV OSD setup
+
+The camera can inject a Mavlink ```RADIO_STATUS``` message once per second into the stream sent to the flight controller. Injection is controlled by ```Inject Mav2 Radio Status``` and is active only when ```Mavlink2 to Msp RC``` is disabled; when RC commands are translated to MSP, the equivalent link status is sent using MSP instead. While Mavlink data is flowing, the camera inserts ```RADIO_STATUS``` only after a complete Mavlink message boundary.
+
+For INAV 9, use the following CLI settings so ```RADIO_STATUS``` is decoded using separate RSSI dBm and link-quality fields:
+
+```
+set receiver_type = SERIAL
+set serialrx_provider = MAVLINK
+set mavlink_version = 2
+set mavlink_radio_type = ELRS
+set osd_crsf_lq_format = TYPE1
+save
+```
+
+```mavlink_radio_type = ELRS``` does not change the serial protocol to CRSF or require an ELRS receiver. The connection remains Mavlink; this option only selects how INAV interprets the fields in ```RADIO_STATUS```.
+
+Enable these INAV OSD elements:
+
+* **RSSI dBm** displays ```rxLinkStatistics.uplinkRSSI```, such as ```-57 dBm```.
+* **Uplink Link Quality** displays ```rxLinkStatistics.uplinkLQ``` as a value from 0 to 100. ```TYPE1``` displays the plain numeric value.
+
+Do not use **RSSI Value** indicator. 
+
+#### RSSI in RC channel 16
+
+The ```Inject Mav2 RSSI to CH16``` setting replaces channel 16 in complete unsigned Mavlink 2 ```RC_CHANNELS_OVERRIDE``` messages before they are forwarded by the camera. The injected value uses the air unit's received Wi-Fi signal strength and maps it into the normal RC range:
+
+* ```-40 dBm``` becomes ```1600```.
+* ```-60 dBm``` becomes ```1400```.
+* ```-80 dBm``` becomes ```1200```.
+* ```-100 dBm``` or lower becomes ```1000```.
+
+This option is disabled by default. It requires an ```RC_CHANNELS_OVERRIDE``` payload that already contains channel 16. Signed Mavlink frames are forwarded unchanged because modifying them would invalidate their signature. Configure the flight controller to use RC channel 16 as its RSSI input.
+
+## Baudrate
+
+Baudrate for the Mavlink UART can be configured in **OTA Mode** or with ```Mavlink Port Baudrate``` under ```Camera Settings -> RC```.
+
 ## MSP RC translation (Mavlink2MspRC)
 
 Some flight controllers have a limited number of available UART ports.
 
-To address this, you can enable a camera configuration option that translates **Mavlink 2 RC commands** (```MAXLINK_RC_CHANNELS_OVERRIDE```) into **MSP RC commands** (```MSP_SET_RAW_RC```). These translated commands are then sent over the **DisplayPort OSD UART**, allowing full aircraft control without requiring a Mavlink UART connection to the flight controller. This is supported by INAV firmware.
+To address this, enable ```Mavlink2 to Msp RC``` under ```Camera Settings -> RC```. It translates **Mavlink 2 RC commands** (```MAXLINK_RC_CHANNELS_OVERRIDE```) into **MSP RC commands** (```MSP_SET_RAW_RC```). These translated commands are then sent over the **DisplayPort OSD UART**, allowing full aircraft control without requiring a Mavlink UART connection to the flight controller. This is supported by INAV firmware.
 
 *Note: Translating MSP telemetry to Mavlink telemetry is currently not implemented*.
 

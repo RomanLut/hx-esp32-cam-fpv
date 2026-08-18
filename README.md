@@ -48,18 +48,20 @@ Open source digital FPV system based on esp32cam https://romanlut.github.io/hx-e
 - [x] dedicated GS unit with dual adapters and hardware buttons for Oculus Quest GS
 - [x] adjust esp32c5 video modes
 - [x] ov3660 support
+- [x] design esp32c5 air unit PCB
 - [x] **Release v0.6.3c**
+- [x] optimized rendering on Radxa and RPI
+- [x] proper ov3660 support on GS
+- [x] **Release v0.6.4**
+- [ ] color grading on GS ?
+- [ ] tune image stabilization
 - [ ] adjust esp32c5 air unit recording
-- [ ] design esp32c5 air unit PCB
-- [ ] dualboot image for RPI
-- [ ] retransmissions ?
 - [ ] measure latency properly
 - [ ] study which components introduce latency
 - [ ] Camera OSD elements position configuration
 - [ ] telemetry logging
 - [ ] telemetry sharing on RPI Bluetooth for Android Telemetry Viewer https://github.com/RomanLut/android-taranis-smartport-telemetry
 - [ ] sound recording (esp32s3sense)?
-- [ ] vignetting correction shader
 - [ ] digital pan, zoom
 - [ ] lost frames inpainting using neural network ?
 - [ ] JPEG artefacts removal using neural network?
@@ -192,7 +194,7 @@ When switching between firmware types, make sure to fully erase the flash before
 The Air Unit mode can be changed either from the GS menu or from the [camera web interface](/doc/web_interface.md)
 
 > [!NOTE]
-> **Raw Broadcast** mode works only with **RTL8812AU/RTL8821AU** adapter.
+> **Raw Broadcast** mode works only with compatible **RTL88XX** wifi card.
 
 > [!NOTE]
 > If the mode is changed from APFPV to Raw Broadcast using the GS menu, reconnecting to the Air Unit without an RTL8812AU adapter will no longer be possible. In this case, you must either reflash the Air Unit firmware or switch the mode back using the camera web interface.

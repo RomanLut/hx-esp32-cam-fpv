@@ -9,8 +9,8 @@
 #include <thread>
 #include <vector>
 
-#include "fec_block_decoder.h"
 #include "core/transport_base.h"
+#include "core/tx_fec_block_encoder.h"
 #include "devourer/src/IRtlDevice.h"
 #include "devourer/src/WiFiDriver.h"
 #include "devourer/src/logger.h"
@@ -28,6 +28,9 @@ struct libusb_device_handle;
 class AndroidRawBroadcastTransport final : public gs::core::TransportBase
 {
 public:
+    using TransportPacketSink =
+        std::function<void(const uint8_t*, size_t, int, size_t)>;
+
     ~AndroidRawBroadcastTransport() override;
     bool init(const gs::core::RXDescriptor& rx_descriptor,
               const gs::core::TXDescriptor& tx_descriptor) override;
@@ -56,12 +59,17 @@ public:
     bool isUsbAdapterRunning() const;
     size_t activeUsbAdapterCount() const;
     int activeUsbFd() const;
-    void setTransportPacketCallback(std::function<void(const uint8_t* data,
-                                                       size_t size,
-                                                       int input_dbm,
-                                                       size_t interface_index)> callback);
+    void setTransportPacketSink(TransportPacketSink sink);
 
 private:
+    //===================================================================================
+    //===================================================================================
+    // Owns the shared control-plane lock used by every adapter on one Android USB hub.
+    struct ChannelChangeCoordinator
+    {
+        std::mutex mutex;
+    };
+
     //===================================================================================
     //===================================================================================
     // Owns the driver, libusb handles, and receive counters for one Android RTL adapter.
@@ -73,12 +81,21 @@ private:
         // this lifecycle flag must never be cleared; recovery creates a new UsbAdapter.
         std::atomic<bool> should_stop = {false};
         std::unique_ptr<std::thread> rx_thread;
+        std::mutex device_io_mutex;
+        std::atomic<bool> channel_worker_stop = {false};
+        std::atomic<bool> channel_worker_running = {false};
+        std::atomic<bool> channel_change_in_progress = {false};
+        std::atomic<int> requested_channel = {0};
+        std::atomic<int> applied_channel = {0};
+        std::atomic<int> requested_tx_power = {-1};
+        std::atomic<int> applied_tx_power = {-1};
         libusb_context* libusb_context = nullptr;
         libusb_device_handle* usb_handle = nullptr;
         int usb_interface_number = 0;
         int fd = -1;
         size_t index = 0;
         Clock::time_point channel_change_ready_time = Clock::time_point::min();
+        std::shared_ptr<ChannelChangeCoordinator> channel_change_coordinator;
         std::atomic<uint32_t> all_frame_count = {0};
         std::atomic<uint32_t> filtered_frame_count = {0};
         std::atomic<uint64_t> filtered_frame_lifetime_count = {0};
@@ -97,8 +114,9 @@ private:
     std::shared_ptr<UsbAdapter> txAdapterLocked(const UsbAdapter* excluded_adapter = nullptr) const;
 
     mutable std::mutex m_mutex;
+    std::shared_ptr<ChannelChangeCoordinator> m_channel_change_coordinator =
+        std::make_shared<ChannelChangeCoordinator>();
     mutable std::mutex m_stop_mutex;
-    mutable std::mutex m_device_io_mutex;
     std::atomic<bool> m_active = {false};
     Clock::time_point m_activate_time = Clock::time_point::min();
     std::vector<uint8_t> m_radiotap_header;
@@ -108,8 +126,7 @@ private:
     Logger_t m_devourer_logger;
     std::vector<std::shared_ptr<UsbAdapter>> m_usb_adapters;
     Clock::time_point m_last_adapter_transition_time = Clock::time_point::min();
-    fec_t* m_tx_fec = nullptr;
-    FecBlockDecoder m_rx_decoder;
+    gs::core::TxFecBlockEncoder m_tx_fec_encoder;
     uint8_t m_tx_power = 0;
     std::atomic<Clock::time_point::rep> m_last_rx_packet_tp {Clock::time_point::min().time_since_epoch().count()};
     size_t m_packet_header_offset = 0;
@@ -118,10 +135,8 @@ private:
     uint32_t m_next_block_index = 1;
     std::atomic<int> m_best_input_dbm = {0};
     std::atomic<int> m_latched_input_dbm = {0};
-    size_t m_data_stats_rate = 0;
-    size_t m_data_stats_data_accumulated = 0;
-    uint64_t m_last_rx_decoded_bytes_total = 0;
+    std::atomic<size_t> m_data_stats_rate = {0};
+    std::atomic<size_t> m_data_stats_data_accumulated = {0};
     Clock::time_point m_data_stats_last_tp = Clock::now();
-    std::function<void(const uint8_t* data, size_t size, int input_dbm, size_t interface_index)>
-        m_transport_packet_callback;
+    TransportPacketSink m_transport_packet_sink;
 };

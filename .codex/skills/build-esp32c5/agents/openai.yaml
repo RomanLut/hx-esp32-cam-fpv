@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build ESP32-C5 Firmware"
+  short_description: "Build, flash, and package C5 firmware safely"
+  default_prompt: "Use $build-esp32c5 to build and flash the connected ESP32-C5, then package its OTA image."

@@ -4,11 +4,9 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
-#include <filesystem>
 #include <map>
 #include <netinet/in.h>
 #include <optional>
-#include <random>
 #include <set>
 #include <sys/socket.h>
 #include <tuple>
@@ -38,7 +36,6 @@ constexpr auto kApfpvSearchScanInterval = std::chrono::seconds(2);
 constexpr auto kApfpvSearchDuration = std::chrono::seconds(10);
 constexpr auto kApfpvWifiRetryInterval = std::chrono::seconds(3);
 constexpr auto kApfpvWifiConnectTimeout = std::chrono::seconds(8);
-constexpr uint8_t kApfpvAssociateFailuresBeforeUsbReset = 2;
 constexpr auto kApfpvStreamConnectTimeout = std::chrono::seconds(20);
 constexpr int kApfpvStaticIpHostMin = 50;
 constexpr int kApfpvStaticIpHostMax = 250;
@@ -105,6 +102,18 @@ std::vector<std::string> selectApfpvConnectInterfaces(const std::vector<std::str
         s_groundstation_config.apfpvInterface != "auto")
     {
         const auto it = std::find(interfaces.begin(), interfaces.end(), s_groundstation_config.apfpvInterface);
+        if (it != interfaces.end())
+        {
+            return {*it};
+        }
+    }
+
+    // In auto mode APFPV still requires the configured bidirectional TX adapter. Scanning
+    // every RX adapter serially can add one full 10-second timeout per RX-only RunCam path
+    // before each mode transition, and a candidate found there cannot carry the uplink.
+    if (!s_groundstation_config.txInterface.empty())
+    {
+        const auto it = std::find(interfaces.begin(), interfaces.end(), s_groundstation_config.txInterface);
         if (it != interfaces.end())
         {
             return {*it};
@@ -218,14 +227,6 @@ const std::string& iwTool()
 
 //===================================================================================
 //===================================================================================
-// Returns the resolved Linux ifconfig command path when available.
-std::optional<std::string> ifconfigTool()
-{
-    return findExecutablePath("ifconfig");
-}
-
-//===================================================================================
-//===================================================================================
 // Switches Linux Wi-Fi interfaces back to managed mode for APFPV camera connections.
 void setManagedMode(const std::vector<std::string>& interfaces)
 {
@@ -319,65 +320,6 @@ std::string LinuxApfpvTransport::getTransportMessage() const
 
 //===================================================================================
 //===================================================================================
-// Resets the same USB Wi-Fi adapter in place and brings the managed interface back up.
-static bool resetUsbBackedWifiInterface(const std::string& interface)
-{
-    std::error_code ec;
-    const std::filesystem::path interface_device_path =
-        std::filesystem::read_symlink(std::filesystem::path("/sys/class/net") / interface / "device", ec);
-    if (ec)
-    {
-        LOGW("Linux APFPV could not resolve device symlink for {}: {}", interface, ec.message());
-        return false;
-    }
-
-    std::string usb_device = interface_device_path.filename().string();
-    const size_t interface_suffix = usb_device.find(':');
-    if (interface_suffix != std::string::npos)
-    {
-        usb_device = usb_device.substr(0, interface_suffix);
-    }
-    if (usb_device.empty())
-    {
-        LOGW("Linux APFPV could not resolve/reset USB device for {} from {}",
-             interface,
-             interface_device_path.string());
-        return false;
-    }
-
-    const std::optional<std::string> ifconfig = ifconfigTool();
-    const std::string up_down_command = ifconfig.has_value()
-                                            ? fmt::format("{0} {1}", shellQuote(*ifconfig), shellQuote(interface))
-                                            : fmt::format("{0} link set dev {1}",
-                                                          shellQuote(ipTool()),
-                                                          shellQuote(interface));
-
-    LOGW("Linux APFPV resetting USB adapter {} for {}", usb_device, interface);
-    if (!runShellCommand(
-            fmt::format("sh -lc \""
-                        "{0} dev {1} disconnect >/dev/null 2>&1 || true; "
-                        "{2} down >/dev/null 2>&1 || true; "
-                        "sleep 2; "
-                        "echo {3} > /sys/bus/usb/drivers/usb/unbind; "
-                        "sleep 4; "
-                        "echo {3} > /sys/bus/usb/drivers/usb/bind; "
-                        "sleep 10; "
-                        "{2} up >/dev/null 2>&1 || true; "
-                        "sleep 4"
-                        "\"",
-                        shellQuote(iwTool()),
-                        shellQuote(interface),
-                        up_down_command,
-                        shellQuote(usb_device))))
-    {
-        LOGW("Linux APFPV USB reset command failed for {} via {}", interface, usb_device);
-        return false;
-    }
-    return true;
-}
-
-//===================================================================================
-//===================================================================================
 // Runs one managed-mode APFPV connect attempt using the provided SSID and optional frequency.
 bool attemptApfpvWifiConnect(const std::string& interface, const std::string& ssid, int frequency_mhz, std::string* output)
 {
@@ -416,7 +358,7 @@ LinuxApfpvTransport::LinuxApfpvTransport()
     FecBlockDecoder::Descriptor decoder_descriptor = {};
     decoder_descriptor.coding_k = FEC_K;
     decoder_descriptor.coding_n = kApfpvDefaultRxCodingN;
-    decoder_descriptor.mtu = AIR2GROUND_MAX_MTU;
+    decoder_descriptor.mtu = APFPV_AIR2GROUND_MAX_MTU;
     decoder_descriptor.reset_duration = std::chrono::milliseconds(0);
     decoder_descriptor.restart_backjump_blocks = 64;
     decoder_descriptor.max_block_queue_size = 3;
@@ -456,22 +398,18 @@ bool LinuxApfpvTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
-// Activates APFPV mode by switching the configured Linux interfaces to managed mode.
+// Activates APFPV mode in a disconnected state until the user selects a camera.
 void LinuxApfpvTransport::activate()
 {
     const std::vector<std::string> connect_interfaces = selectApfpvConnectInterfaces(m_apfpv_interfaces);
     setManagedMode(connect_interfaces);
     resetWifiAutoconnectState();
+    // A managed-mode association can survive a GS restart. Drop it before opening the UDP
+    // backend so saved OS and GS state cannot silently restore the previous camera session.
+    disconnectCurrentWifiLink();
     startBackend();
-    if (getApfpvPreferredCameraId() != 0)
-    {
-        startConnectToPreferredCamera(Clock::now());
-    }
-    else
-    {
-        m_wifi_state = WifiState::Idle;
-        setMessage("");
-    }
+    m_wifi_state = WifiState::Idle;
+    setMessage("");
 }
 
 //===================================================================================
@@ -508,6 +446,7 @@ bool LinuxApfpvTransport::requestImmediateReconnect()
          formatApfpvCameraId(getApfpvPreferredCameraId()));
     disconnectCurrentWifiLink();
     transitionToIdle(Clock::now(), true);
+    m_waiting_for_search_selection = false;
     waitForPreferredCameraVisibility(Clock::now());
     return true;
 }
@@ -532,7 +471,7 @@ void LinuxApfpvTransport::beginMenuSearchOrConnect()
     m_menu_search_cancel_requested.store(false);
     m_menu_search_active.store(true);
     m_menu_search_request_pending.store(true);
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
 }
 
 //===================================================================================
@@ -617,7 +556,6 @@ void LinuxApfpvTransport::handleCameraWifiDisconnect()
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     clearApfpvActiveCamera();
     s_runtimeCore.resetTransportRuntimePreserveApfpvState(*this, Clock::now());
     if (m_menu_search_active.load())
@@ -641,9 +579,8 @@ void LinuxApfpvTransport::resetWifiAutoconnectState()
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_discovered_candidates.clear();
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
     m_next_retry_tp = Clock::now();
     m_wait_for_link_deadline_tp = Clock::now();
     m_stream_connect_deadline_tp = Clock::now();
@@ -682,13 +619,12 @@ std::optional<std::string> LinuxApfpvTransport::currentCameraSsid(const std::str
 
 //===================================================================================
 //===================================================================================
-// Builds a random APFPV local IPv4 address inside 192.168.4.50..250 for this connect attempt.
-std::string buildRandomApfpvLocalIp()
+// Builds a stable APFPV local IPv4 address from the persistent GS device identifier.
+std::string buildStableApfpvLocalIp()
 {
-    static std::random_device random_device;
-    static std::mt19937 generator(random_device());
-    static std::uniform_int_distribution<int> distribution(kApfpvStaticIpHostMin, kApfpvStaticIpHostMax);
-    return fmt::format("192.168.4.{}/24", distribution(generator));
+    constexpr int host_count = kApfpvStaticIpHostMax - kApfpvStaticIpHostMin + 1;
+    const int host = kApfpvStaticIpHostMin + (s_groundstation_config.deviceId % host_count);
+    return fmt::format("192.168.4.{}/24", host);
 }
 
 //===================================================================================
@@ -707,12 +643,14 @@ bool hasApfpvLocalAddress(const std::string& interface)
 
 //===================================================================================
 //===================================================================================
-// Configures a random static APFPV subnet address immediately after association.
+// Configures a stable static APFPV subnet address immediately after association.
 bool configureStaticApfpvAddress(const std::string& interface)
 {
     const std::string quoted_interface = shellQuote(interface);
     const std::string quoted_ip_tool = shellQuote(ipTool());
-    const std::string local_ip = buildRandomApfpvLocalIp();
+    // The air unit caches the UDP peer address. Reusing the same address prevents a GS restart
+    // from leaving the active camera stream aimed at a stale random address until ARP recovers.
+    const std::string local_ip = buildStableApfpvLocalIp();
     const std::string local_ip_src = local_ip.substr(0, local_ip.find('/'));
     LOGI("Linux APFPV assigning static local address {} on {}", local_ip_src, interface);
     return runShellCommand(
@@ -730,7 +668,7 @@ bool configureStaticApfpvAddress(const std::string& interface)
 
 //===================================================================================
 //===================================================================================
-// Assigns a random static APFPV subnet address immediately after a successful association.
+// Assigns a stable static APFPV subnet address immediately after a successful association.
 bool LinuxApfpvTransport::configureApfpvLocalAddress(const std::string& interface, const std::string& ssid)
 {
     setMessage(buildApfpvProgressText(ssid, "Configuring IP..."));
@@ -750,7 +688,7 @@ bool LinuxApfpvTransport::configureApfpvLocalAddress(const std::string& interfac
 
 //===================================================================================
 //===================================================================================
-// Connects the interface to the selected open APFPV camera SSID and resets USB after repeated association failures.
+// Connects the interface to the selected open APFPV camera SSID without resetting driver-owned USB state.
 bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
                                                  const std::string& ssid,
                                                  int frequency_mhz)
@@ -776,7 +714,6 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             LOGW("Linux APFPV continuing after connect command failure because {} is already linked to {}",
                  interface,
                  ssid);
-            m_associate_failure_count = 0;
             if (!configureApfpvLocalAddress(interface, ssid))
             {
                 runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
@@ -785,52 +722,19 @@ bool LinuxApfpvTransport::connectToCameraNetwork(const std::string& interface,
             return true;
         }
 
-        m_associate_failure_count++;
-
         if (m_menu_search_request_pending.load())
         {
             LOGI("Linux APFPV skipping reconnect fallback for {} because menu search is pending", ssid);
             return false;
         }
 
-        if (m_associate_failure_count < kApfpvAssociateFailuresBeforeUsbReset)
-        {
-            LOGI("Linux APFPV deferring USB reset for {} after associate failure {}/{}",
-                 ssid,
-                 static_cast<int>(m_associate_failure_count),
-                 static_cast<int>(kApfpvAssociateFailuresBeforeUsbReset));
-            return false;
-        }
-
-        setMessage("Resetting USB interface...");
-        if (resetUsbBackedWifiInterface(interface))
-        {
-            // Reset the consecutive-failure counter once the USB adapter reset has run.
-            m_associate_failure_count = 0;
-            connect_output.clear();
-            setMessage(buildApfpvProgressText(ssid, "Associating..."));
-            if (attemptApfpvWifiConnect(interface, ssid, frequency_mhz, &connect_output))
-            {
-                m_associate_failure_count = 0;
-                if (!configureApfpvLocalAddress(interface, ssid))
-                {
-                    runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
-                    return false;
-                }
-                return true;
-            }
-
-            LOGW("Failed to connect {} to APFPV SSID {} after USB reset retry: {}",
-                 interface,
-                 ssid,
-                 trimAsciiWhitespace(connect_output));
-            m_associate_failure_count++;
-        }
-
+        // USB unbind/bind does not reset rtl8812au module-global or MLME state and
+        // can leave the re-probed adapter unable to scan. Let the normal retry state
+        // machine make another cfg80211 attempt; Ruby's explicit driver reset remains
+        // the operator-controlled recovery path.
         return false;
     }
 
-    m_associate_failure_count = 0;
     if (m_menu_search_request_pending.load())
     {
         LOGI("Linux APFPV aborting successful connect to {} because menu search is pending", ssid);
@@ -856,6 +760,7 @@ void LinuxApfpvTransport::handlePendingMenuRequests(Clock::time_point now)
     {
         m_menu_search_active.store(false);
         m_menu_search_done.store(true);
+        m_waiting_for_search_selection = true;
         if (m_wifi_state == WifiState::Searching)
         {
             transitionToIdle(now, true);
@@ -878,7 +783,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
     setManagedMode(selectApfpvConnectInterfaces(m_apfpv_interfaces));
     clearApfpvActiveCamera();
     m_discovered_candidates.clear();
-    m_waiting_for_search_selection = false;
+    m_waiting_for_search_selection = true;
     updateApfpvDiscoveredCameras({});
     s_runtimeCore.resetTransportRuntimePreserveApfpvState(*this, now);
     m_target_interface.clear();
@@ -898,7 +803,7 @@ void LinuxApfpvTransport::startMenuSearch(Clock::time_point now)
 
 //===================================================================================
 //===================================================================================
-// Advances one explicit APFPV camera search pass and reacts to the resulting candidate count.
+// Advances one explicit APFPV camera search pass and publishes results for user selection.
 void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
 {
     setMessage("");
@@ -921,7 +826,7 @@ void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
     {
         if (now - m_search_started_tp >= kApfpvSearchDuration)
         {
-            m_waiting_for_search_selection = false;
+            m_waiting_for_search_selection = true;
             m_menu_search_active.store(false);
             m_menu_search_done.store(true);
             m_wifi_state = WifiState::Idle;
@@ -929,30 +834,12 @@ void LinuxApfpvTransport::advanceSearchState(Clock::time_point now)
         return;
     }
 
-    if (m_discovered_candidates.size() >= 2)
-    {
-        m_waiting_for_search_selection = true;
-        m_menu_search_active.store(false);
-        m_menu_search_done.store(true);
-        m_wifi_state = WifiState::Idle;
-        return;
-    }
-
-    const std::optional<SearchCandidate> candidate = selectSingleSearchCandidate(m_discovered_candidates);
-    if (!candidate.has_value())
-    {
-        return;
-    }
-
-    s_groundstation_config.apfpvPreferredCameraId = candidate->camera.device_id;
-    setApfpvPreferredCameraId(candidate->camera.device_id);
-    s_settingsStorage.saveGroundStationConfig();
-    m_waiting_for_search_selection = false;
-    m_target_interface = candidate->interface;
-    m_target_ssid = candidate->camera.ssid;
-    m_target_frequency_mhz = candidate->frequency_mhz;
-    m_wifi_state = WifiState::Connecting;
-    setMessage("Connecting to WiFi network...");
+    // Even a sole result is only a discovery result. The Connect menu owns selection,
+    // persistence, and the reconnect request so Search can never associate implicitly.
+    m_waiting_for_search_selection = true;
+    m_menu_search_active.store(false);
+    m_menu_search_done.store(true);
+    m_wifi_state = WifiState::Idle;
 }
 
 //===================================================================================
@@ -975,7 +862,6 @@ void LinuxApfpvTransport::waitForPreferredCameraVisibility(Clock::time_point now
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_discovered_candidates.clear();
     m_next_retry_tp = now;
     m_next_search_scan_tp = now;
@@ -1194,7 +1080,6 @@ void LinuxApfpvTransport::transitionToIdle(Clock::time_point now, bool preserve_
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     clearApfpvActiveCamera();
     if (preserve_apfpv_state)
     {
@@ -1240,7 +1125,6 @@ void LinuxApfpvTransport::latchConnectedCamera(const std::string& interface,
     m_target_interface.clear();
     m_target_ssid.clear();
     m_target_frequency_mhz = 0;
-    m_associate_failure_count = 0;
     m_wifi_state = WifiState::Connected;
     m_next_link_poll_tp = Clock::now() + kApfpvWifiNoPacketsBeforeHealthPoll;
     setApfpvActiveCamera(ssid);
@@ -1346,15 +1230,30 @@ std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::runSearch
 
 //===================================================================================
 //===================================================================================
-// Sorts and deduplicates APFPV search candidates by device id for stable menu output.
+// Sorts and deduplicates APFPV candidates, preferring the configured TX-capable interface.
 std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::normalizeCandidates(
     std::vector<SearchCandidate> candidates) const
 {
+    const std::string preferred_interface = s_groundstation_config.txInterface;
     std::sort(candidates.begin(),
               candidates.end(),
-              [](const SearchCandidate& lhs, const SearchCandidate& rhs)
+              [&preferred_interface](const SearchCandidate& lhs, const SearchCandidate& rhs)
               {
-                  return lhs.camera.device_id < rhs.camera.device_id;
+                  if (lhs.camera.device_id != rhs.camera.device_id)
+                  {
+                      return lhs.camera.device_id < rhs.camera.device_id;
+                  }
+
+                  // APFPV association needs bidirectional Wi-Fi. RunCam receiver sets can
+                  // contain RX-only adapters, so retain the interface already chosen for TX.
+                  const bool lhs_is_preferred = lhs.interface == preferred_interface;
+                  const bool rhs_is_preferred = rhs.interface == preferred_interface;
+                  if (lhs_is_preferred != rhs_is_preferred)
+                  {
+                      return lhs_is_preferred;
+                  }
+
+                  return lhs.interface < rhs.interface;
               });
     candidates.erase(
         std::unique(candidates.begin(),
@@ -1365,20 +1264,6 @@ std::vector<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::normalize
                     }),
         candidates.end());
     return candidates;
-}
-
-//===================================================================================
-//===================================================================================
-// Returns the sole APFPV search candidate when exactly one camera was found.
-std::optional<LinuxApfpvTransport::SearchCandidate> LinuxApfpvTransport::selectSingleSearchCandidate(
-    const std::vector<SearchCandidate>& candidates) const
-{
-    if (candidates.size() != 1)
-    {
-        return std::nullopt;
-    }
-
-    return candidates.front();
 }
 
 //===================================================================================
@@ -1426,10 +1311,15 @@ bool LinuxApfpvTransport::detectCurrentWifiLink(std::string& interface, std::str
 
 //===================================================================================
 //===================================================================================
-// Disconnects the currently linked APFPV Wi-Fi interface before a reconnect attempt.
+// Disconnects a tracked or OS-retained APFPV Wi-Fi link before changing connection state.
 void LinuxApfpvTransport::disconnectCurrentWifiLink()
 {
-    const std::string interface = !m_connected_interface.empty() ? m_connected_interface : m_target_interface;
+    std::string interface = !m_connected_interface.empty() ? m_connected_interface : m_target_interface;
+    if (interface.empty())
+    {
+        std::string retained_ssid;
+        (void)detectCurrentWifiLink(interface, retained_ssid);
+    }
     if (!interface.empty())
     {
         runShellCommand(fmt::format("{} dev {} disconnect", iwTool(), interface));
@@ -1540,7 +1430,7 @@ void LinuxApfpvTransport::ensureRxDecoderConfig()
 
     const uint8_t effective_k = config_k > 0 ? config_k : static_cast<uint8_t>(FEC_K);
     const uint8_t effective_n = config_n > 0 ? config_n : kApfpvDefaultRxCodingN;
-    const uint16_t effective_mtu = AIR2GROUND_MAX_MTU;
+    const uint16_t effective_mtu = APFPV_AIR2GROUND_MAX_MTU;
 
     const FecBlockDecoder::Stats stats_before = m_rx_decoder.getStats();
     if (s_runtimeCore.rx_decoder_k == effective_k &&

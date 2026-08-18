@@ -4,13 +4,13 @@
 #===========================================
 
 # Raspberry Pi: PWM Output is on PIN35 on the header (PWM1)
-# Radxa Zero 3W: PWM Output is on PIN7 on the header (PWM14-M0)
+# Radxa Zero 3W: PWM outputs use PWM14-M0 and PWM15-M1
 
 # Run to test:
 # ./fan_control.sh
 # Note: configure PWM beforehand!
 # Raspberry Pi: add to boot/config.txt: dtoverlay=pwm-2chan,pin2=19,func2=2
-# Radxa Zero 3W: enable PWM14-M0 overlay in rsetup 
+# Radxa Zero 3W: enable PWM14-M0 and PWM15-M1 overlays in rsetup
 
 
 # Install as service:
@@ -43,13 +43,23 @@ SCRIPT_PATH="/usr/local/bin/$SERVICE_NAME.sh"
 
 #===========================================
 
-configure_pwm() {
+#===================================================================================
+#===================================================================================
+# Verifies that at least one PWM controller required by the selected platform is available.
+configure_pwm()
+{
     if [ "$IS_RADXA" = true ]; then
-        pwmchip_path="/sys/class/pwm/pwmchip14"
-        if [ ! -d $pwmchip_path ]; then
-	        echo "Please enable PWM14-M0 in rsetup!"
-	        return 1
-        fi    
+        local available_pwmchips=0
+        for pwmchip_path in /sys/class/pwm/pwmchip14 /sys/class/pwm/pwmchip15; do
+            if [ -d "$pwmchip_path" ]; then
+                available_pwmchips=$((available_pwmchips + 1))
+            fi
+        done
+
+        if [ "$available_pwmchips" -eq 0 ]; then
+            echo "No fan PWM controller is available. Please enable PWM14-M0 or PWM15-M1 in rsetup!"
+            return 1
+        fi
     else
         local config_file="/boot/config.txt"
         local pwm_line="dtoverlay=pwm-2chan,pin2=19,func2=2"
@@ -82,9 +92,10 @@ configure_pwm() {
 
         # Add the PWM configuration under [all] section
         sudo awk -v pwm="$pwm_line" '
-            /^\[all\]/ {
+            /^\[all\]/ && !inserted {
                 print $0
                 print pwm
+                inserted = 1
                 next
             }
             { print }
@@ -193,7 +204,11 @@ stop_service() {
     sudo systemctl stop "$SERVICE_NAME"
 }
 
-run_service() {
+#===================================================================================
+#===================================================================================
+# Drives all configured fan PWM outputs with the same temperature-based duty cycle.
+run_service()
+{
     if [ "$1" = "true" ]; then
         IS_RADXA=true
     else
@@ -202,42 +217,50 @@ run_service() {
 
     DEV_TEMP="/sys/class/thermal/thermal_zone0/temp"
 
-if [ "$IS_RADXA" = true ]; then
-    DEV_PWM="/sys/class/pwm/pwmchip14/pwm0"
+    if [ "$IS_RADXA" = true ]; then
+        DEV_PWMS=()
 
-    # Export pwm0 if not already available
-    if [ ! -e $DEV_PWM ]; then
-        sudo sh -c "echo 0 > /sys/class/pwm/pwmchip14/export"
-        sleep 1
+        for pwmchip_number in 14 15; do
+            PWMCHIP_PATH="/sys/class/pwm/pwmchip${pwmchip_number}"
+            if [ ! -d "$PWMCHIP_PATH" ]; then
+                echo "Skipping unavailable $PWMCHIP_PATH"
+                continue
+            fi
+
+            DEV_PWM="/sys/class/pwm/pwmchip${pwmchip_number}/pwm0"
+            if [ ! -e "$DEV_PWM" ]; then
+                sudo sh -c "echo 0 > $PWMCHIP_PATH/export"
+            fi
+            DEV_PWMS+=("$DEV_PWM")
+        done
+
+        if [ "${#DEV_PWMS[@]}" -eq 0 ]; then
+            echo "ERROR: No fan PWM controller is available. Enable PWM14-M0 or PWM15-M1."
+            exit 1
+        fi
+    else
+        DEV_PWMS=("/sys/class/pwm/pwmchip0/pwm1")
+
+        if [ ! -e "${DEV_PWMS[0]}" ]; then
+            sudo sh -c "echo 1 > /sys/class/pwm/pwmchip0/export"
+        fi
     fi
 
-else
-    DEV_PWM="/sys/class/pwm/pwmchip0/pwm1"
+    # sysfs creates a channel asynchronously after export.
+    sleep 1
 
-    # Export pwm1 if not already available
-    if [ ! -e $DEV_PWM ]; then
-        sudo sh -c "echo 1 > /sys/class/pwm/pwmchip0/export"
-        sleep 1
-    fi
-fi
-
-    # 
-    if [ ! -e $DEV_PWM ]; then
-        echo "ERROR: PWM channel $DEV_PWM is not available. Please setup PWM channel."
-        exit 1
-    fi
-
-    DEV_ENABLE="$DEV_PWM/enable"
-    DEV_DUTY="$DEV_PWM/duty_cycle"
-    DEV_PERIOD="$DEV_PWM/period"
-    DEV_POLARITY="$DEV_PWM/polarity"
+    for DEV_PWM in "${DEV_PWMS[@]}"; do
+        if [ ! -e "$DEV_PWM" ]; then
+            echo "ERROR: PWM channel $DEV_PWM is not available. Please setup PWM channel."
+            exit 1
+        fi
+    done
 
     # Margin for no adjustment in degrees Celsius
     TEMP_MARGIN=1
 
     # Calculate PWM period in nanoseconds based on frequency
     PERIOD=$((1000000000 / PWM_FREQUENCY))  # Period in ns
-    sudo sh -c "echo $PERIOD > $DEV_PERIOD"
 
     # Convert temperature thresholds to millidegrees
     TEMP_MIN=$((TEMP_MIN_C * 1000))
@@ -248,9 +271,15 @@ fi
     DUTY_MAX=$((PERIOD * DUTY_MAX_PERCENT / 100))
     DUTY_OFF=0  # Fan off
 
-    # Enable PWM
-    sudo sh -c "echo 1 > $DEV_ENABLE"
-    sudo sh -c "echo 'normal' > $DEV_POLARITY"
+    # Disable and clear every channel before changing its period. Linux rejects a
+    # shorter period while the previous duty cycle is larger than the new period.
+    for DEV_PWM in "${DEV_PWMS[@]}"; do
+        sudo sh -c "echo 0 > $DEV_PWM/enable"
+        sudo sh -c "echo 0 > $DEV_PWM/duty_cycle"
+        sudo sh -c "echo $PERIOD > $DEV_PWM/period"
+        sudo sh -c "echo 'normal' > $DEV_PWM/polarity"
+        sudo sh -c "echo 1 > $DEV_PWM/enable"
+    done
 
     # Initialize the previous duty value to detect changes
     PREV_DUTY=-1
@@ -290,11 +319,13 @@ fi
 
         # If the duty cycle has changed, update and print the values
         if [ "$DUTY_CURRENT" -ne "$PREV_DUTY" ]; then
-            sudo sh -c "echo $DUTY_CURRENT > $DEV_DUTY"
+            for DEV_PWM in "${DEV_PWMS[@]}"; do
+                sudo sh -c "echo $DUTY_CURRENT > $DEV_PWM/duty_cycle"
+            done
             PREV_DUTY=$DUTY_CURRENT
         fi
 
-        echo "Temperature: $(($TEMP / 1000))°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
+        echo "Temperature: $(($TEMP / 1000))Â°C, Duty Cycle: $((DUTY_CURRENT * 100 / PERIOD))%"
 
         # Wait for a short interval and check the termination flag
         for ((i = 0; i < 10; i++)); do
@@ -307,8 +338,10 @@ fi
     done
 
     # Disable PWM when exiting
-    echo "Disabling PWM..."
-    sudo sh -c "echo 0 > $DEV_ENABLE"
+    echo "Disabling PWM outputs..."
+    for DEV_PWM in "${DEV_PWMS[@]}"; do
+        sudo sh -c "echo 0 > $DEV_PWM/enable"
+    done
     echo "Service stopped."
 }
 
@@ -321,8 +354,9 @@ COMPATIBLE_FILE="/proc/device-tree/compatible"
 
 # Check if the compatible file exists
 if [ -f "$COMPATIBLE_FILE" ]; then
-    # Read the content of the file
-    COMPATIBLE_CONTENT=$(cat "$COMPATIBLE_FILE")
+    # Device-tree compatible strings are NUL-separated. Strip the separators before
+    # command substitution so Bash does not warn about ignored null bytes.
+    COMPATIBLE_CONTENT=$(tr -d '\000' < "$COMPATIBLE_FILE")
 
     # Check if the content contains "radxa,zero3"
     if echo "$COMPATIBLE_CONTENT" | grep -q "radxa,zero3"; then

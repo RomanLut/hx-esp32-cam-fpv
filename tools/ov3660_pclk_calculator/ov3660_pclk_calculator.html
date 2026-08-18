@@ -425,7 +425,7 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
                 <li><strong>FPS formula:</strong> FPS = SYSCLK / (HTS × VTS). Binned modes normally use VTS = total_y/2 + 1; ESP32 VGA/SVGA deliberately override VTS to 783.</li>
                 <li><strong>VCO range is not published</strong> for the OV3660 PLLS; stock configs run 160-200 MHz, project presets up to ~293 MHz. Values above 400 MHz are flagged.</li>
                 <li><strong>Classic ESP32 has no OV3660 high-FPS mode</strong> because the experimental timing corrupts frames; S3/C5 support high-FPS binned modes.
-                <li><strong>1024x576 uses a dedicated 16:9 timing:</strong> HTS=1920, VTS=1040, active source 1728x972. <strong>1280x720 uses the aligned 16:9 timing:</strong> HTS=2172, VTS=1128, active source 1920x1080. Both avoid binning.</li>
+                <li><strong>1024x576 and 1280x720 share one dedicated 16:9 timing:</strong> HTS=1920, VTS=1040, active source 1728x972, no binning. 1280x720 previously used a wider window (HTS=2172, VTS=1128, active source 1920x1080) for a slightly larger FOV, but that window gives the image a cyan/red cast on OV3660 - measured on ESP32-C5, the cast is unaffected by pixel clock and vertical blanking and disappears only on this window.</li>
                 <li><strong>ESP32 (esp32cam) quirks:</strong> VGA/SVGA use a centered 1920x1440 source, HTS=2172, VTS=783 and a 51.67 MHz SYSCLK for 30.38 FPS. The stock full-array 2048x1536 source produces unstable VSYNC cadence. Other modes follow the same binning, special-mode and PLL branches as <code>ov3660.c</code>.</li>
                 <li><strong>All frequencies in Hz</strong></li>
             </ul>
@@ -494,11 +494,12 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             // Stable classic-ESP32 4:3 source for VGA/SVGA. Firmware keeps VTS
             // at 783 after binning instead of deriving it from total_y.
             'esp32Stable4x3': { max_w: 1920, max_h: 1440, start_x: 64, start_y: 48, end_x: 2015, end_y: 1499, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1516 },
-            // Moderate 16:9 path for 1024x576. The scanned area includes the
-            // 16x6 ISP offset border, so the active source image is 1728x972.
+            // Moderate 16:9 path shared by 1024x576 and 1280x720. The scanned area
+            // includes the 16x6 ISP offset border, so the active source image is 1728x972.
             'wide1024': { max_w: 1728, max_h: 972, start_x: 160, start_y: 282, end_x: 1919, end_y: 1265, offset_x: 16, offset_y: 6, total_x: 1920, total_y: 1040 },
-            // Aligned 16:9 timing. The scanned area includes the 16x6 ISP
-            // offset border, so the active source image is 1920x1080.
+            // Aligned 16:9 timing. No longer used: 1280x720 ran on this window until it was
+            // found to give the image a cyan/red cast (the window breaks black level
+            // calibration; clock and blanking were ruled out on ESP32-C5 hardware).
             'aligned16x9': { max_w: 1920, max_h: 1080, start_x: 64, start_y: 242, end_x: 2015, end_y: 1333, offset_x: 16, offset_y: 6, total_x: 2172, total_y: 1128 }
         };
 
@@ -516,7 +517,7 @@ PCLK    = PLLCLK / 2 / (pclk_manual ? pclk_div : 1);
             'xga': { name: 'XGA 1024x768 4:3', ratio: 0, width: 1024, height: 768 },
             '1024x576': { name: '1024x576 16:9', ratio: 4, width: 1024, height: 576, specialMode: 'wide1024' },
             'sxga': { name: 'SXGA 1280x960 4:3', ratio: 0, width: 1280, height: 960 },
-            'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720, specialMode: 'aligned16x9' },
+            'hd': { name: 'HD 1280x720 16:9', ratio: 4, width: 1280, height: 720, specialMode: 'wide1024' },
             'uxga': { name: 'UXGA 1600x1200 4:3', ratio: 0, width: 1600, height: 1200 },
             'fhd': { name: 'FHD 1920x1080 16:9', ratio: 4, width: 1920, height: 1080 },
             'qxga': { name: 'QXGA 2048x1536 4:3', ratio: 0, width: 2048, height: 1536 }
@@ -805,7 +806,7 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             { name: 'ESP32 800x456 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'portraithd' },
             { name: 'ESP32 800x600 30fps',  platform: 'esp32', xvclk: 20000000, multiplier: 31, sysDiv: 1, preDiv: 3, root2x: false, seld5: 0, pclkDiv: 11, resolution: 'svga' },
             { name: 'ESP32 1024x576 22fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: '1024x576' },
-            { name: 'ESP32 1280x720 18fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'hd' },
+            { name: 'ESP32 1280x720 22fps', platform: 'esp32', xvclk: 20000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 9, resolution: 'hd' },
             { name: 'ESP32-S3 640x360 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 13, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },
             { name: 'ESP32-S3 640x360 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portrait3mp' },
             { name: 'ESP32-S3 640x480 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'vga' },
@@ -814,7 +815,7 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             { name: 'ESP32-S3 800x456 50fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
             { name: 'ESP32-S3 800x600 30fps',  platform: 'esp32s3', xvclk: 20000000, multiplier: 11, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
             { name: 'ESP32-S3 1024x576 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 12, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: '1024x576' },
-            { name: 'ESP32-S3 1280x720 29fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 29, sysDiv: 1, preDiv: 2, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'hd' },
+            { name: 'ESP32-S3 1280x720 30fps', platform: 'esp32s3', xvclk: 20000000, multiplier: 12, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: 'hd' },
             { name: 'ESP32-C5 640x360 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 11, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'portrait3mp' },
             { name: 'ESP32-C5 640x360 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portrait3mp' },
             { name: 'ESP32-C5 640x480 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'vga' },
@@ -823,7 +824,7 @@ SCCB_Write(0x380f, ${toHex(f.vts & 0xFF)});
             { name: 'ESP32-C5 800x456 50fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'portraithd' },
             { name: 'ESP32-C5 800x600 30fps',  platform: 'esp32c5', xvclk: 24000000, multiplier: 9,  sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 4, resolution: 'svga' },
             { name: 'ESP32-C5 1024x576 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 10, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: '1024x576' },
-            { name: 'ESP32-C5 1280x720 29fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 18, sysDiv: 1, preDiv: 1, root2x: false, seld5: 0, pclkDiv: 6, resolution: 'hd' }
+            { name: 'ESP32-C5 1280x720 30fps', platform: 'esp32c5', xvclk: 24000000, multiplier: 10, sysDiv: 1, preDiv: 0, root2x: false, seld5: 0, pclkDiv: 8, resolution: 'hd' }
         ];
 
         const configPresetSelect = document.getElementById('configPreset');

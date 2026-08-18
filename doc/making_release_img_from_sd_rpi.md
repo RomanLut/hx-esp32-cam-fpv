@@ -2,9 +2,23 @@
 # Making image file from SD card for release
 - use RPI2W with USB-LAN adapter to be able to ssh (pi/1234)
 
-- build image on PRI4 https://github.com/RomanLut/hx-esp32-cam-fpv/blob/master/doc/building_gs_image.md on **8GB** (recommended), **16GB** or **32BG** SD Card
+- Build the dual-boot image on Raspberry Pi 4 by following
+  [Adding GS software to a RubyFPV Raspberry Pi SD card](/doc/adding_gs_software_to_ruby_sd_rpi.md).
+  Use an **8 GB** (recommended), **16 GB**, or **32 GB** SD card.
  
-- insert SD card into PRI 2W and compile rtl8812au driver.
+- If the release image must also support Raspberry Pi Zero 2W, boot the same
+  card there and build the pinned patched RTL8812AU module for that running
+  kernel:
+
+  ```bash
+  cd ~/esp32-cam-fpv
+  MAKE_JOBS=1 bash scripts/install_ruby_rtl8812au_driver.sh
+  sudo reboot
+  ```
+
+  Verify that `88XXau_wfb` loads on both Raspberry Pi 4 and Zero 2W before
+  creating the release image. Each platform uses its own kernel module and Ruby
+  packaged-driver copy.
 
 - set default GS settings before doing next steps
 
@@ -12,7 +26,7 @@
   * **Advanced options -> GL Driver -> Fake KMS**
   * **Advanced options -> Compositor -> disable compositor**
 
-- check that credentialsare not used:
+- check that credentials are not used:
 
     ```cd ~/esp32-cam-fpv/```
 
@@ -55,6 +69,12 @@ _(note that it could be ```/dev/sdb1``` depending on USB port used)_
 ```sudo pishrink.sh -z -a /mnt/usb1/espvrx_rpi.img```
 
 ```sudo umount /mnt/usb1```
+
+# Using script
+
+`scripts/make_release_img_from_sd_rpi.sh` performs the image-copy and shrink
+steps automatically after the SD card has been prepared and verified.
+
 
 # References
 

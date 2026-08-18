@@ -2,7 +2,9 @@
 
 #include <pcap.h>
 #include <chrono>
+#include <cstdio>
 #include <endian.h>
+#include <sstream>
 
 #include "Log.h"
 #include "utils.h"
@@ -24,54 +26,71 @@ int channelToFreqMHz(int channel)
 
 //===================================================================================
 //===================================================================================
-// Sets the monitor-mode channel on a Linux interface using iw (falls back to iwconfig).
-void setMonitorChannelIw(const std::string& interface, int channel)
+// Reports whether Linux exposes one interface in monitor mode.
+bool monitorModeMatches(const std::string& interface)
 {
-    if (channel <= 0)
+    std::string output;
+    return runShellCommand(fmt::format("iw dev {} info", interface), &output) &&
+           output.find("type monitor") != std::string::npos;
+}
+
+//===================================================================================
+//===================================================================================
+// Reports whether Linux exposes the requested channel for one monitor interface.
+bool monitorChannelMatches(const std::string& interface, int expected_channel)
+{
+    std::string output;
+    if (!runShellCommand(fmt::format("iw dev {} info", interface), &output))
     {
-        return;
+        return false;
     }
 
-    if (!runShellCommand(fmt::format("iw dev {} set channel {} HT20", interface, channel)))
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line))
     {
-        LOGW("WifiScan: iw set channel {} failed on {}, trying iwconfig", channel, interface);
-        runShellCommand(fmt::format("iwconfig {} channel {}", interface, channel));
+        int reported_channel = 0;
+        if (std::sscanf(line.c_str(), " channel %d", &reported_channel) == 1)
+        {
+            return reported_channel == expected_channel;
+        }
     }
+
+    return false;
 }
 
 } // namespace
 
 //===================================================================================
 //===================================================================================
+// Stops capture and releases the pcap handle during object destruction.
 LinuxWifiScanTransport::~LinuxWifiScanTransport()
 {
-    m_captureStop = true;
-    if (m_captureThread.joinable())
-    {
-        m_captureThread.join();
-    }
+    stopCaptureThread();
     closeMonitorPcap();
 }
 
 //===================================================================================
 //===================================================================================
-// Opens a pcap capture handle on the given interface in monitor mode.
+// Configures monitor mode once and opens the persistent pcap handle used for all scan hops.
 bool LinuxWifiScanTransport::openMonitorPcap(const std::string& interface)
 {
     char error_buf[PCAP_ERRBUF_SIZE] = {};
 
-    LOGI("WifiScan: bringing {} down", interface);
-    runShellCommand(fmt::format("ip link set {} down", interface));
-    LOGI("WifiScan: setting {} to monitor mode", interface);
-    runShellCommand(fmt::format("iw dev {} set type monitor", interface));
-    LOGI("WifiScan: bringing {} up", interface);
-    runShellCommand(fmt::format("ip link set {} up", interface));
-
-    // Brief settle time so the interface reports up before pcap_create.
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    // Verify interface is actually in monitor mode
-    runShellCommand(fmt::format("iw dev {} info", interface));
+    // RAW already leaves the receive radios in monitor mode. Repeating link-down/up
+    // for every scan channel wedges rtl88x2eu reception and makes mode changes take
+    // tens of seconds, so only change mode when the interface genuinely needs it.
+    if (!monitorModeMatches(interface))
+    {
+        LOGI("WifiScan: configuring {} for monitor capture", interface);
+        runShellCommand(fmt::format("ip link set {} down", interface));
+        runShellCommand(fmt::format("iw dev {} set type monitor", interface));
+        runShellCommand(fmt::format("ip link set {} up", interface));
+    }
+    else
+    {
+        LOGI("WifiScan: {} is already in monitor mode", interface);
+    }
 
     m_pcap = pcap_create(interface.c_str(), error_buf);
     if (m_pcap == nullptr)
@@ -86,8 +105,14 @@ bool LinuxWifiScanTransport::openMonitorPcap(const std::string& interface)
     // via 'iw dev set type monitor' above.  Asking pcap to enable RFMON itself fails
     // on some WSL / out-of-tree drivers even though the interface is already in
     // monitor mode (pcap_activate returns PCAP_ERROR_RFMON_NOTSUP = -6).
-    pcap_set_timeout(m_pcap, 100);       // 100 ms so the capture thread wakes to check stop flag
+    pcap_set_timeout(m_pcap, 100);       // limits packet-buffer latency while traffic is arriving
     pcap_set_buffer_size(m_pcap, 4000000);
+    if (pcap_set_immediate_mode(m_pcap, 1) < 0)
+    {
+        LOGE("WifiScan: failed to enable immediate pcap mode on {}: {}", interface, pcap_geterr(m_pcap));
+        closeMonitorPcap();
+        return false;
+    }
 
     const int activate_ret = pcap_activate(m_pcap);
     if (activate_ret < 0)
@@ -103,7 +128,19 @@ bool LinuxWifiScanTransport::openMonitorPcap(const std::string& interface)
 
     LOGI("WifiScan: pcap_activate OK on {} (ret={}), datalink={}", interface, activate_ret, pcap_datalink(m_pcap));
 
-    pcap_setdirection(m_pcap, PCAP_D_IN);
+    // pcap_breakloop does not reliably wake a blocked rtl88x2eu dispatch after
+    // channel reconfiguration. Nonblocking dispatch makes every hop and mode
+    // transition bounded; the capture loop sleeps briefly while no data is ready.
+    if (pcap_setnonblock(m_pcap, 1, error_buf) < 0)
+    {
+        LOGE("WifiScan: failed to make pcap nonblocking on {}: {}", interface, error_buf);
+        closeMonitorPcap();
+        return false;
+    }
+
+    // rtl88x2eu can classify frames received over the air as outgoing monitor
+    // frames. RAW capture therefore cannot use PCAP_D_IN, and scan capture must
+    // follow the same rule or its activity graph stays empty during real traffic.
 
     LOGI("WifiScan: monitor pcap open on {}", interface);
     return true;
@@ -126,7 +163,6 @@ bool LinuxWifiScanTransport::init(const gs::core::RXDescriptor& rx_descriptor,
                                    const gs::core::TXDescriptor& tx_descriptor)
 {
     m_interface = rx_descriptor.interfaces.empty() ? "" : rx_descriptor.interfaces.front();
-
     if (!m_interface.empty())
     {
         if (openMonitorPcap(m_interface))
@@ -145,15 +181,32 @@ bool LinuxWifiScanTransport::init(const gs::core::RXDescriptor& rx_descriptor,
 
 //===================================================================================
 //===================================================================================
+// Stops packet capture and releases its handle when this transport is deselected.
 void LinuxWifiScanTransport::deactivate()
 {
+    stopCaptureThread();
+    closeMonitorPcap();
+    GSWifiScanTransport::deactivate();
+}
+
+//===================================================================================
+//===================================================================================
+// Wakes and joins the pcap capture thread before its handle is closed.
+void LinuxWifiScanTransport::stopCaptureThread()
+{
     m_captureStop = true;
+
+    // A pcap packet-buffer timeout is not guaranteed to expire while an interface is
+    // idle. Wake pcap_dispatch explicitly or a transport switch can block forever in join().
+    if (m_pcap != nullptr)
+    {
+        pcap_breakloop(m_pcap);
+    }
+
     if (m_captureThread.joinable())
     {
         m_captureThread.join();
     }
-    closeMonitorPcap();
-    GSWifiScanTransport::deactivate();
 }
 
 //===================================================================================
@@ -167,17 +220,27 @@ void LinuxWifiScanTransport::captureThreadFunc()
 
     while (!m_captureStop)
     {
-        // pcap_dispatch with cnt=-1 returns after one buffer-worth of packets or
-        // the read timeout.  We use a 100 ms timeout so the stop flag is checked
-        // frequently without spinning.
+        // pcap_dispatch with cnt=-1 returns after one buffer-worth of packets. The
+        // stop path uses pcap_breakloop because an idle Linux capture need not honor
+        // the packet-buffer timeout until at least one packet arrives.
         const int n = pcap_dispatch(m_pcap, -1,
                                     &LinuxWifiScanTransport::packetCallback,
                                     reinterpret_cast<u_char*>(this));
+
+        if (n == PCAP_ERROR_BREAK && m_captureStop)
+        {
+            break;
+        }
 
         if (n < 0)
         {
             LOGE("WifiScan: pcap_dispatch error: {}", pcap_geterr(m_pcap));
             break;
+        }
+
+        if (n == 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
 
         total += n;
@@ -319,8 +382,17 @@ void LinuxWifiScanTransport::setMonitorChannel(int channel)
 {
     LOGI("WifiScan: switching to channel {}", channel);
     m_channelFreqMHz.store(channelToFreqMHz(channel), std::memory_order_relaxed);
-    if (!m_interface.empty())
+
+    if (!m_interface.empty() && !monitorChannelMatches(m_interface, channel))
     {
-        setMonitorChannelIw(m_interface, channel);
+        // rtl88x2eu returns success from `iw set channel` without always applying
+        // the requested channel. Wireless Extensions applies the retune reliably;
+        // verify the reported state so the graph label cannot diverge from the radio.
+        if (!runShellCommand(fmt::format("iwconfig {} channel {}", m_interface, channel)) ||
+            !monitorChannelMatches(m_interface, channel))
+        {
+            LOGE("WifiScan: failed to apply channel {} on {}", channel, m_interface);
+        }
     }
+
 }

@@ -29,7 +29,7 @@ Two GL contexts in the same EGL share group, each on its own thread:
 
 2. **Renderer thread** (shared `GsVideoRenderer` from `components_gs/shared/`)
    - Owns a tiny pbuffer EGL surface in the OpenXR thread's share group
-     (created in [android_surface_backend.cpp](app/src/main/cpp/android_surface_backend.cpp)).
+     (created in [android_surface_backend_openxr.cpp](../components_gs/android_shared/cpp/android_surface_backend_openxr.cpp)).
      The pbuffer is just a placeholder for `eglMakeCurrent`; nothing is ever
      drawn to it.
    - Renders FPV video + ImGui overlays into a 1280×720 offscreen FBO whose

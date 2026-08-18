@@ -18,6 +18,7 @@
 #include "gs_jpeg_dct_postprocessing.h"
 #include "gs_video_stabilization_shared.h"
 #include "gs_shared_state.h"
+#include "gs_image_histogram.h"
 #include "IHAL.h"
 #include <SDL2/SDL.h>
 
@@ -322,6 +323,12 @@ void gs_linux_video_decoder::decoder_thread_proc(size_t /* thread_index */)
             //tjDestroy(m_impl->tjInstance);
             LOGE("decompressing JPEG image: {}", tjGetErrorStr());
             //return false;
+        }
+        else
+        {
+            // Histogram color counting is intentionally gated inside this call so normal
+            // video decoding has no per-pixel histogram cost outside Image Settings.
+            gs::image_histogram::updateFromRgb888(output->rgb_data.data(), width, height, width * 3);
         }
 
         tjDestroy(tjInstance);

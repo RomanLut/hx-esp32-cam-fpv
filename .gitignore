@@ -59,3 +59,4 @@ managed_components
 
 # OpenCV wrapper generated build trees and downloaded build tools
 /OpenCV/OpenCVWrapper/Build/
+build

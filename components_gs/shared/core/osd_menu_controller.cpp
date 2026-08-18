@@ -23,6 +23,7 @@
 #include "gs_runtime_state.h"
 #include "gs_lens_correction_shared.h"
 #include "gs_video_stabilization_shared.h"
+#include "gs_image_histogram.h"
 
 #define SEARCH_TIME_STEP_MS 1000
 
@@ -30,6 +31,7 @@ namespace
 {
 
 constexpr int kScrollableMenuVisibleItems = 7;
+constexpr uint32_t kMavlinkBaudrates[] = {115200, 57600, 38400, 19200, 9600, 4800};
 constexpr float kScreenZoomStep = 0.01f;
 constexpr float kScreenZoomStepScale = 100.0f;
 constexpr float kScreenVrSeparationMin = -0.30f;
@@ -64,6 +66,19 @@ constexpr float kImageStabilizationRoiDivisorStep = 0.1f;
 constexpr float kImageStabilizationZoomStep = 0.01f;
 constexpr float kImageStabilizationDecayStep = 0.01f;
 constexpr float kImageStabilizationLimitReleaseBoostStep = 0.1f;
+
+//===================================================================================
+//===================================================================================
+// Returns true for Image Settings and each direct image-adjustment child menu.
+bool isImageHistogramMenu(OSDMenuId menu_id)
+{
+    return menu_id == OSDMenuId::Image ||
+           menu_id == OSDMenuId::Brightness ||
+           menu_id == OSDMenuId::Contrast ||
+           menu_id == OSDMenuId::Exposure ||
+           menu_id == OSDMenuId::Saturation ||
+           menu_id == OSDMenuId::Sharpness;
+}
 }
 
 using OSDMenuController = gs::menu::OSDMenuController;
@@ -516,6 +531,7 @@ void OSDMenuController::openPlaybackDeleteMenuForActivePlayback()
 void OSDMenuController::close()
 {
     this->visible = false;
+    gs::image_histogram::setCollectionEnabled(false);
     this->m_close_menu_requested = false;
     this->m_lens_correction_draft_active = false;
     resetCapturedMenuBuffer();
@@ -782,9 +798,13 @@ void OSDMenuController::drawMenuWindow(const char* window_name,
 // Main draw entry point; handles menu open/close logic and draws one canonical UI copy.
 void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 {
+    const bool image_histogram_visible = this->visible && isImageHistogramMenu(this->menuId);
+    gs::image_histogram::setCollectionEnabled(image_histogram_visible);
+
     if (gs::calibration::isActive())
     {
         this->visible = false;
+        gs::image_histogram::setCollectionEnabled(false);
         resetCapturedMenuBuffer();
         return;
     }
@@ -869,6 +889,7 @@ void OSDMenuController::draw(Ground2Air_Config_Packet& config)
 // Dispatches rendering to the appropriate menu page based on the current menu ID.
 void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
 {
+    const OSDMenuId drawn_menu_id = this->menuId;
     switch (this->menuId)
     {
         case OSDMenuId::Main: this->drawMainMenu(config); break;
@@ -887,6 +908,7 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::Restart: this->drawRestartMenu(config); break;
         case OSDMenuId::FEC: this->drawFECMenu(config); break;
         case OSDMenuId::GSSettings: this->drawGSSettingsMenu(config); break;
+        case OSDMenuId::GSOSD: this->drawGSOSDMenu(config); break;
         case OSDMenuId::GSWifiSettings: this->drawGSWifiSettingsMenu(config); break;
         case OSDMenuId::GSScreen: this->drawGSScreenMenu(config); break;
         case OSDMenuId::GSPostprocessing: this->drawGSPostprocessingMenu(config); break;
@@ -908,10 +930,16 @@ void OSDMenuController::drawCurrentMenu(Ground2Air_Config_Packet& config)
         case OSDMenuId::CameraRC: this->drawCameraRCMenu(config); break;
         case OSDMenuId::CameraStopCH: this->drawCameraStopCHMenu(config); break;
         case OSDMenuId::ImageStabilizationCH: this->drawImageStabilizationCHMenu(config); break;
+        case OSDMenuId::MavlinkBaudrate: this->drawMavlinkBaudrateMenu(config); break;
         case OSDMenuId::Debug: this->drawDebugMenu(config); break;
         case OSDMenuId::Playback: this->drawPlaybackMenu(config); break;
         case OSDMenuId::PlaybackRun: this->drawPlaybackRunMenu(config); break;
         case OSDMenuId::PlaybackDelete: this->drawPlaybackDeleteMenu(config); break;
+    }
+
+    if (isImageHistogramMenu(drawn_menu_id))
+    {
+        gs::menu::imgui::drawImageHistogram(gs::image_histogram::copyLatest(), m_imgui_layout);
     }
 }
 
@@ -961,20 +989,33 @@ void OSDMenuController::drawMainMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        int channel = getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
+        const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
+        // Once APFPV is connected, the air config is authoritative because managed-mode
+        // discovery is independent of the GS raw-broadcast band filter.
+        int channel = apfpv && isSelectedTransportConnected()
+            ? getValidWifiChannel(config.dataChannel.wifi_channel)
+            : getBandAwareWifiChannel(gs_config.wifi_channel, gs_config.wifiBand);
+        if (apfpv && !isWifiChannelSupportedForApfpv(channel))
+        {
+            channel = DEFAULT_WIFI_CHANNEL_5_8_GHZ;
+        }
         sprintf(buf, "Wifi Channel: %d##1", channel);
         if ( this->drawMenuItem( buf, 2) )
         {
-            int channelIndex = getBandAwareWifiChannelMenuIndex(channel, gs_config.wifiBand);
+            int channelIndex = getBandAwareWifiChannelMenuIndex(channel, gs_config.wifiBand, apfpv);
             this->goForward( OSDMenuId::WifiChannel, channelIndex);
         }
     }
 
     {
         char buf[256];
+        const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
         int i = gs::menu::getWifiRateMenuIndex(config.dataChannel.wifi_rate);
-        sprintf(buf, "Wifi Rate: %s##2", gs::menu::getWifiRateSummary(config).c_str());
-        if ( this->drawMenuItem( buf, 3) )
+        // APFPV leaves PHY rate selection to the SoftAP driver, so fixed-rate choices
+        // are intentionally unavailable until returning to RAW Broadcast transport.
+        const std::string rate_summary = apfpv ? "Auto" : gs::menu::getWifiRateSummary(config);
+        sprintf(buf, "Wifi Rate: %s##2", rate_summary.c_str());
+        if ( this->drawMenuItem( buf, 3) && !apfpv )
         {
             this->goForward( OSDMenuId::WifiRate, i );
         }
@@ -1227,17 +1268,17 @@ void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        if ( s_imageStabilizationState.rc_channel == 0 )
+        if ( config.misc.stabilizationChannel == 0 )
         {
             sprintf(buf, "Image Stabiliz. RC Ch.: None" );
         }
         else
         {
-            sprintf(buf, "Image Stabiliz. RC Ch.: %d", (int)s_imageStabilizationState.rc_channel );
+            sprintf(buf, "Image Stabiliz. RC Ch.: %d", (int)config.misc.stabilizationChannel );
         }
         if ( this->drawMenuItem( buf, 1) )
         {
-            this->goForward( OSDMenuId::ImageStabilizationCH, (int)s_imageStabilizationState.rc_channel );
+            this->goForward(OSDMenuId::ImageStabilizationCH, (int)config.misc.stabilizationChannel);
         }
     }
 
@@ -1247,6 +1288,39 @@ void OSDMenuController::drawCameraRCMenu(Ground2Air_Config_Packet& config)
         if ( this->drawMenuItem( buf, 2) )
         {
             config.misc.mavlink2mspRC ^= 1;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf,
+                "Inject Mav2 Radio Status: %s",
+                config.misc.mavlinkInjectRadioStatus == 1 ? "On" : "Off");
+        if (this->drawMenuItem(buf, 3))
+        {
+            config.misc.mavlinkInjectRadioStatus ^= 1;
+        }
+    }
+
+    {
+        char buf[256];
+        sprintf(buf,
+                "Inject Mav2 RSSI to CH16: %s",
+                config.misc.mavlinkInjectRssiCh16 == 1 ? "On" : "Off");
+        if (this->drawMenuItem(buf, 4))
+        {
+            config.misc.mavlinkInjectRssiCh16 ^= 1;
+        }
+    }
+
+    {
+        const uint8_t setting = config.misc.mavlinkBaudrate <= 5 ?
+            config.misc.mavlinkBaudrate : 0;
+        char buf[256];
+        sprintf(buf, "Mavlink Port Baudrate: %u", (unsigned int)kMavlinkBaudrates[setting]);
+        if (this->drawMenuItem(buf, 5))
+        {
+            this->goForward(OSDMenuId::MavlinkBaudrate, setting);
         }
     }
 
@@ -1775,6 +1849,7 @@ void OSDMenuController::drawWifiRateMenu(Ground2Air_Config_Packet& config)
 void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
 {
     auto& gs_config = s_groundstation_config;
+    const bool apfpv = currentTransportKind() == gs::core::TransportKind::APFPV;
     this->drawMenuTitle( "Menu -> Wifi Channel" );
     drawSpacing();
 
@@ -1784,7 +1859,8 @@ void OSDMenuController::drawWifiChannelMenu(Ground2Air_Config_Packet& config)
     for ( int i = 0; i < WIFI_CHANNELS_COUNT; i++ )
     {
         int channel = WIFI_CHANNELS_BY_INDEX[i];
-        if ( !isWifiChannelAllowedByBand(channel, gs_config.wifiBand) )
+        if ( !isWifiChannelAllowedByBand(channel, gs_config.wifiBand) ||
+             (apfpv && !isWifiChannelSupportedForApfpv(channel)) )
         {
             continue;
         }
@@ -1867,7 +1943,7 @@ void OSDMenuController::drawCameraStopCHMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
-// Draws the GS image stabilization RC channel selection menu.
+// Draws the camera-owned image stabilization RC channel selection menu.
 void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& config)
 {
     this->drawMenuTitle( "Menu -> Image Stabilization Channel" );
@@ -1888,8 +1964,8 @@ void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& c
         }
         if ( this->drawMenuItem( buf, i, true) )
         {
+            config.misc.stabilizationChannel = i;
             s_imageStabilizationState.rc_channel = static_cast<uint8_t>(i);
-            s_settingsStorage.saveGroundStationConfig();
             bExit = true;
         }
     }
@@ -1899,7 +1975,32 @@ void OSDMenuController::drawImageStabilizationCHMenu(Ground2Air_Config_Packet& c
         this->goBack();
     }
 
-    (void)config;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the camera MAVLink UART baudrate selection menu.
+void OSDMenuController::drawMavlinkBaudrateMenu(Ground2Air_Config_Packet& config)
+{
+    this->drawMenuTitle("Menu -> Mavlink Port Baudrate");
+    drawSpacing();
+
+    bool exit = false;
+    for (int i = 0; i < static_cast<int>(sizeof(kMavlinkBaudrates) / sizeof(kMavlinkBaudrates[0])); i++)
+    {
+        char buf[16];
+        sprintf(buf, "%u", (unsigned int)kMavlinkBaudrates[i]);
+        if (this->drawMenuItem(buf, i, true))
+        {
+            config.misc.mavlinkBaudrate = i;
+            exit = true;
+        }
+    }
+
+    if (exit || this->exitKeyPressed())
+    {
+        this->goBack();
+    }
 }
 
 //===================================================================================
@@ -2137,29 +2238,36 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
         }
     }
 
+    if ( this->drawMenuItem( "GS OSD...", 2) )
+    {
+        this->goForward( OSDMenuId::GSOSD, 0 );
+    }
+
     {
         char buf[256];
-        sprintf(buf, "Wifi and UART Settings...##2");
-        if ( this->drawMenuItem( buf, 2) )
+        sprintf(buf, "Wifi and UART Settings...##3");
+        if ( this->drawMenuItem( buf, 3) )
         {
             this->goForward( OSDMenuId::GSWifiSettings, 0 );
         }
     }
 
-    if ( this->drawMenuItem( "Debuging...", 3) )
+    if ( this->drawMenuItem( "Debuging...", 4) )
     {
         this->goForward( OSDMenuId::Debug, 0 );
     }
 
-    int next_item_index = 4;
+    int next_item_index = 5;
     if (s_RuntimePlatformServices->supportsGPIOKeys())
     {
         char buf[256];
-        const char* layout = gs_config.GPIOKeysLayout == 0 ? "DIY VRX" : "Runcam VRX";
+        const char* const layouts[] = {"DIY VRX", "Runcam VRX", "DIY VRX 2"};
+        const uint8_t layout_index = std::min<uint8_t>(gs_config.GPIOKeysLayout, 2);
+        const char* layout = layouts[layout_index];
         sprintf(buf, "GPIO Keys Layout: %s##gpio_keys", layout);
         if ( this->drawMenuItem( buf, next_item_index) )
         {
-            gs_config.GPIOKeysLayout = gs_config.GPIOKeysLayout == 0 ? 1 : 0;
+            gs_config.GPIOKeysLayout = static_cast<uint8_t>((layout_index + 1) % 3);
             s_settingsStorage.saveGroundStationConfig();
             s_RuntimePlatformServices->restartGPIOButtons();
         }
@@ -2176,11 +2284,81 @@ void OSDMenuController::drawGSSettingsMenu(Ground2Air_Config_Packet& config)
 
     {
         char buf[256];
-        sprintf(buf, "IP: %s##status_ip", s_RuntimePlatformServices->getSystemIPv4().c_str());
+        sprintf(buf,
+                "IP: %s  ID: 0x%04X##status_ip",
+                s_RuntimePlatformServices->getSystemIPv4().c_str(),
+                s_runtimeCore.gs_device_id);
         this->drawStatus( buf );
     }
 
     if ( this->exitKeyPressed())
+    {
+        this->goBack();
+    }
+}
+
+//===================================================================================
+//===================================================================================
+// Draws ground station OSD visibility settings.
+void OSDMenuController::drawGSOSDMenu(Ground2Air_Config_Packet& /*config*/)
+{
+    auto& gs_config = s_groundstation_config;
+    this->drawMenuTitle( "GS Settings -> GS OSD" );
+    drawSpacing();
+
+    char buf[256];
+    snprintf(buf,
+             sizeof(buf),
+             "Top Status line: %s##top_status_line",
+             gs_config.osdTopStatusLine ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 0) )
+    {
+        gs_config.osdTopStatusLine = !gs_config.osdTopStatusLine;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    snprintf(buf,
+             sizeof(buf),
+             "Video Link Quality Gauge: %s##video_lq_gauge",
+             gs_config.osdVideoLqGauge ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 1) )
+    {
+        gs_config.osdVideoLqGauge = !gs_config.osdVideoLqGauge;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    snprintf(buf,
+             sizeof(buf),
+             "RC Link Quality Gauge: %s##rc_lq_gauge",
+             gs_config.osdRcLqGauge ? "On" : "Off");
+    if ( this->drawMenuItem( buf, 2) )
+    {
+        gs_config.osdRcLqGauge = !gs_config.osdRcLqGauge;
+        s_settingsStorage.saveGroundStationConfig();
+    }
+
+    bool adjust_handled = false;
+    if (m_draw_mode == DrawMode::Interactive && selectedItem == 3 && !keyHandled)
+    {
+        if (isMenuAdjustIncreasePressed())
+        {
+            gs_config.osdMargin = static_cast<uint8_t>(std::min<int>(32, gs_config.osdMargin + 1));
+            s_settingsStorage.saveGroundStationConfig();
+            keyHandled = true;
+            adjust_handled = true;
+        }
+        else if (isMenuAdjustDecreasePressed())
+        {
+            gs_config.osdMargin = static_cast<uint8_t>(std::max<int>(0, gs_config.osdMargin - 1));
+            s_settingsStorage.saveGroundStationConfig();
+            keyHandled = true;
+            adjust_handled = true;
+        }
+    }
+    snprintf(buf, sizeof(buf), "<>Margin: %u##osd_margin", static_cast<unsigned>(gs_config.osdMargin));
+    this->drawMenuItem(buf, 3);
+
+    if (!adjust_handled && this->exitKeyPressed())
     {
         this->goBack();
     }
@@ -3146,6 +3324,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
             }
             this->searchDone = false;
             beginSelectedTransportSearchOrConnect(config, this->search_tp);
+            resetSearchPacketGraph();
             this->goForward(OSDMenuId::SearchRun, 0);
             return;
         }
@@ -3154,14 +3333,6 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
         if (apfpv_camera_state.wifi_scan_permission_error)
         {
             this->drawStatusError("No Permissions for Wifi scanning##apfpv_perm_err");
-        }
-
-        if (apfpv_camera_state.active_camera_id != 0)
-        {
-            const std::string active_caption =
-                "Active Air Id: " + formatApfpvCameraId(apfpv_camera_state.active_camera_id) + "##apfpv_active";
-            (void)this->drawMenuItem(active_caption.c_str(), item_index);
-            item_index++;
         }
 
         for (const ApfpvCameraDescriptor& camera : apfpv_camera_state.discovered_cameras)
@@ -3187,6 +3358,7 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 
         if (apfpv_camera_state.active_camera_id == 0 && apfpv_camera_state.discovered_cameras.empty())
         {
+            drawLargeGapIfTallScreen();
             this->drawStatus("No APFPV cameras found##apfpv_empty");
         }
     }
@@ -3195,7 +3367,11 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
     {
         {
             char buf[256];
-            sprintf(buf, "Search...##1");
+            // RAW search excludes the currently selected camera for the entire round,
+            // so make that behavior explicit before the user starts it.
+            const bool searches_for_other_camera =
+                s_runtimeCore.session.connectedAirDeviceId() != 0;
+            sprintf(buf, "%s##1", searches_for_other_camera ? "Search other..." : "Search...");
             if (this->drawMenuItem(buf, 1))
             {
                 if (!switchActiveTransport(transport_kind))
@@ -3205,10 +3381,29 @@ void OSDMenuController::drawConnectMenu(Ground2Air_Config_Packet& config)
 
                 this->searchDone = false;
                 beginSelectedTransportSearchOrConnect(config, this->search_tp);
+                resetSearchPacketGraph();
 
                 this->goForward(OSDMenuId::SearchRun, 0);
             }
         }
+    }
+
+    uint16_t active_air_id = 0;
+    if (transport_kind == gs::core::TransportKind::APFPV)
+    {
+        active_air_id = apfpv_camera_state.active_camera_id;
+    }
+    else if (uses_channel_search && isSelectedTransportConnected())
+    {
+        active_air_id = s_runtimeCore.session.connectedAirDeviceId();
+    }
+
+    if (active_air_id != 0)
+    {
+        drawLargeGapIfTallScreen();
+        const std::string active_caption =
+            "Active Air Id: " + formatApfpvCameraId(active_air_id) + "##active_air_id";
+        this->drawStatus(active_caption.c_str());
     }
 
     if (!uses_channel_search && transport_kind != gs::core::TransportKind::APFPV && this->selectedItem > 0)
@@ -3268,6 +3463,102 @@ void OSDMenuController::drawSearchModeMenu(Ground2Air_Config_Packet& config)
 
 //===================================================================================
 //===================================================================================
+// Resets the RAW-search histogram and assigns one fixed bar to every channel in the selected band.
+void OSDMenuController::resetSearchPacketGraph()
+{
+    m_search_packet_channels.clear();
+    m_search_packet_rates.clear();
+    m_search_packet_graph_active = currentTransportKind() == gs::core::TransportKind::RawBroadcast;
+    if (!m_search_packet_graph_active)
+    {
+        return;
+    }
+
+    for (int i = 0; i < WIFI_CHANNELS_COUNT; i++)
+    {
+        const int channel = WIFI_CHANNELS_BY_INDEX[i];
+        if (isWifiChannelAllowedByBand(channel, s_groundstation_config.wifiBand))
+        {
+            m_search_packet_channels.push_back(channel);
+            m_search_packet_rates.push_back(0.0f);
+        }
+    }
+
+    m_search_packet_channel = s_groundstation_config.wifi_channel;
+    m_search_last_capture_packet_count =
+        s_runtimeCore.raw_capture_packets_seen.load(std::memory_order_relaxed);
+    m_search_channel_capture_packet_count = 0;
+    m_search_channel_sample_tp = Clock::now();
+}
+
+//===================================================================================
+//===================================================================================
+// Samples all captured frames as packets/second and applies the WiFi scanner's 50/50 EMA.
+void OSDMenuController::updateSearchPacketGraph()
+{
+    if (!m_search_packet_graph_active || currentTransportKind() != gs::core::TransportKind::RawBroadcast)
+    {
+        return;
+    }
+
+    const uint64_t current_packet_count =
+        s_runtimeCore.raw_capture_packets_seen.load(std::memory_order_relaxed);
+    const int configured_channel = s_groundstation_config.wifi_channel;
+    const Clock::time_point now = Clock::now();
+
+    if (configured_channel != m_search_packet_channel)
+    {
+        const auto channel_it = std::find(m_search_packet_channels.begin(),
+                                          m_search_packet_channels.end(),
+                                          m_search_packet_channel);
+        const auto sample_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            now - m_search_channel_sample_tp).count();
+        if (channel_it != m_search_packet_channels.end() && sample_us > 0)
+        {
+            const size_t channel_index = static_cast<size_t>(
+                std::distance(m_search_packet_channels.begin(), channel_it));
+            const float packets_per_second =
+                static_cast<float>(m_search_channel_capture_packet_count) * 1000000.0f /
+                static_cast<float>(sample_us);
+            m_search_packet_rates[channel_index] =
+                m_search_packet_rates[channel_index] * 0.5f + packets_per_second * 0.5f;
+        }
+
+        // The channel change is the sampling boundary. Discard frames captured during
+        // reconfiguration so they cannot be attributed to either adjacent channel.
+        m_search_packet_channel = configured_channel;
+        m_search_last_capture_packet_count = current_packet_count;
+        m_search_channel_capture_packet_count = 0;
+        m_search_channel_sample_tp = now;
+        return;
+    }
+
+    m_search_channel_capture_packet_count +=
+        current_packet_count - m_search_last_capture_packet_count;
+    m_search_last_capture_packet_count = current_packet_count;
+}
+
+//===================================================================================
+//===================================================================================
+// Draws the non-scrolling RAW-search packet graph below the current search status.
+void OSDMenuController::drawSearchPacketGraph()
+{
+    if (m_search_packet_graph_active && currentTransportKind() == gs::core::TransportKind::RawBroadcast)
+    {
+        const auto channel_it = std::find(m_search_packet_channels.begin(),
+                                          m_search_packet_channels.end(),
+                                          s_groundstation_config.wifi_channel);
+        const int current_channel_index = channel_it == m_search_packet_channels.end()
+            ? -1
+            : static_cast<int>(std::distance(m_search_packet_channels.begin(), channel_it));
+        gs::menu::imgui::drawMenuPacketHistogram(m_search_packet_rates,
+                                                  current_channel_index,
+                                                  m_imgui_layout);
+    }
+}
+
+//===================================================================================
+//===================================================================================
 // Draws the active channel search or connect progress screen.
 void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
 {
@@ -3316,7 +3607,7 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
         }
         else if (apfpv_camera_state.discovered_cameras.size() == 1)
         {
-            sprintf(buf, "Connecting to %s...", formatApfpvCameraId(apfpv_camera_state.discovered_cameras.front().device_id).c_str());
+            sprintf(buf, "Found APFPV camera.");
         }
         else
         {
@@ -3332,7 +3623,10 @@ void OSDMenuController::drawSearchRunMenu(Ground2Air_Config_Packet& config)
         this->drawStatus(buf);
     }
 
+    updateSearchPacketGraph();
+    drawSearchPacketGraph();
     advanceSelectedTransportSearchOrConnect(config, this->search_tp, this->searchDone);
+    updateSearchPacketGraph();
 
     if (uses_channel_search)
     {
