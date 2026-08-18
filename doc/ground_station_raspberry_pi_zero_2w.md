@@ -44,4 +44,8 @@ Note that red/black antennas are not recommended unless all you want is to look 
 
 ![alt text](/doc/images/moxon.jpg "moxon")
 
-***Note that Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.***
+> [!NOTE]
+> Raspberry Pi GS is not actively developed and tested. It might be dropped in future releases.
+
+> [!NOTE]
+> Raspberry Pi Zero 2W does not have enough performance to shown 1024x576 and 1280x720 at 30fps.***
