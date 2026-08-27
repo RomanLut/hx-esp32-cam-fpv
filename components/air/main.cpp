@@ -61,6 +61,7 @@
 
 #include "jpeg_parser.h"
 #include "util.h"
+#include "esp_heap_summary.h"
 
 #include "hx_mavlink_parser.h"
 #include "hx_mavlink_rc_encoder.h"
@@ -71,7 +72,7 @@
 
 #ifdef SUPPRESS_LOGGING
 #define printf(...) do {} while (false)
-#define heap_caps_print_heap_info(...) do {} while (false)
+#define printHeapInfoTable(...) do {} while (false)
 #define sdmmc_card_print_info(...) do {} while (false)
 #endif
 
@@ -3672,7 +3673,7 @@ extern "C" void app_main()
     vTaskDelay(5000 / portTICK_PERIOD_MS);  //to see init messages
 #endif    
 
-    printf("Initializing...\n");
+    printf("\nInitializing...\n");
 
     s_ground2air_data_packet.type = Ground2Air_Header::Type::Telemetry;
     s_ground2air_data_packet.size = sizeof(s_ground2air_data_packet);
@@ -3681,10 +3682,8 @@ extern "C" void app_main()
     s_ground2air_config_packet.size = sizeof(s_ground2air_config_packet);
     s_ground2air_config_packet.dataChannel.wifi_rate = DEFAULT_WIFI_RATE;
 
-    printf("MEMORY at start: \n");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    printf("\nMEMORY at start: \n");
+    printHeapInfoTable();
 
     initialize_status_led();
 #ifdef ESP32CAM_FLASH_LED_PIN
@@ -3767,15 +3766,13 @@ extern "C" void app_main()
 #ifdef USE_MOCK_CAMERA
         init_mock_camera();
 #else
-        printf("MEMORY Before init_camera: \n");
-        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+        printf("\nMEMORY Before init_camera: \n");
+        printHeapInfoTable();
 
         init_camera();
 
-        printf("MEMORY After init_camera: \n");
-        heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+        printf("\nMEMORY After init_camera: \n");
+        printHeapInfoTable();
 #endif
     }
 
@@ -3789,17 +3786,13 @@ extern "C" void app_main()
     xSemaphoreGive(s_sd_fast_buffer_mux);
     xSemaphoreGive(s_sd_slow_buffer_mux);
 
-    printf("MEMORY Before Init_SD: \n");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    printf("\nMEMORY Before Init_SD: \n");
+    printHeapInfoTable();
 
     init_sd();
 
-    printf("MEMORY After Init_SD: \n");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    printf("\nMEMORY After Init_SD: \n");
+    printHeapInfoTable();
 
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
@@ -3814,11 +3807,8 @@ extern "C" void app_main()
         free(sd_write_block);
         heap_caps_free( s_sd_slow_buffer->getBufferPtr() );
 
-        printf("MEMORY Before setup_wifi_file_server(): \n");
-        //heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-        //heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-        heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
-        heap_caps_print_heap_info(MALLOC_CAP_DMA);
+        printf("\nMEMORY Before setup_wifi_file_server(): \n");
+        printHeapInfoTable();
 
         setup_wifi_file_server();
 
@@ -3932,10 +3922,8 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(uart_driver_install(LP_UART_NUM_0, LP_UART0_RX_BUFFER_SIZE, LP_UART0_TX_BUFFER_SIZE, 0, NULL, 0));
 #endif
 
-    printf("MEMORY Before Loop: \n");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-    heap_caps_print_heap_info(MALLOC_CAP_EXEC);
-    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    printf("\nMEMORY Before Loop: \n");
+    printHeapInfoTable();
 
     handle_ground2air_config_packetEx1( s_ground2air_config_packet);
     handle_ground2air_config_packetEx2( true);

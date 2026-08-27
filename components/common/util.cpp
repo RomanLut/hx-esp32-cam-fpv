@@ -1,21 +1,23 @@
 #include "util.h"
+
 #ifndef ESP_PLATFORM
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 #include <chrono>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <unistd.h>
 #endif
 
-//==============================================================
-//==============================================================
+//===================================================================================
+//===================================================================================
+// Returns the smallest power of two that is at least the requested minimum and value.
 int smallestPowerOfTwo(int value, int minValue)
 {
   if (value < minValue)
   {
-    return minValue; 
+    return minValue;
   }
 
   if (value < 2)
@@ -35,7 +37,7 @@ int smallestPowerOfTwo(int value, int minValue)
 #ifndef ESP_PLATFORM
 //===================================================================================
 //===================================================================================
-// Returns lowercased copy of input string
+// Returns lowercased copy of input string.
 std::string toLowerCopy(const std::string& value)
 {
   std::string lowerValue = value;
@@ -48,7 +50,7 @@ std::string toLowerCopy(const std::string& value)
 
 //===================================================================================
 //===================================================================================
-// Reads first line from text file
+// Reads the first line from a text file.
 std::string readTextFileFirstLine(const std::string& path)
 {
   std::ifstream file(path);
@@ -63,7 +65,7 @@ std::string readTextFileFirstLine(const std::string& path)
 
 //===================================================================================
 //===================================================================================
-// Removes hexadecimal prefix from string value
+// Removes the hexadecimal prefix from a string value.
 std::string trimHexPrefix(const std::string& value)
 {
   if (value.rfind("0x", 0) == 0 || value.rfind("0X", 0) == 0)
@@ -75,7 +77,7 @@ std::string trimHexPrefix(const std::string& value)
 
 //===================================================================================
 //===================================================================================
-// Reads symlink target and returns its basename
+// Reads a symbolic-link target and returns its basename.
 std::string readSymlinkBasename(const std::string& path)
 {
   char target[512] = {0};
@@ -92,9 +94,10 @@ std::string readSymlinkBasename(const std::string& path)
 
 //===================================================================================
 //===================================================================================
-// Builds short summary string for network interface details
+// Builds a short summary string for network-interface details.
 std::string getInterfaceSummary(const std::string& iface)
 {
+  // Caches one interface summary and its last refresh time.
   struct CachedInterfaceSummary
   {
     std::string summary;

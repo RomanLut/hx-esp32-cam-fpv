@@ -1,6 +1,7 @@
 #include "main.h"
 
 #include "wifi.h"
+#include "esp_heap_summary.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -938,8 +939,8 @@ void setup_wifi(WIFI_Rate wifi_rate, uint8_t chn, float power_dbm, uint16_t devi
 
     //esp_log_level_set("*", ESP_LOG_DEBUG);
 
-    ESP_LOGI(TAG,"MEMORY After WIFI: ");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG,"\nMEMORY After WIFI: ");
+    printHeapInfoTable();
 
     if (!s_wifi_tx_task)
     {

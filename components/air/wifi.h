@@ -46,7 +46,7 @@ constexpr size_t WLAN_INCOMING_BUFFER_SIZE = 1024;
 //leave ~5k for SD library to initialize correctly
 #if defined(BOARD_XIAOS3SENSE)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 90000;
-constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 90000;
+constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 70000;
 #elif defined(BOARD_ESP32CAM)
 constexpr size_t WLAN_OUTGOING_BUFFER_SIZE = 45000;
 constexpr size_t APFPV_WLAN_OUTGOING_BUFFER_SIZE = 45000;

@@ -1,5 +1,5 @@
-set(srcs fec_codec.cpp fec.cpp fec_block_decoder.cpp safe_printf.cpp structures.cpp crc.cpp circular_buffer.cpp vcd_profiler.cpp jpeg_parser.cpp avi.cpp util.cpp packets.cpp hx_mavlink_parser.cpp hx_mavlink_rc_encoder.cpp packet_filter.cpp wifi_channels.cpp)
+set(srcs fec_codec.cpp fec.cpp fec_block_decoder.cpp safe_printf.cpp structures.cpp crc.cpp circular_buffer.cpp vcd_profiler.cpp jpeg_parser.cpp avi.cpp util.cpp esp_heap_summary.cpp packets.cpp hx_mavlink_parser.cpp hx_mavlink_rc_encoder.cpp packet_filter.cpp wifi_channels.cpp)
 
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS .
-                    REQUIRES esp_timer esp_common )
+                    REQUIRES esp_timer esp_common heap esp_hw_support )

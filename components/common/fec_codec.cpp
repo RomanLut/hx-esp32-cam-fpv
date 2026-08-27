@@ -10,6 +10,7 @@
 #include "crc.h"
 
 #include "vcd_profiler.h"
+#include "esp_heap_summary.h"
 
 #ifdef SUPPRESS_LOGGING
 #define printf(...) do {} while (false)
@@ -73,9 +74,8 @@ void setup_fec(uint8_t k, uint8_t n, uint16_t encoder_mtu,
     s_fec_encoder.set_data_encoded_cb(fec_encoded_cb);
     s_fec_decoder.set_data_decoded_cb(fec_decoded_cb);
 
-    ESP_LOGI(TAG,"MEMORY after fec:");
-    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
-    heap_caps_print_heap_info(MALLOC_CAP_DMA);
+    ESP_LOGI(TAG,"\nMEMORY after fec:");
+    printHeapInfoTable();
 
 }
 
